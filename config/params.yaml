@@ -1,0 +1,121 @@
+# Default lookback periods to include for each COT report
+lookbacks:
+  - ["3-month", 12]
+  - ["6-month", 24]
+  - ["9-month", 36]
+  - ["1-year", 52]
+  - ["18-month", 76]
+  - ["3-years", 152]
+
+# Defines the years of COT data to download and process
+years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+AssetClasses:
+  - FixedIncome:
+      # Confirmed lookback is 100
+      - { Name: "30-Year Note", Symbol: "ZB", Code: "020601", CustomLookbackWeeks: 100 }
+      - { Name: "10-Year Note", Symbol: "ZN", Code: "043602", CustomLookbackWeeks: 100 }
+      - { Name: "5-Year Note", Symbol: "ZF", Code: "044601", CustomLookbackWeeks: 100 }
+      - { Name: "2-Year Note", Symbol: "ZT", Code: "042601", CustomLookbackWeeks: 100 }
+  - Equities:
+      # Confirmed lookback is 28
+      - { Name: "Nasdaq", Symbol: "NQ", Code: "209742", CustomLookbackWeeks: 28 }
+      - { Name: "S&P 500", Symbol: "ES", Code: "13874A", CustomLookbackWeeks: 28 }
+      - { Name: "DOW", Symbol: "YM", Code: "124603", CustomLookbackWeeks: 28 }
+      - { Name: "Russell", Symbol: "RTY", Code: "239742", CustomLookbackWeeks: 28 }
+      - { Name: "Vix", Symbol: "VX", Code: "1170E1", CustomLookbackWeeks: 28 }
+  #     "MSCI Emerging Markets":
+  #         - "MSCI EMERGING MKTS MINI INDEX - ICE FUTURES U.S."
+  #         - "MSCI EM INDEX - ICE FUTURES U.S."
+  #     "Nikkei Index":
+  #         - "NIKKEI STOCK AVERAGE - CHICAGO MERCANTILE EXCHANGE"
+  # LiveStock:
+      # TODO confirm lookback
+  #     "Lean Hogs":
+  #         - "LEAN HOGS - CHICAGO MERCANTILE EXCHANGE"
+  #     "Live Cattle":
+  #         - "LIVE CATTLE - CHICAGO MERCANTILE EXCHANGE"
+  # Softs:
+      # TODO confirm lookback
+  #     "Cotton":
+  #         - "COTTON NO. 2 - ICE FUTURES U.S."
+  #     "Cocoa":
+  #         - "COCOA - ICE FUTURES U.S."
+  #     "Coffee":
+  #         - "COFFEE C - ICE FUTURES U.S."
+  #     "Orange Juice":
+  #         - "FRZN CONCENTRATED ORANGE JUICE - ICE FUTURES U.S."
+  #     "Sugar":
+  #         - "SUGAR NO. 11 - ICE FUTURES U.S."
+  #     "Milk":
+  #         - "MILK, Class III - CHICAGO MERCANTILE EXCHANGE"
+  # Metals:
+      # TODO confirm lookback
+  #     "Alominium":
+  #         - "ALUMINUM MW US TR PLATTS - COMMODITY EXCHANGE INC."
+  #         - "ALUMINUM MWP - COMMODITY EXCHANGE INC."
+  #     "Copper":
+  #         - "COPPER-GRADE #1 - COMMODITY EXCHANGE INC."
+  #         - "COPPER- #1 - COMMODITY EXCHANGE INC."
+  #     "Gold":
+  #         - "GOLD - COMMODITY EXCHANGE INC."
+  #     "Palladium":
+  #         - "PALLADIUM - NEW YORK MERCANTILE EXCHANGE"
+  #     "Platinum":
+  #         - "PLATINUM - NEW YORK MERCANTILE EXCHANGE"
+  #     "Silver":
+  #         - "SILVER - COMMODITY EXCHANGE INC."
+  #     "Steal":
+  #         - "US MIDWEST DOMESTIC HOT-ROLL - COMMODITY EXCHANGE INC."
+  #         - "STEEL-HRC - COMMODITY EXCHANGE INC."
+  # Crypto:
+      # TODO confirm lookback
+  #     "BTC":
+  #         - "BITCOIN - CHICAGO MERCANTILE EXCHANGE"
+  # Currencies:
+      # TODO confirm lookback
+  #     "AUD":
+  #         - "AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  #     "CAD":
+  #         - "CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  #     "CHF":
+  #         - "SWISS FRANC - CHICAGO MERCANTILE EXCHANGE"
+  #     "EUR":
+  #         - "EURO FX - CHICAGO MERCANTILE EXCHANGE"
+  #     "GBP":
+  #         - "BRITISH POUND STERLING - CHICAGO MERCANTILE EXCHANGE"
+  #         - "BRITISH POUND - CHICAGO MERCANTILE EXCHANGE"
+  #     "JPY":
+  #         - "JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE"
+  #     "MXN":
+  #         - "MEXICAN PESO - CHICAGO MERCANTILE EXCHANGE"
+  #     "NZD":
+  #         - "NEW ZEALAND DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  #         - "NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  #     "USD":
+  #         - "U.S. DOLLAR INDEX - ICE FUTURES U.S."
+  #         - "USD INDEX - ICE FUTURES U.S."
+  # Energies:
+      # TODO confirm lookback
+  #     "Crude Oil":
+  #         - "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE"
+  #         - "WTI-PHYSICAL - NEW YORK MERCANTILE EXCHANGE"
+  #     "Brent Crude Oil":
+  #         - "BRENT CRUDE OIL LAST DAY - NEW YORK MERCANTILE EXCHANGE"
+  #         - "BRENT LAST DAY - NEW YORK MERCANTILE EXCHANGE"
+  #     "Nat Gas":
+  #         - "NATURAL GAS - NEW YORK MERCANTILE EXCHANGE"
+  #         - "NAT GAS ICE LD1 - ICE FUTURES ENERGY DIV"
+  #     "RBOB Gasoline":
+  #         - "GASOLINE BLENDSTOCK (RBOB) - NEW YORK MERCANTILE EXCHANGE"
+  #         - "GASOLINE RBOB - NEW YORK MERCANTILE EXCHANGE"
+  #     "Heating Oil":
+  #         - "#2 HEATING OIL- NY HARBOR-ULSD - NEW YORK MERCANTILE EXCHANGE"
+  - Grains:
+      # verified
+      - { Name: "Wheat", Symbol: "ZW", Code: "001602", CustomLookbackWeeks: 12 }
+      - { Name: "Corn", Symbol: "ZC", Code: "", CustomLookbackWeeks: 88 }
+      - { Name: "Oats", Symbol: "ZO", Code: "", CustomLookbackWeeks: 24 }
+      - { Name: "Soybean", Symbol: "ZS", Code: "", CustomLookbackWeeks: 128 }
+      - { Name: "Soybean Meal", Symbol: "ZM", Code: "", CustomLookbackWeeks: 32 }
+      - { Name: "Soybean Oil", Symbol: "ZL", Code: "", CustomLookbackWeeks: 36 }

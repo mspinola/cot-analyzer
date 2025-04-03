@@ -1,0 +1,42 @@
+2025-04-02 22:26:50,311 - INFO - NumExpr defaulting to 10 threads.
+2025-04-02 22:31:52,464 - INFO - NumExpr defaulting to 10 threads.
+2025-04-02 22:31:52,729 - INFO - Downloading: 2019.zip
+2025-04-02 22:31:53,434 - INFO - Downloading: 2020.zip
+2025-04-02 22:31:54,020 - INFO - Downloading: 2021.zip
+2025-04-02 22:31:54,635 - INFO - Downloading: 2022.zip
+2025-04-02 22:31:55,383 - INFO - Downloading: 2023.zip
+2025-04-02 22:31:56,055 - INFO - Downloading: 2024.zip
+2025-04-02 22:31:56,762 - INFO - Downloading: 2025.zip
+2025-04-02 22:31:57,117 - INFO - Updated years: 2019, 2020, 2021, 2022, 2023, 2024, 2025
+2025-04-02 22:32:03,046 - INFO - Dash is running on http://0.0.0.0:5001/
+
+2025-04-02 22:32:03,054 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.70.86:5001
+2025-04-02 22:32:03,054 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-02 22:32:03,236 - INFO - NumExpr defaulting to 10 threads.
+2025-04-02 22:32:03,347 - INFO - Starting the zip file update check.
+2025-04-02 22:32:03,567 - INFO - No update needed for 2019.zip
+2025-04-02 22:32:03,732 - INFO - No update needed for 2020.zip
+2025-04-02 22:32:03,902 - INFO - No update needed for 2021.zip
+2025-04-02 22:32:04,043 - INFO - No update needed for 2022.zip
+2025-04-02 22:32:04,230 - INFO - No update needed for 2023.zip
+2025-04-02 22:32:04,399 - INFO - No update needed for 2024.zip
+2025-04-02 22:32:04,583 - INFO - No update needed for 2025.zip
+2025-04-02 22:32:04,583 - INFO - No updates detected for any years.
+2025-04-02 22:39:34,667 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "GET / HTTP/1.1" 200 -
+2025-04-02 22:39:34,685 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "GET /_dash-component-suites/dash/dcc/dash_core_components.v2_12_1m1707341104.js HTTP/1.1" 200 -
+2025-04-02 22:39:34,766 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "GET /_dash-layout HTTP/1.1" 200 -
+2025-04-02 22:39:34,766 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "GET /_dash-dependencies HTTP/1.1" 200 -
+2025-04-02 22:39:34,785 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:39:34,786 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:39:34,797 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:39:34,803 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "[36mGET /_dash-component-suites/dash/dcc/async-dropdown.js HTTP/1.1[0m" 304 -
+2025-04-02 22:39:34,804 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "[36mGET /_dash-component-suites/dash/dcc/async-graph.js HTTP/1.1[0m" 304 -
+2025-04-02 22:39:34,813 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:34] "GET /_dash-component-suites/plotly/package_data/plotly.min.js HTTP/1.1" 200 -
+2025-04-02 22:39:35,112 - INFO - 127.0.0.1 - - [02/Apr/2025 22:39:35] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:40:16,580 - INFO - 127.0.0.1 - - [02/Apr/2025 22:40:16] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:40:16,582 - INFO - 127.0.0.1 - - [02/Apr/2025 22:40:16] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:40:16,597 - INFO - 127.0.0.1 - - [02/Apr/2025 22:40:16] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-02 22:40:16,612 - INFO - 127.0.0.1 - - [02/Apr/2025 22:40:16] "POST /_dash-update-component HTTP/1.1" 200 -
