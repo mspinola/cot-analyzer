@@ -14,11 +14,14 @@ from email.mime.multipart import MIMEMultipart
 
 from CotDatabase import CotDatabase
 
+# Ensure directories exist
+log_file_name = "log/cot_downloader.log"
+os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("log/cot_downloader.log"),
+        logging.FileHandler(log_file_name),
         logging.StreamHandler()
     ]
 )

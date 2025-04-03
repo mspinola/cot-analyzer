@@ -67,6 +67,10 @@ def get_cot_graphs(value):
             row = (idx // 2) + 1
             col = idx % num_cols + 1
 
+        x_axis_start_range = 0
+        if len(df.index) >= 52:  # one year
+            x_axis_start_range = len(df.index) - 52
+
         legend = row == 1 and col == 1
         fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=legend,
                     name='commercials', line=dict(color=color_palette[0])), row=row, col=col)
@@ -74,7 +78,7 @@ def get_cot_graphs(value):
                     name='large specs', line=dict(color=color_palette[1])), row=row, col=col)
         fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=legend,
                     name='small specs', line=dict(color=color_palette[2])), row=row, col=col)
-        fig.update_xaxes(row=row, col=col, showgrid=False)
+        fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
         fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.2)", gridwidth=1, range=[0,100], tick0=0, dtick=20)
 
     fig.update_layout(
@@ -83,6 +87,7 @@ def get_cot_graphs(value):
         legend=dict(orientation="h", entrywidth=100, bgcolor="rgba(0, 0, 0, 0.15)", font=dict(size=14, color='white'), yanchor="top", y=1.1, xanchor="left"),
         height=1200,
         width=1450,
+        hovermode="x",
     )
     return fig
 
