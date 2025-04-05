@@ -53,7 +53,9 @@ class CotCmrIndexer:
         self.populate_instruments()
         self.calculate_weekly_data()
         self.export_to_csv()
-        self.create_real_test_event_lists()
+        self.export_summary_results_to_csv()
+        self.create_real_test_event_lists_with_custom_lookback()
+        self.create_real_test_event_lists_with_net_positions()
 
     def load_instruments(self):
         with open("config/params.yaml", 'r') as yf:
@@ -100,7 +102,9 @@ class CotCmrIndexer:
         min_net = range_to_search.min()
         max_net = range_to_search.max()
         cur_net = col_to_search[cur_idx]
-        result = round((cur_net - min_net) / (max_net - min_net) * 100)
+        result = 50
+        if max_net != min_net:
+            result = round((cur_net - min_net) / (max_net - min_net) * 100)
         return int(result)
 
     @staticmethod
@@ -161,13 +165,42 @@ class CotCmrIndexer:
                 summary_df[col] = df[col]
             summary_df.to_csv(summary_csv_path, sep=",", index=False, header=True)
 
-    def create_real_test_event_lists(self):
+    def export_summary_results_to_csv(self):
+        working_dir = os.getcwd()
+        csv_data = 'data/csv_data'
+        os.makedirs(csv_data, exist_ok=True)
+        summary_csv_path = os.path.join(working_dir, csv_data, "positioning_summary.csv")
+
+        cols = ['Date', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs']
+        positioning_df = pd.DataFrame(columns=cols)
+
+        for asset in self.asset_class_map:
+            instruments = self.get_assets_for_asset_class(asset)
+            for instrument_name in instruments:
+                instrument = self.get_instrument_from_name(instrument_name)
+                symbol = instrument.symbol
+                name = instrument.name
+                df = instrument.df
+                date = df.iloc[-1][DATE].date()
+                comm_idx = df.iloc[-1]['Comm-custom-idx']
+                lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
+                sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
+
+                new_df = pd.DataFrame([[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
+                if positioning_df.empty:
+                    positioning_df = new_df
+                else:
+                    positioning_df = pd.concat([positioning_df, new_df])
+
+        positioning_df.to_csv(summary_csv_path, sep=",", index=False, header=True)
+
+    def create_real_test_event_lists_with_custom_lookback(self):
         # Event List format: https://mhptrading.com/docs/topics/idh-topic490.htm
         # The first row of the file must contain column names from the following list:
         # •Symbol – the symbol for which the event occurred
         # •Date – the date of the event
         # •Time – the time of the event (optional)
-        # •Type – any numeric code > 0
+        # •Type – any numeric code > 0 -- Here type 1 is Commercials, 2 is Large Specs, and 3 is Small Specs
         # •Value – any numeric value (e.g. dividend amount, or EPS, or index constituency flags)
         working_dir = os.getcwd()
         os.makedirs(self.real_test_data_dir, exist_ok=True)
@@ -177,7 +210,7 @@ class CotCmrIndexer:
             name = self.instruments[instrument].name
             data_file_name = f'{name}.csv'
             csv_path = os.path.join(working_dir, self.real_test_data_dir, data_file_name)
-            real_test_csv_path = os.path.join(working_dir, self.real_test_data_dir, "RT_event_list_" + data_file_name)
+            real_test_csv_path = os.path.join(working_dir, self.real_test_data_dir, "RT_custom_index_event_list_" + data_file_name)
 
             # Add commercials
             commercial_df = pd.DataFrame()
@@ -187,7 +220,7 @@ class CotCmrIndexer:
             commercial_df["index"] = df['Comm-custom-idx']
             commercial_df = commercial_df[commercial_df["index"] != -1]
 
-            # Add row for commercials
+            # Add row for large specs
             large_specs_df = pd.DataFrame()
             large_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
             large_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
@@ -202,6 +235,54 @@ class CotCmrIndexer:
             small_specs_df["Type"] = 3  # Small specs
             small_specs_df["index"] = df['SmlSpec-custom-idx']
             small_specs_df = small_specs_df[small_specs_df["index"] != -1]
+
+            # Concatenate into one dataframe
+            result_df = commercial_df
+            result_df = pd.concat([result_df, large_specs_df])
+            result_df = pd.concat([result_df, small_specs_df])
+            result_df.to_csv(real_test_csv_path, sep=",", index=False, header=True)
+
+    def create_real_test_event_lists_with_net_positions(self):
+        # Event List format: https://mhptrading.com/docs/topics/idh-topic490.htm
+        # The first row of the file must contain column names from the following list:
+        # •Symbol – the symbol for which the event occurred
+        # •Date – the date of the event
+        # •Time – the time of the event (optional)
+        # •Type – any numeric code > 0 -- Here type 1 is Commercials, 2 is Large Specs, and 3 is Small Specs
+        # •Value – any numeric value (e.g. dividend amount, or EPS, or index constituency flags)
+        working_dir = os.getcwd()
+        os.makedirs(self.real_test_data_dir, exist_ok=True)
+
+        for instrument in self.supported_instruments:
+            df = self.instruments[instrument].df
+            name = self.instruments[instrument].name
+            data_file_name = f'{name}.csv'
+            csv_path = os.path.join(working_dir, self.real_test_data_dir, data_file_name)
+            real_test_csv_path = os.path.join(working_dir, self.real_test_data_dir, "RT_net_position_event_list_" + data_file_name)
+
+            # Add commercials
+            commercial_df = pd.DataFrame()
+            commercial_df["Date"] = df[DATE].apply(lambda x: x.date())
+            commercial_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            commercial_df["Type"] = 1  # Commercials
+            commercial_df["Net"] = df[COMM_NET]
+            commercial_df = commercial_df[commercial_df["Net"] != -1]
+
+            # Add row for large specs
+            large_specs_df = pd.DataFrame()
+            large_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
+            large_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            large_specs_df["Type"] = 2  # Large specs
+            large_specs_df["Net"] = df[LARGE_NET]
+            large_specs_df = large_specs_df[large_specs_df["Net"] != -1]
+
+            # Add small specs
+            small_specs_df = pd.DataFrame()
+            small_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
+            small_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            small_specs_df["Type"] = 3  # Small specs
+            small_specs_df["Net"] = df[SMALL_NET]
+            small_specs_df = small_specs_df[small_specs_df["Net"] != -1]
 
             # Concatenate into one dataframe
             result_df = commercial_df
@@ -232,14 +313,20 @@ class CotCmrIndexer:
             result.append(self.instruments[code].symbol)
         return result
 
+    def get_instrument_from_name(self, name):
+        for inst_code in self.instruments:
+            if self.instruments[inst_code].name == name:
+                return self.instruments[inst_code]
+        return None
+
     def get_instrument_from_symbol(self, symbol):
         for inst_code in self.instruments:
             if self.instruments[inst_code].symbol == symbol:
                 return self.instruments[inst_code]
         return None
 
-    def get_symbols_custom_index(self, symbol):
-        instrument = self.get_instrument_from_symbol(symbol)
+    def get_symbols_custom_index(self, name):
+        instrument = self.get_instrument_from_name(name)
         if instrument is not None:
             if instrument is not None:
                 df = instrument.df

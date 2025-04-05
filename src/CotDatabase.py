@@ -46,6 +46,7 @@ class CotDatabase:
 
         result = None
         if row:
+            print(row)
             result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
         return result
 

@@ -50,22 +50,14 @@ def update_date(n):
     [Input('cot_graphs_input', 'value')]
 )
 def get_cot_graphs(value):
-    assets = cotIndexer.get_assets_for_asset_class(value)
-
-    df = cotIndexer.get_symbols_custom_index("ES")
     color_palette = ['#e70307', '#0202ed', '#ffff00']
-
-    num_subplots = len(assets)
-    num_cols = max((num_subplots // 2), 1)
-    fig = make_subplots(rows=num_subplots, shared_xaxes=False, cols=num_cols, subplot_titles=(assets))
-
-    for idx in range(0, num_subplots):
-        if num_cols == 1:
-            row = idx + 1
-            col = 1
-        else:
-            row = (idx // 2) + 1
-            col = idx % num_cols + 1
+    assets = cotIndexer.get_assets_for_asset_class(value)
+    num_cols = 2
+    row = 1
+    col = 1
+    fig = make_subplots(rows=len(assets), shared_xaxes=False, cols=num_cols, subplot_titles=(assets))
+    for idx, asset in enumerate(assets):
+        df = cotIndexer.get_symbols_custom_index(asset)
 
         x_axis_start_range = 0
         if len(df.index) >= 52:  # one year
@@ -80,6 +72,11 @@ def get_cot_graphs(value):
                     name='small specs', line=dict(color=color_palette[2])), row=row, col=col)
         fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
         fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.2)", gridwidth=1, range=[0,100], tick0=0, dtick=20)
+
+        col = col + 1
+        if col > num_cols:
+            col = 1
+            row = row + 1
 
     fig.update_layout(
         template="simple_white",
