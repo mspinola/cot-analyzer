@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import yaml
 
+import CotSymbolCodeMap as symbol_code_map
+
 # Columns of COT data to consume
 NAME = "Market_and_Exchange_Names"
 DATE = "Report_Date_as_MM_DD_YYYY"
@@ -64,9 +66,10 @@ class CotCmrIndexer:
                 for asset_class, assets in asset_class_dict.items():
                     self.asset_class_map[asset_class] = set()
                     for asset in assets:
-                        if not asset["Code"] == "":
-                            self.instruments[asset["Code"]] = Instrument(asset_class, asset["Name"], asset["Symbol"], asset["Code"], asset["CustomLookbackWeeks"])
-                            self.supported_instruments.add(asset["Code"])
+                        code = symbol_code_map.cot_root_code_map[asset["Symbol"]]
+                        if not code == "":
+                            self.instruments[code] = Instrument(asset_class, asset["Name"], asset["Symbol"], code, asset["CustomLookbackWeeks"])
+                            self.supported_instruments.add(code)
                             self.asset_class_map[asset_class].add(asset["Name"])
 
     def load_lookbacks(self):

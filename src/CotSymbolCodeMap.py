@@ -1,6 +1,4 @@
-import bidict
-
-cot_root_code_map = bidict(
+cot_root_code_map = dict(
     {
     "AMB1": "1450E1",
     "AMT1": "1450E4",
