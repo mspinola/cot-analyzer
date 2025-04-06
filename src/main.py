@@ -20,7 +20,7 @@ signal.signal(signal.SIGINT, signal_handler)
 if __name__ == "__main__":
     cotDownloader = CotDataDownloader()
     cotDownloader.check_and_update_zip_files()
-    port = os.getenv('PORT', '5001')
+    port = os.getenv('PORT', '10000')
     print(f"port is {port}")
 
     enable_server = True
