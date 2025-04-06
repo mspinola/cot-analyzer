@@ -34,7 +34,7 @@ if __name__ == "__main__":
         cot_data_update_process.start()
 
         try:
-            app.run_server(host="0.0.0.0", port=port, debug=False)
+            app.run(host="0.0.0.0", port=port, debug=False)
         except KeyboardInterrupt:
             print("Keyboard interrupt received, terminating background update process...")
         finally:
