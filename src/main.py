@@ -1,5 +1,6 @@
 import logging
 import multiprocessing
+import os
 import signal
 import sys
 
@@ -19,6 +20,7 @@ signal.signal(signal.SIGINT, signal_handler)
 if __name__ == "__main__":
     cotDownloader = CotDataDownloader()
     cotDownloader.check_and_update_zip_files()
+    port = os.getenv('PORT', '5001')
 
     enable_server = True
     if not enable_server:
@@ -31,7 +33,7 @@ if __name__ == "__main__":
         cot_data_update_process.start()
 
         try:
-            app.run_server(host="0.0.0.0", port=5001, debug=False)
+            app.run_server(host="0.0.0.0", port=port, debug=False)
         except KeyboardInterrupt:
             print("Keyboard interrupt received, terminating background update process...")
         finally:
