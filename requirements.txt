@@ -5,4 +5,5 @@ dash-html-components
 dash-table
 numpy
 pandas
-
+pyyaml
+xlrd

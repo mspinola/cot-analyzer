@@ -17,7 +17,13 @@ Description of [COT Legacy Report data fields](https://www.cftc.gov/MarketReport
 
 ## Anaconda Environment
 
-After cloning create an Anadaconda environment for Python
+After cloning create a venv or Anaconda environment for Python
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
 ```bash
 # Create environment for this app

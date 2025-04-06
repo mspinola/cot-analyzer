@@ -89,7 +89,6 @@ def get_cot_graphs(value):
     return fig
 
 
-default_asset_class_value = cotIndexer.get_default_asset_class()
 graphs_layout = html.Div([
     dbc.Container([
         # Date Display and Latest Update
@@ -107,7 +106,7 @@ graphs_layout = html.Div([
                         dcc.Dropdown(
                             id='cot_graphs_input',
                             options=[{'label': x, 'value': x} for x in asset_class_list],
-                            value=f"{default_asset_class_value}",
+                            value=f"{cotIndexer.get_default_asset_class()}",
                             placeholder='Select Asset Class',
                             multi=False,
                             style={'textAlign': 'center'}
@@ -156,7 +155,8 @@ def update_date(n):
 )
 def get_CFTC_df_selection(value):
     return dbc.Table.from_dataframe(
-        cotIndexer.get_positioning_table(value),
+        cotIndexer.get_positioning_table_by_asset_class(value),
+        # cotIndexer.get_positioning_table(value),
         bordered=True)
 
 
@@ -175,9 +175,9 @@ positioning_layout = html.Div([
                     children=[
                         dcc.Dropdown(
                             id='cot_positioning_df_input',
-                            options=[{'label': x, 'value': x} for x in asset_list],
-                            value=asset_list,
-                            placeholder='Select security',
+                            options=[{'label': x, 'value': x} for x in asset_class_list],
+                            value=f"{asset_class_list}",
+                            placeholder='Select asset class',
                             multi=True,
                             style={'textAlign': 'center'}
                         )

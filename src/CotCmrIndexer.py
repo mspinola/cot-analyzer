@@ -143,17 +143,19 @@ class CotCmrIndexer:
 
     def export_to_csv(self):
         working_dir = os.getcwd()
-        csv_data = 'data/csv_data'
-        os.makedirs(csv_data, exist_ok=True)
+        csv_data_detailed = 'data/csv_data/detailed'
+        csv_data_summary = 'data/csv_data/summary'
+        os.makedirs(csv_data_detailed, exist_ok=True)
+        os.makedirs(csv_data_summary", exist_ok=True)
 
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
             name = self.instruments[instrument].name
             data_file_name = f'{name}.csv'
-            csv_path = os.path.join(working_dir, csv_data, data_file_name)
-            summary_csv_path = os.path.join(working_dir, csv_data, "summary_" + data_file_name)
+            detailed_csv_path = os.path.join(working_dir, csv_data_detailed, data_file_name)
+            summary_csv_path = os.path.join(working_dir, csv_data_summary, "summary_" + data_file_name)
 
-            df.to_csv(csv_path, sep=",", index=True, header=True)
+            df.to_csv(detailed_csv_path, sep=",", index=True, header=True)
             summary_df = pd.DataFrame()
             summary_df["Date"] = df[DATE]
             summary_df["Code"] = df[CODE]
@@ -343,7 +345,34 @@ class CotCmrIndexer:
                 return result
         return None
 
-    def get_positioning_table(self, requested_symbols):
+    def get_positioning_table_by_asset_class(self, asset_classes):
+        cols = ['Date', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs']
+        positioning_df = pd.DataFrame(columns=cols)
+
+        for asset in self.asset_class_map:
+            if asset not in asset_classes:
+                continue
+
+            instruments = self.get_assets_for_asset_class(asset)
+            for instrument_name in instruments:
+                instrument = self.get_instrument_from_name(instrument_name)
+                if not instrument is None:
+                    symbol = instrument.symbol
+                    name = instrument.name
+                    df = instrument.df
+                    date = df.iloc[-1][DATE].date()
+                    comm_idx = df.iloc[-1]['Comm-custom-idx']
+                    lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
+                    sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
+
+                    new_df = pd.DataFrame([[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
+                    if positioning_df.empty:
+                        positioning_df = new_df
+                    else:
+                        positioning_df = pd.concat([positioning_df, new_df])
+        return positioning_df
+
+    def get_positioning_table_by_symbol(self, requested_symbols):
         cols = ['Date', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs']
         positioning_df = pd.DataFrame(columns=cols)
 
