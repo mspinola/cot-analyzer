@@ -21,6 +21,7 @@ if __name__ == "__main__":
     cotDownloader = CotDataDownloader()
     cotDownloader.check_and_update_zip_files()
     port = os.getenv('PORT', '5001')
+    print(f"port is {port}")
 
     enable_server = True
     if not enable_server:
