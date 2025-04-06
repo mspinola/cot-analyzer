@@ -8,73 +8,73 @@ lookbacks:
   - ["3-years", 152]
 
 # Defines the years of COT data to download and process
-years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+years: [2024, 2025]
 
 AssetClasses:
-  - FixedIncome:
-      - { Name: "30-Year Note", Symbol: "ZB", CustomLookbackWeeks: 100 }
-      - { Name: "10-Year Note", Symbol: "ZN", CustomLookbackWeeks: 100 }
-      - { Name: "5-Year Note", Symbol: "ZF", CustomLookbackWeeks: 100 }
-      - { Name: "2-Year Note", Symbol: "ZT", CustomLookbackWeeks: 100 }
+#   - FixedIncome:
+#       - { Name: "30-Year Note", Symbol: "ZB", CustomLookbackWeeks: 100 }
+#       - { Name: "10-Year Note", Symbol: "ZN", CustomLookbackWeeks: 100 }
+#       - { Name: "5-Year Note", Symbol: "ZF", CustomLookbackWeeks: 100 }
+#       - { Name: "2-Year Note", Symbol: "ZT", CustomLookbackWeeks: 100 }
 
   - Equities:
       - { Name: "Nasdaq", Symbol: "NQ", CustomLookbackWeeks: 28 }
-      - { Name: "S&P 500", Symbol: "ES", CustomLookbackWeeks: 28 }
-      - { Name: "DOW", Symbol: "YM", CustomLookbackWeeks: 28 }
-      - { Name: "Russell", Symbol: "RTY", CustomLookbackWeeks: 28 }
-      - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
-      - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
-      - { Name: "MSCI EM", Symbol: "MME", CustomLookbackWeeks: 28 }
-      - { Name: "MSCI EM Mini", Symbol: "MFS", CustomLookbackWeeks: 28 }
-      - { Name: "Nikkei", Symbol: "NKD", CustomLookbackWeeks: 28 }
+    #   - { Name: "S&P 500", Symbol: "ES", CustomLookbackWeeks: 28 }
+    #   - { Name: "DOW", Symbol: "YM", CustomLookbackWeeks: 28 }
+    #   - { Name: "Russell", Symbol: "RTY", CustomLookbackWeeks: 28 }
+    #   - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
+    #   - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
+    #   - { Name: "MSCI EM", Symbol: "MME", CustomLookbackWeeks: 28 }
+    #   - { Name: "MSCI EM Mini", Symbol: "MFS", CustomLookbackWeeks: 28 }
+    #   - { Name: "Nikkei", Symbol: "NKD", CustomLookbackWeeks: 28 }
 
-  - LiveStock:
-    - { Name: "Live Cattle", Symbol: "LE", CustomLookbackWeeks: 15 }
-    - { Name: "Lean Hogs", Symbol: "HE", CustomLookbackWeeks: 15 }
+#   - LiveStock:
+#     - { Name: "Live Cattle", Symbol: "LE", CustomLookbackWeeks: 15 }
+#     - { Name: "Lean Hogs", Symbol: "HE", CustomLookbackWeeks: 15 }
 
-  - Softs:
-    - { Name: "Cotton", Symbol: "CT", CustomLookbackWeeks: 42 }
-    - { Name: "Cocoa", Symbol: "CC", CustomLookbackWeeks: 12 }
-    - { Name: "Coffee", Symbol: "KC", CustomLookbackWeeks: 10 }
-    - { Name: "Lumber", Symbol: "LBR", CustomLookbackWeeks: 28 }
-    - { Name: "Milk", Symbol: "DC", CustomLookbackWeeks: 28 }  # ?
-    - { Name: "Orange Juice", Symbol: "OJ", CustomLookbackWeeks: 10 }
-    - { Name: "Sugar", Symbol: "SB", CustomLookbackWeeks: 130 }
+#   - Softs:
+#     - { Name: "Cotton", Symbol: "CT", CustomLookbackWeeks: 42 }
+#     - { Name: "Cocoa", Symbol: "CC", CustomLookbackWeeks: 12 }
+#     - { Name: "Coffee", Symbol: "KC", CustomLookbackWeeks: 10 }
+#     - { Name: "Lumber", Symbol: "LBR", CustomLookbackWeeks: 28 }
+#     - { Name: "Milk", Symbol: "DC", CustomLookbackWeeks: 28 }  # ?
+#     - { Name: "Orange Juice", Symbol: "OJ", CustomLookbackWeeks: 10 }
+#     - { Name: "Sugar", Symbol: "SB", CustomLookbackWeeks: 130 }
 
-  - Metals:
-      # - { Name: "Aluminum MW", Symbol: "ALI", CustomLookbackWeeks: 52 }  # lack of liquidity
-      # - { Name: "Steel", Symbol: "HRC", CustomLookbackWeeks: 52 }  # lack of liquidity
-      - { Name: "Copper", Symbol: "HG", CustomLookbackWeeks: 88 }
-      - { Name: "Gold", Symbol: "GC", CustomLookbackWeeks: 26 }
-      - { Name: "Palladium", Symbol: "PA", CustomLookbackWeeks: 216 }
-      - { Name: "Platinum", Symbol: "PL", CustomLookbackWeeks: 18 }
-      - { Name: "Silver", Symbol: "SI", CustomLookbackWeeks: 26 }
+#   - Metals:
+#       # - { Name: "Aluminum MW", Symbol: "ALI", CustomLookbackWeeks: 52 }  # lack of liquidity
+#       # - { Name: "Steel", Symbol: "HRC", CustomLookbackWeeks: 52 }  # lack of liquidity
+#       - { Name: "Copper", Symbol: "HG", CustomLookbackWeeks: 88 }
+#       - { Name: "Gold", Symbol: "GC", CustomLookbackWeeks: 26 }
+#       - { Name: "Palladium", Symbol: "PA", CustomLookbackWeeks: 216 }
+#       - { Name: "Platinum", Symbol: "PL", CustomLookbackWeeks: 18 }
+#       - { Name: "Silver", Symbol: "SI", CustomLookbackWeeks: 26 }
 
-  - Crypto:
-      - { Name: "Bitcoin", Symbol: "BTC", CustomLookbackWeeks: 52 }
-      - { Name: "Ethereum", Symbol: "ETH", CustomLookbackWeeks: 92 }
+#   - Crypto:
+#       - { Name: "Bitcoin", Symbol: "BTC", CustomLookbackWeeks: 52 }
+#       - { Name: "Ethereum", Symbol: "ETH", CustomLookbackWeeks: 92 }
 
-  - Currencies:
-      - { Name: "Australian Dollar", Symbol: "6A", CustomLookbackWeeks: 82 }
-      - { Name: "Canadian Dollar", Symbol: "6C", CustomLookbackWeeks: 12 }
-      - { Name: "Swiss Franc", Symbol: "6S", CustomLookbackWeeks: 32 }
-      - { Name: "Euro", Symbol: "6E", CustomLookbackWeeks: 92 }
-      - { Name: "British Pound", Symbol: "6B", CustomLookbackWeeks: 32 }
-      - { Name: "Japanese Yen", Symbol: "6J", CustomLookbackWeeks: 32 }
-      - { Name: "Mexican Peso", Symbol: "6M", CustomLookbackWeeks: 52 } # ?
-      - { Name: "New Zealand", Symbol: "6N", CustomLookbackWeeks: 82 }
-      - { Name: "US Dollar", Symbol: "DX", CustomLookbackWeeks: 28 }
+#   - Currencies:
+#       - { Name: "Australian Dollar", Symbol: "6A", CustomLookbackWeeks: 82 }
+#       - { Name: "Canadian Dollar", Symbol: "6C", CustomLookbackWeeks: 12 }
+#       - { Name: "Swiss Franc", Symbol: "6S", CustomLookbackWeeks: 32 }
+#       - { Name: "Euro", Symbol: "6E", CustomLookbackWeeks: 92 }
+#       - { Name: "British Pound", Symbol: "6B", CustomLookbackWeeks: 32 }
+#       - { Name: "Japanese Yen", Symbol: "6J", CustomLookbackWeeks: 32 }
+#       - { Name: "Mexican Peso", Symbol: "6M", CustomLookbackWeeks: 52 } # ?
+#       - { Name: "New Zealand", Symbol: "6N", CustomLookbackWeeks: 82 }
+#       - { Name: "US Dollar", Symbol: "DX", CustomLookbackWeeks: 28 }
 
-  - Energies:
-    - { Name: "Crude Oil", Symbol: "CL", CustomLookbackWeeks: 42 }
-    - { Name: "Natural Gas", Symbol: "NG", CustomLookbackWeeks: 70 }
-    - { Name: "Gasoline", Symbol: "RB", CustomLookbackWeeks: 42 }
-    - { Name: "Heating Oil", Symbol: "HO", CustomLookbackWeeks: 42 }
+#   - Energies:
+#     - { Name: "Crude Oil", Symbol: "CL", CustomLookbackWeeks: 42 }
+#     - { Name: "Natural Gas", Symbol: "NG", CustomLookbackWeeks: 70 }
+#     - { Name: "Gasoline", Symbol: "RB", CustomLookbackWeeks: 42 }
+#     - { Name: "Heating Oil", Symbol: "HO", CustomLookbackWeeks: 42 }
 
-  - Grains:
-      - { Name: "Wheat", Symbol: "ZW", CustomLookbackWeeks: 12 }
-      - { Name: "Corn", Symbol: "ZC", CustomLookbackWeeks: 88 }
-      - { Name: "Oats", Symbol: "ZO", CustomLookbackWeeks: 24 }
-      - { Name: "Soybean", Symbol: "ZS", CustomLookbackWeeks: 128 }
-      - { Name: "Soybean Meal", Symbol: "ZM", CustomLookbackWeeks: 32 }
-      - { Name: "Soybean Oil", Symbol: "ZL", CustomLookbackWeeks: 36 }
+#   - Grains:
+#       - { Name: "Wheat", Symbol: "ZW", CustomLookbackWeeks: 12 }
+#       - { Name: "Corn", Symbol: "ZC", CustomLookbackWeeks: 88 }
+#       - { Name: "Oats", Symbol: "ZO", CustomLookbackWeeks: 24 }
+#       - { Name: "Soybean", Symbol: "ZS", CustomLookbackWeeks: 128 }
+#       - { Name: "Soybean Meal", Symbol: "ZM", CustomLookbackWeeks: 32 }
+#       - { Name: "Soybean Oil", Symbol: "ZL", CustomLookbackWeeks: 36 }

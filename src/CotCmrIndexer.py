@@ -82,7 +82,7 @@ class CotCmrIndexer:
         working_dir = os.getcwd()
         xls_data = 'data/xls_data'
 
-        years = [2020, 2021, 2022, 2023, 2024, 2025]
+        years = [2024, 2025]
         for year in years:
             data_file_name = f'{year}.xls'
             xl_path = os.path.join(working_dir, xls_data, data_file_name)
