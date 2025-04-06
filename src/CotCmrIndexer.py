@@ -146,7 +146,7 @@ class CotCmrIndexer:
         csv_data_detailed = 'data/csv_data/detailed'
         csv_data_summary = 'data/csv_data/summary'
         os.makedirs(csv_data_detailed, exist_ok=True)
-        os.makedirs(csv_data_summary", exist_ok=True)
+        os.makedirs(csv_data_summary, exist_ok=True)
 
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
