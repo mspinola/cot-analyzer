@@ -49,7 +49,9 @@ class CotCmrIndexer:
         self.supported_instruments = set()
         self.asset_class_map = dict()
         self.lookbacks = []
+        self.years = []
 
+        self.load_years()
         self.load_instruments()
         self.load_lookbacks()
         self.populate_instruments()
@@ -58,6 +60,12 @@ class CotCmrIndexer:
         self.export_summary_results_to_csv()
         self.create_real_test_event_lists_with_custom_lookback()
         self.create_real_test_event_lists_with_net_positions()
+
+    def load_years(self):
+        with open("config/params.yaml", 'r') as yf:
+            yaml_data = yaml.safe_load(yf)
+            for year in yaml_data["years"]:
+                self.years.append(year)
 
     def load_instruments(self):
         with open("config/params.yaml", 'r') as yf:
@@ -82,8 +90,7 @@ class CotCmrIndexer:
         working_dir = os.getcwd()
         xls_data = 'data/xls_data'
 
-        years = [2020, 2021, 2022, 2023, 2024, 2025]
-        for year in years:
+        for year in self.years:
             data_file_name = f'{year}.xls'
             xl_path = os.path.join(working_dir, xls_data, data_file_name)
 
@@ -340,6 +347,9 @@ class CotCmrIndexer:
                 result["comms"] = df['Comm-custom-idx']
                 result["lrg"] = df['LrgSpec-custom-idx']
                 result["sml"] = df['SmlSpec-custom-idx']
+                result["comms_net"] = df[COMM_NET]
+                result["lrg_net"] = df[LARGE_NET]
+                result["sml_net"] = df[SMALL_NET]
                 result = result[result["comms"] != -1]
                 result.set_index("date", inplace=True)
                 return result
