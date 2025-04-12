@@ -46,8 +46,18 @@ class CotDatabase:
 
         result = None
         if row:
-            print(row)
-            result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
+            try:
+                result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
+            except Exception as e:
+                try:
+                    print(row[0])
+                    result = datetime.strptime(row[0], '%Y %H:%M:%S %Z')
+                    print(f"2nd time worked {result}")
+                except Exception as e:
+                    print(f"Exception in date format {result}. {e}")
+                    return None
+                print(f"Exception in date format {result}. {e}")
+                return None
         return result
 
     def latest_update_timestamp(self):
