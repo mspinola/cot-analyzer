@@ -215,14 +215,14 @@ class CotCmrIndexer:
         # •Type – any numeric code > 0 -- Here type 1 is Commercials, 2 is Large Specs, and 3 is Small Specs
         # •Value – any numeric value (e.g. dividend amount, or EPS, or index constituency flags)
         working_dir = os.getcwd()
-        os.makedirs(self.real_test_data_dir, exist_ok=True)
+        real_test_custom_lb_data_dir = self.real_test_data_dir + '_custom_lb'
+        os.makedirs(real_test_custom_lb_data_dir, exist_ok=True)
 
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
             name = self.instruments[instrument].name
             data_file_name = f'{name}.csv'
-            csv_path = os.path.join(working_dir, self.real_test_data_dir, data_file_name)
-            real_test_csv_path = os.path.join(working_dir, self.real_test_data_dir, "RT_custom_index_event_list_" + data_file_name)
+            real_test_csv_path = os.path.join(working_dir, real_test_custom_lb_data_dir, "RT_custom_index_event_list_" + data_file_name)
 
             # Add commercials
             commercial_df = pd.DataFrame()
@@ -263,14 +263,14 @@ class CotCmrIndexer:
         # •Type – any numeric code > 0 -- Here type 1 is Commercials, 2 is Large Specs, and 3 is Small Specs
         # •Value – any numeric value (e.g. dividend amount, or EPS, or index constituency flags)
         working_dir = os.getcwd()
-        os.makedirs(self.real_test_data_dir, exist_ok=True)
+        real_test_net_pos_data_dir = self.real_test_data_dir + '_net'
+        os.makedirs(real_test_net_pos_data_dir, exist_ok=True)
 
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
             name = self.instruments[instrument].name
             data_file_name = f'{name}.csv'
-            csv_path = os.path.join(working_dir, self.real_test_data_dir, data_file_name)
-            real_test_csv_path = os.path.join(working_dir, self.real_test_data_dir, "RT_net_position_event_list_" + data_file_name)
+            real_test_csv_path = os.path.join(working_dir, real_test_net_pos_data_dir, "RT_net_position_event_list_" + data_file_name)
 
             # Add commercials
             commercial_df = pd.DataFrame()
