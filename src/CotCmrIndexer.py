@@ -229,24 +229,24 @@ class CotCmrIndexer:
             commercial_df["Date"] = df[DATE].apply(lambda x: x.date())
             commercial_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
             commercial_df["Type"] = 1  # Commercials
-            commercial_df["index"] = df['Comm-custom-idx']
-            commercial_df = commercial_df[commercial_df["index"] != -1]
+            commercial_df["Value"] = df['Comm-custom-idx']
+            commercial_df = commercial_df[commercial_df["Value"] != -1]
 
             # Add row for large specs
             large_specs_df = pd.DataFrame()
             large_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
             large_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
             large_specs_df["Type"] = 2  # Large specs
-            large_specs_df["index"] = df['LrgSpec-custom-idx']
-            large_specs_df = large_specs_df[large_specs_df["index"] != -1]
+            large_specs_df["Value"] = df['LrgSpec-custom-idx']
+            large_specs_df = large_specs_df[large_specs_df["Value"] != -1]
 
             # Add small specs
             small_specs_df = pd.DataFrame()
             small_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
             small_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
             small_specs_df["Type"] = 3  # Small specs
-            small_specs_df["index"] = df['SmlSpec-custom-idx']
-            small_specs_df = small_specs_df[small_specs_df["index"] != -1]
+            small_specs_df["Value"] = df['SmlSpec-custom-idx']
+            small_specs_df = small_specs_df[small_specs_df["Value"] != -1]
 
             # Concatenate into one dataframe
             result_df = commercial_df
@@ -268,33 +268,33 @@ class CotCmrIndexer:
 
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
-            name = self.instruments[instrument].name
-            data_file_name = f'{name}.csv'
+            symbol = self.instruments[instrument].symbol
+            data_file_name = f'{symbol}.csv'
             real_test_csv_path = os.path.join(working_dir, real_test_net_pos_data_dir, "RT_net_position_event_list_" + data_file_name)
 
             # Add commercials
             commercial_df = pd.DataFrame()
             commercial_df["Date"] = df[DATE].apply(lambda x: x.date())
-            commercial_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            commercial_df["Symbol"] = [self.instruments[instrument].symbol + "_B"] * len(df[DATE])
             commercial_df["Type"] = 1  # Commercials
-            commercial_df["Net"] = df[COMM_NET]
-            commercial_df = commercial_df[commercial_df["Net"] != -1]
+            commercial_df["Value"] = df[COMM_NET]
+            commercial_df = commercial_df[commercial_df["Value"] != -1]
 
             # Add row for large specs
             large_specs_df = pd.DataFrame()
             large_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
-            large_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            large_specs_df["Symbol"] = [self.instruments[instrument].symbol + "_B"] * len(df[DATE])
             large_specs_df["Type"] = 2  # Large specs
-            large_specs_df["Net"] = df[LARGE_NET]
-            large_specs_df = large_specs_df[large_specs_df["Net"] != -1]
+            large_specs_df["Value"] = df[LARGE_NET]
+            large_specs_df = large_specs_df[large_specs_df["Value"] != -1]
 
             # Add small specs
             small_specs_df = pd.DataFrame()
             small_specs_df["Date"] = df[DATE].apply(lambda x: x.date())
-            small_specs_df["Symbol"] = [self.instruments[instrument].symbol] * len(df[DATE])
+            small_specs_df["Symbol"] = [self.instruments[instrument].symbol + "_B"] * len(df[DATE])
             small_specs_df["Type"] = 3  # Small specs
-            small_specs_df["Net"] = df[SMALL_NET]
-            small_specs_df = small_specs_df[small_specs_df["Net"] != -1]
+            small_specs_df["Value"] = df[SMALL_NET]
+            small_specs_df = small_specs_df[small_specs_df["Value"] != -1]
 
             # Concatenate into one dataframe
             result_df = commercial_df
@@ -350,6 +350,7 @@ class CotCmrIndexer:
                 result["comms_net"] = df[COMM_NET]
                 result["lrg_net"] = df[LARGE_NET]
                 result["sml_net"] = df[SMALL_NET]
+                result["oi"] = df[INTEREST]
                 result = result[result["comms"] != -1]
                 result.set_index("date", inplace=True)
                 return result

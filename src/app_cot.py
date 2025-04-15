@@ -50,7 +50,7 @@ def update_date(n):
     [Input('cot_graphs_input', 'value')]
 )
 def get_cot_graphs(value):
-    color_palette = ['#e70307', '#0000ff', '#ffff00']  # '#0202ed'
+    color_palette = ['#e70307', '#0000ff', '#ffff00', '#4caf50']
     assets = cotIndexer.get_assets_for_asset_class(value)
     num_cols = 2
     row = 1
@@ -58,9 +58,13 @@ def get_cot_graphs(value):
     titles = []
     for asset in enumerate(assets):
         titles.append(asset[1] + " Index")
-        titles.append(asset[1] + " Net Positions")
+        titles.append(asset[1] + " Positions")
 
-    fig = make_subplots(rows=len(assets) * 2, shared_xaxes=False, cols=num_cols, subplot_titles=(titles))
+    specs = []
+    for idx in range(len(assets)):
+        specs.append([{"secondary_y": False}, {"secondary_y": True}])
+
+    fig = make_subplots(rows=len(assets), shared_xaxes=False, cols=num_cols, subplot_titles=(titles), specs=specs)
     for idx, asset in enumerate(assets):
         col = 1
         df = cotIndexer.get_symbols_custom_index(asset)
@@ -70,37 +74,38 @@ def get_cot_graphs(value):
         if len(df.index) >= xaxis_weeks:  # one year
             x_axis_start_range = len(df.index) - xaxis_weeks
 
-        legend = row == 1 and col == 1
         # Indexing Plot
-        fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=legend,
-                    name='commercials', line=dict(color=color_palette[0])), row=row, col=col)
-        fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=legend,
-                    name='large specs', line=dict(color=color_palette[1])), row=row, col=col)
-        fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=legend,
-                    name='small specs', line=dict(color=color_palette[2])), row=row, col=col)
+        fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=False,
+                    name='commercials', line=dict(width=1, color=color_palette[0])), row=row, col=col)
+        fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=False,
+                    name='large specs', line=dict(width=1, color=color_palette[1])), row=row, col=col)
+        fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=False,
+                    name='small specs', line=dict(width=1, color=color_palette[2])), row=row, col=col)
         fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
         fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.3)", gridwidth=1, range=[0,100])
 
         # Positioning Plot
         col = 2
-        fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=False, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
-                    name='commercials', marker_color=color_palette[0]), row=row, col=col)
-
-
-        fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=False, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
-                    name='large specs', marker_color=color_palette[1]), row=row, col=col)
-        fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=False, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
-                    name='small specs', marker_color=color_palette[2]), row=row, col=col)
+        legend = row == 1 and col == 2
+        fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
+                    name='commercials', marker_color=color_palette[0]), row=row, col=col, secondary_y=False)
+        fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
+                    name='large specs', marker_color=color_palette[1]), row=row, col=col, secondary_y=False)
+        fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
+                    name='small specs', marker_color=color_palette[2]), row=row, col=col, secondary_y=False)
+        fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[3])),
+                    name='open interest', marker_color=color_palette[3]), row=row, col=col, secondary_y=True)
         fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.3)", gridwidth=1)
+        fig.update_yaxes(row=row, col=col, title="net", showgrid=True, gridcolor="rgba(0, 0, 0, 0.3)", gridwidth=1, secondary_y=False)
+        fig.update_yaxes(row=row, col=col, title="open", showgrid=False, secondary_y=True)
         row = row + 1
 
     fig.update_layout(
         template="simple_white",
         showlegend=True,
         legend=dict(orientation="h", entrywidth=100, bgcolor="rgba(0, 0, 0, 0.15)", font=dict(size=14, color='white'), yanchor="top", y=1.1, xanchor="left"),
-        height=600*row,
-        width=1600,
+        height=300*row,
+        width=1200,
         hovermode="x unified",
         hoverlabel=dict(bgcolor="rgba(0, 0, 0, 0)", bordercolor="rgba(0, 0, 0, 0)", font=dict(color="cyan")),
         bargap=0.2,
