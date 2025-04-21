@@ -241,7 +241,7 @@ positioning_layout = html.Div([
                         dcc.Dropdown(
                             id='cot_positioning_df_input',
                             options=[{'label': x, 'value': x} for x in asset_class_list],
-                            value=f"{asset_class_list}",
+                            value=f"{cotIndexer.get_default_asset_class()}",
                             placeholder='Select asset class',
                             multi=True,
                             style={'textAlign': 'center'}
