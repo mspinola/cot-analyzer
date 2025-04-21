@@ -49,14 +49,14 @@ class CotDatabase:
             try:
                 result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
             except Exception as e:
+                print(f"First attempt exception in date format {result}. {e}")
                 try:
-                    print(row[0])
-                    result = datetime.strptime(row[0], '%Y %H:%M:%S %Z')
+                    print(f"2nd attempt on {row[0]}")
+                    result = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
                     print(f"2nd time worked {result}")
                 except Exception as e:
-                    print(f"Exception in date format {result}. {e}")
+                    print(f"2nd time exception in date format {result}. {e}")
                     return None
-                print(f"Exception in date format {result}. {e}")
                 return None
         return result
 
