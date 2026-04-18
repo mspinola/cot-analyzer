@@ -11,21 +11,30 @@ from plotly.subplots import make_subplots
 from CotCmrIndexer import CotCmrIndexer
 from CotDatabase import CotDatabase
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+TEXT_COLOR = "#ABB8C9"
+BRIGHTER_TEXT_COLOR = "#E2E8F0"
+HOVER_TEXT_COLOR = "#FFFFFF"  # "#00FFFF"
+BACKGROUND_COLOR = "#1a1a1a" #"#0F172A"
+GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
+
+app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
 server = app.server
 cotIndexer = CotCmrIndexer()
 cotDatabase = CotDatabase()
 
+palette_options = cotIndexer.get_palette_names()
 app_timezone = "US/Eastern"
 asset_class_list = cotIndexer.get_asset_classes()
+asset_class_list.sort()
 asset_list = cotIndexer.get_instrument_names()
 
 # Update the date display in the title daily at midnight
 def milliseconds_until_midnight():
     local_tz = pytz.timezone(app_timezone)
     now = datetime.now(tz=local_tz)
-    next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    next_midnight = (now + timedelta(days=1)).replace(hour=0,
+                                                      minute=0, second=0, microsecond=0)
     delta = next_midnight - now
     return int(delta.total_seconds() * 1000)
 
@@ -39,7 +48,7 @@ def milliseconds_until_midnight():
     Output("date-display", "children"),
     Input("daily-interval", "n_intervals")
 )
-def update_date(n):
+def update_graphs_date(n):
     tz = pytz.timezone(app_timezone)
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"COT Analysis {current_date}"
@@ -47,25 +56,32 @@ def update_date(n):
 
 @app.callback(
     Output('cot_graphs', 'figure'),
-    [Input('cot_graphs_input', 'value')]
+    [Input('cot_graphs_input', 'value'),
+     Input('palette_input', 'value')]  # New Input
 )
-def get_cot_graphs(value):
-    color_palette = ['#e70307', '#0000ff', '#ffff00', '#4caf50']
+def get_cot_graphs(value, palette_name):
+    grid_color = GRID_COLOR
+    color_palette = cotIndexer.get_palette(palette_name)
     assets = cotIndexer.get_assets_for_asset_class(value)
-    num_cols = 2
-    row = 1
+    row_count = len(assets)
+
+    PIXELS_PER_ROW = 350
+    FIXED_OVERHEAD = 180  # Margin for titles and legend
+    total_height = (PIXELS_PER_ROW * row_count) + FIXED_OVERHEAD
+    v_spacing = 80 / total_height  # Consistent ~80px gap
 
     titles = []
     for asset in enumerate(assets):
         titles.append(asset[1] + " Index")
         titles.append(asset[1] + " Positions")
 
-    specs = []
-    for idx in range(len(assets)):
-        specs.append([{"secondary_y": False}, {"secondary_y": True}])
+    specs = [[{"secondary_y": False}, {"secondary_y": True}]
+             for _ in range(row_count)]
+    fig = make_subplots(rows=row_count, shared_xaxes=False, cols=2, subplot_titles=(
+        titles), specs=specs, horizontal_spacing=0.04, vertical_spacing=v_spacing)
 
-    fig = make_subplots(rows=len(assets), shared_xaxes=False, cols=num_cols, subplot_titles=(titles), specs=specs)
     for idx, asset in enumerate(assets):
+        cur_row = idx + 1
         col = 1
         df = cotIndexer.get_symbols_custom_index(asset)
 
@@ -76,51 +92,62 @@ def get_cot_graphs(value):
 
         # Indexing Plot
         fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=False,
-                    name='commercials', line=dict(width=1, color=color_palette[0])), row=row, col=col)
+                                 name='commercials', line=dict(width=1, color=color_palette[0])), row=cur_row, col=col)
         fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=False,
-                    name='large specs', line=dict(width=1, color=color_palette[1])), row=row, col=col)
+                                 name='large specs', line=dict(width=1, color=color_palette[1])), row=cur_row, col=col)
         fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=False,
-                    name='small specs', line=dict(width=1, color=color_palette[2])), row=row, col=col)
-        fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.3)", gridwidth=1, range=[0,100])
+                                 name='small specs', line=dict(width=1, color=color_palette[2])), row=cur_row, col=col)
+        fig.update_xaxes(row=cur_row, col=col, showgrid=False, matches='x', range=[
+                         df.index[x_axis_start_range], df.index[-1]])
+        fig.update_yaxes(row=cur_row, col=col, title="index", showgrid=True,
+                         gridcolor=grid_color, gridwidth=1, range=[0, 100])
 
         # Positioning Plot
         col = 2
-        legend = row == 1 and col == 2
+        legend = cur_row == 1 and col == 2
         fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
-                    name='commercials', marker_color=color_palette[0]), row=row, col=col, secondary_y=False)
+                             name='commercials', marker_color=color_palette[0]), row=cur_row, col=col, secondary_y=False)
         fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
-                    name='large specs', marker_color=color_palette[1]), row=row, col=col, secondary_y=False)
+                             name='large specs', marker_color=color_palette[1]), row=cur_row, col=col, secondary_y=False)
         fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
-                    name='small specs', marker_color=color_palette[2]), row=row, col=col, secondary_y=False)
+                             name='small specs', marker_color=color_palette[2]), row=cur_row, col=col, secondary_y=False)
         fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[3])),
-                    name='open interest', marker_color=color_palette[3]), row=row, col=col, secondary_y=True)
-        fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=row, col=col, title="net", showgrid=True, gridcolor="rgba(0, 0, 0, 0.3)", gridwidth=1, secondary_y=False)
-        fig.update_yaxes(row=row, col=col, title="open", showgrid=False, secondary_y=True)
-        row = row + 1
+                                 name='open interest', marker_color=color_palette[3]), row=cur_row, col=col, secondary_y=True)
+        fig.update_xaxes(row=cur_row, col=col, showgrid=False, matches='x', range=[
+                         df.index[x_axis_start_range], df.index[-1]])
+        fig.update_yaxes(row=cur_row, col=col, title="net", showgrid=True,
+                         gridcolor=grid_color, gridwidth=1, secondary_y=False)
+        fig.update_yaxes(row=cur_row, col=col, title="open",
+                         showgrid=False, secondary_y=True)
 
     fig.update_layout(
-        template="simple_white",
+        template="plotly_dark",
+        paper_bgcolor=BACKGROUND_COLOR,
+        plot_bgcolor=BACKGROUND_COLOR,
+        font=dict(color=BRIGHTER_TEXT_COLOR),  # Sets color for all graph text
         showlegend=True,
-        legend=dict(orientation="h", entrywidth=100, bgcolor="rgba(0, 0, 0, 0.15)", font=dict(size=14, color='white'), yanchor="top", y=1.1, xanchor="left"),
-        height=300*row,
-        width=1200,
+        legend=dict(orientation="h", entrywidth=100, bgcolor=BACKGROUND_COLOR, font=dict(
+            size=14, color=BRIGHTER_TEXT_COLOR), yanchor="bottom", y=1.02, xanchor="left"),
+        autosize=True,
+        height=total_height,
+        margin=dict(t=100, b=50, l=50, r=50),
         hovermode="x unified",
-        hoverlabel=dict(bgcolor="rgba(0, 0, 0, 0)", bordercolor="rgba(0, 0, 0, 0)", font=dict(color="cyan")),
+        hoverlabel=dict(bgcolor="rgba(0, 0, 0, 0)", bordercolor="rgba(0, 0, 0, 0)", font=dict(
+            color=HOVER_TEXT_COLOR)),
         bargap=0.2,
-        yaxis=dict(fixedrange=True),
     )
     return fig
 
 
 def get_cot_graphs_only(value):
-    color_palette = ['#e70307', '#0202ed', '#ffff00']
+    grid_color = GRID_COLOR
+    color_palette = cotIndexer.get_palette()
     assets = cotIndexer.get_assets_for_asset_class(value)
     num_cols = 2
     row = 1
     col = 1
-    fig = make_subplots(rows=len(assets), shared_xaxes=False, cols=num_cols, subplot_titles=(assets))
+    fig = make_subplots(rows=len(assets), shared_xaxes=False, cols=num_cols, subplot_titles=(
+        assets), horizontal_spacing=0.04, vertical_spacing=0.1)
     for idx, asset in enumerate(assets):
         df = cotIndexer.get_symbols_custom_index(asset)
 
@@ -130,13 +157,15 @@ def get_cot_graphs_only(value):
 
         legend = row == 1 and col == 1
         fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=legend,
-                    name='commercials', line=dict(color=color_palette[0])), row=row, col=col)
+                                 name='commercials', line=dict(color=color_palette[0])), row=row, col=col)
         fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=legend,
-                    name='large specs', line=dict(color=color_palette[1])), row=row, col=col)
+                                 name='large specs', line=dict(color=color_palette[1])), row=row, col=col)
         fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=legend,
-                    name='small specs', line=dict(color=color_palette[2])), row=row, col=col)
-        fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=row, col=col, title="index", showgrid=True, gridcolor="rgba(0, 0, 0, 0.2)", gridwidth=1, range=[0,100], tick0=0, dtick=20)
+                                 name='small specs', line=dict(color=color_palette[2])), row=row, col=col)
+        fig.update_xaxes(row=row, col=col, showgrid=False, matches='x', range=[
+                         df.index[x_axis_start_range], df.index[-1]])
+        fig.update_yaxes(row=row, col=col, title="index", showgrid=True,
+                         gridcolor=grid_color, gridwidth=1, range=[0, 100], tick0=0, dtick=20)
 
         col = col + 1
         if col > num_cols:
@@ -144,11 +173,14 @@ def get_cot_graphs_only(value):
             row = row + 1
 
     fig.update_layout(
-        template="simple_white",
+        template="plotly_dark",
+        font=dict(color=TEXT_COLOR),  # Sets color for all graph text
         showlegend=True,
-        legend=dict(orientation="h", entrywidth=100, bgcolor="rgba(0, 0, 0, 0.15)", font=dict(size=14, color='white'), yanchor="top", y=1.1, xanchor="left"),
-        height=1200,
-        width=1450,
+        legend=dict(orientation="h", entrywidth=100, bgcolor=BACKGROUND_COLOR, font=dict(
+            size=14, color=TEXT_COLOR), yanchor="top", y=1.01, xanchor="center"),
+        autosize=True,
+        height=(PIXELS_PER_ROW * row) + FIXED_OVERHEAD,
+        width=None,
         hovermode="x",
     )
     return fig
@@ -157,31 +189,75 @@ def get_cot_graphs_only(value):
 graphs_layout = html.Div([
     dbc.Container([
         # Date Display and Latest Update
-        html.H2(id='date-display', style={'textAlign': 'center', "text-decoration": "underline"}),
-        html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}", style={'textAlign': 'center', 'fontSize': 'small'}),
-        dcc.Interval(id="daily-interval", interval=milliseconds_until_midnight(), n_intervals=0),
-    ]),
+        html.H2(id='date-display',
+                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR}),
+        html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}", style={
+               'textAlign': 'center', 'fontSize': 'small', 'color': BRIGHTER_TEXT_COLOR}),
+        dcc.Interval(id="daily-interval",
+                     interval=milliseconds_until_midnight(), n_intervals=0),
+    ], fluid=True),
+
+    html.Hr(style={
+        'color': BRIGHTER_TEXT_COLOR,   # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '1.0',               # Makes it subtle (optional)
+        'marginTop': '10px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
     html.Br(),
+
     dbc.Row([
+        # Theme Selector Group
         dbc.Col([
             dbc.Row([
-                dcc.Loading(
-                    type="circle",
-                    children=[
-                        dcc.Dropdown(
-                            id='cot_graphs_input',
-                            options=[{'label': x, 'value': x} for x in asset_class_list],
-                            value=f"{cotIndexer.get_default_asset_class()}",
-                            placeholder='Select Asset Class',
-                            multi=False,
-                            style={'textAlign': 'center'}
-                        )
-                    ]
-                )
-            ])
-        ], width={'size': 8, 'offset': 2})
-    ], align='center'),
+                dbc.Col(html.Label("Theme: ", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold'}), width=4, className="text-end"),
+                dbc.Col(dbc.Select(
+                    id='palette_input',
+                    options=[{'label': x, 'value': x}
+                        for x in palette_options],
+                    value=palette_options[0] if palette_options else None,
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                ), width=8)
+            ], align='center')
+        ], width=4),  # Centering the column
 
+        # Asset Class Selector Group
+        dbc.Col([
+            dbc.Row([
+                dbc.Col(html.Label("Asset Class:", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold'}), width=4, className="text-end"),
+                dbc.Col(dcc.Loading(dbc.Select(
+                    id='cot_graphs_input',
+                    options=[{'label': x, 'value': x}
+                        for x in asset_class_list],
+                    value=f"{cotIndexer.get_default_asset_class()}",
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                )), width=8)
+            ], align='center')
+        ], width=4),
+    ], justify='center'),
+    html.Br(),
+
+    html.Hr(style={
+        'color': TEXT_COLOR,            # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '0.25',              # Makes it subtle (optional)
+        'marginTop': '1px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
     html.Br(),
 
     # Row for the COT graphs
@@ -189,12 +265,12 @@ graphs_layout = html.Div([
         dbc.Col(
             dcc.Loading(
                 type="circle",
-                children=[dcc.Graph(id='cot_graphs')]
+                children=[dcc.Graph(id='cot_graphs', config={
+                                    'responsive': True}, style={'width': '100%'})],
             ),
             width=12,  # Full width column
-            style={"display": "flex", "justifyContent": "center"}  # Centering the graph
+            style={"padding": "0"}  # Centering the graph
         ),
-        align='center',
     )
 ])
 
@@ -208,7 +284,7 @@ graphs_layout = html.Div([
     Output("date-display-positioning", "children"),
     Input("daily-interval-positioning", "n_intervals")
 )
-def update_date(n):
+def update_positioning_date(n):
     tz = pytz.timezone(app_timezone)
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"Positioning {current_date}"
@@ -219,38 +295,77 @@ def update_date(n):
     [Input('cot_positioning_df_input', 'value')]
 )
 def get_CFTC_df_selection(value):
+    if value == 'ALL':
+        # Pass the full list of asset classes to your indexer
+        return dbc.Table.from_dataframe(
+            cotIndexer.get_positioning_table_by_asset_class(asset_class_list),
+            bordered=True
+        )
+    # Otherwise, process the single selected asset class
     return dbc.Table.from_dataframe(
-        cotIndexer.get_positioning_table_by_asset_class(value),
-        # cotIndexer.get_positioning_table(value),
-        bordered=True)
+        cotIndexer.get_positioning_table_by_asset_class(
+            [value] if isinstance(value, str) else value),
+        bordered=True
+    )
 
 
 positioning_layout = html.Div([
     dbc.Container([
-        html.H2(id='date-display-positioning', style={'textAlign': 'center', "text-decoration": "underline"}),
-        html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}", style={'textAlign': 'center', 'fontSize': 'small'}),
-        dcc.Interval(id="daily-interval-positioning", interval=milliseconds_until_midnight(), n_intervals=0),
-    ]),
+        html.H2(id='date-display-positioning', style={'textAlign': 'center'}),
+        html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}", style={
+               'textAlign': 'center', 'fontSize': 'small'}),
+        dcc.Interval(id="daily-interval-positioning",
+                     interval=milliseconds_until_midnight(), n_intervals=0),
+    ], fluid=True),
+
+    html.Hr(style={
+        'color': BRIGHTER_TEXT_COLOR,   # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '1.0',               # Makes it subtle (optional)
+        'marginTop': '10px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
     html.Br(),
+
     dbc.Row([
         dbc.Col([
             dbc.Row([
                 dcc.Loading(
                     type="circle",
                     children=[
-                        dcc.Dropdown(
+                        dbc.Select(
                             id='cot_positioning_df_input',
-                            options=[{'label': x, 'value': x} for x in asset_class_list],
-                            value=f"{cotIndexer.get_default_asset_class()}",
+                            options=[{'label': 'All Assets', 'value': 'ALL'}] +
+                            [{'label': x, 'value': x}
+                                for x in asset_class_list],
+                            value='ALL',  # Set "ALL" as the default
                             placeholder='Select asset class',
-                            multi=True,
-                            style={'textAlign': 'center'}
+                            style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                                   'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
                         )
                     ])
-                ])
+            ])
         ], width={'size': 8, 'offset': 2})  # Centering the column
     ], align='center'),
+    html.Br(),
 
+    html.Hr(style={
+        'color': TEXT_COLOR,            # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '0.25',               # Makes it subtle (optional)
+        'marginTop': '10px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
     html.Br(),
 
     dbc.Row([
@@ -272,12 +387,14 @@ positioning_layout = html.Div([
 ###############################################################################
 sidebar = html.Div(
     [
-        html.H2("COT Report", className="display-4"),
-        html.Hr(),
+        html.H2("Views", style={'color': BRIGHTER_TEXT_COLOR}),
+        html.Hr(style={'backgroundColor': BACKGROUND_COLOR}),
         dbc.Nav(
             [
-                dbc.NavLink("Graphs", href="/graphs", id="graphs-link", active="exact"),
-                dbc.NavLink("Positioning", href="/positioning", id="positioning-link", active="exact")
+                dbc.NavLink("Graphs", href="/graphs", id="graphs-link",
+                            active="exact", style={'color': TEXT_COLOR}),
+                dbc.NavLink("Positioning", href="/positioning", id="positioning-link",
+                            active="exact", style={'color': TEXT_COLOR})
             ],
             vertical=True,
             pills=True,
@@ -290,7 +407,10 @@ sidebar = html.Div(
         "bottom": 0,
         "width": "16rem",
         "padding": "2rem 1rem",
-        "background-color": "#f8f9fa",
+        "background-color": BACKGROUND_COLOR,
+        "color": TEXT_COLOR,
+        # 0% opacity border for separation
+        "borderRight": f"1px solid {TEXT_COLOR}00"
     },
 )
 
@@ -299,8 +419,10 @@ sidebar = html.Div(
 # Main Layout
 #
 ###############################################################################
-content = html.Div(id="page-content", style={"margin-left": "18rem", "padding": "2rem 1rem"})
-app.layout = html.Div(children=[dcc.Location(id='url', refresh=False), sidebar, content])
+content = html.Div(id="page-content", style={"margin-left": "16rem", "padding": "1rem 1rem",
+                   "width": "calc(100% - 16rem)", "backgroundColor": BACKGROUND_COLOR})
+app.layout = html.Div(children=[dcc.Location(
+    id='url', refresh=False), sidebar, content])
 
 # Callback to control page navigation
 @app.callback(
@@ -322,4 +444,3 @@ def display_page(pathname):
 )
 def update_active_links(pathname):
     return pathname == '/graphs' or pathname == '/' or pathname is None, pathname == '/positioning'
-

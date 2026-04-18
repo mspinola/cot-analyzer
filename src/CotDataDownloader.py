@@ -1,6 +1,7 @@
 import logging
 import os
 import requests
+import schedule
 import shutil
 import ssl
 import time
@@ -50,7 +51,47 @@ class CotDataDownloader:
             for year in yaml_data["years"]:
                 self.years.append(year)
 
-    def check_zip_updates(self, sleep_interval=3600):
+            if datetime.now().year not in self.years:
+                logging.error(f"Current year {datetime.now().year} not found in config/params.yaml. Adding it to the list of years to check.")
+                self.years.append(datetime.now().year)
+
+    def check_zip_updates(self):
+        """Schedule zip updates for every Friday at 15:30 EST."""
+        # Use 'US/Eastern' time for the schedule
+        # Note: Ensure your system clock is in EST or handle offset
+        schedule.every().friday.at("15:30").do(self.run_download_retry_loop)
+
+        logging.info("Scheduler active: Waiting for Friday at 3:30 PM EST.")
+
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+        logging.info("Scheduler started: Checking for updates every Friday at 3:30 PM EST.")
+
+    def run_download_retry_loop(self):
+        """Retries the update every 2 minutes until the current year's data is found."""
+        current_year = datetime.now().year
+        success = False
+        max_attempts = 30
+        attempt = 0
+
+        while not success and attempt < max_attempts:
+            attempt += 1
+            logging.info(f"Friday Update Attempt {attempt} for year {current_year}...")
+
+            updated = self.check_and_update_zip_files()
+            if current_year in updated:
+                logging.info(f"Successfully captured {current_year} data.")
+                success = True
+            else:
+                logging.info("New data not available yet. Waiting 2 minutes to retry...")
+                time.sleep(120)  # Wait 2 minutes between retries
+
+            if not success:
+                logging.error(f"Failed to find new {current_year} data after {max_attempts} attempts.")
+
+    def check_zip_updates_periodic(self, sleep_interval=3600):
         """Check for zip updates every hour."""
         while True:
             logging.info("Starting the zip file update check.")
@@ -160,3 +201,5 @@ class CotDataDownloader:
                 self.send_email_notification(updated_years)
         else:
             logging.info("No updates detected for any years.")
+
+        return updated_years

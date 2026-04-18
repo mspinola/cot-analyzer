@@ -61,8 +61,7 @@ class CotDatabase:
         return result
 
     def latest_update_timestamp(self):
-        # TODO retrieve this year based on current time
-        year = "2025"
+        year = str(datetime.now().year)
         result = self.get_zipfile_last_modified_time(year)
         if result is None:
             result = "Unknown"

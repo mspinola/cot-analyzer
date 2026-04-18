@@ -15,60 +15,68 @@ Application to download [CFTC](https://www.cftc.gov/MarketReports/CommitmentsofT
 
 Description of [COT Legacy Report data fields](https://www.cftc.gov/MarketReports/CommitmentsofTraders/HistoricalViewable/deanexplanatory.html)
 
+## uv Environment
+
+    ```bash
+    uv venv
+    source .venv/bin/activate
+    uv pip install -r requirements.txt
+    ```
+
 ## Anaconda Environment
 
 After cloning create a venv or Anaconda environment for Python
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
-```bash
-# Create environment for this app
-conda create --name cot python=3.12.9
+    ```bash
+    # Create environment for this app
+    conda create --name cot python=3.12.9
 
-# Install required packages
-conda install --file=requirements.txt
+    # Install required packages
+    conda install --file=requirements.txt
 
-# Execute the app
-python src/main.py
+    # Execute the app
+    python src/main.py
 
-# Generated data lives in data
-ls data
+    # Generated data lives in data
+    ls data
 
-# View in web browser
-http://127.0.0.1:5001
-```
+    # View in web browser
+    http://127.0.0.1:5001
+    ```
 
 Various Anaconda Commands
 
-```bash
-# Activate / Deactivate
-conda activate cot
-conda deactivate
+    ```bash
+    # Activate / Deactivate
+    conda activate cot
+    conda deactivate
 
-# List environments
-conda env list
+    # List environments
+    conda env list
 
-# List packages
-conda list
+    # List packages
+    conda list
 
-# Install packages
-conda install pandas
-# or install w/ specific version
-conda install pandas=1.5.0
+    # Install packages
+    conda install pandas
+    # or install w/ specific version
+    conda install pandas=1.5.0
 
-# Install form a requirements file
-conda install --file=jCOT/requirements.txt
+    # Install form a requirements file
+    conda install --file=jCOT/requirements.txt
 
-# Update package to latest version
-conda update pandas
+    # Update package to latest version
+    conda update pandas
 
-# To delete env
-conda env remote --name cot
-```
+    # To delete env
+    conda env remote --name cot
+    ```
 
 ## Configuration
 
