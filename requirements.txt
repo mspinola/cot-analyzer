@@ -5,5 +5,7 @@ dash-html-components
 dash-table
 numpy
 pandas
+pytz
 pyyaml
+schedule
 xlrd

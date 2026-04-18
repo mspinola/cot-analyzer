@@ -50,10 +50,12 @@ class CotCmrIndexer:
         self.asset_class_map = dict()
         self.lookbacks = []
         self.years = []
+        self.paletter = []
 
         self.load_years()
         self.load_instruments()
         self.load_lookbacks()
+        self.load_palette()
         self.populate_instruments()
         self.calculate_weekly_data()
         self.export_to_csv()
@@ -85,6 +87,24 @@ class CotCmrIndexer:
             yaml_data = yaml.safe_load(yf)
             for lb in yaml_data["lookbacks"]:
                 self.lookbacks.append([lb[0], int(lb[1])])
+
+    def load_palette(self):
+        """Loads all palettes from params.yaml."""
+        with open("config/params.yaml", 'r') as yf:
+            yaml_data = yaml.safe_load(yf)
+            self.palettes = yaml_data.get("palettes", {})
+            # Set a default for initial load
+            self.default_palette_name = list(self.palettes.keys())[0] if self.palettes else None
+
+    def get_palette(self, name=None):
+        """Returns a specific palette by name or the first one as default."""
+        if not name or name not in self.palettes:
+            return self.palettes.get(self.default_palette_name, ["#e70307", "#0000ff", "#ffff00", "#4caf50"])
+        return self.palettes[name]
+
+    def get_palette_names(self):
+        """Returns a list of available palette names for the dropdown."""
+        return list(self.palettes.keys())
 
     def populate_instruments(self):
         working_dir = os.getcwd()
