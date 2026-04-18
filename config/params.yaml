@@ -16,7 +16,7 @@ palettes:
   "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399"]
   "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#30D158"]
   "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#FFFFFF"]
-  "Legacy": ["#e70307", "#0000ff", "#ffff00", "#4caf50"]
+  "CMR": ["#e70307", "#0000ff", "#ffff00", "#4caf50"]
 
 AssetClasses:
   - FixedIncome:

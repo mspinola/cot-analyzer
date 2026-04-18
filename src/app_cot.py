@@ -17,6 +17,10 @@ HOVER_TEXT_COLOR = "#FFFFFF"  # "#00FFFF"
 BACKGROUND_COLOR = "#1a1a1a" #"#0F172A"
 GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
 
+# Plotting Dimensions
+PIXELS_PER_ROW = 350
+FIXED_OVERHEAD = 180
+
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
 server = app.server
@@ -65,8 +69,6 @@ def get_cot_graphs(value, palette_name):
     assets = cotIndexer.get_assets_for_asset_class(value)
     row_count = len(assets)
 
-    PIXELS_PER_ROW = 350
-    FIXED_OVERHEAD = 180  # Margin for titles and legend
     total_height = (PIXELS_PER_ROW * row_count) + FIXED_OVERHEAD
     v_spacing = 80 / total_height  # Consistent ~80px gap
 
@@ -132,8 +134,8 @@ def get_cot_graphs(value, palette_name):
         height=total_height,
         margin=dict(t=100, b=50, l=50, r=50),
         hovermode="x unified",
-        hoverlabel=dict(bgcolor="rgba(0, 0, 0, 0)", bordercolor="rgba(0, 0, 0, 0)", font=dict(
-            color=HOVER_TEXT_COLOR)),
+        hoverlabel=dict(bgcolor="rgba(20, 20, 20, 0.8)",
+                        font=dict(color=HOVER_TEXT_COLOR)),
         bargap=0.2,
     )
     return fig
@@ -338,16 +340,28 @@ positioning_layout = html.Div([
                 dcc.Loading(
                     type="circle",
                     children=[
-                        dbc.Select(
+                        dcc.Dropdown(
                             id='cot_positioning_df_input',
-                            options=[{'label': 'All Assets', 'value': 'ALL'}] +
-                            [{'label': x, 'value': x}
-                                for x in asset_class_list],
-                            value='ALL',  # Set "ALL" as the default
-                            placeholder='Select asset class',
-                            style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                                   'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                            options=[{'label': x, 'value': x}
+                                     for x in asset_class_list],
+                            value=asset_class_list,  # This selects every item in the list by default
+                            multi=True,
+                            # Adding 'form-control' and 'bg-dark' forces the dark style
+                            className="form-control bg-dark text-white border-secondary",
+                            searchable=False,
+                            clearable=True,
+                            style={'color': BRIGHTER_TEXT_COLOR, 'backgroundColor': BACKGROUND_COLOR}  # Backup inline style to ensure dark background if the class doesn't apply for some reason
                         )
+                        # dbc.Select(
+                        #     id='cot_positioning_df_input',
+                        #     options=[{'label': 'All Assets', 'value': 'ALL'}] +
+                        #     [{'label': x, 'value': x}
+                        #         for x in asset_class_list],
+                        #     value='ALL',  # Set "ALL" as the default
+                        #     placeholder='Select asset class',
+                        #     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        #            'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                        # )
                     ])
             ])
         ], width={'size': 8, 'offset': 2})  # Centering the column
@@ -410,7 +424,7 @@ sidebar = html.Div(
         "background-color": BACKGROUND_COLOR,
         "color": TEXT_COLOR,
         # 0% opacity border for separation
-        "borderRight": f"1px solid {TEXT_COLOR}00"
+        "borderRight": f"1px solid {TEXT_COLOR}26"  # 26 is hex for 15% opacity
     },
 )
 
@@ -422,7 +436,10 @@ sidebar = html.Div(
 content = html.Div(id="page-content", style={"margin-left": "16rem", "padding": "1rem 1rem",
                    "width": "calc(100% - 16rem)", "backgroundColor": BACKGROUND_COLOR})
 app.layout = html.Div(children=[dcc.Location(
-    id='url', refresh=False), sidebar, content])
+    id='url', refresh=False), sidebar, content],
+    # This tells all Bootstrap components to use the DARKLY variables
+    # extra_data_attributes={"data-bs-theme": "dark"}
+)
 
 # Callback to control page navigation
 @app.callback(

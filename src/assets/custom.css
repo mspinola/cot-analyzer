@@ -12,3 +12,416 @@
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
 }
 
+/* Target the NEW Dash 4 Dropdown Variables */
+:root {
+    --Dash-Fill-Interactive-Strong: #1a1a1a; /* Background of the box */
+    --Dash-Stroke-Strong: #ABB8C9;           /* Border color */
+    --Dash-Text-Main: #E2E8F0;               /* Main text color */
+}
+
+/* Target the Legacy dcc.Dropdown classes (for compatibility) */
+.Select-control, .Select-menu-outer, .VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+}
+
+/* Target the dbc.Select (Bootstrap native) specifically */
+.form-select {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+    border-color: rgba(171, 184, 201, 0.3) !important;
+}
+
+/* Fix the white "Selected" and "Hover" backgrounds */
+.Select-option.is-focused, .Select-option:hover, .dropdown-item:hover {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+}
+
+/* Fix for Multi-Select Tags (used in Positioning) */
+.Select--multi .Select-value {
+    background-color: #2d2d2d !important;
+    border: 1px solid #ABB8C9 !important;
+}
+
+/* Change the color of the 'X' (Clear) button */
+.Select-clear {
+    color: #E2E8F0 !important;
+    opacity: 0.8;
+}
+
+.Select-clear:hover {
+    color: #FF4444 !important; /* Turns red when you hover to delete */
+}
+
+/* Change the color of the 'Down Carrot' (Arrow) */
+.Select-arrow {
+    border-color: #E2E8F0 transparent transparent !important;
+}
+
+/* If your version uses SVG icons (Dash 4 / React-Select) */
+.Select-arrow-zone svg, .Select-clear-zone svg {
+    fill: #E2E8F0 !important;
+    stroke: #E2E8F0 !important;
+}
+
+/* Fix the "N Selected" text color specifically */
+.Select--multi .Select-value-label {
+    color: #E2E8F0 !important;
+}
+
+/* Fix the background of the multi-select counter */
+/* This ensures the "N selected" box doesn't have a white ghost background */
+.Select-multi-value-wrapper {
+    background-color: transparent !important;
+}
+
+
+
+/* The main box background when clicked/focused */
+.is-focused:not(.is-open) > .Select-control,
+.is-open > .Select-control,
+.Select-control:focus,
+.Select-control:active {
+    background-color: #1a1a1a !important;
+    border-color: #ABB8C9 !important;
+    box-shadow: none !important; /* Removes the blue/white glow */
+}
+
+/* The background of the entire list container (the part that drops down) */
+.Select-menu-outer {
+    background-color: #1a1a1a !important;
+    border: 1px solid #ABB8C9 !important;
+    color: #E2E8F0 !important;
+}
+
+/* The actual items in the list */
+.VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+}
+
+/* Hover effect on the list items so you can see what you're picking */
+.VirtualizedSelectFocusedOption {
+    background-color: #2d2d2d !important; /* Slightly lighter gray */
+    color: #FFFFFF !important;
+}
+
+/* Fix for the 'No results found' or loading text */
+.Select-noresults, .Select-loading-zone {
+    background-color: #1a1a1a !important;
+    color: #ABB8C9 !important;
+}
+
+/* 1. The entire dropdown menu container */
+.Select-menu-outer {
+    background-color: #1a1a1a !important;
+    border: 1px solid #ABB8C9 !important;
+    border-top: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 2. The Search Input inside the dropdown */
+/* This is likely why the search area looks white */
+.Select-input > input {
+    color: #E2E8F0 !important;
+    background-color: #2d2d2d !important; /* Slightly lighter for contrast */
+    border-radius: 4px !important;
+    padding-left: 10px !important;
+}
+
+/* 3. The 'Select All / Deselect All' and Search header area */
+.Select-menu {
+    background-color: #1a1a1a !important;
+}
+
+/* 4. The individual options (Crypto, Currencies, etc.) */
+.VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.1) !important;
+}
+
+/* 5. Hover state for the options */
+.VirtualizedSelectFocusedOption {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+}
+
+/* 6. The checkboxes and labels */
+/* In case they are using standard HTML checkboxes */
+.VirtualizedSelectOption input[type="checkbox"] {
+    accent-color: #ABB8C9 !important; /* Sets the checkmark color */
+}
+
+/* 7. Action links (Select All / Deselect All) */
+.Select-menu-outer a,
+.Select-menu-outer .Select-all-none {
+    color: #ABB8C9 !important;
+    text-decoration: none !important;
+    padding: 5px 10px !important;
+    display: inline-block !important;
+}
+
+.Select-menu-outer a:hover {
+    color: #FFFFFF !important;
+}
+
+/* The entire dropdown menu wrapper */
+.dash-dropdown-menu,
+.dash-dropdown-options-container {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+}
+
+/* The Search Area & Input Field */
+.dash-dropdown-search-container,
+.dash-dropdown-search-input {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+}
+
+.dash-dropdown-search-input input {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+    border: 1px solid #ABB8C9 !important;
+}
+
+/* Select All / Deselect All Bar */
+.dash-dropdown-options-header,
+.dash-dropdown-all-none-container {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* The Individual Options (using the classes you provided) */
+.dash-options-list-option,
+.dash-dropdown-option {
+    background-color: #1a1a1a !important;
+    color: #E2E8F0 !important;
+    padding: 8px 12px !important;
+}
+
+/* Hover and Active States */
+.dash-options-list-option:hover,
+.dash-dropdown-option:hover,
+.dash-dropdown-option-highlighted {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+}
+
+/* The Action Links (Select All / Deselect All) */
+.dash-dropdown-all-none-button {
+    color: #ABB8C9 !important;
+    font-weight: bold !important;
+}
+
+.dash-dropdown-all-none-button:hover {
+    color: #FFFFFF !important;
+    text-decoration: underline !important;
+}
+
+/* Target the '9 selected' text specifically */
+.dash-dropdown-value-count {
+    color: #E2E8F0 !important;
+    font-weight: 500 !important;
+    padding-right: 5px !important;
+    /* Ensure no white background is lingering behind the text */
+    background-color: transparent !important;
+}
+
+/* If the counter is inside a small pill or badge in your version */
+.dash-dropdown-value-count-container {
+    background-color: #2d2d2d !important; /* Subtle gray background for the 'pill' */
+    border-radius: 4px !important;
+    margin-right: 8px !important;
+}
+
+/* Style the entire right-side accessory zone of the dropdown */
+.dash-dropdown-values-container-accessories {
+    border-left: 1px solid rgba(171, 184, 201, 0.2) !important;
+    padding-left: 8px !important;
+    margin-left: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* 1. Target the bar containing 'Select All' specifically */
+.dash-dropdown-options-header,
+.dash-dropdown-all-none,
+.dash-dropdown-select-all-none,
+.dash-dropdown-header {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* 2. Target the text inside that bar so it doesn't stay dark gray */
+.dash-dropdown-options-header span,
+.dash-dropdown-options-header a,
+.dash-dropdown-all-none button {
+    color: #ABB8C9 !important; /* Your Slate Gray */
+    font-size: 0.9rem !important;
+}
+
+/* 3. Hover state for the 'Select All' buttons */
+.dash-dropdown-options-header span:hover,
+.dash-dropdown-header a:hover {
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+}
+
+/* 4. The main menu wrapper - setting this to black is the 'Nuclear Option'
+   to prevent any white background from showing behind other elements */
+.dash-dropdown-menu,
+.dash-dropdown-options-container {
+    background-color: #1a1a1a !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.dash-dropdown-menu {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* 1. Target the bar containing the action buttons */
+.dash-dropdown-actions {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+    display: flex !important;
+    padding: 4px 8px !important;
+}
+
+/* 2. Target the buttons/links inside that bar */
+.dash-dropdown-actions button,
+.dash-dropdown-actions span,
+.dash-dropdown-actions div {
+    color: #ABB8C9 !important; /* Your Slate Gray */
+    background-color: transparent !important;
+    border: none !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+
+/* 3. Hover state for the actions */
+.dash-dropdown-actions button:hover,
+.dash-dropdown-actions span:hover {
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+    text-decoration: underline !important;
+}
+
+/* 4. Fix the search bar container which often sits right above this */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.1) !important;
+}
+
+/* 1. Target the main content wrapper around the search and headers */
+.dash-dropdown-content,
+.dash-dropdown-options-container-header {
+    background-color: #1a1a1a !important;
+    border: none !important;
+    /* This removes the white 'frame' around the search box */
+    padding: 0 !important;
+}
+
+/* 2. Target the search container itself to ensure no padding leaks white */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    padding: 8px 12px !important;
+    margin: 0 !important;
+}
+
+/* 3. Ensure the search input box sits cleanly inside the dark container */
+.dash-dropdown-search-input {
+    background-color: #2d2d2d !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    border-radius: 4px !important;
+}
+
+/* 4. The overall menu border (the very outer edge) */
+.dash-dropdown-menu {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+}
+
+/* 1. Target the main content wrapper around the search and headers */
+.dash-dropdown-content,
+.dash-dropdown-options-container-header {
+    background-color: #1a1a1a !important;
+    border: none !important;
+    /* This removes the white 'frame' around the search box */
+    padding: 0 !important;
+}
+
+/* 2. Target the search container itself to ensure no padding leaks white */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    padding: 8px 12px !important;
+    margin: 0 !important;
+}
+
+/* 3. Ensure the search input box sits cleanly inside the dark container */
+.dash-dropdown-search-input {
+    background-color: #2d2d2d !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    border-radius: 4px !important;
+}
+
+/* 4. The overall menu border (the very outer edge) */
+.dash-dropdown-menu {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+}
+
+/* Target the actual SVG icon inside the trigger area */
+.dash-dropdown-trigger-icon {
+    color: #ABB8C9 !important; /* Sets the color if it's a font-icon */
+    fill: #ABB8C9 !important;  /* Sets the color if it's an SVG (likely) */
+    stroke: #ABB8C9 !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+/* Hover state for that specific icon */
+.dash-dropdown-trigger-icon:hover {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+    stroke: #FFFFFF !important;
+}
+
+/* Sometimes the parent container forces a scale or opacity we need to override */
+.dash-dropdown-trigger {
+    background-color: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* 1. Target the 'X' clear button container and icon */
+.dash-dropdown-clear {
+    color: #ABB8C9 !important; /* Sets the color if it's a font/text icon */
+    opacity: 0.7 !important;   /* Makes it slightly subtle when idle */
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* 2. Target the SVG specifically if the class above doesn't catch the 'fill' */
+.dash-dropdown-clear svg {
+    fill: #ABB8C9 !important;
+    stroke: #ABB8C9 !important;
+}
+
+/* 3. The Hover State: Professional 'Red' for clearing data */
+.dash-dropdown-clear:hover {
+    color: #FF4444 !important; /* Subtle red indicates a destructive/clear action */
+    opacity: 1 !important;
+    cursor: pointer !important;
+}
+
+.dash-dropdown-clear:hover svg {
+    fill: #FF4444 !important;
+    stroke: #FF4444 !important;
+}
