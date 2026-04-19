@@ -689,7 +689,7 @@ app.layout = html.Div([
             "top": "1rem",
             "left": "1rem",
             "zIndex": "1001",  # Higher than sidebar (1000)
-            "color": BRIGHTER_TEXT_COLOR,
+            "color": TEXT_COLOR,
             "backgroundColor": BACKGROUND_COLOR, # Ensure it's not transparent
             "border": f"1px solid {TEXT_COLOR}26"
         }
