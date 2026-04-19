@@ -167,13 +167,6 @@
     color: #FFFFFF !important;
 }
 
-/* The entire dropdown menu wrapper */
-.dash-dropdown-menu,
-.dash-dropdown-options-container {
-    background-color: #1a1a1a !important;
-    border: 1px solid rgba(171, 184, 201, 0.3) !important;
-}
-
 /* The Search Area & Input Field */
 .dash-dropdown-search-container,
 .dash-dropdown-search-input {
@@ -346,15 +339,6 @@
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
 }
 
-/* 1. Target the main content wrapper around the search and headers */
-.dash-dropdown-content,
-.dash-dropdown-options-container-header {
-    background-color: #1a1a1a !important;
-    border: none !important;
-    /* This removes the white 'frame' around the search box */
-    padding: 0 !important;
-}
-
 /* 2. Target the search container itself to ensure no padding leaks white */
 .dash-dropdown-search-container {
     background-color: #1a1a1a !important;
@@ -367,12 +351,6 @@
     background-color: #2d2d2d !important;
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
     border-radius: 4px !important;
-}
-
-/* 4. The overall menu border (the very outer edge) */
-.dash-dropdown-menu {
-    background-color: #1a1a1a !important;
-    border: 1px solid rgba(171, 184, 201, 0.3) !important;
 }
 
 /* Target the actual SVG icon inside the trigger area */
@@ -424,4 +402,70 @@
 .dash-dropdown-clear:hover svg {
     fill: #FF4444 !important;
     stroke: #FF4444 !important;
+}
+
+/* 1. Force the Dropdown container and its children to use the dark background */
+.dash-dropdown,
+.dash-dropdown .Select-control,
+.dash-dropdown .dash-dropdown-container,
+.dash-dropdown .dash-dropdown-values-container {
+    background-color: #1a1a1a !important;
+    /* Use the exact same border color and width as dbc.Select */
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    min-height: 38px !important; /* Matches standard Bootstrap height */
+    border-radius: 4px !important;
+}
+
+/* 2. Remove the ghost gray background inside the multi-select wrapper */
+.dash-dropdown .Select-multi-value-wrapper,
+.dash-dropdown .dash-dropdown-values-container {
+    background-color: transparent !important;
+}
+
+/* 3. Ensure the text color matches the 'Slate' look */
+.dash-dropdown .Select-value-label,
+.dash-dropdown .Select-placeholder,
+.dash-dropdown .dash-dropdown-value-count {
+    color: #E2E8F0 !important;
+    line-height: 34px !important; /* Centers the text vertically */
+}
+
+/* 4. Match the 'Focus' state exactly */
+/* This adds that subtle glow when you click the filter */
+.dash-dropdown .Select-control:focus-within {
+    border-color: #ABB8C9 !important;
+    box-shadow: 0 0 0 0.25rem rgba(171, 184, 201, 0.25) !important;
+}
+
+.dash-dropdown .Select-multi-value-wrapper {
+    display: flex !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+/* Styling for the Download Button */
+#btn_download_csv {
+    background-color: transparent !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+#btn_download_csv:hover {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+    border-color: #ABB8C9 !important;
+}
+
+/* Sidebar Download Button Styling */
+#sidebar-download-btn {
+    background-color: transparent !important;
+    border: 1px solid rgba(171, 184, 201, 0.2) !important;
+    transition: all 0.3s ease !important;
+}
+
+#sidebar-download-btn:hover {
+    background-color: rgba(171, 184, 201, 0.1) !important;
+    border-color: #ABB8C9 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5) !important;
 }

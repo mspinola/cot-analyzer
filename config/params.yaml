@@ -1,11 +1,9 @@
 # Default lookback periods to include for each COT report
 lookbacks:
-  - ["3-month", 12]
-  - ["6-month", 24]
-  - ["9-month", 36]
-  - ["1-year", 52]
-  - ["18-month", 76]
-  - ["3-years", 152]
+  - ["6-months", 26]
+  - ["1-years", 52]
+  - ["18-months", 78]
+  - ["2-years", 104]
 
 # Defines the years of COT data to download and process
 years: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
