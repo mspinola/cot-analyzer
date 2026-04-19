@@ -74,9 +74,10 @@ def update_graphs_date(n):
     Output('cot_graphs', 'figure'),
     [Input('cot_graphs_input', 'value'),
      Input('palette_input', 'value'),
-     Input('asset_selection_input', 'value')]
+     Input('asset_selection_input', 'value'),
+     Input('cot_graphs_plot_input', 'value')]
 )
-def get_cot_graphs(value, palette_name, selected_assets):
+def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
     grid_color = GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
@@ -91,54 +92,81 @@ def get_cot_graphs(value, palette_name, selected_assets):
     total_height = (PIXELS_PER_ROW * row_count) + FIXED_OVERHEAD
     v_spacing = 80 / total_height  # Consistent ~80px gap
 
+    if enabled_plots == 'All':
+        num_cols = 2
+    elif enabled_plots in ['Indexing', 'Positioning']:
+        num_cols = 1
+    else:
+        num_cols = 0
+
     titles = []
     for asset in assets:
-        titles.append(asset + " Index")
-        titles.append(asset + " Positions")
+        if enabled_plots in ['All', 'Indexing']:
+            titles.append(asset + " Index")
+        if enabled_plots in ['All', 'Positioning']:
+            titles.append(asset + " Positions")
 
-    specs = [[{"secondary_y": False}, {"secondary_y": True}]
-             for _ in range(row_count)]
-    fig = make_subplots(rows=row_count, shared_xaxes=False, cols=2, subplot_titles=(
+    specs = []
+    if enabled_plots in ['Indexing']:
+        specs = [[{"secondary_y": False}] for _ in range(row_count)]
+    if enabled_plots in ['Positioning']:
+        specs = [[{"secondary_y": True}] for _ in range(row_count)]
+                #  for _ in range(row_count - 1)]
+        # specs.append([{"secondary_y": True}])
+    if enabled_plots in ['All']:
+        specs = [[{"secondary_y": False}, {"secondary_y": True}]
+                 for _ in range(row_count)]
+    print(type(specs), specs)
+    fig = make_subplots(rows=row_count, shared_xaxes=False, cols=num_cols, subplot_titles=(
         titles), specs=specs, horizontal_spacing=0.08, vertical_spacing=v_spacing)
     fig.update_annotations(yshift=10, font=dict(size=15))
 
     for idx, asset in enumerate(assets):
         cur_row = idx + 1
-        col = 1
+        cur_col = 1
         df = cotIndexer.get_symbols_custom_index(asset)
 
         xaxis_weeks = 52 * 2
         x_axis_start_range = max(0, len(df.index) - xaxis_weeks)
 
         # Indexing Plot
-        fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=False,
-                                 name='commercials', line=dict(width=1, color=color_palette[0])), row=cur_row, col=col)
-        fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=False,
-                                 name='large specs', line=dict(width=1, color=color_palette[1])), row=cur_row, col=col)
-        fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=False,
-                                 name='small specs', line=dict(width=1, color=color_palette[2])), row=cur_row, col=col)
-        fig.update_xaxes(row=cur_row, col=col, showgrid=False, matches='x', range=[
-                         df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=cur_row, col=col, title="index", showgrid=True,
-                         gridcolor=grid_color, gridwidth=1, range=[0, 100])
+        if enabled_plots in ['All', 'Indexing']:
+            legend = cur_row == 1 and cur_col == num_cols  # Only show legend for the first plot
+            fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=legend,
+                                    name='commercials', line=dict(width=1, color=color_palette[0])), row=cur_row, col=cur_col)
+            fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=legend,
+                                    name='large specs', line=dict(width=1, color=color_palette[1])), row=cur_row, col=cur_col)
+            fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=legend,
+                                    name='small specs', line=dict(width=1, color=color_palette[2])), row=cur_row, col=cur_col)
+            if True:  # enabled_plots == 'All':
+                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
+                                 df.index[x_axis_start_range], df.index[-1]])
+            else:
+                fig.update_xaxes(row=cur_row, col=cur_col,
+                                 showgrid=False, matches='x', autorange=True)
+            fig.update_yaxes(row=cur_row, col=cur_col, title="index", showgrid=True,
+                             gridcolor=grid_color, gridwidth=1, range=[0, 100])
+            cur_col = cur_col + 1
 
         # Positioning Plot
-        col = 2
-        legend = cur_row == 1 and col == 2
-        fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
-                             name='commercials', marker_color=color_palette[0]), row=cur_row, col=col, secondary_y=False)
-        fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
-                             name='large specs', marker_color=color_palette[1]), row=cur_row, col=col, secondary_y=False)
-        fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
-                             name='small specs', marker_color=color_palette[2]), row=cur_row, col=col, secondary_y=False)
-        fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[3])),
-                                 name='open interest', marker_color=color_palette[3]), row=cur_row, col=col, secondary_y=True)
-        fig.update_xaxes(row=cur_row, col=col, showgrid=False, matches='x', range=[
-                         df.index[x_axis_start_range], df.index[-1]])
-        fig.update_yaxes(row=cur_row, col=col, title="net positions", showgrid=True,
-                         gridcolor=grid_color, gridwidth=1, secondary_y=False)
-        fig.update_yaxes(row=cur_row, col=col, title="open interest",
-                         showgrid=False, secondary_y=True)
+        if enabled_plots in ['All', 'Positioning']:
+            legend = cur_row == 1 and cur_col == num_cols  # Only show legend for the first plot
+            fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
+                                name='commercials', marker_color=color_palette[0]), row=cur_row, col=cur_col, secondary_y=False)
+            fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
+                                name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
+            fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
+                                name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
+            fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[3])),
+                                    name='open interest', marker_color=color_palette[3]), row=cur_row, col=cur_col, secondary_y=True)
+            if enabled_plots == 'All':
+                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
+                                df.index[x_axis_start_range], df.index[-1]])
+            else:
+                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', autorange=True)
+            fig.update_yaxes(row=cur_row, col=cur_col, title="net positions", showgrid=True,
+                            gridcolor=grid_color, gridwidth=1, secondary_y=False)
+            fig.update_yaxes(row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
 
     fig.update_layout(
         template="plotly_dark",
@@ -181,6 +209,21 @@ def update_asset_dropdown_options(selected_class):
     options = [{'label': x, 'value': x} for x in assets]
     return options, assets
 
+@app.callback(
+    Output('cot_graphs_plot_input', 'value'),
+    Input('cot_graphs_plot_input', 'value')
+)
+def update_plot_dropdown_value(selection):
+    enabled_plots = 'All'  # Default to all plots if no selection is made
+    if not selection or selection == 'All':
+        enabled_plots = 'All'
+    elif selection == 'Indexing':
+        enabled_plots = 'Indexing'
+    elif selection == 'Positioning':
+        enabled_plots = 'Positioning'
+    else:
+        enabled_plots = 'None'
+    return enabled_plots
 
 graphs_layout = html.Div([
     dbc.Container([
@@ -257,6 +300,21 @@ graphs_layout = html.Div([
                     style={'text_align': 'center', 'color': BRIGHTER_TEXT_COLOR,
                         'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
                 ), width='auto')
+            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
+        ], width='auto', className="px-4"),
+
+        # PlotSelector Group
+        dbc.Col([
+            dbc.Row([
+                dbc.Col(html.Label("Plots:", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
+                dbc.Col(dcc.Loading(dbc.Select(
+                    id='cot_graphs_plot_input',
+                    options=[{'label': 'Indexing', 'value': 'Indexing'}, {'label': 'Positioning', 'value': 'Positioning'}, {'label': 'All', 'value': 'All'}],
+                    value=f"{'All'}",
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                )), width='auto')
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
         ], width='auto', className="px-4"),
     ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
