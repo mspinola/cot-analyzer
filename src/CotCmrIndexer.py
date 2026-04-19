@@ -179,8 +179,8 @@ class CotCmrIndexer:
                 df.at[idx, COMM_NET_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9) * 100
 
     @staticmethod
-    def is_commodity(instrument_code):
-        return instrument_code.startswith("E") or instrument_code.startswith("G") or instrument_code.startswith("M") or instrument_code.startswith("S")
+    def is_commodity(asset_class):
+        return asset_class.startswith("Energ") or asset_class.startswith("Grain") or asset_class.startswith("Metal") or asset_class.startswith("Soft")
 
     def calculate_willco(self, lb_weeks, df):
         for idx in range(len(df)):
