@@ -1,3 +1,5 @@
+import logging
+import math
 import os
 import pandas as pd
 import yaml
@@ -18,8 +20,10 @@ SMALL_SHORT = "NonRept_Positions_Short_All"
 
 # Columns to create for consumed COT data
 COMM_NET = "Comm_Positions_Net"
+COMM_NET_NORMALIZED = "Comm_Positions_Net_Normalized"
 LARGE_NET = "NonComm_Positions_Net"
 SMALL_NET = "NonRept_Positions_Net"
+WILLCO = "willco"
 
 
 class Instrument:
@@ -165,10 +169,35 @@ class CotCmrIndexer:
                 df.at[idx, "SmlSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[SMALL_NET], lb_idx, idx)
 
+                df.at[idx, COMM_NET_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9) * 100
+
+    @staticmethod
+    def is_commodity(instrument_code):
+        return instrument_code.startswith("E") or instrument_code.startswith("G") or instrument_code.startswith("M") or instrument_code.startswith("S")
+
+    def calculate_willco(self, lb_weeks, df):
+        for idx in range(len(df)):
+            asset_class = self.get_instrument_from_code(df[CODE][idx]).asset_class
+            if not CotCmrIndexer.is_commodity(asset_class) or lb_weeks < 0 or idx < lb_weeks:
+                df.at[idx, WILLCO] = -1
+            else:
+                # We find the rolling min and max of the Commercial Normalized Net position
+                rolling_min = df[COMM_NET_NORMALIZED].rolling(window=lb_weeks).min()
+                rolling_max = df[COMM_NET_NORMALIZED].rolling(window=lb_weeks).max()
+
+                # Adding a tiny epsilon to the denominator prevents division by zero
+                if math.isnan(rolling_max[idx]) or math.isnan(rolling_min[idx]):
+                    df.at[idx, WILLCO] = 50
+                else:
+                    willco = round(100 * (df.at[idx, COMM_NET_NORMALIZED] - rolling_min[idx]) / (rolling_max[idx] - rolling_min[idx] + 1e-9))
+                    df.at[idx, WILLCO] = willco
+
+        # Handle NaNs from the rolling window (the first 'lookback' weeks)
+        df[WILLCO] = df[WILLCO].fillna(-1)  # Neutral start or 0, depending on preference
+
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
-            name = self.instruments[instrument].name
 
             # Add new columns for net positions
             df.insert(df.columns.get_loc(COMM_SHORT) + 1,
@@ -182,6 +211,8 @@ class CotCmrIndexer:
                 ["custom", self.instruments[instrument].custom_lookback], df)
             for lookback in self.lookbacks:
                 CotCmrIndexer.process_lookback(lookback, df)
+
+            self.calculate_willco(26, df)
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
@@ -387,6 +418,11 @@ class CotCmrIndexer:
         for code in self.instruments:
             if self.instruments[code].name == name:
                 return self.instruments[code].symbol
+        return None
+
+    def get_instrument_from_code(self, code):
+        if code in self.instruments:
+            return self.instruments[code]
         return None
 
     def get_instrument_code_from_name(self, name):

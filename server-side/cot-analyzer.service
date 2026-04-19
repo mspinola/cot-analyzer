@@ -6,7 +6,7 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root/cot-analyzer/server-side
-ExecStart=launch-cot-analyzer.sh
+ExecStart=/bin/bash /root/cot-analyzer/server-side/launch-cot-analyzer.sh
 
 [Install]
 WantedBy=multi-user.target

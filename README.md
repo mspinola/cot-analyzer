@@ -92,3 +92,20 @@ Yaml config file lives in config/params.yaml
 * `Symbol` is the instruments symbol ID - generally TradingView based as a default
 * `Code` is the CFTC assigned ID code for each instrument. Symbol to code mapping lives in [src/CotSymbolCodeMap.py](/src/CotSymbolCodeMap.py)
 * `CustomLookbackWeeks` allows defining one custom lookback period per instrument
+
+## Server Side Configuration
+
+login
+
+```bash
+sudo apt install git pip
+pip install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone git@github.com:mspinola/cot-analyzer.git
+
+cd cot-analyzer
+uv venv
+uv pip install -r requirements.txt
+cp cot-analyzer.service /etc/systemd/system
+systemctl enable cot-analyzer
+```
