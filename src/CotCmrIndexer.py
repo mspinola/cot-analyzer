@@ -20,6 +20,7 @@ SMALL_SHORT = "NonRept_Positions_Short_All"
 
 # Columns to create for consumed COT data
 COMM_NET = "Comm_Positions_Net"
+COMM_NET_26 = "Comm_Positions_Net_26"
 COMM_NET_NORMALIZED = "Comm_Positions_Net_Normalized"
 LARGE_NET = "NonComm_Positions_Net"
 SMALL_NET = "NonRept_Positions_Net"
@@ -160,6 +161,7 @@ class CotCmrIndexer:
                 df.at[idx, "Comm-" + col_header_name] = -1
                 df.at[idx, "LrgSpec-" + col_header_name] = -1
                 df.at[idx, "SmlSpec-" + col_header_name] = -1
+                df.at[idx, "COMM_NET_26-"] = -1
             else:
                 lb_idx = idx - lb_weeks
                 df.at[idx, "Comm-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
@@ -169,6 +171,11 @@ class CotCmrIndexer:
                 df.at[idx, "SmlSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[SMALL_NET], lb_idx, idx)
 
+                if lb_weeks < 26:
+                    df.at[idx, "COMM_NET_26-"] = -1
+                else:
+                    df.at[idx, COMM_NET_26] = CotCmrIndexer.calculate_cot_index(
+                        df[COMM_NET], idx - 26, idx)
                 df.at[idx, COMM_NET_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9) * 100
 
     @staticmethod
@@ -226,6 +233,8 @@ class CotCmrIndexer:
         summary_df["CommercialNet"] = df[COMM_NET]
         summary_df["LargeSpecNet"] = df[LARGE_NET]
         summary_df["SmallSpecNet"] = df[SMALL_NET]
+        summary_df["CommercialNet_26"] = df[COMM_NET_26]
+        summary_df["WillCo"] = df[WILLCO]
 
         # Grab index values
         index_cols = [col for col in df.columns if "-idx" in col]
@@ -464,7 +473,7 @@ class CotCmrIndexer:
 
     def get_positioning_table_by_asset_class(self, asset_classes):
         cols = ['Date', 'Asset Class', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs']
+                'Commercials', 'Large Specs', 'Small Specs', 'Comms (26-Week)', 'Willco']
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -484,8 +493,11 @@ class CotCmrIndexer:
                     lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
                     sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
 
+                    iwIndex = df.iloc[-1][COMM_NET_26]
+                    willco = df.iloc[-1][WILLCO]
+
                     new_df = pd.DataFrame(
-                        [[date, asset_class, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
+                        [[date, asset_class, symbol, name, comm_idx, lrg_idx, sml_idx, iwIndex, willco]], columns=positioning_df.columns)
                     if positioning_df.empty:
                         positioning_df = new_df
                     else:
