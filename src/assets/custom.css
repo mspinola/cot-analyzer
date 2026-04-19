@@ -469,3 +469,15 @@
     color: #FFFFFF !important;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5) !important;
 }
+
+/* Ensure the toggle button is always visible on hover */
+#btn-sidebar-toggle:hover {
+    background-color: #2d2d2d !important;
+    color: #FFFFFF !important;
+}
+
+/* If the icon isn't showing up, make sure Bootstrap Icons are loaded */
+.bi-list {
+    font-size: 1.5rem;
+    color: #E2E8F0;
+}

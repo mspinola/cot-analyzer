@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+from pydoc import html
 import signal
 import sys
 import time
@@ -16,7 +17,6 @@ def signal_handler(sig, frame):
     print('You pressed Ctrl+C!')
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
-
 
 if __name__ == "__main__":
     cotDownloader = CotDataDownloader()

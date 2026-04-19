@@ -18,7 +18,7 @@ from CotDatabase import CotDatabase
 TEXT_COLOR = "#ABB8C9"
 BRIGHTER_TEXT_COLOR = "#E2E8F0"
 HOVER_TEXT_COLOR = "#FFFFFF"  # "#00FFFF"
-BACKGROUND_COLOR = "#1a1a1a" #"#0F172A"
+BACKGROUND_COLOR = "#1a1a1a"  # "#0F172A"
 GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
 
 # Plotting Dimensions
@@ -26,6 +26,7 @@ PIXELS_PER_ROW = 350
 FIXED_OVERHEAD = 180
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+# app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, dbc.icons.BOOTSTRAP])
 
 server = app.server
 # Note, this is a slow operation, so we only want to do it once and pass the indexer around as needed.
@@ -99,6 +100,7 @@ def get_cot_graphs(value, palette_name, selected_assets):
              for _ in range(row_count)]
     fig = make_subplots(rows=row_count, shared_xaxes=False, cols=2, subplot_titles=(
         titles), specs=specs, horizontal_spacing=0.08, vertical_spacing=v_spacing)
+    fig.update_annotations(yshift=10, font=dict(size=15))
 
     for idx, asset in enumerate(assets):
         cur_row = idx + 1
@@ -135,7 +137,8 @@ def get_cot_graphs(value, palette_name, selected_assets):
                          df.index[x_axis_start_range], df.index[-1]])
         fig.update_yaxes(row=cur_row, col=col, title="net positions", showgrid=True,
                          gridcolor=grid_color, gridwidth=1, secondary_y=False)
-        fig.update_yaxes(row=cur_row, col=col, title="open interest", showgrid=False, secondary_y=True)
+        fig.update_yaxes(row=cur_row, col=col, title="open interest",
+                         showgrid=False, secondary_y=True)
 
     fig.update_layout(
         template="plotly_dark",
@@ -143,11 +146,20 @@ def get_cot_graphs(value, palette_name, selected_assets):
         plot_bgcolor=BACKGROUND_COLOR,
         font=dict(color=BRIGHTER_TEXT_COLOR),  # Sets color for all graph text
         showlegend=True,
-        legend=dict(orientation="h", entrywidth=100, bgcolor=BACKGROUND_COLOR, font=dict(
-            size=14, color=BRIGHTER_TEXT_COLOR), yanchor="bottom", y=1.02, xanchor="left"),
+        legend=dict(
+            orientation="h",
+            entrywidth=120,
+            entrywidthmode='pixels',
+            bgcolor=BACKGROUND_COLOR,
+            font=dict(size=14, color=BRIGHTER_TEXT_COLOR),
+            yanchor="bottom",
+            y=1.05,
+            x=0.5,
+            xanchor="center"
+        ),
         autosize=True,
         height=total_height,
-        margin=dict(t=100, b=50, l=50, r=50),
+        margin=dict(t=10, b=10, l=10, r=10),
         hovermode="x unified",
         hoverlabel=dict(bgcolor="rgba(20, 20, 20, 0.8)",
                         font=dict(color=HOVER_TEXT_COLOR)),
@@ -332,7 +344,8 @@ def download_positioning_table(n_clicks, selected_values):
     if not n_clicks or not selected_values:
         return None
 
-    asset_list = [selected_values] if isinstance(selected_values, str) else selected_values
+    asset_list = [selected_values] if isinstance(
+        selected_values, str) else selected_values
 
     # Fetch the dataframe
     df = cotIndexer.get_positioning_table_by_asset_class(asset_list)
@@ -376,20 +389,23 @@ positioning_layout = html.Div([
                     dcc.Dropdown(
                         id='cot_positioning_df_input',
                         options=[{'label': x, 'value': x}
-                                    for x in asset_class_list],
+                                 for x in asset_class_list],
                         value=asset_class_list,  # This selects every item in the list by default
                         multi=True,
                         # Adding 'form-control' and 'bg-dark' forces the dark style
                         className="form-control bg-dark text-white border-secondary",
                         searchable=False,
                         clearable=True,
-                        style={'color': BRIGHTER_TEXT_COLOR, 'backgroundColor': BACKGROUND_COLOR}  # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                        # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                        style={'color': BRIGHTER_TEXT_COLOR,
+                               'backgroundColor': BACKGROUND_COLOR}
                     ), width=True
                     # ])
                 ),
                 dbc.Col(
                     dbc.Button(
-                        [html.I(className="bi bi-download me-2"), "Download CSV"],
+                        [html.I(className="bi bi-download me-2"),
+                         "Download CSV"],
                         id="btn_download_csv",
                         color="secondary",
                         outline=True,
@@ -452,7 +468,8 @@ def download_cftc_data_zip(n_clicks):
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for asset_class in all_classes:
             for asset in cotIndexer.get_assets_for_asset_class(asset_class):
-                instrument_code = cotIndexer.get_instrument_code_from_name(asset)
+                instrument_code = cotIndexer.get_instrument_code_from_name(
+                    asset)
                 df = cotIndexer.collect_symbol_summary_results(instrument_code)
 
                 if not df.empty:
@@ -464,7 +481,8 @@ def download_cftc_data_zip(n_clicks):
                     file_name = f"{cotIndexer.get_instrument_symbol_from_name(asset).replace(' ', '_')}_summary.csv"
                     zf.writestr(file_name, csv_string)
 
-                df_detailed = cotIndexer.collect_symbol_detailed_results(instrument_code)
+                df_detailed = cotIndexer.collect_symbol_detailed_results(
+                    instrument_code)
                 if not df_detailed.empty:
                     csv_string_detailed = df_detailed.to_csv(index=False)
                     file_name_detailed = f"{cotIndexer.get_instrument_symbol_from_name(asset).replace(' ', '_')}_detailed.csv"
@@ -498,8 +516,10 @@ def download_real_test_data_zip(n_clicks):
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for asset_class in all_classes:
             for asset in cotIndexer.get_assets_for_asset_class(asset_class):
-                instrument_code = cotIndexer.get_instrument_code_from_name(asset)
-                df = cotIndexer.create_real_test_event_asset_list(instrument_code)
+                instrument_code = cotIndexer.get_instrument_code_from_name(
+                    asset)
+                df = cotIndexer.create_real_test_event_asset_list(
+                    instrument_code)
 
                 if not df.empty:
                     # Convert DataFrame to a CSV string
@@ -524,10 +544,51 @@ def download_real_test_data_zip(n_clicks):
 # Sidebar
 #
 ###############################################################################
+# The sidebar width when open
+SIDEBAR_WIDTH = "16rem"
+SIDEBAR_STYLE = {
+    "position": "fixed",
+    "top": 0,
+    "left": 0,
+    "bottom": 0,
+    "width": SIDEBAR_WIDTH,
+    "padding": "2rem 1rem",
+    "background-color": BACKGROUND_COLOR,
+    "transition": "all 0.5s",
+    "overflow": "hidden",
+    "display": "flex",
+    "flex-direction": "column",
+    "borderRight": f"1px solid {TEXT_COLOR}26",
+    "zIndex": 1000
+}
+# The sidebar state when "hidden"
+SIDEBAR_HIDDEN_STYLE = {
+    **SIDEBAR_STYLE,
+    "left": f"-{SIDEBAR_WIDTH}", # Slides it off-screen to the left
+}
+CONTENT_STYLE = {
+    "transition": "margin-left 0.5s",
+    "margin-left": "18rem", # sidebar width + 2rem buffer
+    "padding": "2rem 1rem",
+}
+CONTENT_STYLE_HIDDEN = {
+    **CONTENT_STYLE,
+    "margin-left": "2rem", # Expanded state
+}
+
 sidebar = html.Div(
-    [
-        html.H2("Views", style={'color': BRIGHTER_TEXT_COLOR}),
+    id="sidebar",
+    children=[
+        # Heading - Pushed down to avoid the button
+        html.H2("COT Analyzer",
+                style={
+                    'color': BRIGHTER_TEXT_COLOR,
+                    'marginTop': '3.5rem', # The "Buffer Zone"
+                    'paddingLeft': '0.5rem'
+                }),
         html.Hr(style={'backgroundColor': BACKGROUND_COLOR}),
+
+        # Navigation Links
         dbc.Nav(
             [
                 dbc.NavLink("Graphs", href="/graphs", id="graphs-link",
@@ -544,7 +605,8 @@ sidebar = html.Div(
         html.Div([
             # html.Hr(style={'opacity': '0.15'}),
             dbc.Button(
-                [html.I(className="bi bi-cloud-download me-2"), "Download CFTC Data"],
+                [html.I(className="bi bi-cloud-download me-2"),
+                 "Download CFTC Data"],
                 id="sidebar-full-download-btn",
                 color="secondary",
                 outline=True,
@@ -561,7 +623,8 @@ sidebar = html.Div(
 
         html.Div([
             dbc.Button(
-                [html.I(className="bi bi-cloud-download me-2"), "Download Real Test Data"],
+                [html.I(className="bi bi-cloud-download me-2"),
+                 "Download Real Test Data"],
                 id="sidebar-real-test-download-btn",
                 color="secondary",
                 outline=True,
@@ -588,20 +651,24 @@ sidebar = html.Div(
                  ),
                  ], style={'padding': '20px', 'text-align': 'center', 'fontSize': '0.8rem', 'color': TEXT_COLOR})
     ],
-    style={
-        "position": "fixed",
-        "top": 0,
-        "left": 0,
-        "bottom": 0,
-        "width": "16rem",
-        "padding": "2rem 1rem",
-        "background-color": BACKGROUND_COLOR,
-        "display": "flex",
-        "flex-direction": "column",
-        "color": TEXT_COLOR,
-        "borderRight": f"1px solid {TEXT_COLOR}26"
-    },
+    style=SIDEBAR_STYLE,
 )
+
+@app.callback(
+    [Output("sidebar", "style"),
+     Output("page-content", "style")], # Assuming page-content is main wrapper
+    [Input("btn-sidebar-toggle", "n_clicks")],
+    [State("sidebar", "style")]
+)
+def toggle_sidebar(n_clicks, current_style):
+    if n_clicks is None:
+        return SIDEBAR_STYLE, CONTENT_STYLE
+
+    # If the current left position is 0, it's visible. Toggle it.
+    if current_style.get("left") == 0:
+        return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
+
+    return SIDEBAR_STYLE, CONTENT_STYLE
 
 ###############################################################################
 #
@@ -610,19 +677,33 @@ sidebar = html.Div(
 ###############################################################################
 content = html.Div(id="page-content", style={"margin-left": "16rem", "padding": "1rem 1rem",
                    "width": "calc(100% - 16rem)", "backgroundColor": BACKGROUND_COLOR})
-app.layout = html.Div(children=[dcc.Location(
-    id='url', refresh=False), sidebar, content],
-    # This tells all Bootstrap components to use the DARKLY variables
-    # Use the ** dictionary unpacking to bypass Python's hyphen restriction
-    **{"data-bs-theme": "dark"}
-)
+app.layout = html.Div([
+    dcc.Location(id='url'),
+    dbc.Button(
+        [html.I(className="bi bi-list"), "Toggle Sidebar"],
+        id="btn-sidebar-toggle",
+        color="secondary",
+        outline=True,
+        style={
+            "position": "fixed",
+            "top": "1rem",
+            "left": "1rem",
+            "zIndex": "1001",  # Higher than sidebar (1000)
+            "color": BRIGHTER_TEXT_COLOR,
+            "backgroundColor": BACKGROUND_COLOR, # Ensure it's not transparent
+            "border": f"1px solid {TEXT_COLOR}26"
+        }
+    ),
+    sidebar,
+    content,
+])
 
-# Callback to control page navigation
 @app.callback(
     Output('page-content', 'children'),
     [Input('url', 'pathname')]
 )
 def display_page(pathname):
+    """Callback to control page navigation."""
     if pathname == '/positioning':
         return positioning_layout
     elif pathname == '/graphs' or pathname is None or pathname == '/':
@@ -630,10 +711,10 @@ def display_page(pathname):
     else:
         return graphs_layout
 
-# Callback to update active state of navigation links
 @app.callback(
     [Output('graphs-link', 'active'), Output('positioning-link', 'active')],
     Input('url', 'pathname')
 )
 def update_active_links(pathname):
+    """Callback to set the active state of navigation links based on current pathname."""
     return pathname == '/graphs' or pathname == '/' or pathname is None, pathname == '/positioning'
