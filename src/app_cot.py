@@ -45,8 +45,8 @@ asset_class_list.sort()
 asset_list = cotIndexer.get_instrument_names()
 
 
-# Update the date display in the title daily at midnight
 def milliseconds_until_midnight():
+    """Calculate the number of milliseconds until the next midnight in the app's timezone."""
     local_tz = pytz.timezone(app_timezone)
     now = datetime.now(tz=local_tz)
     next_midnight = (now + timedelta(days=1)).replace(hour=0,
@@ -59,12 +59,12 @@ def milliseconds_until_midnight():
 # Graphs
 #
 ###############################################################################
-# Dash callback to update the date in the title daily
 @app.callback(
     Output("date-display", "children"),
     Input("daily-interval", "n_intervals")
 )
 def update_graphs_date(n):
+    """Callback to update the date in the title of the graphs page."""
     tz = pytz.timezone(app_timezone)
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"COT Analysis {current_date}"
@@ -295,12 +295,12 @@ graphs_layout = html.Div([
 # Positioning Table
 #
 ###############################################################################
-# Dash callback to update the date in the title daily
 @app.callback(
     Output("date-display-positioning", "children"),
     Input("daily-interval-positioning", "n_intervals")
 )
 def update_positioning_date(n):
+    """Callback to update the date in the title of the positioning page."""
     tz = pytz.timezone(app_timezone)
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"Positioning {current_date}"
@@ -580,10 +580,13 @@ sidebar = html.Div(
     id="sidebar",
     children=[
         # Heading - Pushed down to avoid the button
+        html.Hr(style={
+            'backgroundColor': BACKGROUND_COLOR,
+            'marginTop': '3.5rem',  # The "Buffer Zone"
+            }),
         html.H2("COT Analyzer",
                 style={
                     'color': BRIGHTER_TEXT_COLOR,
-                    'marginTop': '3.5rem', # The "Buffer Zone"
                     'paddingLeft': '0.5rem'
                 }),
         html.Hr(style={'backgroundColor': BACKGROUND_COLOR}),
@@ -670,6 +673,7 @@ def toggle_sidebar(n_clicks, current_style):
 
     return SIDEBAR_STYLE, CONTENT_STYLE
 
+
 ###############################################################################
 #
 # Main Layout
@@ -690,13 +694,12 @@ app.layout = html.Div([
             "left": "1rem",
             "zIndex": "1001",  # Higher than sidebar (1000)
             "color": TEXT_COLOR,
-            "backgroundColor": BACKGROUND_COLOR, # Ensure it's not transparent
             "border": f"1px solid {TEXT_COLOR}26"
         }
     ),
     sidebar,
     content,
-])
+], style={"backgroundColor": BACKGROUND_COLOR, "minHeight": "100vh"})
 
 @app.callback(
     Output('page-content', 'children'),
