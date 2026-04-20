@@ -20,10 +20,10 @@ SMALL_SHORT = "NonRept_Positions_Short_All"
 
 # Columns to create for consumed COT data
 COMM_NET = "Comm_Positions_Net"
-COMM_NET_26 = "Comm_Positions_Net_26"
-COMM_NET_NORMALIZED = "Comm_Positions_Net_Normalized"
+COMM_OI_NORMALIZED = "Comm_Positions_Net_Normalized"  # 26-week comms net pos / OI; WILCO will be calculated based on this column
 LARGE_NET = "NonComm_Positions_Net"
 SMALL_NET = "NonRept_Positions_Net"
+COMM_26_IDX = "Comm-26-idx"
 WILLCO = "willco"
 
 
@@ -161,7 +161,8 @@ class CotCmrIndexer:
                 df.at[idx, "Comm-" + col_header_name] = -1
                 df.at[idx, "LrgSpec-" + col_header_name] = -1
                 df.at[idx, "SmlSpec-" + col_header_name] = -1
-                df.at[idx, "COMM_NET_26-"] = -1
+                df.at[idx, COMM_26_IDX] = -1
+                df.at[idx, COMM_OI_NORMALIZED] = -1
             else:
                 lb_idx = idx - lb_weeks
                 df.at[idx, "Comm-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
@@ -171,12 +172,16 @@ class CotCmrIndexer:
                 df.at[idx, "SmlSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[SMALL_NET], lb_idx, idx)
 
-                if lb_weeks < 26:
-                    df.at[idx, "COMM_NET_26-"] = -1
+                # Always calculate the 26-week commercial Index for use in the IW process, even if the lookback being processed is not 26 weeks
+                if idx < 26:
+                    df.at[idx, COMM_26_IDX] = -1
+                    df.at[idx, COMM_OI_NORMALIZED] = -1
                 else:
-                    df.at[idx, COMM_NET_26] = CotCmrIndexer.calculate_cot_index(
+                    df.at[idx, COMM_26_IDX] = CotCmrIndexer.calculate_cot_index(
                         df[COMM_NET], idx - 26, idx)
-                df.at[idx, COMM_NET_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9) * 100
+
+                    # Calculate normalized commercial net position for use in WILCO calculation; adding a tiny epsilon to the denominator prevents division by zero
+                    df.at[idx, COMM_OI_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9)
 
     @staticmethod
     def is_commodity(asset_class):
@@ -189,18 +194,16 @@ class CotCmrIndexer:
                 df.at[idx, WILLCO] = -1
             else:
                 # We find the rolling min and max of the Commercial Normalized Net position
-                rolling_min = df[COMM_NET_NORMALIZED].rolling(window=lb_weeks).min()
-                rolling_max = df[COMM_NET_NORMALIZED].rolling(window=lb_weeks).max()
+                oi_min = df[COMM_OI_NORMALIZED].iloc[idx+1-lb_weeks:idx+1].min()
+                oi_max = df[COMM_OI_NORMALIZED].iloc[idx+1-lb_weeks:idx+1].max()
 
-                # Adding a tiny epsilon to the denominator prevents division by zero
-                if math.isnan(rolling_max[idx]) or math.isnan(rolling_min[idx]):
-                    df.at[idx, WILLCO] = 50
+                if math.isnan(oi_max) or math.isnan(oi_min):
+                    df.at[idx, WILLCO] = -1
                 else:
-                    willco = round(100 * (df.at[idx, COMM_NET_NORMALIZED] - rolling_min[idx]) / (rolling_max[idx] - rolling_min[idx] + 1e-9))
+                    # Adding a tiny epsilon to the denominator prevents division by zero
+                    cur_normalized_net = df.at[idx, COMM_OI_NORMALIZED]
+                    willco = int((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
                     df.at[idx, WILLCO] = willco
-
-        # Handle NaNs from the rolling window (the first 'lookback' weeks)
-        df[WILLCO] = df[WILLCO].fillna(-1)  # Neutral start or 0, depending on preference
 
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
@@ -229,11 +232,11 @@ class CotCmrIndexer:
         summary_df = pd.DataFrame()
         summary_df["Date"] = df[DATE]
         summary_df["Symbol"] = symbol
+        summary_df["COMM_26_IDX"] = df[COMM_26_IDX]
         summary_df["OpenInterest"] = df[INTEREST]
         summary_df["CommercialNet"] = df[COMM_NET]
         summary_df["LargeSpecNet"] = df[LARGE_NET]
         summary_df["SmallSpecNet"] = df[SMALL_NET]
-        summary_df["CommercialNet_26"] = df[COMM_NET_26]
         summary_df["WillCo"] = df[WILLCO]
 
         # Grab index values
@@ -493,7 +496,7 @@ class CotCmrIndexer:
                     lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
                     sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
 
-                    iwIndex = df.iloc[-1][COMM_NET_26]
+                    iwIndex = df.iloc[-1][COMM_26_IDX]
                     willco = df.iloc[-1][WILLCO]
 
                     new_df = pd.DataFrame(
