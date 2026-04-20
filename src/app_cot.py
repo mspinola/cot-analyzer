@@ -116,7 +116,7 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
     if enabled_plots in ['All']:
         specs = [[{"secondary_y": False}, {"secondary_y": True}]
                  for _ in range(row_count)]
-    print(type(specs), specs)
+
     fig = make_subplots(rows=row_count, shared_xaxes=False, cols=num_cols, subplot_titles=(
         titles), specs=specs, horizontal_spacing=0.08, vertical_spacing=v_spacing)
     fig.update_annotations(yshift=10, font=dict(size=15))

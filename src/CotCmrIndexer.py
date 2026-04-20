@@ -409,6 +409,9 @@ class CotCmrIndexer:
     def get_default_asset_class(self):
         first_key = ""
         if not (len(self.asset_class_map)) == 0:
+            if 'Equities' in self.asset_class_map:
+                return 'Equities'
+
             first_key = next(iter(self.asset_class_map))
             if first_key is None:
                 first_key = ""
