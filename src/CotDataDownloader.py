@@ -29,9 +29,10 @@ logging.basicConfig(
 
 class CotDataDownloader:
     """Class to manage downloading and extracting CFTC data zip files."""
-    def __init__(self, data_dir='data/cot_data', xls_data_dir='data/xls_data', send_email=False):
+    def __init__(self, data_dir='data/cot_data', xls_data_dir='data/xls_data', param_dir='config/params.yaml', send_email=False):
         self.data_dir = data_dir
         self.xls_data_dir = xls_data_dir
+        self.param_dir = param_dir
         self.cot_file_name = "dea_fut_xls_"
         self.url_prefix = "https://www.cftc.gov/files/dea/history/" + self.cot_file_name
         self.enable_email_notifications = send_email
@@ -46,13 +47,13 @@ class CotDataDownloader:
         self.cotDatabase = CotDatabase()
 
     def load_years(self):
-        with open("config/params.yaml", 'r') as yf:
+        with open(self.param_dir, 'r') as yf:
             yaml_data = yaml.safe_load(yf)
             for year in yaml_data["years"]:
                 self.years.append(year)
 
             if datetime.now().year not in self.years:
-                logging.error(f"Current year {datetime.now().year} not found in config/params.yaml. Adding it to the list of years to check.")
+                logging.error(f"Current year {datetime.now().year} not found in {self.param_dir}. Adding it to the list of years to check.")
                 self.years.append(datetime.now().year)
 
     def check_zip_updates(self):
