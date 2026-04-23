@@ -3,6 +3,7 @@ import math
 import os
 import pandas as pd
 import yaml
+import yfinance as yf
 
 import CotSymbolCodeMap as symbol_code_map
 
@@ -24,6 +25,7 @@ COMM_OI_NORMALIZED = "Comm_Positions_Net_Normalized"  # 26-week comms net pos / 
 LARGE_NET = "NonComm_Positions_Net"
 SMALL_NET = "NonRept_Positions_Net"
 COMM_26_IDX = "Comm-26-idx"
+CLOSING_PRICE = "Closing_Price"
 WILLCO = "willco"
 
 
@@ -187,6 +189,53 @@ class CotCmrIndexer:
     def is_commodity(asset_class):
         return asset_class.startswith("Energ") or asset_class.startswith("Grain") or asset_class.startswith("Metal") or asset_class.startswith("Soft")
 
+    def retrieve_report_date_closing_prices(self, instrument):
+        df = instrument.df
+        symbol = instrument.symbol
+        ticker = f"{symbol}=F"  # Yahoo Finance ticker format for futures contracts
+
+        try:
+            # Fetch and Merge Closing Price for the Report Date
+            # logging.info(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
+            start_date = f"{self.years[0]}-01-01"
+            price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
+
+            if not price_data.empty:
+                # Clean the price data
+                if isinstance(price_data.columns, pd.MultiIndex):
+                    price_series = price_data['Close'][ticker]
+                else:
+                    price_series = price_data['Close']
+
+                price_df = pd.DataFrame(price_series).rename(columns={'Close': 'Report_Date_Price'})
+                # Convert price index to datetime and force nanosecond resolution
+                price_df.index = pd.to_datetime(price_df.index).tz_localize(None).astype('datetime64[ns]')
+
+                # Ensure COT dates are datetime and force matching nanosecond resolution
+                df[DATE] = pd.to_datetime(df[DATE]).dt.tz_localize(None).astype('datetime64[ns]')
+                logging.info(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
+
+                # Merge price data into the main dataframe based on the DATE column
+                # Use 'forward' to find the closest next trading day if a Tuesday was a holiday
+                merged = pd.merge_asof(
+                    df.sort_values(DATE),
+                    price_df.sort_values(by=price_df.index.name or 'Date'),
+                    left_on=DATE,
+                    right_index=True,
+                    direction='forward'
+                )
+                instrument.df[CLOSING_PRICE] = merged[ticker]  # Add the closing price to the instrument's dataframe
+
+                # Refresh the local 'df' reference after the merge
+                # df = instrument.df
+                logging.info(f"Integrated report-date price for {symbol}")
+            else:
+                instrument.df[CLOSING_PRICE] = None
+                logging.warning(f"No price data found for {ticker}")
+        except Exception as e:
+            logging.error(f"Error fetching price for {symbol}: {e}")
+
+
     def calculate_willco(self, lb_weeks, df):
         for idx in range(len(df)):
             asset_class = self.get_instrument_from_code(df[CODE][idx]).asset_class
@@ -223,6 +272,7 @@ class CotCmrIndexer:
                 CotCmrIndexer.process_lookback(lookback, df)
 
             self.calculate_willco(26, df)
+            self.retrieve_report_date_closing_prices(self.instruments[instrument])
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
@@ -238,6 +288,7 @@ class CotCmrIndexer:
         summary_df["LargeSpecNet"] = df[LARGE_NET]
         summary_df["SmallSpecNet"] = df[SMALL_NET]
         summary_df["WillCo"] = df[WILLCO]
+        summary_df["ClosingPrice"] = df[CLOSING_PRICE]
 
         # Grab index values
         index_cols = [col for col in df.columns if "-idx" in col]
@@ -315,7 +366,9 @@ class CotCmrIndexer:
         # •Symbol – the symbol for which the event occurred
         # •Date – the date of the event
         # •Time – the time of the event (optional)
-        # •Type – any numeric code > 0 -- Here type 1 is Commercials, 2 is Large Specs, and 3 is Small Specs
+        # •Type – any numeric code > 0 --
+        #         Here type 1 is Commercials Index, 2 is Large Specs Index, and 3 is Small Specs Index
+        #              type 4 is Commercials Net Position, 5 is Large Specs Net Position, and 6 is Small Specs Net Position
         # •Value – any numeric value (e.g. dividend amount, or EPS, or index constituency flags)
         working_dir = os.getcwd()
         real_test_data_dir = self.real_test_data_dir
@@ -472,6 +525,7 @@ class CotCmrIndexer:
                 result["lrg_net"] = df[LARGE_NET]
                 result["sml_net"] = df[SMALL_NET]
                 result["oi"] = df[INTEREST]
+                result["price"] = df[CLOSING_PRICE]
                 result = result[result["comms"] != -1]
                 result.set_index("date", inplace=True)
                 return result
