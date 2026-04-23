@@ -10,6 +10,7 @@ import zipfile
 from dateutil.relativedelta import relativedelta
 from dash import Dash, State, html, dcc, Input, Output, callback
 from datetime import datetime, timedelta, timezone
+from flask import request
 from plotly.subplots import make_subplots
 
 from CotCmrIndexer import CotCmrIndexer
@@ -26,9 +27,8 @@ PIXELS_PER_ROW = 350
 FIXED_OVERHEAD = 180
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
-# app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, dbc.icons.BOOTSTRAP])
-
 server = app.server
+
 # Note, this is a slow operation, so we only want to do it once and pass the indexer around as needed.
 print("Loading COT Data... (this might take a moment)")
 start_time = time.time()
@@ -43,6 +43,13 @@ app_timezone = "US/Eastern"
 asset_class_list = cotIndexer.get_asset_classes()
 asset_class_list.sort()
 asset_list = cotIndexer.get_instrument_names()
+
+
+def is_mobile():
+    """Detects if the user agent belongs to a mobile device."""
+    user_agent = request.headers.get("User-Agent", "").lower()
+    mobile_keywords = ["android", "webos", "iphone", "ipad", "ipod", "blackberry", "iemobile", "opera mini"]
+    return any(keyword in user_agent for keyword in mobile_keywords)
 
 
 def milliseconds_until_midnight():
@@ -722,7 +729,10 @@ sidebar = html.Div(
     [State("sidebar", "style")]
 )
 def toggle_sidebar(n_clicks, current_style):
+    # Detect mobile on initial load (when n_clicks is None)
     if n_clicks is None:
+        if is_mobile():
+            return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
         return SIDEBAR_STYLE, CONTENT_STYLE
 
     # If the current left position is 0, it's visible. Toggle it.
