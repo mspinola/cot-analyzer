@@ -10,6 +10,7 @@ import zipfile
 from dateutil.relativedelta import relativedelta
 from dash import Dash, State, html, dcc, Input, Output, callback
 from datetime import datetime, timedelta, timezone
+from flask import request
 from plotly.subplots import make_subplots
 
 from CotCmrIndexer import CotCmrIndexer
@@ -26,9 +27,8 @@ PIXELS_PER_ROW = 350
 FIXED_OVERHEAD = 180
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
-# app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, dbc.icons.BOOTSTRAP])
-
 server = app.server
+
 # Note, this is a slow operation, so we only want to do it once and pass the indexer around as needed.
 print("Loading COT Data... (this might take a moment)")
 start_time = time.time()
@@ -43,6 +43,13 @@ app_timezone = "US/Eastern"
 asset_class_list = cotIndexer.get_asset_classes()
 asset_class_list.sort()
 asset_list = cotIndexer.get_instrument_names()
+
+
+def is_mobile():
+    """Detects if the user agent belongs to a mobile device."""
+    user_agent = request.headers.get("User-Agent", "").lower()
+    mobile_keywords = ["android", "webos", "iphone", "ipad", "ipod", "blackberry", "iemobile", "opera mini"]
+    return any(keyword in user_agent for keyword in mobile_keywords)
 
 
 def milliseconds_until_midnight():
@@ -75,9 +82,10 @@ def update_graphs_date(n):
     [Input('cot_graphs_input', 'value'),
      Input('palette_input', 'value'),
      Input('asset_selection_input', 'value'),
-     Input('cot_graphs_plot_input', 'value')]
+     Input('cot_graphs_plot_input', 'value'),
+     Input('cot_graphs_plot_overlay_input', 'value')]
 )
-def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
+def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_selection):
     grid_color = GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
@@ -111,8 +119,6 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
         specs = [[{"secondary_y": False}] for _ in range(row_count)]
     if enabled_plots in ['Positioning']:
         specs = [[{"secondary_y": True}] for _ in range(row_count)]
-                #  for _ in range(row_count - 1)]
-        # specs.append([{"secondary_y": True}])
     if enabled_plots in ['All']:
         specs = [[{"secondary_y": False}, {"secondary_y": True}]
                  for _ in range(row_count)]
@@ -141,9 +147,6 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
             if True:  # enabled_plots == 'All':
                 fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
                                  df.index[x_axis_start_range], df.index[-1]])
-            else:
-                fig.update_xaxes(row=cur_row, col=cur_col,
-                                 showgrid=False, matches='x', autorange=True)
             fig.update_yaxes(row=cur_row, col=cur_col, title="index", showgrid=True,
                              gridcolor=grid_color, gridwidth=1, range=[0, 100])
             cur_col = cur_col + 1
@@ -157,8 +160,16 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
                                 name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
             fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
                                 name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[3])),
-                                    name='open interest', marker_color=color_palette[3]), row=cur_row, col=cur_col, secondary_y=True)
+
+            if overlay_selection == 'Price' and 'price' in df.columns:
+                fig.add_trace(go.Scatter(x=df.index, y=df["price"], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=2),
+                                    name='price'), row=cur_row, col=cur_col, secondary_y=True)
+            elif overlay_selection == 'Open Interest':
+                fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=2),
+                                    name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
+            else:
+                pass
+
             if enabled_plots == 'All':
                 fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
                                 df.index[x_axis_start_range], df.index[-1]])
@@ -166,7 +177,10 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots):
                 fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', autorange=True)
             fig.update_yaxes(row=cur_row, col=cur_col, title="net positions", showgrid=True,
                             gridcolor=grid_color, gridwidth=1, secondary_y=False)
-            fig.update_yaxes(row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
+            if overlay_selection == 'Open Interest':
+                fig.update_yaxes(row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
+            else:
+                fig.update_yaxes(row=cur_row, col=cur_col, title="price", showgrid=False, secondary_y=True)
 
     fig.update_layout(
         template="plotly_dark",
@@ -224,6 +238,18 @@ def update_plot_dropdown_value(selection):
     else:
         enabled_plots = 'None'
     return enabled_plots
+
+@app.callback(
+    Output('cot_graphs_plot_overlay_input', 'value'),
+    Input('cot_graphs_plot_overlay_input', 'value')
+)
+def update_overlay_dropdown_value(selection):
+    if selection == 'Open Interest':
+        return 'Open Interest'
+    elif selection == 'Price':
+        return 'Price'
+    else:
+        return 'None'
 
 graphs_layout = html.Div([
     dbc.Container([
@@ -312,6 +338,21 @@ graphs_layout = html.Div([
                     id='cot_graphs_plot_input',
                     options=[{'label': 'Indexing', 'value': 'Indexing'}, {'label': 'Positioning', 'value': 'Positioning'}, {'label': 'All', 'value': 'All'}],
                     value=f"{'All'}",
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                )), width='auto')
+            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
+        ], width='auto', className="px-4"),
+
+        # Positioning Secondary Axis Selector Group
+        dbc.Col([
+            dbc.Row([
+                dbc.Col(html.Label("Overlay:", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
+                dbc.Col(dcc.Loading(dbc.Select(
+                    id='cot_graphs_plot_overlay_input',
+                    options=[{'label': 'Price', 'value': 'Price'}, {'label': 'Open Interest', 'value': 'Open Interest'}],
+                    value=f"{'Price'}",
                     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
                         'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
                 )), width='auto')
@@ -722,7 +763,10 @@ sidebar = html.Div(
     [State("sidebar", "style")]
 )
 def toggle_sidebar(n_clicks, current_style):
+    # Detect mobile on initial load (when n_clicks is None)
     if n_clicks is None:
+        if is_mobile():
+            return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
         return SIDEBAR_STYLE, CONTENT_STYLE
 
     # If the current left position is 0, it's visible. Toggle it.
