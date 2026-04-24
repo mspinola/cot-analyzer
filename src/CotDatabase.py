@@ -1,7 +1,9 @@
+import logging
 import os
 import sqlite3
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 class CotDatabase:
     """Class to manage COT data"""
@@ -63,6 +65,9 @@ class CotDatabase:
     def latest_update_timestamp(self):
         year = str(datetime.now().year)
         result = self.get_zipfile_last_modified_time(year)
-        if result is None:
-            result = "Unknown"
-        return result
+        tz_aware = result.replace(tzinfo=timezone.utc)
+        tz_aware = tz_aware.astimezone(ZoneInfo("America/New_York"))
+        tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
+        if tz_aware is None:
+            tz_aware = "Unknown"
+        return tz_aware

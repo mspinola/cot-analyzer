@@ -76,7 +76,6 @@ def update_graphs_date(n):
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"COT Analysis {current_date}"
 
-
 @app.callback(
     Output('cot_graphs', 'figure'),
     [Input('cot_graphs_input', 'value'),
@@ -87,7 +86,6 @@ def update_graphs_date(n):
      Input('cot_graphs_plot_setup_threshold_input', 'value')]
 )
 def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_selection, setup):
-    print(setup)
     if setup == '95 5':
         max_threshold = 95
         min_threshold = 5
@@ -263,7 +261,6 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
         bargap=0.2,
     )
     return fig
-
 
 @app.callback(
     Output('asset_selection_input', 'options'),
@@ -497,8 +494,6 @@ def update_positioning_date(n):
 def get_CFTC_df_selection(assets, selected_columns):
     """Dash callback to update the positioning table"""
     # Determine the list of asset classes to fetch
-    print(assets)
-    print(selected_columns)
     if not assets:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': TEXT_COLOR})
 
@@ -517,11 +512,6 @@ def get_CFTC_df_selection(assets, selected_columns):
             requested_cols = [col_map.get(c, c) for c in selected_columns]
 
             final_cols = [c for c in core_cols + requested_cols if c in df.columns]
-            print(df.columns)
-            print(selected_columns)
-            print(requested_cols)
-            print(core_cols)
-            print(final_cols)
             df = df[final_cols]
 
     return dbc.Table.from_dataframe(
