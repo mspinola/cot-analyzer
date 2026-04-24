@@ -77,6 +77,7 @@ class CotDataDownloader:
         max_attempts = 30
         attempt = 0
 
+        logging.info("Scheduler triggered... looking for new data")
         while not success and attempt < max_attempts:
             attempt += 1
             logging.info(f"Friday Update Attempt {attempt} for year {current_year}...")

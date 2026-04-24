@@ -83,9 +83,24 @@ def update_graphs_date(n):
      Input('palette_input', 'value'),
      Input('asset_selection_input', 'value'),
      Input('cot_graphs_plot_input', 'value'),
-     Input('cot_graphs_plot_overlay_input', 'value')]
+     Input('cot_graphs_plot_overlay_input', 'value'),
+     Input('cot_graphs_plot_setup_threshold_input', 'value')]
 )
-def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_selection):
+def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_selection, setup):
+    print(setup)
+    if setup == '95 5':
+        max_threshold = 95
+        min_threshold = 5
+    elif setup == '90 10':
+        max_threshold = 95
+        min_threshold = 5
+    elif setup == '75 25':
+        max_threshold = 75
+        min_threshold = 25
+    else:
+        max_threshold = 101
+        min_threshold = -1
+
     grid_color = GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
@@ -132,23 +147,43 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
         cur_col = 1
         df = cotIndexer.get_symbols_custom_index(asset)
 
-        xaxis_weeks = 52 * 2
+        xaxis_weeks = 78
         x_axis_start_range = max(0, len(df.index) - xaxis_weeks)
 
         # Indexing Plot
         if enabled_plots in ['All', 'Indexing']:
-            legend = cur_row == 1 and cur_col == num_cols  # Only show legend for the first plot
-            fig.add_trace(go.Scatter(x=df.index, y=df["comms"], line_shape='hv', legendgroup='commercials', showlegend=legend,
-                                    name='commercials', line=dict(width=1, color=color_palette[0])), row=cur_row, col=cur_col)
-            fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], line_shape='hv', legendgroup='large specs', showlegend=legend,
-                                    name='large specs', line=dict(width=1, color=color_palette[1])), row=cur_row, col=cur_col)
-            fig.add_trace(go.Scatter(x=df.index, y=df["sml"], line_shape='hv', legendgroup='small specs', showlegend=legend,
-                                    name='small specs', line=dict(width=1, color=color_palette[2])), row=cur_row, col=cur_col)
-            if True:  # enabled_plots == 'All':
-                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
-                                 df.index[x_axis_start_range], df.index[-1]])
-            fig.update_yaxes(row=cur_row, col=cur_col, title="index", showgrid=True,
-                             gridcolor=grid_color, gridwidth=1, range=[0, 100])
+            # Only show legend for the first plot
+            legend = cur_row == 1 and cur_col == num_cols
+            fig.add_trace(go.Scatter(x=df.index, y=df["comms"], legendgroup='commercials', line_shape='hv', showlegend=legend, zorder=0, line=dict(color=color_palette[0], width=1),
+                                     name='commercials'), row=cur_row, col=cur_col, secondary_y=False)
+            fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], legendgroup='large specs', line_shape='hv', showlegend=legend, zorder=1, line=dict(color=color_palette[1], width=1),
+                                     name='large specs'), row=cur_row, col=cur_col)
+            fig.add_trace(go.Scatter(x=df.index, y=df["sml"], legendgroup='small specs', line_shape='hv', showlegend=legend, zorder=2, line=dict(color=color_palette[2], width=1),
+                                     name='small specs'), row=cur_row, col=cur_col)
+            fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
+                             df.index[x_axis_start_range], df.index[-1]])
+            fig.update_yaxes(row=cur_row, col=cur_col, title="index",
+                             showgrid=True, gridcolor=grid_color, gridwidth=1, range=[0, 100])
+
+            # Loop through the data to find 'Extreme' clusters
+            for i in range(1, len(df)):
+                if df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
+                    color = "rgba(255, 0, 0, 0.3)"  # Red Heat
+                elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
+                    color = "rgba(0, 255, 0, 0.3)"  # Green Heat
+                else:
+                    continue
+
+                # Highlight the specific week on the chart
+                fig.add_vrect(
+                    row=cur_row,
+                    col=cur_col,
+                    x0=df.index[i-1],
+                    x1=df.index[i],
+                    fillcolor=color,
+                    layer="below",
+                    line_width=0,
+                )
             cur_col = cur_col + 1
 
         # Positioning Plot
@@ -179,8 +214,28 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
                             gridcolor=grid_color, gridwidth=1, secondary_y=False)
             if overlay_selection == 'Open Interest':
                 fig.update_yaxes(row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
-            else:
+            elif overlay_selection == 'Price':
                 fig.update_yaxes(row=cur_row, col=cur_col, title="price", showgrid=False, secondary_y=True)
+
+            # Loop through the data to find 'Extreme' clusters
+            for i in range(1, len(df)):
+                if df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
+                    color = "rgba(255, 0, 0, 0.3)"  # Red Heat
+                elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
+                    color = "rgba(0, 255, 0, 0.3)"  # Green Heat
+                else:
+                    continue
+
+                # Highlight the specific week on the chart
+                fig.add_vrect(
+                    row=cur_row,
+                    col=cur_col,
+                    x0=df.index[i-1],
+                    x1=df.index[i],
+                    fillcolor=color,
+                    layer="below",
+                    line_width=0,
+                )
 
     fig.update_layout(
         template="plotly_dark",
@@ -251,6 +306,21 @@ def update_overlay_dropdown_value(selection):
     else:
         return 'None'
 
+@app.callback(
+    Output('cot_graphs_plot_setup_threshold_input', 'value'),
+    Input('cot_graphs_plot_setup_threshold_input', 'value')
+)
+def cot_graphs_plot_setup_threshold_input(selection):
+    if selection == '95 5':
+        return '95 5'
+    elif selection == '90 10':
+        return '90 10'
+    elif selection == '75 25':
+        return '75 25'
+    else:
+        return 'None'
+
+
 graphs_layout = html.Div([
     dbc.Container([
         # Date Display and Latest Update
@@ -288,15 +358,15 @@ graphs_layout = html.Div([
                         for x in palette_options],
                     value=palette_options[0] if palette_options else None,
                     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                ), width='auto')
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                ), width=6)
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
+        ], width='auto', className="px-2"),
 
         # Asset Class Selector Group
         dbc.Col([
             dbc.Row([
-                dbc.Col(html.Label("Asset Class:", style={
+                dbc.Col(html.Label("Assets:", style={
                         'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
                 dbc.Col(dcc.Loading(dbc.Select(
                     id='cot_graphs_input',
@@ -304,15 +374,15 @@ graphs_layout = html.Div([
                         for x in asset_class_list],
                     value=f"{cotIndexer.get_default_asset_class()}",
                     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                )), width='auto')
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                )), width=6)
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
+        ], width='auto', className="px-2"),
 
         # Individual Asset Selector
         dbc.Col([
             dbc.Row([
-                dbc.Col(html.Label("Asset Filter:", style={
+                dbc.Col(html.Label("Filter:", style={
                         'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
                 dbc.Col(dcc.Dropdown(
                     id='asset_selection_input',
@@ -321,15 +391,15 @@ graphs_layout = html.Div([
                     placeholder="All Assets",
                     className="dash-dropdown",  # gets styling from css
                     searchable=False,
-                    clearable=True,
+                    clearable='auto',
                     # Backup inline style to ensure dark background if the class doesn't apply for some reason
                     style={'text_align': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                ), width='auto')
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                ), width=6)
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
+        ], width='auto', className="px-2"),
 
-        # PlotSelector Group
+        # Plot Selector Group
         dbc.Col([
             dbc.Row([
                 dbc.Col(html.Label("Plots:", style={
@@ -337,12 +407,12 @@ graphs_layout = html.Div([
                 dbc.Col(dcc.Loading(dbc.Select(
                     id='cot_graphs_plot_input',
                     options=[{'label': 'Indexing', 'value': 'Indexing'}, {'label': 'Positioning', 'value': 'Positioning'}, {'label': 'All', 'value': 'All'}],
-                    value=f"{'All'}",
+                    value=f"{'Positioning'}",
                     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                )), width='auto')
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                )), width=6)
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
+        ], width='auto', className="px-2"),
 
         # Positioning Secondary Axis Selector Group
         dbc.Col([
@@ -351,13 +421,28 @@ graphs_layout = html.Div([
                         'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
                 dbc.Col(dcc.Loading(dbc.Select(
                     id='cot_graphs_plot_overlay_input',
-                    options=[{'label': 'Price', 'value': 'Price'}, {'label': 'Open Interest', 'value': 'Open Interest'}],
+                    options=[{'label': 'None', 'value': 'None'}, {'label': 'Price', 'value': 'Price'}, {'label': 'Open Interest', 'value': 'Open Interest'}],
                     value=f"{'Price'}",
                     style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                )), width='auto')
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                )), width=6)
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
+        ], width='auto', className="px-2"),
+
+        # Setup Threshold Selector Group
+        dbc.Col([
+            dbc.Row([
+                dbc.Col(html.Label("Setup:", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
+                dbc.Col(dcc.Loading(dbc.Select(
+                    id='cot_graphs_plot_setup_threshold_input',
+                    options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
+                    value=f"{'95 5'}",
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
+                )), width=6)
+            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
+        ], width='auto', className="px-2"),
     ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
     html.Br(),
 
@@ -404,25 +489,40 @@ def update_positioning_date(n):
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"Positioning {current_date}"
 
-# Dash callback to update the positioning table
 @app.callback(
     Output('cot_positioning', 'children'),
-    [Input('cot_positioning_df_input', 'value')]
+    [Input('cot_positioning_df_input', 'value'),
+     Input('cot_positioning_column_select_input', 'value')]
 )
-def get_CFTC_df_selection(value):
+def get_CFTC_df_selection(assets, selected_columns):
+    """Dash callback to update the positioning table"""
     # Determine the list of asset classes to fetch
-    if not value:
+    print(assets)
+    print(selected_columns)
+    if not assets:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': TEXT_COLOR})
 
-    asset_list = [value] if isinstance(value, str) else value
-
-    # Fetch the data
+    asset_list = [assets] if isinstance(assets, str) else assets
     df = cotIndexer.get_positioning_table_by_asset_class(asset_list)
 
-    # MULTI-LEVEL SORT
-    # Assumes columns are named 'Asset Class' and 'Name' (adjust if named 'Instrument' etc.)
     if not df.empty:
         df = df.sort_values(by=['Asset Class', 'Name'], ascending=[True, True])
+
+        # Logic to filter columns based on the 'selected_columns' dropdown
+        if True: # selected_columns:
+            # Always keep core columns, then add user-selected extras
+            core_cols = ['Date', 'Asset Class', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs', 'Willco']
+            # Map dropdown values to actual DataFrame column names if they differ
+            col_map = {'Comm 26wk': 'Comms (26-Week)'}
+            requested_cols = [col_map.get(c, c) for c in selected_columns]
+
+            final_cols = [c for c in core_cols + requested_cols if c in df.columns]
+            print(df.columns)
+            print(selected_columns)
+            print(requested_cols)
+            print(core_cols)
+            print(final_cols)
+            df = df[final_cols]
 
     return dbc.Table.from_dataframe(
         df,
@@ -455,6 +555,16 @@ def download_positioning_table(n_clicks, selected_values):
     return dcc.send_data_frame(df.to_csv, f"COT_Positioning_{timestamp}.csv", index=False)
 
 
+@app.callback(
+    Output('cot_positioning_options', 'children'),
+    [Input('cot_positioning_column_select_input', 'value')]
+)
+def cot_positioning_column_select_input(value):
+    if not value:
+        return None
+    return value
+
+
 positioning_layout = html.Div([
     dbc.Container([
         html.H2(id='date-display-positioning', style={'textAlign': 'center'}),
@@ -479,11 +589,11 @@ positioning_layout = html.Div([
     html.Br(),
 
     dbc.Row([
+        # Asset Class Selector Group
         dbc.Col([
             dbc.Row([
-                # dcc.Loading(
-                #     type="circle",
-                #     children=[
+                dbc.Col(html.Label("Assets: ", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
                 dbc.Col(
                     dcc.Dropdown(
                         id='cot_positioning_df_input',
@@ -496,11 +606,39 @@ positioning_layout = html.Div([
                         searchable=False,
                         clearable=True,
                         # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                        style={'color': BRIGHTER_TEXT_COLOR,
-                               'backgroundColor': BACKGROUND_COLOR}
-                    ), width=True
-                    # ])
+                        style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                                'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                    ), width="auto"
                 ),
+            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
+        ], width='auto', className="px-4"),
+
+        # Optional Data Selector Group
+        dbc.Col([
+            dbc.Row([
+                dbc.Col(html.Label("Data: ", style={
+                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
+                dbc.Col(
+                    dcc.Dropdown(
+                            id='cot_positioning_column_select_input',
+                            options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
+                            value=[],
+                            multi=True,
+                            # Adding 'form-control' and 'bg-dark' forces the dark style
+                            className="form-control bg-dark text-white border-secondary",
+                            searchable=False,
+                            clearable=True,
+                            # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                            style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                                'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                    ), width="auto"
+                ),
+            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
+        ], width='auto', className="px-4"),
+
+        # Download CSV Button Group
+        dbc.Col([
+            dbc.Row([
                 dbc.Col(
                     dbc.Button(
                         [html.I(className="bi bi-download me-2"),
@@ -518,8 +656,8 @@ positioning_layout = html.Div([
                 # The actual download component (invisible)
                 dcc.Download(id="download-positioning-csv"),
             ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width={'size': 8, 'offset': 2})  # Centering the column
-    ], align='center'),
+        ], width='auto', className="px-4"),
+    ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
     html.Br(),
 
     html.Hr(style={
@@ -544,8 +682,8 @@ positioning_layout = html.Div([
                     html.Div(id='cot_positioning')
                 ],
                 style={"textAlign": "center"}
-            )], width={'size': 8, 'offset': 2})  # Centering the column
-    ], align='center')
+            )], width="auto")
+    ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
 ])
 
 @app.callback(

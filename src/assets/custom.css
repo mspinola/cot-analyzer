@@ -481,3 +481,8 @@
     font-size: 1.5rem;
     color: #E2E8F0;
 }
+
+.Select-placeholder {
+    color: #999 !important; /* Ensure the color contrasts with your background */
+}
+
