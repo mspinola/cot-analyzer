@@ -61,6 +61,24 @@ def milliseconds_until_midnight():
     delta = next_midnight - now
     return int(delta.total_seconds() * 1000)
 
+
+def parse_setup_thresholds(setup):
+    if setup == '95 5':
+        max_threshold = 95
+        min_threshold = 5
+    elif setup == '90 10':
+        max_threshold = 9
+        min_threshold = 10
+    elif setup == '75 25':
+        max_threshold = 75
+        min_threshold = 25
+    else:
+        max_threshold = 101
+        min_threshold = -1
+
+    return min_threshold, max_threshold
+
+
 ###############################################################################
 #
 # Graphs
@@ -78,31 +96,22 @@ def update_graphs_date(n):
 
 @app.callback(
     Output('cot_graphs', 'figure'),
-    [Input('cot_graphs_input', 'value'),
-     Input('palette_input', 'value'),
-     Input('asset_selection_input', 'value'),
-     Input('cot_graphs_plot_input', 'value'),
-     Input('cot_graphs_plot_overlay_input', 'value'),
-     Input('cot_graphs_plot_setup_threshold_input', 'value')]
+    [Input('global_single_asset_class_input', 'value'),
+     Input('global_palette_input', 'value'),
+     Input('global_multi_equity_selector_input', 'value'),
+     Input('global_setup_threshold_input', 'value')]
 )
-def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_selection, setup):
-    if setup == '95 5':
-        max_threshold = 95
-        min_threshold = 5
-    elif setup == '90 10':
-        max_threshold = 95
-        min_threshold = 5
-    elif setup == '75 25':
-        max_threshold = 75
-        min_threshold = 25
-    else:
-        max_threshold = 101
-        min_threshold = -1
+def get_cot_graphs(value, palette_name, selected_assets, setup):
+    enabled_plots = 'Positioning'
+    overlay_selection = 'Price'
+    min_threshold, max_threshold = parse_setup_thresholds(setup)
 
     grid_color = GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
-    if selected_assets:
+    if selected_assets is None:
+        assets = cotIndexer.get_assets_for_asset_class(value)
+    elif selected_assets:
         assets = selected_assets  # Use specific user selections if provided
     else:
         assets = cotIndexer.get_assets_for_asset_class(value)
@@ -165,7 +174,9 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
 
             # Loop through the data to find 'Extreme' clusters
             for i in range(1, len(df)):
-                if df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
+                if df['comms'].iloc[i] is None or df['lrg'].iloc[i] or df['sml'].iloc[i] is None:
+                    continue
+                elif df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
                     color = "rgba(255, 0, 0, 0.3)"  # Red Heat
                 elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
                     color = "rgba(0, 255, 0, 0.3)"  # Green Heat
@@ -195,10 +206,10 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
                                 name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
 
             if overlay_selection == 'Price' and 'price' in df.columns:
-                fig.add_trace(go.Scatter(x=df.index, y=df["price"], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=2),
+                fig.add_trace(go.Scatter(x=df.index, y=df["price"], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=1),
                                     name='price'), row=cur_row, col=cur_col, secondary_y=True)
             elif overlay_selection == 'Open Interest':
-                fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=2),
+                fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[4], width=1),
                                     name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
             else:
                 pass
@@ -217,7 +228,9 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
 
             # Loop through the data to find 'Extreme' clusters
             for i in range(1, len(df)):
-                if df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
+                if df['comms'].iloc[i] is None or df['lrg'].iloc[i] is None or df['sml'].iloc[i] is None:
+                    continue
+                elif df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
                     color = "rgba(255, 0, 0, 0.3)"  # Red Heat
                 elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
                     color = "rgba(0, 255, 0, 0.3)"  # Green Heat
@@ -263,30 +276,17 @@ def get_cot_graphs(value, palette_name, selected_assets, enabled_plots, overlay_
     return fig
 
 @app.callback(
-    Output('asset_selection_input', 'options'),
-    Output('asset_selection_input', 'value'),
-    Input('cot_graphs_input', 'value')
-)
-def update_asset_dropdown_options(selected_class):
-    if not selected_class:
-        return [], []
-    assets = cotIndexer.get_assets_for_asset_class(selected_class)
-    assets.sort()
-    options = [{'label': x, 'value': x} for x in assets]
-    return options, assets
-
-@app.callback(
     Output('cot_graphs_plot_input', 'value'),
     Input('cot_graphs_plot_input', 'value')
 )
 def update_plot_dropdown_value(selection):
-    enabled_plots = 'All'  # Default to all plots if no selection is made
-    if not selection or selection == 'All':
-        enabled_plots = 'All'
+    enabled_plots = 'Positioning'
+    if not selection or selection == 'Positioning':
+        enabled_plots = 'Positioning'
     elif selection == 'Indexing':
         enabled_plots = 'Indexing'
-    elif selection == 'Positioning':
-        enabled_plots = 'Positioning'
+    elif selection == 'All':
+        enabled_plots = 'All'
     else:
         enabled_plots = 'None'
     return enabled_plots
@@ -304,10 +304,10 @@ def update_overlay_dropdown_value(selection):
         return 'None'
 
 @app.callback(
-    Output('cot_graphs_plot_setup_threshold_input', 'value'),
-    Input('cot_graphs_plot_setup_threshold_input', 'value')
+    Output('global_setup_threshold_input', 'value'),
+    Input('global_setup_threshold_input', 'value')
 )
-def cot_graphs_plot_setup_threshold_input(selection):
+def plot_setup_threshold_input(selection):
     if selection == '95 5':
         return '95 5'
     elif selection == '90 10':
@@ -343,120 +343,6 @@ graphs_layout = html.Div([
     }),
     html.Br(),
 
-    dbc.Row([
-        # Theme Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Theme: ", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dbc.Select(
-                    id='palette_input',
-                    options=[{'label': x, 'value': x}
-                        for x in palette_options],
-                    value=palette_options[0] if palette_options else None,
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                ), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-
-        # Asset Class Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Assets:", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dcc.Loading(dbc.Select(
-                    id='cot_graphs_input',
-                    options=[{'label': x, 'value': x}
-                        for x in asset_class_list],
-                    value=f"{cotIndexer.get_default_asset_class()}",
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                )), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-
-        # Individual Asset Selector
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Filter:", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dcc.Dropdown(
-                    id='asset_selection_input',
-                    # We'll populate 'options' via callback
-                    multi=True,
-                    placeholder="All Assets",
-                    className="dash-dropdown",  # gets styling from css
-                    searchable=False,
-                    clearable='auto',
-                    # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                    style={'text_align': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                ), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-
-        # Plot Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Plots:", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dcc.Loading(dbc.Select(
-                    id='cot_graphs_plot_input',
-                    options=[{'label': 'Indexing', 'value': 'Indexing'}, {'label': 'Positioning', 'value': 'Positioning'}, {'label': 'All', 'value': 'All'}],
-                    value=f"{'Positioning'}",
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                )), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-
-        # Positioning Secondary Axis Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Overlay:", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dcc.Loading(dbc.Select(
-                    id='cot_graphs_plot_overlay_input',
-                    options=[{'label': 'None', 'value': 'None'}, {'label': 'Price', 'value': 'Price'}, {'label': 'Open Interest', 'value': 'Open Interest'}],
-                    value=f"{'Price'}",
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                )), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-
-        # Setup Threshold Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Setup:", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(dcc.Loading(dbc.Select(
-                    id='cot_graphs_plot_setup_threshold_input',
-                    options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
-                    value=f"{'95 5'}",
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                        'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR}
-                )), width=6)
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-2"),
-    ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
-    html.Br(),
-
-    html.Hr(style={
-        'color': TEXT_COLOR,            # Sets the color for modern browsers
-        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
-        'height': '1px',                # Thickness of the line
-        'border': 'none',               # Removes default 3D shading
-        'opacity': '0.25',              # Makes it subtle (optional)
-        'marginTop': '1px',            # Space above the line
-        'marginBottom': '10px',         # Space below the line
-        'width': '95%',                 # Don't let it touch the screen edges
-        'margin-left': 'auto',          # Centers the line
-        'margin-right': 'auto'
-    }),
-    html.Br(),
-
     # Row for the COT graphs
     dbc.Row(
         dbc.Col(
@@ -477,18 +363,8 @@ graphs_layout = html.Div([
 #
 ###############################################################################
 @app.callback(
-    Output("date-display-positioning", "children"),
-    Input("daily-interval-positioning", "n_intervals")
-)
-def update_positioning_date(n):
-    """Callback to update the date in the title of the positioning page."""
-    tz = pytz.timezone(app_timezone)
-    current_date = datetime.now(tz).strftime('%Y-%m-%d')
-    return f"Positioning {current_date}"
-
-@app.callback(
     Output('cot_positioning', 'children'),
-    [Input('cot_positioning_df_input', 'value'),
+    [Input('global_multi_asset_class_selector_input', 'value'),
      Input('cot_positioning_column_select_input', 'value')]
 )
 def get_CFTC_df_selection(assets, selected_columns):
@@ -526,7 +402,7 @@ def get_CFTC_df_selection(assets, selected_columns):
 @app.callback(
     Output("download-positioning-csv", "data"),
     Input("btn_download_csv", "n_clicks"),
-    State('cot_positioning_df_input', 'value'),  # Capture current filter state
+    State('global_multi_asset_class_selector_input', 'value'),  # Capture current filter state
     prevent_initial_call=True,
 )
 def download_positioning_table(n_clicks, selected_values):
@@ -557,10 +433,10 @@ def cot_positioning_column_select_input(value):
 
 positioning_layout = html.Div([
     dbc.Container([
-        html.H2(id='date-display-positioning', style={'textAlign': 'center'}),
+        html.H2(id='date-display', style={'textAlign': 'center'}),
         html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}", style={
                'textAlign': 'center', 'fontSize': 'small'}),
-        dcc.Interval(id="daily-interval-positioning",
+        dcc.Interval(id="daily-interval",
                      interval=milliseconds_until_midnight(), n_intervals=0),
     ], fluid=True),
 
@@ -570,92 +446,6 @@ positioning_layout = html.Div([
         'height': '1px',                # Thickness of the line
         'border': 'none',               # Removes default 3D shading
         'opacity': '1.0',               # Makes it subtle (optional)
-        'marginTop': '10px',            # Space above the line
-        'marginBottom': '10px',         # Space below the line
-        'width': '95%',                 # Don't let it touch the screen edges
-        'margin-left': 'auto',          # Centers the line
-        'margin-right': 'auto'
-    }),
-    html.Br(),
-
-    dbc.Row([
-        # Asset Class Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Assets: ", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(
-                    dcc.Dropdown(
-                        id='cot_positioning_df_input',
-                        options=[{'label': x, 'value': x}
-                                 for x in asset_class_list],
-                        value=asset_class_list,  # This selects every item in the list by default
-                        multi=True,
-                        # Adding 'form-control' and 'bg-dark' forces the dark style
-                        className="form-control bg-dark text-white border-secondary",
-                        searchable=False,
-                        clearable=True,
-                        # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                        style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                                'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                    ), width="auto"
-                ),
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
-
-        # Optional Data Selector Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(html.Label("Data: ", style={
-                        'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'right', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}), width=4, className="text-end"),
-                dbc.Col(
-                    dcc.Dropdown(
-                            id='cot_positioning_column_select_input',
-                            options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
-                            value=[],
-                            multi=True,
-                            # Adding 'form-control' and 'bg-dark' forces the dark style
-                            className="form-control bg-dark text-white border-secondary",
-                            searchable=False,
-                            clearable=True,
-                            # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                            style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                                'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                    ), width="auto"
-                ),
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
-
-        # Download CSV Button Group
-        dbc.Col([
-            dbc.Row([
-                dbc.Col(
-                    dbc.Button(
-                        [html.I(className="bi bi-download me-2"),
-                         "Download CSV"],
-                        id="btn_download_csv",
-                        color="secondary",
-                        outline=True,
-                        style={
-                            'color': TEXT_COLOR,
-                            'borderColor': 'rgba(171, 184, 201, 0.3)',
-                            'whiteSpace': 'nowrap'
-                        }
-                    ), width="auto"
-                ),
-                # The actual download component (invisible)
-                dcc.Download(id="download-positioning-csv"),
-            ], align='center', className="g-2 flex-nowrap")  # g-2 adds a tiny gap between label and box, flex-nowrap keeps them on the same line
-        ], width='auto', className="px-4"),
-    ], justify='center', className="mt-3 mb-3"),  # Pulled to the center with margin top/bottom
-    html.Br(),
-
-    html.Hr(style={
-        'color': TEXT_COLOR,            # Sets the color for modern browsers
-        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
-        'height': '1px',                # Thickness of the line
-        'border': 'none',               # Removes default 3D shading
-        'opacity': '0.25',               # Makes it subtle (optional)
         'marginTop': '10px',            # Space above the line
         'marginBottom': '10px',         # Space below the line
         'width': '95%',                 # Don't let it touch the screen edges
@@ -768,6 +558,520 @@ def download_real_test_data_zip(n_clicks):
 
 ###############################################################################
 #
+# Asset Analysis
+#
+###############################################################################
+analysis_layout = html.Div([
+    dbc.Container([
+        html.Div(id='analysis-page-header', style={'textAlign': 'center', 'marginBottom': '20px'}),
+    ], fluid=True),
+
+    html.Hr(style={
+        'color': BRIGHTER_TEXT_COLOR,   # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '1.0',               # Makes it subtle (optional)
+        'marginTop': '10px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
+    html.Br(),
+
+    # Row for the COT graphs
+    dbc.Row(
+        dbc.Col(
+            dcc.Loading(
+                type="circle",
+                children=[dcc.Graph(id='analysis_stack', config={
+                                    'responsive': True}, style={'width': '100%'})],
+            ),
+            width=12,  # Full width column
+            style={"padding": "0"}  # Centering the graph
+        ),
+    )
+])
+
+
+@app.callback(
+    Output('analysis-page-header', 'children'),
+    [Input('global_single_asset_class_input', 'value'),      # The Sidebar Input
+     Input('global_single_equity_filter_input', 'value')]  # The Individual Filter
+)
+def update_analysis_header(asset_class, asset_name):
+    if not asset_name:
+        return html.H2("SELECT ASSET", style={'color': TEXT_COLOR})
+
+    # Fetch latest data point
+    df = cotIndexer.get_symbols_custom_index(asset_name)
+    if df is None or df.empty:
+        return html.H2(f"{asset_class} | {asset_name}", style={'color': BRIGHTER_TEXT_COLOR})
+
+    # Get the latest Z-score (using the column name from your DataFrame)
+    latest_z = df['comms-z'].iloc[-1]
+
+    # Determine color logic based on your 95/5 (Z=2.0) setup
+    z_color = "#4ade80" if latest_z >= 2.0 else "#f87171" if latest_z <= -2.0 else TEXT_COLOR
+
+    return [
+        html.H2(f"{asset_class.upper()} | {asset_name.upper()}",
+                style={'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'marginBottom': '5px'}),
+        html.Div([
+            html.Span("CURRENT COMMERCIAL Z-SCORE: ", style={'color': TEXT_COLOR, 'fontSize': '0.9rem'}),
+            html.Span(f"{latest_z:.2f}", style={'color': z_color, 'fontSize': '1.1rem', 'fontWeight': 'bold'})
+        ])
+    ]
+
+
+@app.callback(
+    Output('analysis_stack', 'figure'),
+    [Input('global_palette_input', 'value'),
+     Input('global_single_equity_filter_input', 'value'),
+     Input('global_setup_threshold_input', 'value')]
+)
+def update_analysis_stack(palette_name, asset, setup):
+    if not asset:
+        return go.Figure()
+
+    min_threshold, max_threshold = parse_setup_thresholds(setup)
+    color_palette = cotIndexer.get_palette(palette_name)
+    df = cotIndexer.get_symbols_custom_index(asset)
+    if df is None:
+        return go.Figure()
+
+    fig = make_subplots(
+        rows=5,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        subplot_titles=("Net Position % of Open Interest", "Spearman Correlation + Price",
+                        "Net Positions + Open Interest", "Positioning Index (Trend Exhaustion)",
+                        "Positioning Z-Score (Statistical Extremes)"),
+        specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": True}], [{"secondary_y": False}], [{"secondary_y": False}]]
+    )
+
+    # Global Legend Toggle Logic: Show legend only once, but use legendgroups to link all 5 plots
+    def add_trace_to_all(fig, df, col_name, row, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False):
+        if is_bar:
+            fig.add_trace(go.Bar(x=df.index, y=df[col_name], name=name, legendgroup=name.lower(), visible=visible,
+                                 showlegend=showlegend, marker_color=color, zorder=zorder), row=row, col=1, secondary_y=secondary)
+        else:
+            fig.add_trace(go.Scatter(x=df.index, y=df[col_name], name=name, legendgroup=name.lower(), visible=visible,
+                                     showlegend=showlegend, line=dict(color=color, width=1), zorder=zorder), row=row, col=1, secondary_y=secondary)
+
+    # PLOT 1: % of OI
+    # Primary Axis: % of OI
+    cur_row = 1
+    cur_col = 1
+    add_trace_to_all(fig, df, "comm_oi_pct", cur_row, "Commercials", color_palette[0], 0, showlegend=True)
+    add_trace_to_all(fig, df, "lrg_oi_pct", cur_row, "Large Specs", color_palette[1], 1, showlegend=True)
+    add_trace_to_all(fig, df, "sml_oi_pct", cur_row, "Small Specs", color_palette[2], 2, showlegend=True)
+    fig.update_yaxes(title="%", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
+
+    # PLOT 2: Spearman Correlation (-1 to 1)
+    # Plotting the relationship between position ranks and price ranks
+    cur_row = cur_row + 1
+    add_trace_to_all(fig, df, "comm_spearman", cur_row, "Commercials", color_palette[0], 0)
+    add_trace_to_all(fig, df, "lrg_spearman", cur_row, "Large Specs", color_palette[1], 1)
+    add_trace_to_all(fig, df, "sml_spearman", cur_row, "Small Specs", color_palette[2], 2)
+    add_trace_to_all(fig, df, "price", cur_row, "Price", color_palette[3], 3, secondary=True, showlegend=True)
+    fig.update_yaxes(title="correlation", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
+    fig.update_yaxes(title="$", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True)
+
+    # THIRD PLOT: Net Positions (Bars)
+    cur_row = cur_row + 1
+    add_trace_to_all(fig, df, "comms_net", cur_row, "Commercials", color_palette[0], 0, is_bar=True)
+    add_trace_to_all(fig, df, "lrg_net", cur_row, "Large Specs", color_palette[1], 1, is_bar=True)
+    add_trace_to_all(fig, df, "sml_net", cur_row, "Small Specs", color_palette[2], 2, is_bar=True)
+    add_trace_to_all(fig, df, "oi", cur_row, "Open Interest", color_palette[4], 3, secondary=True, showlegend=True)
+    fig.update_yaxes(title="net position", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
+    fig.update_yaxes(title="OI", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True)
+
+    # FOURTH PLOT: Sentiment Context
+    cur_row = cur_row + 1
+    add_trace_to_all(fig, df, "comms", cur_row, "Commercials", color_palette[0], 0)
+    add_trace_to_all(fig, df, "lrg", cur_row, "Large Specs", color_palette[1], 1)
+    add_trace_to_all(fig, df, "sml", cur_row, "Small Specs", color_palette[2], 2)
+    # Threshold Lines for Plot 4
+    fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
+    fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
+    fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR)
+
+    # FIFTH PLOT: Sentiment z-score
+    cur_row = cur_row + 1
+    add_trace_to_all(fig, df, "comms-z", cur_row, "Commercials", color_palette[0], 0)
+    add_trace_to_all(fig, df, "lrg-z", cur_row, "Large Specs", color_palette[1], 1)
+    add_trace_to_all(fig, df, "sml-z", cur_row, "Small Specs", color_palette[2], 2)
+    # Threshold Lines for Plot 5
+    fig.add_hline(y=-3.0, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
+    fig.add_hline(y=3.0, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", row=5, col=1)
+    fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR)
+
+    # Loop through the data to find 'Extreme' clusters
+    for i in range(1, len(df)):
+        if df['comms'].iloc[i] is None or df['lrg'].iloc[i] is None or df['sml'].iloc[i] is None:
+            continue
+        elif df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
+            color = "rgba(255, 0, 0, 0.3)"  # Red Heat
+        elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
+            color = "rgba(0, 255, 0, 0.3)"  # Green Heat
+        else:
+            continue
+
+        # Highlight the specific week on the chart
+        for j in range(1, cur_row):
+            fig.add_vrect(
+                row=j,
+                col=cur_col,
+                x0=df.index[i-1],
+                x1=df.index[i],
+                fillcolor=color,
+                layer="below",
+                line_width=0,
+            )
+
+    weeks_back = 156
+    start_idx = max(0, len(df) - weeks_back)
+    start_date = df.index[start_idx]
+    end_date = df.index[-1]
+
+    fig.update_xaxes(
+        range=[start_date, end_date],
+        minallowed=df.index[0],   # User cannot scroll left past the first data point
+        maxallowed=df.index[-1],   # User cannot scroll right past the latest data point
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikethickness=1,
+        spikecolor=TEXT_COLOR,
+        spikedash="solid",
+        hoverformat="%Y-%m-%d",
+        matches='x',
+        layer="above traces"
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=BACKGROUND_COLOR,
+        plot_bgcolor=BACKGROUND_COLOR,
+        height=1400,
+        hovermode="x unified",
+        spikedistance=1000,
+        hoverdistance=100
+    )
+
+    return fig
+
+
+@app.callback(
+    Output('analysis_asset_selection_input', 'options'),
+    Output('analysis_asset_selection_input', 'value'),
+    Input('global_single_asset_class_input', 'value')
+)
+def update_analysis_asset_dropdown_options(selected_class):
+    if not selected_class:
+        return None, None
+    assets = cotIndexer.get_assets_for_asset_class(selected_class)
+    assets.sort()
+    options = [{'label': x, 'value': x} for x in assets]
+    default = options[0].get('value') if options else None
+    return options, default
+
+
+###############################################################################
+#
+# Heatmap
+#
+###############################################################################
+heatmap_layout = html.Div([
+    dbc.Container([
+        html.Div("Market Sentiment Heatmap", style={
+                 'textAlign': 'center', 'marginBottom': '20px'}),
+    ], fluid=True),
+
+    html.Hr(style={
+        'color': BRIGHTER_TEXT_COLOR,   # Sets the color for modern browsers
+        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
+        'height': '1px',                # Thickness of the line
+        'border': 'none',               # Removes default 3D shading
+        'opacity': '1.0',               # Makes it subtle (optional)
+        'marginTop': '10px',            # Space above the line
+        'marginBottom': '10px',         # Space below the line
+        'width': '95%',                 # Don't let it touch the screen edges
+        'margin-left': 'auto',          # Centers the line
+        'margin-right': 'auto'
+    }),
+    html.Br(),
+
+    dbc.Row([
+        dbc.Col([
+            html.H5("Z-Score Heatmap", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center'}),
+            dcc.Loading(dcc.Graph(id='market_z_score_heat_map'))  # , style={'height': '300px'}))
+        ], width=6),
+
+        dbc.Col([
+            html.H5("Index Heatmap", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center'}),
+            dcc.Loading(dcc.Graph(id='market_index_score_heat_map'))  # , style={'height': '300px'}))
+        ], width=6)
+    ], className="mb-4"),
+    html.Br(),
+])
+
+
+@app.callback(
+    Output('market_z_score_heat_map', 'figure'),
+    Input('global_multi_asset_class_selector_input', 'value')
+)
+def update_z_score_heat_map(assest_classes):
+    final_df_list = []
+    for asset_class in assest_classes:
+        class_df = cotIndexer.get_asset_class_z_score_heat(asset_class)
+        if class_df.empty:
+            continue
+
+        # Sort alphabetically
+        class_df = class_df.sort_values(by='Asset', ascending=True)
+
+        # Add a Label column for the class heading (optional, for tooltips)
+        class_df['Class'] = asset_class
+
+        # Inject a "Header" row
+        header_row = pd.DataFrame([{
+            "Asset": f"--- {asset_class.upper()} ---",
+            "Commercials": None,
+            "Large Specs": None,
+            "Small Specs": None,
+            "Class": "Header"
+        }])
+        final_df_list.append(header_row)
+        final_df_list.append(class_df)
+    df = pd.concat(final_df_list).reset_index(drop=True)
+
+    # Extract values for the matrix
+    z_values = df[['Commercials', 'Large Specs', 'Small Specs']].values
+
+    # Build a manual Text Matrix to prevent NaN being rendered as 0.00
+    text_matrix = []
+    y_display_labels = []
+    for i, (name, z_row) in enumerate(zip(df['Asset'], z_values)):
+        row_text = ["", "", ""]
+        if "---" in str(name):
+            new_name = name.replace("---", "")
+            y_display_labels.append(" " * (i + 1))
+            row_text[1] = f"<b>{new_name}</b>"
+        else:
+            y_display_labels.append(name)
+            for j, val in enumerate(z_row):
+                row_text[j] = f"{val:.2f}" if not pd.isna(val) else ""
+
+        text_matrix.append(row_text)
+
+    # Create the Heatmap
+    # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
+    fig = go.Figure(data=go.Heatmap(
+        z=z_values,
+        x=['Commercials', 'Large Specs', 'Small Specs'],
+        y=y_display_labels,
+        text=text_matrix,
+        texttemplate="%{text}",
+        textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
+        colorscale=[
+            [0, '#ff4b2b'],
+            [0.05, '#ff4b2b'],
+            [0.10, '#f87171'],
+            [0.25, '#334155'],
+            [0.75, '#334155'],
+            [0.90, '#4ade80'],
+            [0.95, '#00c853'],
+            [1, '#00c853']
+        ],
+        zmin=-3, zmax=3,  # Force scale to Z-score range
+        xgap=2,
+        ygap=2,
+        showscale=True,
+        colorbar=dict(
+            orientation='h',      # Flip to horizontal
+            y=-0.08,              # Position it just below the X-axis
+            x=0.5,                # Center it under the chart
+            xanchor='center',
+            thickness=12,         # Make it thinner/sleeker
+            len=0.7,              # Don't let it span the full width
+            title=dict(text="Std Dev", side="top", font=dict(size=12)),
+            tickvals=[-3, -2, -1, 0, 1, 2, 3] # Explicit ticks for the Z-score
+        )
+    ))
+
+    fig.update_traces(
+        # Matches the cell color of NaNs to the background exactly
+        zsmooth=False,
+        connectgaps=False,
+        zmid=0  # Helps center the color mapping
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=BACKGROUND_COLOR,
+        plot_bgcolor=BACKGROUND_COLOR,
+        height=len(z_values) * 25 + 100, # Dynamic height based on row count
+        margin=dict(t=40, b=10, l=120, r=10),  # Left margin for asset names
+        xaxis=dict(side="top", dtick=1),
+        yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
+    )
+    return fig
+
+
+@app.callback(
+    Output('market_index_score_heat_map', 'figure'),
+    Input('global_multi_asset_class_selector_input', 'value')
+)
+def update_index_heat_map(assest_classes):
+    final_df_list = []
+    for asset_class in assest_classes:
+        class_df = cotIndexer.get_asset_class_index_heat(asset_class)
+        if class_df.empty:
+            continue
+
+        # Sort alphabetically
+        class_df = class_df.sort_values(by='Asset', ascending=True)
+
+        # Add a Label column for the class heading (optional, for tooltips)
+        class_df['Class'] = asset_class
+
+        # Inject a "Header" row
+        header_row = pd.DataFrame([{
+            "Asset": f"--- {asset_class.upper()} ---",
+            "Commercials": None,
+            "Large Specs": None,
+            "Small Specs": None,
+            "Class": "Header"
+        }])
+        final_df_list.append(header_row)
+        final_df_list.append(class_df)
+    df = pd.concat(final_df_list).reset_index(drop=True)
+
+    # Extract values for the matrix
+    index_values = df[['Commercials', 'Large Specs', 'Small Specs']].values
+
+    # Build a manual Text Matrix to prevent NaN being rendered as 0.00
+    text_matrix = []
+    y_display_labels = []
+    for i, (name, z_row) in enumerate(zip(df['Asset'], index_values)):
+        row_text = ["", "", ""]
+        if "---" in str(name):
+            new_name = name.replace("---", "")
+            y_display_labels.append(" " * (i + 1))
+            row_text[1] = f"<b>{new_name}</b>"
+        else:
+            y_display_labels.append(name)
+            for j, val in enumerate(z_row):
+                row_text[j] = f"{val:.0f}" if not pd.isna(val) else ""
+
+        text_matrix.append(row_text)
+
+    # Create the Heatmap
+    # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
+    fig = go.Figure(data=go.Heatmap(
+        z=index_values,
+        x=['Commercials', 'Large Specs', 'Small Specs'],
+        y=y_display_labels,
+        text=text_matrix,
+        texttemplate="%{text}",
+        textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
+        colorscale=[
+            [0, '#ff4b2b'],
+            [0.05, '#ff4b2b'],
+            [0.10, '#f87171'],
+            [0.25, '#334155'],
+            [0.75, '#334155'],
+            [0.90, '#4ade80'],
+            [0.95, '#00c853'],
+            [1, '#00c853']
+        ],
+        zmin=-0, zmax=100,
+        xgap=2,
+        ygap=2,
+        showscale=True,
+        colorbar=dict(
+            orientation='h',      # Flip to horizontal
+            y=-0.08,              # Position it just below the X-axis
+            x=0.5,                # Center it under the chart
+            xanchor='center',
+            thickness=12,         # Make it thinner/sleeker
+            len=0.7,              # Don't let it span the full width
+            title=dict(text="Index", side="top", font=dict(size=12)),
+            tickvals=[0, 25, 50, 75, 100]
+        )
+    ))
+
+    fig.update_traces(
+        # Matches the cell color of NaNs to the background exactly
+        zsmooth=False,
+        connectgaps=False,
+        zmid=0  # Helps center the color mapping
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=BACKGROUND_COLOR,
+        plot_bgcolor=BACKGROUND_COLOR,
+        height=len(index_values) * 25 + 100, # Dynamic height based on row count
+        margin=dict(t=40, b=10, l=120, r=10),  # Left margin for asset names
+        xaxis=dict(side="top", dtick=1),
+        yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
+    )
+    return fig
+
+    # df = pd.DataFrame()
+    # for asset_class in assest_classes:
+    #     df = pd.concat([df, cotIndexer.get_asset_class_index_heat(asset_class)])
+    # if df.empty:
+    #     return go.Figure()
+
+    # Extract values for the matrix
+    # index_values = df[['Commercials', 'Large Specs', 'Small Specs']].values
+
+    # Create the Heatmap
+    # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
+    # fig = go.Figure(data=go.Heatmap(
+    #     z=index_values,
+    #     x=['Commercials', 'Large Specs', 'Small Specs'],
+    #     y=df['Asset'],
+    #     text=index_values,
+    #     texttemplate="<b>%{text:.0f}</b>",
+    #     textfont={"size": 13, "family": "Consolas, monospace", "color": BRIGHTER_TEXT_COLOR},
+    #     colorscale=[
+    #         [0.0, 'red'], [0.05, 'red'],                 # Short (Index < 5)
+    #         [0.05, 'pink'], [0.10, 'pink'],              # Close Short (5 < Index < 10)
+    #         [0.10, 'darkgray'], [0.90, 'darkgray'],      # Neutral (10 < Index < 90)
+    #         [0.90, 'lightgreen'], [0.95, 'lightgreen'],  # Close Long (90 < Index < 95)
+    #         [0.95, 'green'], [1.0, 'green']              # Long (Ind > 95)
+    #     ],
+    #     zmin=-0, zmax=100,
+    #     xgap=3,
+    #     ygap=3,
+    #     colorbar=dict(title="Index", thickness=20, tickvals=[0, 10, 20, 30, 40, 50, 60, 70, 80 ,90, 100], len=0.8)
+    # ))
+
+    # # Calculate dynamic height based on number of assets
+    # dynamic_height = len(df) * 28 + 100
+
+    # fig.update_layout(
+    #     height=dynamic_height,
+    #     template="plotly_dark",
+    #     paper_bgcolor=BACKGROUND_COLOR,
+    #     plot_bgcolor=BACKGROUND_COLOR,
+    #     margin=dict(t=40, b=10, l=180, r=10),  # Left margin for asset names
+    #     xaxis=dict(side="top", dtick=1),
+    #     yaxis=dict(dtick=1)
+    # )
+    # return fig
+
+
+###############################################################################
+#
 # Sidebar
 #
 ###############################################################################
@@ -807,67 +1111,188 @@ sidebar = html.Div(
     id="sidebar",
     children=[
         # Heading - Pushed down to avoid the button
-        html.Hr(style={
-            'backgroundColor': BACKGROUND_COLOR,
-            'marginTop': '3.5rem',  # The "Buffer Zone"
-            }),
-        html.H2("COT Analyzer",
-                style={
-                    'color': BRIGHTER_TEXT_COLOR,
-                    'paddingLeft': '0.5rem'
-                }),
-        html.Hr(style={'backgroundColor': BACKGROUND_COLOR}),
+        html.Hr(style={'backgroundColor': BACKGROUND_COLOR,
+                'marginTop': '3.5rem'}),
+        html.Br(),
+
+        # GLOBAL CONTROLS SECTION
+        html.Label("Global Controls", style={
+                   'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
+        html.Div([
+            # Global Asset Class
+            html.Label("Asset Class", id="label_global_single_asset_class_input", style={
+                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dbc.Select(
+                persistence=True,
+                id='global_single_asset_class_input',
+                options=[{'label': x, 'value': x} for x in asset_class_list],
+                value=f"{cotIndexer.get_default_asset_class()}",
+                className="mb-3",
+                style={'backgroundColor': BACKGROUND_COLOR,
+                       'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+            ),
+
+            html.Label("Multi Asset Class Selector", id='label_global_multi_asset_class_selector_input', style={
+                'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dcc.Dropdown(
+                persistence=True,
+                id='global_multi_asset_class_selector_input',
+                options=[{'label': x, 'value': x}
+                            for x in asset_class_list],
+                value=asset_class_list,  # This selects every item in the list by default
+                multi=True,
+                className="mb-3",
+                searchable=False,
+                clearable=True,
+                # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+            ),
+
+            # Global Single Equity Filter
+            html.Label("Single Asset Selector", id='label_global_single_equity_filter_input', style={
+                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dbc.Select(
+                persistence=True,
+                id='global_single_equity_filter_input',
+                className="mb-3",
+                style={'backgroundColor': BACKGROUND_COLOR,
+                       'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+            ),
+
+            # Global Multi Equity Selector
+            html.Label("Multi Equity Selector", id='label_global_multi_equity_selector_input', style={
+                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dcc.Dropdown(
+                persistence=True,
+                id='global_multi_equity_selector_input',
+                multi=True,
+                className="mb-3",
+                searchable=False,
+                clearable=True,
+                # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+            ),
+
+            # Global Theme
+            html.Label("Color Palette", id='label_global_palette_input', style={
+                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dbc.Select(
+                persistence=True,
+                id='global_palette_input',
+                options=[{'label': x, 'value': x} for x in palette_options],
+                value=palette_options[0] if palette_options else None,
+                className="mb-3",
+                style={'backgroundColor': BACKGROUND_COLOR,
+                       'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+            ),
+
+            # Setup Threshold Selector Group
+            html.Label("Setup Highlight", id='label_global_setup_threshold_input', style={
+                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dbc.Select(
+                persistence=True,
+                id='global_setup_threshold_input',
+                options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
+                value=f"{'None', 'None'}",
+                className="mb-3",
+                style={'backgroundColor': BACKGROUND_COLOR,
+                       'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+            ),
+
+            # Positioning Table Extended Data
+            html.Label("Positioning Table Data", id='label_cot_positioning_column_select_input', style={
+                        'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+            dcc.Dropdown(
+                id='cot_positioning_column_select_input',
+                options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
+                value=[],
+                multi=True,
+                # Adding 'form-control' and 'bg-dark' forces the dark style
+                className="form-control bg-dark text-white border-secondary",
+                searchable=False,
+                clearable=True,
+                # Backup inline style to ensure dark background if the class doesn't apply for some reason
+                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+            )
+        ], className="px-3 mb-4"),
 
         # Navigation Links
+        html.Label("Views", style={
+            'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
         dbc.Nav(
             [
+                dbc.NavLink("Heatmap", href="/heatmap", id="heatmap-link",
+                            active="exact", style={'color': TEXT_COLOR}),
                 dbc.NavLink("Graphs", href="/graphs", id="graphs-link",
                             active="exact", style={'color': TEXT_COLOR}),
-                dbc.NavLink("Positioning", href="/positioning", id="positioning-link",
-                            active="exact", style={'color': TEXT_COLOR})
+                dbc.NavLink("Positioning Table", href="/positioning", id="positioning-link",
+                            active="exact", style={'color': TEXT_COLOR}),
+                dbc.NavLink("Asset Analysis", href="/analysis", id="analysis-link",
+                            active="exact", style={'color': TEXT_COLOR}),
             ],
             vertical=True,
             pills=True,
             className="mb-4"
         ),
+        html.Br(),
 
         # Action Section
+        html.Label("Data Download", style={
+            'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
+        html.Br(),
         html.Div([
-            # html.Hr(style={'opacity': '0.15'}),
             dbc.Button(
                 [html.I(className="bi bi-cloud-download me-2"),
-                 "Download CFTC Data"],
+                 "CFTC Data"],
                 id="sidebar-full-download-btn",
                 color="secondary",
                 outline=True,
                 className="w-100",
                 style={
                     'color': TEXT_COLOR,
-                    'borderColor': 'rgba(171, 184, 201, 0.3)',
+                    'borderColor': f"{TEXT_COLOR}26",
                     'fontSize': '0.9rem'
                 }
             ),
             dcc.Download(id="sidebar-full-download-logic")
-        ]),
-        html.Br(),
+        ], className="px-3 mb-4"),
 
         html.Div([
             dbc.Button(
                 [html.I(className="bi bi-cloud-download me-2"),
-                 "Download Real Test Data"],
+                 "Position Table"],
+                id="btn_download_csv",
+                color="secondary",
+                outline=True,
+                className="w-100",
+                style={
+                    'color': TEXT_COLOR,
+                    'borderColor': f"{TEXT_COLOR}26",
+                    'whiteSpace': 'nowrap'
+                }
+            ),
+            dcc.Download(id="download-positioning-csv"),
+        ], className="px-3 mb-4"),
+
+        html.Div([
+            dbc.Button(
+                [html.I(className="bi bi-cloud-download me-2"),
+                 "Real Test Data"],
                 id="sidebar-real-test-download-btn",
                 color="secondary",
                 outline=True,
                 className="w-100",
                 style={
                     'color': TEXT_COLOR,
-                    'borderColor': 'rgba(171, 184, 201, 0.3)',
+                    'borderColor': f"{TEXT_COLOR}26",
                     'fontSize': '0.9rem'
                 }
             ),
             dcc.Download(id="sidebar-real-test-download-logic")
-        ]),
-        html.Br(),
+        ], className="px-3 mb-4"),
 
         html.Hr(style={'opacity': '0.15'}),
         html.Div([
@@ -904,6 +1329,320 @@ def toggle_sidebar(n_clicks, current_style):
     return SIDEBAR_STYLE, CONTENT_STYLE
 
 
+@app.callback(
+    [Output('global_single_asset_class_input', 'disabled'),
+     Output('global_single_asset_class_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_single_asset_class_input', 'style')
+)
+def update_sidebar_selector(pathname, current_style):
+    is_disabled = pathname == '/positioning' or pathname == '/heatmap'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_global_single_asset_class_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_single_asset_class_input', 'style') # Capture existing style to preserve it
+)
+def dim_label_by_path_single_asset_class(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname == '/positioning' or pathname == '/heatmap'
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
+@app.callback(
+    [Output('global_multi_equity_selector_input', 'disabled'),
+     Output('global_multi_equity_selector_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_multi_equity_selector_input', 'style')
+)
+def update_sidebar_selector_multi_equity_selector(pathname, current_style):
+    is_disabled = pathname != '/graphs'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_global_multi_equity_selector_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_multi_equity_selector_input', 'style')
+)
+def dim_label_by_path_multi_equity_selector(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname != '/graphs'
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
+@app.callback(
+    [Output('global_single_equity_filter_input', 'disabled'),
+     Output('global_single_equity_filter_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_single_equity_filter_input', 'style')
+)
+def update_sidebar_selector(pathname, current_style):
+    is_disabled = pathname != '/analysis'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_global_single_equity_filter_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_single_equity_filter_input', 'style')
+)
+def dim_label_by_path_single_equity_filter(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname != "/analysis"
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
+@app.callback(
+    [Output('global_single_equity_filter_input', 'options'),
+     Output('global_single_equity_filter_input', 'value')],
+    Input('global_single_asset_class_input', 'value')
+)
+def update_asset_dropdown_options(selected_class):
+    if not selected_class:
+        return [], None
+    assets = cotIndexer.get_assets_for_asset_class(selected_class)
+    assets.sort()
+    options = [{'label': x, 'value': x} for x in assets]
+    default_value = options[0].get('value') if options else None
+    return options, default_value
+
+
+@app.callback(
+    [Output('global_multi_equity_selector_input', 'options'),
+     Output('global_multi_equity_selector_input', 'value')],
+    Input('global_single_asset_class_input', 'value')
+)
+def update_multi_asset_dropdown_options(selected_class):
+    if not selected_class:
+        return [], []
+    assets = cotIndexer.get_assets_for_asset_class(selected_class)
+    assets.sort()
+    options = [{'label': x, 'value': x} for x in assets]
+    return options, assets
+
+
+@app.callback(
+    [Output('global_palette_input', 'disabled'),
+     Output('global_palette_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_palette_input', 'style')
+)
+def update_sidebar_selector_palette_input(pathname, current_style):
+    is_disabled = pathname == '/positioning' or pathname == '/heatmap'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+@app.callback(
+    Output('label_global_palette_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_palette_input', 'style')
+)
+def dim_label_by_path_selector_palette(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname == '/positioning' or pathname == '/heatmap'
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+@app.callback(
+    [Output('global_setup_threshold_input', 'disabled'),
+     Output('global_setup_threshold_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_setup_threshold_input', 'style')
+)
+def update_sidebar_selector_setup_threshold(pathname, current_style):
+    is_disabled = pathname == '/positioning' or pathname == '/heatmap'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_global_setup_threshold_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_setup_threshold_input', 'style')
+)
+def dim_label_by_path_setup_threshold(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname == '/positioning' or pathname == "/heatmap"
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
+@app.callback(
+    [Output('global_multi_asset_class_selector_input', 'disabled'),
+     Output('global_multi_asset_class_selector_input', 'style')],
+    Input('url', 'pathname'),
+    State('global_multi_asset_class_selector_input', 'style')
+)
+def update_sidebar_selector(pathname, current_style):
+    is_disabled = pathname == '/graphs' or pathname == '/analysis'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_global_multi_asset_class_selector_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_global_multi_asset_class_selector_input', 'style')
+)
+def dim_label_by_path_multi_asset_class_selector(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname == '/graphs' or pathname == "/analysis"
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
+@app.callback(
+    [Output('cot_positioning_column_select_input', 'disabled'),
+     Output('cot_positioning_column_select_input', 'style')],
+    Input('url', 'pathname'),
+    State('cot_positioning_column_select_input', 'style')
+)
+def update_sidebar_selector_positioning_table_data(pathname, current_style):
+    is_disabled = pathname != '/positioning'
+
+    # Ensure current_style is a dict
+    new_style = (current_style or {}).copy()
+
+    if is_disabled:
+        new_style['opacity'] = '0.2'
+        new_style['cursor'] = 'not-allowed'
+    else:
+        new_style['opacity'] = '1.0'
+        new_style['cursor'] = 'default'
+
+    return is_disabled, new_style
+
+
+@app.callback(
+    Output('label_cot_positioning_column_select_input', 'style'),
+    Input('url', 'pathname'),
+    State('label_cot_positioning_column_select_input', 'style')
+)
+def dim_label_by_path_positioing_table_data(pathname, current_style):
+    # Determine if the control is "Inactive" for the current view
+    is_dimmed = pathname != '/positioning'
+
+    # Clone the current style dictionary to avoid mutating state
+    new_style = (current_style or {}).copy()
+
+    # Apply the Opacity "Filter"
+    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
+    new_style['transition'] = 'opacity 0.5s'
+
+    return new_style
+
+
 ###############################################################################
 #
 # Main Layout
@@ -937,17 +1676,27 @@ app.layout = html.Div([
 )
 def display_page(pathname):
     """Callback to control page navigation."""
-    if pathname == '/positioning':
+    if pathname == '/analysis':
+        return analysis_layout
+    elif pathname == '/positioning':
         return positioning_layout
-    elif pathname == '/graphs' or pathname is None or pathname == '/':
-        return graphs_layout
+    elif pathname == '/heatmap':
+        return heatmap_layout
     else:
         return graphs_layout
 
 @app.callback(
-    [Output('graphs-link', 'active'), Output('positioning-link', 'active')],
+    [Output('graphs-link', 'active'),
+     Output('positioning-link', 'active'),
+     Output('analysis-link', 'active'),
+     Output('heatmap-link', 'active')],
     Input('url', 'pathname')
 )
 def update_active_links(pathname):
     """Callback to set the active state of navigation links based on current pathname."""
-    return pathname == '/graphs' or pathname == '/' or pathname is None, pathname == '/positioning'
+    is_graphs = pathname in ['/graphs', '/', None]
+    is_positioning = pathname == '/positioning'
+    is_analysis = pathname == '/analysis'
+    is_heatmap = pathname == '/heatmap'
+
+    return is_graphs, is_positioning, is_analysis, is_heatmap
