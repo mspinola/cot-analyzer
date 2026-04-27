@@ -63,11 +63,13 @@ class CotDatabase:
         return result
 
     def latest_update_timestamp(self):
+        tz_aware = "Unknown"
         year = str(datetime.now().year)
         result = self.get_zipfile_last_modified_time(year)
-        tz_aware = result.replace(tzinfo=timezone.utc)
-        tz_aware = tz_aware.astimezone(ZoneInfo("America/New_York"))
-        tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
-        if tz_aware is None:
-            tz_aware = "Unknown"
+        if result is not None:
+            tz_aware = result.replace(tzinfo=timezone.utc)
+            tz_aware = tz_aware.astimezone(ZoneInfo("America/New_York"))
+            tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
+            if tz_aware is None:
+                tz_aware = "Unknown"
         return tz_aware

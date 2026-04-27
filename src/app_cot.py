@@ -348,7 +348,7 @@ graphs_layout = html.Div([
         dbc.Col(
             dcc.Loading(
                 type="circle",
-                children=[dcc.Graph(id='cot_graphs', config={
+                children=[dcc.Graph(id='cot_graphs', config={'scrollZoom': True,
                                     'responsive': True}, style={'width': '100%'})],
             ),
             width=12,  # Full width column
@@ -585,7 +585,7 @@ analysis_layout = html.Div([
         dbc.Col(
             dcc.Loading(
                 type="circle",
-                children=[dcc.Graph(id='analysis_stack', config={
+                children=[dcc.Graph(id='analysis_stack', config={'scrollZoom': True,
                                     'responsive': True}, style={'width': '100%'})],
             ),
             width=12,  # Full width column
@@ -645,7 +645,7 @@ def update_analysis_stack(palette_name, asset, setup):
         rows=5,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.05,
+        vertical_spacing=0.06,
         subplot_titles=("Net Position % of Open Interest", "Spearman Correlation + Price",
                         "Net Positions + Open Interest", "Positioning Index (Trend Exhaustion)",
                         "Positioning Z-Score (Statistical Extremes)"),
@@ -746,11 +746,13 @@ def update_analysis_stack(palette_name, asset, setup):
         spikemode="across",
         spikesnap="cursor",
         spikethickness=1,
-        spikecolor=TEXT_COLOR,
+        spikecolor=BRIGHTER_TEXT_COLOR,
         spikedash="solid",
         hoverformat="%Y-%m-%d",
         matches='x',
-        layer="above traces"
+        layer="above traces",
+        showticklabels=True,
+        tickfont_color=TEXT_COLOR
     )
 
     fig.update_layout(
@@ -809,12 +811,12 @@ heatmap_layout = html.Div([
     dbc.Row([
         dbc.Col([
             html.H5("Z-Score Heatmap", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center'}),
-            dcc.Loading(dcc.Graph(id='market_z_score_heat_map'))  # , style={'height': '300px'}))
+            dcc.Loading(dcc.Graph(id='market_z_score_heat_map'))
         ], width=6),
 
         dbc.Col([
             html.H5("Index Heatmap", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center'}),
-            dcc.Loading(dcc.Graph(id='market_index_score_heat_map'))  # , style={'height': '300px'}))
+            dcc.Loading(dcc.Graph(id='market_index_score_heat_map'))
         ], width=6)
     ], className="mb-4"),
     html.Br(),
@@ -865,13 +867,14 @@ def update_z_score_heat_map(assest_classes):
         else:
             y_display_labels.append(name)
             for j, val in enumerate(z_row):
-                row_text[j] = f"{val:.2f}" if not pd.isna(val) else ""
+                row_text[j] = f"{val:.1f}" if not pd.isna(val) else ""
 
         text_matrix.append(row_text)
 
     # Create the Heatmap
     # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
     fig = go.Figure(data=go.Heatmap(
+        hoverinfo='none',
         z=z_values,
         x=['Commercials', 'Large Specs', 'Small Specs'],
         y=y_display_labels,
@@ -882,8 +885,8 @@ def update_z_score_heat_map(assest_classes):
             [0, '#ff4b2b'],
             [0.05, '#ff4b2b'],
             [0.10, '#f87171'],
-            [0.25, '#334155'],
-            [0.75, '#334155'],
+            [0.25, '#252C36'],
+            [0.75, '#252C36'],
             [0.90, '#4ade80'],
             [0.95, '#00c853'],
             [1, '#00c853']
@@ -900,7 +903,7 @@ def update_z_score_heat_map(assest_classes):
             thickness=12,         # Make it thinner/sleeker
             len=0.7,              # Don't let it span the full width
             title=dict(text="Std Dev", side="top", font=dict(size=12)),
-            tickvals=[-3, -2, -1, 0, 1, 2, 3] # Explicit ticks for the Z-score
+            tickvals=[-3, -2, -1, 0, 1, 2, 3]  # Explicit ticks for the Z-score
         )
     ))
 
@@ -915,9 +918,9 @@ def update_z_score_heat_map(assest_classes):
         template="plotly_dark",
         paper_bgcolor=BACKGROUND_COLOR,
         plot_bgcolor=BACKGROUND_COLOR,
-        height=len(z_values) * 25 + 100, # Dynamic height based on row count
-        margin=dict(t=40, b=10, l=120, r=10),  # Left margin for asset names
-        xaxis=dict(side="top", dtick=1),
+        height=len(z_values) * 20 + 100,  # Dynamic height based on row count
+        margin=dict(t=40, b=10, l=80, r=10),  # Left margin for asset names
+        xaxis=dict(side="top", dtick=1, fixedrange=True),
         yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
     )
     return fig
@@ -974,6 +977,7 @@ def update_index_heat_map(assest_classes):
     # Create the Heatmap
     # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
     fig = go.Figure(data=go.Heatmap(
+        hoverinfo='none',
         z=index_values,
         x=['Commercials', 'Large Specs', 'Small Specs'],
         y=y_display_labels,
@@ -984,8 +988,8 @@ def update_index_heat_map(assest_classes):
             [0, '#ff4b2b'],
             [0.05, '#ff4b2b'],
             [0.10, '#f87171'],
-            [0.25, '#334155'],
-            [0.75, '#334155'],
+            [0.25, "#252C36"],
+            [0.75, '#252C36'],
             [0.90, '#4ade80'],
             [0.95, '#00c853'],
             [1, '#00c853']
@@ -1017,57 +1021,12 @@ def update_index_heat_map(assest_classes):
         template="plotly_dark",
         paper_bgcolor=BACKGROUND_COLOR,
         plot_bgcolor=BACKGROUND_COLOR,
-        height=len(index_values) * 25 + 100, # Dynamic height based on row count
-        margin=dict(t=40, b=10, l=120, r=10),  # Left margin for asset names
+        height=len(index_values) * 20 + 100,  # Dynamic height based on row count
+        margin=dict(t=40, b=10, l=80, r=60),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1),
         yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
     )
     return fig
-
-    # df = pd.DataFrame()
-    # for asset_class in assest_classes:
-    #     df = pd.concat([df, cotIndexer.get_asset_class_index_heat(asset_class)])
-    # if df.empty:
-    #     return go.Figure()
-
-    # Extract values for the matrix
-    # index_values = df[['Commercials', 'Large Specs', 'Small Specs']].values
-
-    # Create the Heatmap
-    # We use a Diverging scale: Red (Short Extreme) -> Gray (Neutral) -> Green (Long Extreme)
-    # fig = go.Figure(data=go.Heatmap(
-    #     z=index_values,
-    #     x=['Commercials', 'Large Specs', 'Small Specs'],
-    #     y=df['Asset'],
-    #     text=index_values,
-    #     texttemplate="<b>%{text:.0f}</b>",
-    #     textfont={"size": 13, "family": "Consolas, monospace", "color": BRIGHTER_TEXT_COLOR},
-    #     colorscale=[
-    #         [0.0, 'red'], [0.05, 'red'],                 # Short (Index < 5)
-    #         [0.05, 'pink'], [0.10, 'pink'],              # Close Short (5 < Index < 10)
-    #         [0.10, 'darkgray'], [0.90, 'darkgray'],      # Neutral (10 < Index < 90)
-    #         [0.90, 'lightgreen'], [0.95, 'lightgreen'],  # Close Long (90 < Index < 95)
-    #         [0.95, 'green'], [1.0, 'green']              # Long (Ind > 95)
-    #     ],
-    #     zmin=-0, zmax=100,
-    #     xgap=3,
-    #     ygap=3,
-    #     colorbar=dict(title="Index", thickness=20, tickvals=[0, 10, 20, 30, 40, 50, 60, 70, 80 ,90, 100], len=0.8)
-    # ))
-
-    # # Calculate dynamic height based on number of assets
-    # dynamic_height = len(df) * 28 + 100
-
-    # fig.update_layout(
-    #     height=dynamic_height,
-    #     template="plotly_dark",
-    #     paper_bgcolor=BACKGROUND_COLOR,
-    #     plot_bgcolor=BACKGROUND_COLOR,
-    #     margin=dict(t=40, b=10, l=180, r=10),  # Left margin for asset names
-    #     xaxis=dict(side="top", dtick=1),
-    #     yaxis=dict(dtick=1)
-    # )
-    # return fig
 
 
 ###############################################################################
@@ -1189,7 +1148,7 @@ sidebar = html.Div(
             ),
 
             # Setup Threshold Selector Group
-            html.Label("Setup Highlight", id='label_global_setup_threshold_input', style={
+            html.Label("Setup Highlight (slow)", id='label_global_setup_threshold_input', style={
                        'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
             dbc.Select(
                 persistence=True,
