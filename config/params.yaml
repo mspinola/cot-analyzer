@@ -1,20 +1,20 @@
 # Default lookback periods to include for each COT report
 lookbacks:
-  - ["6-months", 26]
+  # - ["6-months", 26]
   - ["1-years", 52]
-  - ["18-months", 78]
-  - ["2-years", 104]
+  # - ["18-months", 78]
+  # - ["2-years", 104]
 
 # Defines the years of COT data to download and process
-years: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+years: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
 # Color palette for graphs (Commercials, Large Specs, Small Specs, Open Interest)
 # Dictionary of available color schemes
 palettes:
-  "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399"]
-  "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#30D158"]
-  "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#FFFFFF"]
-  "CMR": ["#e70307", "#0000ff", "#ffff00", "#4caf50"]
+  "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
+  "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#00FF00", "#E2E8F0"]
+  "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#00FF00", "#ABB8C9"]
+  "CMR": ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0"]
 
 AssetClasses:
   - FixedIncome:
@@ -28,7 +28,6 @@ AssetClasses:
       - { Name: "S&P 500", Symbol: "ES", CustomLookbackWeeks: 28 }
       - { Name: "DOW", Symbol: "YM", CustomLookbackWeeks: 28 }
       - { Name: "Russell", Symbol: "RTY", CustomLookbackWeeks: 28 }
-      - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
       - { Name: "Vix", Symbol: "VX", CustomLookbackWeeks: 28 }
       - { Name: "MSCI EM", Symbol: "MME", CustomLookbackWeeks: 28 }
       - { Name: "MSCI EM Mini", Symbol: "MFS", CustomLookbackWeeks: 28 }

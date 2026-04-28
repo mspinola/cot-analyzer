@@ -21,9 +21,21 @@ SMALL_SHORT = "NonRept_Positions_Short_All"
 
 # Columns to create for consumed COT data
 COMM_NET = "Comm_Positions_Net"
-COMM_OI_NORMALIZED = "Comm_Positions_Net_Normalized"  # 26-week comms net pos / OI; WILCO will be calculated based on this column
 LARGE_NET = "NonComm_Positions_Net"
 SMALL_NET = "NonRept_Positions_Net"
+
+COMM_Z_SCORE = "Comm_Z_Score"
+LARGE_Z_SCORE = "NonComm_Z_Score"
+SMALL_Z_SCORE = "NonRept_Z_Score"
+
+COMM_PCT_OI = "Comm_OI_Pct"
+LARGE_PCT_OI = "NonComm_OI_Pct"
+SMALL_PCT_OI = "NonRept_OI_Pct"
+
+COMM_CORR = "Comm_Price_Spearman"
+LARGE_CORR = "Large_Price_Spearman"
+SMALL_CORR = "Small_Price_Spearman"
+
 COMM_26_IDX = "Comm-26-idx"
 CLOSING_PRICE = "Closing_Price"
 WILLCO = "willco"
@@ -111,7 +123,7 @@ class CotCmrIndexer:
     def get_palette(self, name=None):
         """Returns a specific palette by name or the first one as default."""
         if not name or name not in self.palettes:
-            return self.palettes.get(self.default_palette_name, ["#e70307", "#0000ff", "#ffff00", "#4caf50"])
+            return self.palettes.get(self.default_palette_name, ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0"])
         return self.palettes[name]
 
     def get_palette_names(self):
@@ -160,11 +172,10 @@ class CotCmrIndexer:
 
         for idx in range(len(df)):
             if lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, "Comm-" + col_header_name] = -1
-                df.at[idx, "LrgSpec-" + col_header_name] = -1
-                df.at[idx, "SmlSpec-" + col_header_name] = -1
-                df.at[idx, COMM_26_IDX] = -1
-                df.at[idx, COMM_OI_NORMALIZED] = -1
+                df.at[idx, "Comm-" + col_header_name] = None
+                df.at[idx, "LrgSpec-" + col_header_name] = None
+                df.at[idx, "SmlSpec-" + col_header_name] = None
+                df.at[idx, COMM_26_IDX] = None
             else:
                 lb_idx = idx - lb_weeks
                 df.at[idx, "Comm-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
@@ -176,14 +187,10 @@ class CotCmrIndexer:
 
                 # Always calculate the 26-week commercial Index for use in the IW process, even if the lookback being processed is not 26 weeks
                 if idx < 26:
-                    df.at[idx, COMM_26_IDX] = -1
-                    df.at[idx, COMM_OI_NORMALIZED] = -1
+                    df.at[idx, COMM_26_IDX] = None
                 else:
                     df.at[idx, COMM_26_IDX] = CotCmrIndexer.calculate_cot_index(
                         df[COMM_NET], idx - 26, idx)
-
-                    # Calculate normalized commercial net position for use in WILCO calculation; adding a tiny epsilon to the denominator prevents division by zero
-                    df.at[idx, COMM_OI_NORMALIZED] = df[COMM_NET][idx] / (df[INTEREST][idx] + 1e-9)
 
     @staticmethod
     def is_commodity(asset_class):
@@ -196,7 +203,7 @@ class CotCmrIndexer:
 
         try:
             # Fetch and Merge Closing Price for the Report Date
-            # logging.info(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
+            logging.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
             start_date = f"{self.years[0]}-01-01"
             price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
 
@@ -213,7 +220,7 @@ class CotCmrIndexer:
 
                 # Ensure COT dates are datetime and force matching nanosecond resolution
                 df[DATE] = pd.to_datetime(df[DATE]).dt.tz_localize(None).astype('datetime64[ns]')
-                logging.info(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
+                logging.debug(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
 
                 # Merge price data into the main dataframe based on the DATE column
                 # Use 'forward' to find the closest next trading day if a Tuesday was a holiday
@@ -235,44 +242,92 @@ class CotCmrIndexer:
         except Exception as e:
             logging.error(f"Error fetching price for {symbol}: {e}")
 
-
     def calculate_willco(self, lb_weeks, df):
         for idx in range(len(df)):
             asset_class = self.get_instrument_from_code(df[CODE][idx]).asset_class
             if not CotCmrIndexer.is_commodity(asset_class) or lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, WILLCO] = -1
+                df.at[idx, WILLCO] = None
             else:
                 # We find the rolling min and max of the Commercial Normalized Net position
-                oi_min = df[COMM_OI_NORMALIZED].iloc[idx+1-lb_weeks:idx+1].min()
-                oi_max = df[COMM_OI_NORMALIZED].iloc[idx+1-lb_weeks:idx+1].max()
+                oi_min = df[COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].min()
+                oi_max = df[COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].max()
 
                 if math.isnan(oi_max) or math.isnan(oi_min):
-                    df.at[idx, WILLCO] = -1
+                    df.at[idx, WILLCO] = None
                 else:
                     # Adding a tiny epsilon to the denominator prevents division by zero
-                    cur_normalized_net = df.at[idx, COMM_OI_NORMALIZED]
+                    cur_normalized_net = df.at[idx, COMM_PCT_OI]
                     willco = int((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
                     df.at[idx, WILLCO] = willco
+
 
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
 
             # Add new columns for net positions
-            df.insert(df.columns.get_loc(COMM_SHORT) + 1,
-                      COMM_NET, df[COMM_LONG] - df[COMM_SHORT])
-            df.insert(df.columns.get_loc(LARGE_SHORT) + 1,
-                      LARGE_NET, df[LARGE_LONG] - df[LARGE_SHORT])
-            df.insert(df.columns.get_loc(SMALL_SHORT) + 1,
-                      SMALL_NET, df[SMALL_LONG] - df[SMALL_SHORT])
+            df[COMM_NET] = df[COMM_LONG] - df[COMM_SHORT]
+            df[LARGE_NET] = df[LARGE_LONG] - df[LARGE_SHORT]
+            df[SMALL_NET] = df[SMALL_LONG] - df[SMALL_SHORT]
+
+            # Add new columns for position as percent of open interest
+            # Adding epsilon (1e-9) to denominator prevents division by zero
+            df[COMM_PCT_OI] = round((df[COMM_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
+            df[LARGE_PCT_OI] = round((df[LARGE_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
+            df[SMALL_PCT_OI] = round((df[SMALL_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
 
             CotCmrIndexer.process_lookback(
                 ["custom", self.instruments[instrument].custom_lookback], df)
             for lookback in self.lookbacks:
                 CotCmrIndexer.process_lookback(lookback, df)
 
-            self.calculate_willco(26, df)
             self.retrieve_report_date_closing_prices(self.instruments[instrument])
+
+            corr_window = 26
+            if CLOSING_PRICE in df.columns:
+                logging.debug(f"Calculating Rolling Spearman Correlation for {self.instruments[instrument].symbol}...")
+
+                # Calculate the rank of the price and position within the rolling window
+                price_rank = df[CLOSING_PRICE].rolling(window=corr_window).rank()
+                comm_pos_rank = df[COMM_NET].rolling(window=corr_window).rank()
+                lrg_pos_rank = df[LARGE_NET].rolling(window=corr_window).rank()
+                sml_pos_rank = df[SMALL_NET].rolling(window=corr_window).rank()
+
+                # Pearson correlation of the ranks = Spearman correlation
+                # We apply a rolling correlation to the already-ranked series
+                df[COMM_CORR] = price_rank.rolling(window=corr_window).corr(comm_pos_rank)
+                df[LARGE_CORR] = price_rank.rolling(window=corr_window).corr(lrg_pos_rank)
+                df[SMALL_CORR] = price_rank.rolling(window=corr_window).corr(sml_pos_rank)
+
+                # Optional: Fill NaNs for the initial window period to avoid plotting artifacts
+                df[COMM_CORR] = df[COMM_CORR].fillna(0)
+                df[LARGE_CORR] = df[LARGE_CORR].fillna(0)
+                df[SMALL_CORR] = df[SMALL_CORR].fillna(0)
+            else:
+                df[COMM_CORR] = 0
+                df[LARGE_CORR] = 0
+                df[SMALL_CORR] = 0
+
+            z_window = 52
+            # Commercials Z-Score
+            comm_mean = df[COMM_NET].rolling(window=z_window).mean()
+            comm_std = df[COMM_NET].rolling(window=z_window).std()
+            df[COMM_Z_SCORE] = (df[COMM_NET] - comm_mean) / comm_std
+
+            # Large Speculators Z-Score
+            lrg_mean = df[LARGE_NET].rolling(window=z_window).mean()
+            lrg_std = df[LARGE_NET].rolling(window=z_window).std()
+            df[LARGE_Z_SCORE] = (df[LARGE_NET] - lrg_mean) / lrg_std
+
+            # Small Speculators Z-Score
+            sml_mean = df[SMALL_NET].rolling(window=z_window).mean()
+            sml_std = df[SMALL_NET].rolling(window=z_window).std()
+            df[SMALL_Z_SCORE] = (df[SMALL_NET] - sml_mean) / sml_std
+
+            # Handle initial NaNs to keep the plots clean
+            df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]] = df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]].fillna(0)
+
+            self.calculate_willco(26, df)
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
@@ -514,21 +569,35 @@ class CotCmrIndexer:
     def get_symbols_custom_index(self, name):
         instrument = self.get_instrument_from_name(name)
         if instrument is not None:
-            if instrument is not None:
-                df = instrument.df
-                result = pd.DataFrame()
-                result["date"] = df[DATE]
-                result["comms"] = df['Comm-custom-idx']
-                result["lrg"] = df['LrgSpec-custom-idx']
-                result["sml"] = df['SmlSpec-custom-idx']
-                result["comms_net"] = df[COMM_NET]
-                result["lrg_net"] = df[LARGE_NET]
-                result["sml_net"] = df[SMALL_NET]
-                result["oi"] = df[INTEREST]
-                result["price"] = df[CLOSING_PRICE]
-                result = result[result["comms"] != -1]
-                result.set_index("date", inplace=True)
-                return result
+            df = instrument.df
+            result = pd.DataFrame()
+            result["date"] = df[DATE]
+
+            result["comms"] = df['Comm-custom-idx']
+            result["lrg"] = df['LrgSpec-custom-idx']
+            result["sml"] = df['SmlSpec-custom-idx']
+
+            result["comms_net"] = df[COMM_NET]
+            result["lrg_net"] = df[LARGE_NET]
+            result["sml_net"] = df[SMALL_NET]
+
+            result["comm_oi_pct"] = df[COMM_PCT_OI]
+            result["lrg_oi_pct"] = df[LARGE_PCT_OI]
+            result["sml_oi_pct"] = df[SMALL_PCT_OI]
+
+            result["comm_spearman"] = df[COMM_CORR]
+            result["lrg_spearman"] = df[LARGE_CORR]
+            result["sml_spearman"] = df[SMALL_CORR]
+
+            result["comms-z"] = df[COMM_Z_SCORE]
+            result["lrg-z"] = df[LARGE_Z_SCORE]
+            result["sml-z"] = df[SMALL_Z_SCORE]
+
+            result["oi"] = df[INTEREST]
+            result["price"] = df[CLOSING_PRICE]
+
+            result.set_index("date", inplace=True)
+            return result
         return None
 
     def get_positioning_table_by_asset_class(self, asset_classes):
@@ -589,3 +658,44 @@ class CotCmrIndexer:
                 positioning_df = pd.concat([positioning_df, new_df])
 
         return positioning_df
+
+
+    def get_asset_class_z_score_heat(self, asset_class):
+        """Returns the latest Z-scores for all assets in a class."""
+        assets = self.get_assets_for_asset_class(asset_class)
+        heat_data = []
+
+        for name in assets:
+            instrument = self.get_instrument_from_name(name)
+            if instrument is not None and not instrument.df.empty:
+                df = instrument.df
+                # Get the most recent non-NaN Z-scores
+                latest = df.iloc[-1]
+                heat_data.append({
+                    "Asset": name,
+                    "Commercials": latest.get("Comm_Z_Score", 0),
+                    "Large Specs": latest.get("NonComm_Z_Score", 0),
+                    "Small Specs": latest.get("NonRept_Z_Score", 0)
+                })
+
+        return pd.DataFrame(heat_data)
+
+    def get_asset_class_index_heat(self, asset_class):
+        """Returns the latest Index for all assets in a class."""
+        assets = self.get_assets_for_asset_class(asset_class)
+        heat_data = []
+
+        for name in assets:
+            instrument = self.get_instrument_from_name(name)
+            if instrument is not None and not instrument.df.empty:
+                df = instrument.df
+                # Get the most recent non-NaN Z-scores
+                latest = df.iloc[-1]
+                heat_data.append({
+                    "Asset": name,
+                    "Commercials": latest.get("Comm-custom-idx", 0),
+                    "Large Specs": latest.get("LrgSpec-custom-idx", 0),
+                    "Small Specs": latest.get("SmlSpec-custom-idx", 0)
+                })
+
+        return pd.DataFrame(heat_data)
