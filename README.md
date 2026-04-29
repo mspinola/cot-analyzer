@@ -28,6 +28,9 @@ Description of [COT Legacy Report data fields](https://www.cftc.gov/MarketReport
 After cloning create a venv or Anaconda environment for Python
 
     ```bash
+    # Install uv if necessary
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt

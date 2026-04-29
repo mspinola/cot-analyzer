@@ -10,13 +10,15 @@
 /* Ensure the arrow stays the same color when the user clicks it */
 .form-select:focus {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    font-size: 0.85rem !important;
+    min-height: 32px !important;
 }
 
 /* Target the NEW Dash 4 Dropdown Variables */
 :root {
     --Dash-Fill-Interactive-Strong: #1a1a1a; /* Background of the box */
-    --Dash-Stroke-Strong: #ABB8C9;           /* Border color */
-    --Dash-Text-Main: #E2E8F0;               /* Main text color */
+    --Dash-Stroke-Strong: #E2E8F0;           /* Border color */
+    --Dash-Text-Main: #ABB8C9;               /* Main text color */
 }
 
 /* Target the Legacy dcc.Dropdown classes (for compatibility) */
@@ -85,7 +87,10 @@
 .Select-control:active {
     background-color: #1a1a1a !important;
     border-color: #ABB8C9 !important;
-    box-shadow: none !important; /* Removes the blue/white glow */
+    box-shadow: 0 0 0 0.2rem rgba(171, 184, 201, 0.25) !important;
+/*    border-color: #ABB8C9 !important;
+    box-shadow: none !important;
+    */
 }
 
 /* The background of the entire list container (the part that drops down) */
@@ -116,7 +121,7 @@
 /* 1. The entire dropdown menu container */
 .Select-menu-outer {
     background-color: #1a1a1a !important;
-    border: 1px solid #ABB8C9 !important;
+    border: 1px solid #E2E8F0 !important;
     border-top: none !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
 }
@@ -191,7 +196,7 @@
 .dash-options-list-option,
 .dash-dropdown-option {
     background-color: #1a1a1a !important;
-    color: #E2E8F0 !important;
+    color: #ABB8C9 !important;
     padding: 8px 12px !important;
 }
 
@@ -217,7 +222,7 @@
 
 /* Target the '9 selected' text specifically */
 .dash-dropdown-value-count {
-    color: #E2E8F0 !important;
+    color: #ABB8C9 !important;
     font-weight: 500 !important;
     padding-right: 5px !important;
     /* Ensure no white background is lingering behind the text */
@@ -409,11 +414,37 @@
 .dash-dropdown .Select-control,
 .dash-dropdown .dash-dropdown-container,
 .dash-dropdown .dash-dropdown-values-container {
+border: 1px solid #ABB8C9 !important;
     background-color: #1a1a1a !important;
-    /* Use the exact same border color and width as dbc.Select */
-    border: 1px solid rgba(171, 184, 201, 0.3) !important;
-    min-height: 38px !important; /* Matches standard Bootstrap height */
     border-radius: 4px !important;
+    transition: 0.2s ease-in-out !important;
+    /*
+    background-color: #1a1a1a !important;
+    Use the exact same border color and width as dbc.Select */
+    /*
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    min-height: 38px !important;
+    border-radius: 4px !important;
+    */
+}
+
+/* Sets the text color of selected items in a multi-select dropdown */
+.dash-dropdown .Select--multi .Select-value-label {
+    /* Uses your BRIGHTER_TEXT_COLOR for maximum legibility */
+    color: #ABB8C9 !important;
+    font-size: 0.85rem !important;
+}
+
+/* Ensures the 'X' (remove) button next to the text also matches */
+.dash-dropdown .Select--multi .Select-value-icon {
+    color: #ABB8C9 !important; /* Your standard TEXT_COLOR */
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Changes the background of the 'pill' to stay dark */
+.dash-dropdown .Select--multi .Select-value {
+    background-color: #2d2d2d !important;
+    border: 1px solid rgba(171, 184, 201, 0.4) !important;
 }
 
 /* 2. Remove the ghost gray background inside the multi-select wrapper */
@@ -422,12 +453,54 @@
     background-color: transparent !important;
 }
 
+/* Match the hover state of the dropdown border to the button hover */
+.dash-dropdown .Select-control:hover {
+    border-color: rgba(171, 184, 201, 0.8) !important;
+    cursor: pointer;
+}
+
 /* 3. Ensure the text color matches the 'Slate' look */
 .dash-dropdown .Select-value-label,
+.dash-dropdown .Select-value-item,
+.dash-dropdown .Select--multi .Select-value-label,
 .dash-dropdown .Select-placeholder,
-.dash-dropdown .dash-dropdown-value-count {
-    color: #E2E8F0 !important;
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .dash-dropdown-values-container .dash-dropdown-value {
+    color: #ABB8C9 !important;
+    font-weight: 500 !important;
     line-height: 34px !important; /* Centers the text vertically */
+}
+
+/* 1. Target the text of the selected items */
+.dash-dropdown .dash-dropdown-value-item {
+    color: #E2E8F0 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-size: 0.85rem !important;
+}
+
+/* 2. Target the 'X' (remove) button next to the text */
+.dash-dropdown .dash-dropdown-value-item--remove {
+    color: #ABB8C9 !important; /* Your standard TEXT_COLOR */
+    cursor: pointer !important;
+    padding-left: 5px !important;
+}
+
+/* 3. Optional: Maintain the dark background for the pill */
+.dash-dropdown .dash-dropdown-value-item {
+    background-color: #2d2d2d !important;
+    border: 0px solid rgba(171, 184, 201, 0.0) !important;
+    border-radius: 0px !important;
+    margin: 2px !important;
+}
+
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .Select-value-label[data-selected-count] {
+    color: #E2E8F0 !important;
+}
+
+/* 3. Ensure the 'X' remove icon matches the theme */
+.dash-dropdown .Select-value-icon {
+    color: #ABB8C9 !important;
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
 }
 
 /* 4. Match the 'Focus' state exactly */
@@ -491,17 +564,23 @@
     background-color: #2d3d50 !important; /* Muted blue-gray to match your 'Analysis' button */
     color: #E2E8F0 !important;           /* Your BRIGHTER_TEXT_COLOR */
     box-shadow: none !important;         /* Removes the default Bootstrap blue glow */
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
 }
 
 /* Ensure the text and background look correct when focused */
 .accordion-button:focus {
     border-color: rgba(171, 184, 201, 0.3) !important;
     box-shadow: 0 0 0 0.25rem rgba(64, 90, 125, 0.25) !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
 }
 
 /* Change the color of the accordion arrow (chevron) when expanded */
 .accordion-button:not(.collapsed)::after {
     filter: brightness(0) invert(1); /* Flips the black arrow to white */
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
 }
 
 /* The body of the expanded item */
@@ -509,4 +588,5 @@
     background-color: #1a1a1a !important; /* Your BACKGROUND_COLOR */
     color: #ABB8C9 !important;           /* Your TEXT_COLOR */
     border-top: 1px solid rgba(171, 184, 201, 0.1) !important;
+    padding: 0.5rem 0.75rem !important;
 }
