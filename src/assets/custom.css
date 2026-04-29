@@ -486,3 +486,27 @@
     color: #999 !important; /* Ensure the color contrasts with your background */
 }
 
+/* Target the active (expanded) accordion header */
+.accordion-button:not(.collapsed) {
+    background-color: #2d3d50 !important; /* Muted blue-gray to match your 'Analysis' button */
+    color: #E2E8F0 !important;           /* Your BRIGHTER_TEXT_COLOR */
+    box-shadow: none !important;         /* Removes the default Bootstrap blue glow */
+}
+
+/* Ensure the text and background look correct when focused */
+.accordion-button:focus {
+    border-color: rgba(171, 184, 201, 0.3) !important;
+    box-shadow: 0 0 0 0.25rem rgba(64, 90, 125, 0.25) !important;
+}
+
+/* Change the color of the accordion arrow (chevron) when expanded */
+.accordion-button:not(.collapsed)::after {
+    filter: brightness(0) invert(1); /* Flips the black arrow to white */
+}
+
+/* The body of the expanded item */
+.accordion-body {
+    background-color: #1a1a1a !important; /* Your BACKGROUND_COLOR */
+    color: #ABB8C9 !important;           /* Your TEXT_COLOR */
+    border-top: 1px solid rgba(171, 184, 201, 0.1) !important;
+}

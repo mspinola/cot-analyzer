@@ -897,11 +897,12 @@ def update_z_score_heat_map(assest_classes):
         showscale=True,
         colorbar=dict(
             orientation='h',      # Flip to horizontal
-            y=-0.08,              # Position it just below the X-axis
+            y=-1.15,
+            yanchor='bottom',
             x=0.5,                # Center it under the chart
             xanchor='center',
-            thickness=12,         # Make it thinner/sleeker
-            len=0.7,              # Don't let it span the full width
+            thickness=15,         # Make it thinner/sleeker
+            len=0.8,              # Don't let it span the full width
             title=dict(text="Std Dev", side="top", font=dict(size=12)),
             tickvals=[-3, -2, -1, 0, 1, 2, 3]  # Explicit ticks for the Z-score
         )
@@ -918,8 +919,8 @@ def update_z_score_heat_map(assest_classes):
         template="plotly_dark",
         paper_bgcolor=BACKGROUND_COLOR,
         plot_bgcolor=BACKGROUND_COLOR,
-        height=len(z_values) * 20 + 100,  # Dynamic height based on row count
-        margin=dict(t=40, b=10, l=80, r=10),  # Left margin for asset names
+        height=len(z_values) * 45 + 250,  # Dynamic height based on row count
+        margin=dict(t=100, b=100, l=80, r=60),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1, fixedrange=True),
         yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
     )
@@ -1000,11 +1001,12 @@ def update_index_heat_map(assest_classes):
         showscale=True,
         colorbar=dict(
             orientation='h',      # Flip to horizontal
-            y=-0.08,              # Position it just below the X-axis
+            y=-1.15,
+            yanchor='bottom',
             x=0.5,                # Center it under the chart
             xanchor='center',
-            thickness=12,         # Make it thinner/sleeker
-            len=0.7,              # Don't let it span the full width
+            thickness=15,         # Make it thinner/sleeker
+            len=0.8,              # Don't let it span the full width
             title=dict(text="Index", side="top", font=dict(size=12)),
             tickvals=[0, 25, 50, 75, 100]
         )
@@ -1021,8 +1023,8 @@ def update_index_heat_map(assest_classes):
         template="plotly_dark",
         paper_bgcolor=BACKGROUND_COLOR,
         plot_bgcolor=BACKGROUND_COLOR,
-        height=len(index_values) * 20 + 100,  # Dynamic height based on row count
-        margin=dict(t=40, b=10, l=80, r=60),  # Left margin for asset names
+        height=len(index_values) * 45 + 250,  # Dynamic height based on row count
+        margin=dict(t=100, b=100, l=80, r=60),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1),
         yaxis=dict(dtick=1, autorange="reversed", fixedrange=True)
     )
@@ -1068,189 +1070,164 @@ CONTENT_STYLE_HIDDEN = {
 sidebar = html.Div(
     id="sidebar",
     children=[
-        # Heading - Pushed down to avoid the button
-        html.Hr(style={'backgroundColor': BACKGROUND_COLOR,
-                'marginTop': '3.5rem'}),
-        html.Br(),
-
-        # GLOBAL CONTROLS SECTION
-        html.Label("Global Controls", style={
-                   'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
         html.Div([
-            # Global Asset Class
-            html.Label("Asset Class", id="label_global_single_asset_class_input", style={
-                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dbc.Select(
-                persistence=True,
-                id='global_single_asset_class_input',
-                options=[{'label': x, 'value': x} for x in asset_class_list],
-                value=f"{cotIndexer.get_default_asset_class()}",
-                className="mb-3",
-                style={'backgroundColor': BACKGROUND_COLOR,
-                       'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
-            ),
+            html.H3("", className="display-6", style={'color': BRIGHTER_TEXT_COLOR, 'padding': '1rem'}),
+            html.Hr(style={'opacity': '0.15'}),
+        ], style={'marginTop': '3rem'}),
 
-            html.Label("Multi Asset Class Selector", id='label_global_multi_asset_class_selector_input', style={
-                'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dcc.Dropdown(
-                persistence=True,
-                id='global_multi_asset_class_selector_input',
-                options=[{'label': x, 'value': x}
-                            for x in asset_class_list],
-                value=asset_class_list,  # This selects every item in the list by default
-                multi=True,
-                className="mb-3",
-                searchable=False,
-                clearable=True,
-                # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-            ),
+        # Use an Accordion to group controls
+        dbc.Accordion([
+            dbc.AccordionItem([
+                dbc.Nav([
+                    dbc.NavLink("Heatmap", href="/heatmap", active="exact"),
+                    dbc.NavLink("Graphs", href="/graphs", active="exact"),
+                    dbc.NavLink("Positioning", href="/positioning", active="exact"),
+                    dbc.NavLink("Analysis", href="/analysis", active="exact"),
+                ], vertical=True, pills=True),
+            ], title="Views", item_id="nav-links"),
+            dbc.AccordionItem([
+                dbc.Button(
+                    [html.I(className="bi bi-cloud-download me-2"),
+                        "Download CFTC Data"],
+                    id="sidebar-full-download-btn",
+                    color="secondary",
+                    outline=True,
+                    className="w-100 mb-2",
+                    style={
+                        'color': TEXT_COLOR,
+                        'borderColor': f"{TEXT_COLOR}26",
+                        'fontSize': '0.9rem'
+                    }
+                ),
+                dcc.Download(id="sidebar-full-download-logic"),
 
-            # Global Single Equity Filter
-            html.Label("Single Asset Selector", id='label_global_single_equity_filter_input', style={
-                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dbc.Select(
-                persistence=True,
-                id='global_single_equity_filter_input',
-                className="mb-3",
-                style={'backgroundColor': BACKGROUND_COLOR,
-                       'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
-            ),
+                dbc.Button(
+                    [html.I(className="bi bi-cloud-download me-2"),
+                        "Download Position Table"],
+                    id="btn_download_csv",
+                    color="secondary",
+                    outline=True,
+                    className="w-100 mb-2",
+                    style={
+                        'color': TEXT_COLOR,
+                        'borderColor': f"{TEXT_COLOR}26",
+                        'whiteSpace': 'nowrap'
+                    }
+                ),
+                dcc.Download(id="download-positioning-csv"),
 
-            # Global Multi Equity Selector
-            html.Label("Multi Equity Selector", id='label_global_multi_equity_selector_input', style={
-                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dcc.Dropdown(
-                persistence=True,
-                id='global_multi_equity_selector_input',
-                multi=True,
-                className="mb-3",
-                searchable=False,
-                clearable=True,
-                # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-            ),
+                dbc.Button(
+                    [html.I(className="bi bi-cloud-download me-2"),
+                        "Download Real Test Data"],
+                    id="sidebar-real-test-download-btn",
+                    color="secondary",
+                    outline=True,
+                    className="w-100 mb-2",
+                    style={
+                        'color': TEXT_COLOR,
+                        'borderColor': f"{TEXT_COLOR}26",
+                        'fontSize': '0.9rem'
+                    }
+                ),
+                dcc.Download(id="sidebar-real-test-download-logic")
+            ], title="Data Download", item_id="data-download"),
+            dbc.AccordionItem([
+                html.Label("Color Palette", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dbc.Select(
+                    persistence=True,
+                    id='global_palette_input',
+                    options=[{'label': x, 'value': x} for x in palette_options],
+                    value=palette_options[0] if palette_options else None,
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR, 'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+                ),
 
-            # Global Theme
-            html.Label("Color Palette", id='label_global_palette_input', style={
-                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dbc.Select(
-                persistence=True,
-                id='global_palette_input',
-                options=[{'label': x, 'value': x} for x in palette_options],
-                value=palette_options[0] if palette_options else None,
-                className="mb-3",
-                style={'backgroundColor': BACKGROUND_COLOR,
-                       'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
-            ),
+                html.Label("Setup Highlight", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dbc.Select(
+                    persistence=True,
+                    id='global_setup_threshold_input',
+                    options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
+                    value=f"{'None', 'None'}",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR, 'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+                ),
+                dbc.Tooltip(
+                    "Highlight plots with index extremes. This can be really slow.",
+                    target="global_setup_threshold_input",
+                    placement="right"
+                ),
+            ], title="Theme Styling", item_id="theme-link"),
 
-            # Setup Threshold Selector Group
-            html.Label("Setup Highlight (slow)", id='label_global_setup_threshold_input', style={
-                       'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dbc.Select(
-                persistence=True,
-                id='global_setup_threshold_input',
-                options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
-                value=f"{'None', 'None'}",
-                className="mb-3",
-                style={'backgroundColor': BACKGROUND_COLOR,
-                       'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
-            ),
+            dbc.AccordionItem([
+                html.Label("Asset Class", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dbc.Select(
+                    persistence=True,
+                    id='global_single_asset_class_input',
+                    options=[{'label': x, 'value': x}
+                             for x in asset_class_list],
+                    value=f"{cotIndexer.get_default_asset_class()}",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR,
+                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                ),
 
-            # Positioning Table Extended Data
-            html.Label("Positioning Table Data", id='label_cot_positioning_column_select_input', style={
-                        'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-            dcc.Dropdown(
-                id='cot_positioning_column_select_input',
-                options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
-                value=[],
-                multi=True,
-                # Adding 'form-control' and 'bg-dark' forces the dark style
-                className="form-control bg-dark text-white border-secondary",
-                searchable=False,
-                clearable=True,
-                # Backup inline style to ensure dark background if the class doesn't apply for some reason
-                style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                       'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-            )
-        ], className="px-3 mb-4"),
+                html.Label("Multi Asset Class Selector", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dcc.Dropdown(
+                    persistence=True,
+                    id='global_multi_asset_class_selector_input',
+                    options=[{'label': x, 'value': x}
+                             for x in asset_class_list],
+                    value=asset_class_list,  # This selects every item in the list by default
+                    multi=True,
+                    className="mb-3 bg-dark text-white border-secondary",
+                    searchable=False,
+                    clearable=True,
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                           'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                ),
 
-        # Navigation Links
-        html.Label("Views", style={
-            'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
-        dbc.Nav(
-            [
-                dbc.NavLink("Heatmap", href="/heatmap", id="heatmap-link",
-                            active="exact", style={'color': TEXT_COLOR}),
-                dbc.NavLink("Graphs", href="/graphs", id="graphs-link",
-                            active="exact", style={'color': TEXT_COLOR}),
-                dbc.NavLink("Positioning Table", href="/positioning", id="positioning-link",
-                            active="exact", style={'color': TEXT_COLOR}),
-                dbc.NavLink("Asset Analysis", href="/analysis", id="analysis-link",
-                            active="exact", style={'color': TEXT_COLOR}),
-            ],
-            vertical=True,
-            pills=True,
-            className="mb-4"
-        ),
-        html.Br(),
+                # Global Single Equity Filter
+                html.Label("Single Asset Selector", style={
+                           'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dbc.Select(
+                    persistence=True,
+                    id='global_single_equity_filter_input',
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR,
+                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                ),
 
-        # Action Section
-        html.Label("Data Download", style={
-            'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'fontSize': '1rem'}),
-        html.Br(),
-        html.Div([
-            dbc.Button(
-                [html.I(className="bi bi-cloud-download me-2"),
-                 "CFTC Data"],
-                id="sidebar-full-download-btn",
-                color="secondary",
-                outline=True,
-                className="w-100",
-                style={
-                    'color': TEXT_COLOR,
-                    'borderColor': f"{TEXT_COLOR}26",
-                    'fontSize': '0.9rem'
-                }
-            ),
-            dcc.Download(id="sidebar-full-download-logic")
-        ], className="px-3 mb-4"),
+                # Global Multi Equity Selector
+                html.Label("Multi Equity Selector", style={
+                           'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dcc.Dropdown(
+                    persistence=True,
+                    id='global_multi_equity_selector_input',
+                    multi=True,
+                    className="mb-3 bg-dark text-white border-secondary",
+                    searchable=False,
+                    clearable=True,
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                           'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                ),
 
-        html.Div([
-            dbc.Button(
-                [html.I(className="bi bi-cloud-download me-2"),
-                 "Position Table"],
-                id="btn_download_csv",
-                color="secondary",
-                outline=True,
-                className="w-100",
-                style={
-                    'color': TEXT_COLOR,
-                    'borderColor': f"{TEXT_COLOR}26",
-                    'whiteSpace': 'nowrap'
-                }
-            ),
-            dcc.Download(id="download-positioning-csv"),
-        ], className="px-3 mb-4"),
-
-        html.Div([
-            dbc.Button(
-                [html.I(className="bi bi-cloud-download me-2"),
-                 "Real Test Data"],
-                id="sidebar-real-test-download-btn",
-                color="secondary",
-                outline=True,
-                className="w-100",
-                style={
-                    'color': TEXT_COLOR,
-                    'borderColor': f"{TEXT_COLOR}26",
-                    'fontSize': '0.9rem'
-                }
-            ),
-            dcc.Download(id="sidebar-real-test-download-logic")
-        ], className="px-3 mb-4"),
+                # Positioning Table Extended Data
+                html.Label("Positioning Table Data", style={
+                           'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                dcc.Dropdown(
+                    id='cot_positioning_column_select_input',
+                    options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
+                    value=[],
+                    multi=True,
+                    # Adding 'form-control' and 'bg-dark' forces the dark style
+                    className="mb-3 bg-dark text-white border-secondary",
+                    searchable=False,
+                    clearable=True,
+                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
+                           'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
+                )
+            ], title="Asset Selection", item_id="asset-selection"),
+        ], active_item="nav-links", flush=True, className="bg-dark"),
 
         html.Hr(style={'opacity': '0.15'}),
         html.Div([
@@ -1383,27 +1360,6 @@ def update_multi_asset_dropdown_options(selected_class):
     options = [{'label': x, 'value': x} for x in assets]
     return options, assets
 
-
-@app.callback(
-    [Output('global_palette_input', 'disabled'),
-     Output('global_palette_input', 'style')],
-    Input('url', 'pathname'),
-    State('global_palette_input', 'style')
-)
-def update_sidebar_selector_palette_input(pathname, current_style):
-    is_disabled = pathname == '/positioning' or pathname == '/heatmap'
-
-    # Ensure current_style is a dict
-    new_style = (current_style or {}).copy()
-
-    if is_disabled:
-        new_style['opacity'] = '0.2'
-        new_style['cursor'] = 'not-allowed'
-    else:
-        new_style['opacity'] = '1.0'
-        new_style['cursor'] = 'default'
-
-    return is_disabled, new_style
 
 @app.callback(
     [Output('global_setup_threshold_input', 'disabled'),
