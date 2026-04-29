@@ -8,7 +8,7 @@ import time
 import zipfile
 
 from dateutil.relativedelta import relativedelta
-from dash import Dash, State, html, dcc, Input, Output, callback
+from dash import Dash, State, html, dcc, Input, Output, callback, callback_context
 from datetime import datetime, timedelta, timezone
 from flask import request
 from plotly.subplots import make_subplots
@@ -101,7 +101,7 @@ def update_graphs_date(n):
      Input('global_multi_equity_selector_input', 'value'),
      Input('global_setup_threshold_input', 'value')]
 )
-def get_cot_graphs(value, palette_name, selected_assets, setup):
+def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
     enabled_plots = 'Positioning'
     overlay_selection = 'Price'
     min_threshold, max_threshold = parse_setup_thresholds(setup)
@@ -110,11 +110,11 @@ def get_cot_graphs(value, palette_name, selected_assets, setup):
     color_palette = cotIndexer.get_palette(palette_name)
 
     if selected_assets is None:
-        assets = cotIndexer.get_assets_for_asset_class(value)
+        assets = cotIndexer.get_assets_for_asset_class(asset_class)
     elif selected_assets:
         assets = selected_assets  # Use specific user selections if provided
     else:
-        assets = cotIndexer.get_assets_for_asset_class(value)
+        assets = cotIndexer.get_assets_for_asset_class(asset_class)
     assets.sort()
 
     row_count = len(assets)
@@ -1034,18 +1034,17 @@ def update_index_heat_map(assest_classes):
 # Sidebar
 #
 ###############################################################################
-# The sidebar width when open
-SIDEBAR_WIDTH = "16rem"
 SIDEBAR_STYLE = {
     "position": "fixed",
     "top": 0,
     "left": 0,
     "bottom": 0,
-    "width": SIDEBAR_WIDTH,
-    "padding": "2rem 1rem",
+    "width": "18rem",
+    "padding": "1rem 0.5rem",
     "background-color": BACKGROUND_COLOR,
     "transition": "all 0.5s",
-    "overflow": "hidden",
+    "overflow-y": "auto",
+    "overflow-x": "hidden",
     "display": "flex",
     "flex-direction": "column",
     "borderRight": f"1px solid {TEXT_COLOR}26",
@@ -1054,7 +1053,7 @@ SIDEBAR_STYLE = {
 # The sidebar state when "hidden"
 SIDEBAR_HIDDEN_STYLE = {
     **SIDEBAR_STYLE,
-    "left": f"-{SIDEBAR_WIDTH}", # Slides it off-screen to the left
+    "left": f"-20rem", # Slides it off-screen to the left
 }
 CONTENT_STYLE = {
     "transition": "margin-left 0.5s",
@@ -1270,19 +1269,21 @@ sidebar = html.Div(
 
 @app.callback(
     [Output("sidebar", "style"),
-     Output("page-content", "style")], # Assuming page-content is main wrapper
-    [Input("btn-sidebar-toggle", "n_clicks")],
+     Output("page-content", "style")],
+    [Input("url", "pathname"), # Auto-close sidebar on mobile when link is clicked
+     Input("btn-sidebar-toggle", "n_clicks")],
     [State("sidebar", "style")]
 )
-def toggle_sidebar(n_clicks, current_style):
-    # Detect mobile on initial load (when n_clicks is None)
-    if n_clicks is None:
-        if is_mobile():
-            return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
-        return SIDEBAR_STYLE, CONTENT_STYLE
+def toggle_sidebar(pathname, n_clicks, current_style):
+    # Logic to close sidebar if a link was clicked on mobile
+    ctx = callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    # If the current left position is 0, it's visible. Toggle it.
-    if current_style.get("left") == 0:
+    if is_mobile() and triggered_id == 'url':
+        return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
+
+    # Detect mobile on initial load (when n_clicks is None)
+    if n_clicks and current_style.get("left") == 0:
         return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
 
     return SIDEBAR_STYLE, CONTENT_STYLE
@@ -1311,25 +1312,6 @@ def update_sidebar_selector(pathname, current_style):
 
 
 @app.callback(
-    Output('label_global_single_asset_class_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_single_asset_class_input', 'style') # Capture existing style to preserve it
-)
-def dim_label_by_path_single_asset_class(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname == '/positioning' or pathname == '/heatmap'
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
-
-
-@app.callback(
     [Output('global_multi_equity_selector_input', 'disabled'),
      Output('global_multi_equity_selector_input', 'style')],
     Input('url', 'pathname'),
@@ -1352,31 +1334,12 @@ def update_sidebar_selector_multi_equity_selector(pathname, current_style):
 
 
 @app.callback(
-    Output('label_global_multi_equity_selector_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_multi_equity_selector_input', 'style')
-)
-def dim_label_by_path_multi_equity_selector(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname != '/graphs'
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
-
-
-@app.callback(
     [Output('global_single_equity_filter_input', 'disabled'),
      Output('global_single_equity_filter_input', 'style')],
     Input('url', 'pathname'),
     State('global_single_equity_filter_input', 'style')
 )
-def update_sidebar_selector(pathname, current_style):
+def update_sidebar_selector_gloabl_single_equity(pathname, current_style):
     is_disabled = pathname != '/analysis'
 
     # Ensure current_style is a dict
@@ -1390,25 +1353,6 @@ def update_sidebar_selector(pathname, current_style):
         new_style['cursor'] = 'default'
 
     return is_disabled, new_style
-
-
-@app.callback(
-    Output('label_global_single_equity_filter_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_single_equity_filter_input', 'style')
-)
-def dim_label_by_path_single_equity_filter(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname != "/analysis"
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
 
 
 @app.callback(
@@ -1462,24 +1406,6 @@ def update_sidebar_selector_palette_input(pathname, current_style):
     return is_disabled, new_style
 
 @app.callback(
-    Output('label_global_palette_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_palette_input', 'style')
-)
-def dim_label_by_path_selector_palette(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname == '/positioning' or pathname == '/heatmap'
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
-
-@app.callback(
     [Output('global_setup_threshold_input', 'disabled'),
      Output('global_setup_threshold_input', 'style')],
     Input('url', 'pathname'),
@@ -1502,25 +1428,6 @@ def update_sidebar_selector_setup_threshold(pathname, current_style):
 
 
 @app.callback(
-    Output('label_global_setup_threshold_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_setup_threshold_input', 'style')
-)
-def dim_label_by_path_setup_threshold(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname == '/positioning' or pathname == "/heatmap"
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
-
-
-@app.callback(
     [Output('global_multi_asset_class_selector_input', 'disabled'),
      Output('global_multi_asset_class_selector_input', 'style')],
     Input('url', 'pathname'),
@@ -1540,25 +1447,6 @@ def update_sidebar_selector(pathname, current_style):
         new_style['cursor'] = 'default'
 
     return is_disabled, new_style
-
-
-@app.callback(
-    Output('label_global_multi_asset_class_selector_input', 'style'),
-    Input('url', 'pathname'),
-    State('label_global_multi_asset_class_selector_input', 'style')
-)
-def dim_label_by_path_multi_asset_class_selector(pathname, current_style):
-    # Determine if the control is "Inactive" for the current view
-    is_dimmed = pathname == '/graphs' or pathname == "/analysis"
-
-    # Clone the current style dictionary to avoid mutating state
-    new_style = (current_style or {}).copy()
-
-    # Apply the Opacity "Filter"
-    new_style['opacity'] = '0.2' if is_dimmed else '1.0'
-    new_style['transition'] = 'opacity 0.5s'
-
-    return new_style
 
 
 @app.callback(
