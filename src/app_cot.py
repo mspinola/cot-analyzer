@@ -103,7 +103,6 @@ def update_graphs_date(n):
      Input('global_setup_threshold_input', 'value')]
 )
 def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
-    print("get_cot_graphs")
     enabled_plots = 'Positioning'
     overlay_selection = 'Price'
     min_threshold, max_threshold = parse_setup_thresholds(setup)
@@ -374,7 +373,6 @@ graphs_layout = html.Div([
                     id='graphs_multi_equity_selector_input',
                     multi=True,
                     className="dash-dropdown bg-dark text-white",
-                    # className="mb-3 bg-dark text-white border-secondary",
                     searchable=False,
                     clearable=True,
                     style={
@@ -413,7 +411,7 @@ graphs_layout = html.Div([
     Input('graphs_single_asset_class_input', 'value')
 )
 def update_multi_asset_dropdown_options(selected_class):
-    print(selected_class)
+    print("graphs ", selected_class)
     if not selected_class:
         return [], []
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
@@ -433,6 +431,7 @@ def update_multi_asset_dropdown_options(selected_class):
      Input('cot_positioning_column_select_input', 'value')]
 )
 def get_CFTC_df_selection(assets, selected_columns):
+    print("pos table ", assets, " sel col ", selected_columns)
     """Dash callback to update the positioning table"""
     # Determine the list of asset classes to fetch
     if not assets:
@@ -450,7 +449,9 @@ def get_CFTC_df_selection(assets, selected_columns):
             core_cols = ['Date', 'Asset Class', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs', 'Willco']
             # Map dropdown values to actual DataFrame column names if they differ
             col_map = {'Comm 26wk': 'Comms (26-Week)'}
-            requested_cols = [col_map.get(c, c) for c in selected_columns]
+            requested_cols = []
+            if selected_columns is not None:
+                requested_cols = [col_map.get(c, c) for c in selected_columns]
 
             final_cols = [c for c in core_cols + requested_cols if c in df.columns]
             df = df[final_cols]
@@ -487,13 +488,17 @@ def download_positioning_table(n_clicks, selected_values):
 
 
 @app.callback(
-    Output('cot_positioning_options', 'children'),
-    [Input('cot_positioning_column_select_input', 'value')]
+    [Output('cot_positioning_column_select_input', 'options'),
+     Output('cot_positioning_column_select_input', 'value')],
+    [Input('page_positioning_selector', 'value')]
 )
 def cot_positioning_column_select_input(value):
-    if not value:
-        return None
-    return value
+    print("pos table col select ", value)
+    options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
+    default_value = options[0]
+    # if not value:
+    #     return options, []
+    return options, options
 
 
 positioning_layout = html.Div([
@@ -527,8 +532,10 @@ positioning_layout = html.Div([
 
         # ROW 3: Download Button and Asset Class Selector
         dbc.Row([
-            dbc.Col(
-                dbc.Button([html.I(className="bi bi-download me-2"), "Download as CSV"],
+            dbc.Col([
+                # html.Label("Download CSV", style={
+                #            'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dbc.Button([html.I(className="bi bi-download me-2"), "Download CSV"],
                            id="btn_download_csv",
                            color='secondary',
                            outline=True,
@@ -537,11 +544,33 @@ positioning_layout = html.Div([
                                 'color': TEXT_COLOR,
                                 'border': f'1.5px solid {TEXT_COLOR}66',
                                 'borderColor': TEXT_COLOR,
-                                'fontSize': '0.8rem',
-                                'width': '220px'
-                }),
-                width="auto"
-            ),
+                                'fontSize': '0.8rem'
+                            }
+                ),
+            ], width="auto"),
+            dbc.Col([
+                # Positioning Table Extended Data
+                html.Label("Table Data Selector", style={
+                               'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dcc.Dropdown(
+                    persistence=True,
+                    id='cot_positioning_column_select_input',
+                    # options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
+                    # value=[],
+                    multi=True,
+                    className="dash-dropdown bg-dark text-white",
+                    searchable=False,
+                    clearable=True,
+                    style={
+                        'backgroundColor': BACKGROUND_COLOR,
+                        'color': BRIGHTER_TEXT_COLOR,
+                        'borderColor': BRIGHTER_TEXT_COLOR,
+                        'border': 'none',
+                        'fontSize': '0.85rem',
+                        'textAlign': 'center'
+                    }
+                ),
+            ], width="auto"),
             dbc.Col([
                     html.Label("Asset Class Selector", style={
                                'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
@@ -565,7 +594,7 @@ positioning_layout = html.Div([
                             'textAlign': 'center'
                         }
                     ),
-                    html.Br(),
+                    # html.Br(),
                     ], width="auto", className="ms-auto"),
         ], align="center", className="mb-4"),
     ], fluid=True),
@@ -673,26 +702,68 @@ def download_real_test_data_zip(n_clicks):
 #
 ###############################################################################
 analysis_layout = html.Div([
-
-    TODO replace this header with the default and add the asset class and asset selectors
-    
     dbc.Container([
-        html.Div(id='analysis-page-header', style={'textAlign': 'center', 'marginBottom': '20px'}),
-    ], fluid=True),
+        # ROW 1: Title
+        dbc.Row([
+            dbc.Col(html.H6(id='date-display', style={
+                    'color': BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
+        ], justify="center", className="mb-1"),
 
-    html.Hr(style={
-        'color': BRIGHTER_TEXT_COLOR,   # Sets the color for modern browsers
-        'backgroundColor': TEXT_COLOR,  # Ensures color in older browsers
-        'height': '1px',                # Thickness of the line
-        'border': 'none',               # Removes default 3D shading
-        'opacity': '1.0',               # Makes it subtle (optional)
-        'marginTop': '10px',            # Space above the line
-        'marginBottom': '10px',         # Space below the line
-        'width': '95%',                 # Don't let it touch the screen edges
-        'margin-left': 'auto',          # Centers the line
-        'margin-right': 'auto'
-    }),
-    html.Br(),
+        # ROW 2: Update time
+        dbc.Row([
+            dbc.Col([
+                html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
+                       style={'fontSize': '0.75rem', 'margin': 0, 'color': TEXT_COLOR}),
+                dcc.Interval(id="daily-interval",
+                             interval=milliseconds_until_midnight(), n_intervals=0),
+            ], width="auto"),
+        ], justify="center", className="mb-4"),
+
+        html.Hr(style={
+            'color': BRIGHTER_TEXT_COLOR,
+            'backgroundColor': TEXT_COLOR,
+            'height': '1px',
+            'border': 'none',
+            'opacity': '0.5',
+            'marginTop': '10px',
+            'marginBottom': '30px',
+            'width': '95%'
+        }),
+
+        # ROW 3: Asset Class Selector and Asset Selector
+        dbc.Row([
+            dbc.Col([
+                html.Label("Asset Class Selector", style={
+                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dbc.Select(
+                    persistence=True,
+                    id='analysis_single_asset_class_input',
+                    options=[{'label': x, 'value': x}
+                             for x in asset_class_list],
+                    value=f"{cotIndexer.get_default_asset_class()}",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR, 'width': '220px',
+                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                ),
+                ], width="auto"
+            ),
+            dbc.Col([
+                html.Label("Asset Selector", style={
+                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+
+                dbc.Select(
+                    persistence=True,
+                    id='analysis_single_asset_filter_input',
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': BACKGROUND_COLOR, 'width': '220px',
+                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                ),
+            ], width="auto", className="ms-auto"),  # ms-auto pushes this column to the right
+        ], justify="center", className="mb-1"),
+        dbc.Row([
+            html.Div(id='analysis-page-header', style={'textAlign': 'center', 'marginBottom': '20px'}),
+        ], justify="center", className="mb-1"),
+    ], fluid=True),
 
     # Row for the COT graphs
     dbc.Row(
@@ -710,12 +781,11 @@ analysis_layout = html.Div([
 
 
 @app.callback(
-    [Output('analysis_single_equity_filter_input', 'options'),
-     Output('analysis_single_equity_filter_input', 'value')],
-    Input('graphs_single_asset_class_input', 'value')
+    [Output('analysis_single_asset_filter_input', 'options'),
+     Output('analysis_single_asset_filter_input', 'value')],
+    Input('analysis_single_asset_class_input', 'value')
 )
 def update_asset_dropdown_options(selected_class):
-    print("analysis_single_equity_filter_input ", selected_class)
     if not selected_class:
         return [], None
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
@@ -727,17 +797,17 @@ def update_asset_dropdown_options(selected_class):
 
 @app.callback(
     Output('analysis-page-header', 'children'),
-    [Input('global_single_asset_class_input', 'value'),      # The Sidebar Input
-     Input('analysis_single_equity_filter_input', 'value')]  # The Individual Filter
+    [Input('analysis_single_asset_class_input', 'value'),      # The Sidebar Input
+     Input('analysis_single_asset_filter_input', 'value')]  # The Individual Filter
 )
 def update_analysis_header(asset_class, asset_name):
     if not asset_name:
-        return html.H2("SELECT ASSET", style={'color': TEXT_COLOR})
+        return html.H6("SELECT ASSET", style={'color': TEXT_COLOR})
 
     # Fetch latest data point
     df = cotIndexer.get_symbols_custom_index(asset_name)
     if df is None or df.empty:
-        return html.H2(f"{asset_class} | {asset_name}", style={'color': BRIGHTER_TEXT_COLOR})
+        return html.H6(f"{asset_class} | {asset_name}", style={'color': BRIGHTER_TEXT_COLOR})
 
     # Get the latest Z-score (using the column name from your DataFrame)
     latest_z = df['comms-z'].iloc[-1]
@@ -746,7 +816,7 @@ def update_analysis_header(asset_class, asset_name):
     z_color = "#4ade80" if latest_z >= 2.0 else "#f87171" if latest_z <= -2.0 else TEXT_COLOR
 
     return [
-        html.H2(f"{asset_class.upper()} | {asset_name.upper()}",
+        html.H6(f"{asset_class.upper()} | {asset_name.upper()}",
                 style={'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'marginBottom': '5px'}),
         html.Div([
             html.Span("CURRENT COMMERCIAL Z-SCORE: ", style={'color': TEXT_COLOR, 'fontSize': '0.9rem'}),
@@ -758,10 +828,11 @@ def update_analysis_header(asset_class, asset_name):
 @app.callback(
     Output('analysis_stack', 'figure'),
     [Input('global_palette_input', 'value'),
-     Input('analysis_single_equity_filter_input', 'value'),
+     Input('analysis_single_asset_filter_input', 'value'),
      Input('global_setup_threshold_input', 'value')]
 )
 def update_analysis_stack(palette_name, asset, setup):
+    print("update analysis stack ", asset)
     if not asset:
         return go.Figure()
 
@@ -901,21 +972,6 @@ def update_analysis_stack(palette_name, asset, setup):
     )
 
     return fig
-
-
-@app.callback(
-    Output('analysis_asset_selection_input', 'options'),
-    Output('analysis_asset_selection_input', 'value'),
-    Input('global_single_asset_class_input', 'value')
-)
-def update_analysis_asset_dropdown_options(selected_class):
-    if not selected_class:
-        return None, None
-    assets = cotIndexer.get_assets_for_asset_class(selected_class)
-    assets.sort()
-    options = [{'label': x, 'value': x} for x in assets]
-    default = options[0].get('value') if options else None
-    return options, default
 
 
 ###############################################################################
@@ -1366,38 +1422,6 @@ sidebar = html.Div(
                     placement="right"
                 ),
             ], title="Theme Styling", item_id="theme-link"),
-
-            dbc.AccordionItem([
-                # Global Multi Equity Selector
-                html.Label("Multi Equity Selector", style={
-                           'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='global_multi_equity_selector_input',
-                    multi=True,
-                    className="mb-3 bg-dark text-white border-secondary",
-                    searchable=False,
-                    clearable=True,
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                           'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                ),
-
-                # Positioning Table Extended Data
-                html.Label("Positioning Table Data", style={
-                           'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
-                dcc.Dropdown(
-                    id='cot_positioning_column_select_input',
-                    options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
-                    value=[],
-                    multi=True,
-                    # Adding 'form-control' and 'bg-dark' forces the dark style
-                    className="mb-3 bg-dark text-white border-secondary",
-                    searchable=False,
-                    clearable=True,
-                    style={'textAlign': 'center', 'color': BRIGHTER_TEXT_COLOR,
-                           'backgroundColor': BACKGROUND_COLOR, 'borderColor': TEXT_COLOR, 'width': '150px'}
-                )
-            ], title="Asset Selection", item_id="asset-selection"),
         ], active_item="nav-links", flush=True, className="bg-dark"),
 
         html.Hr(style={'opacity': '0.15'}),
@@ -1435,20 +1459,6 @@ def toggle_sidebar(pathname, n_clicks, current_style):
         return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
 
     return SIDEBAR_STYLE, CONTENT_STYLE
-
-
-@app.callback(
-    [Output('global_multi_equity_selector_input', 'options'),
-     Output('global_multi_equity_selector_input', 'value')],
-    Input('global_single_asset_class_input', 'value')
-)
-def update_multi_asset_dropdown_options(selected_class):
-    if not selected_class:
-        return [], []
-    assets = cotIndexer.get_assets_for_asset_class(selected_class)
-    assets.sort()
-    options = [{'label': x, 'value': x} for x in assets]
-    return options, assets
 
 
 ###############################################################################
