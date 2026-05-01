@@ -395,8 +395,9 @@ graphs_layout = html.Div([
         dbc.Col(
             dcc.Loading(
                 type="circle",
-                children=[dcc.Graph(id='cot_graphs', config={'scrollZoom': True,
-                                    'responsive': True}, style={'width': '100%'})],
+                children=[dcc.Graph(id='cot_graphs', config={'scrollZoom': False, 'doubleClick': 'reset',
+                                    'displayModeBar': True, 'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                                                             'responsive': True}, style={'width': '100%'})],
             ),
             width=12,  # Full width column
             style={"padding": "0"}  # Centering the graph
@@ -411,7 +412,6 @@ graphs_layout = html.Div([
     Input('graphs_single_asset_class_input', 'value')
 )
 def update_multi_asset_dropdown_options(selected_class):
-    print("graphs ", selected_class)
     if not selected_class:
         return [], []
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
@@ -431,7 +431,6 @@ def update_multi_asset_dropdown_options(selected_class):
      Input('cot_positioning_column_select_input', 'value')]
 )
 def get_CFTC_df_selection(assets, selected_columns):
-    print("pos table ", assets, " sel col ", selected_columns)
     """Dash callback to update the positioning table"""
     # Determine the list of asset classes to fetch
     if not assets:
@@ -443,18 +442,16 @@ def get_CFTC_df_selection(assets, selected_columns):
     if not df.empty:
         df = df.sort_values(by=['Asset Class', 'Name'], ascending=[True, True])
 
-        # Logic to filter columns based on the 'selected_columns' dropdown
-        if True: # selected_columns:
-            # Always keep core columns, then add user-selected extras
-            core_cols = ['Date', 'Asset Class', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs', 'Willco']
-            # Map dropdown values to actual DataFrame column names if they differ
-            col_map = {'Comm 26wk': 'Comms (26-Week)'}
-            requested_cols = []
-            if selected_columns is not None:
-                requested_cols = [col_map.get(c, c) for c in selected_columns]
+        # Always keep core columns, then add user-selected extras
+        core_cols = ['Date', 'Asset Class', 'Symbol', 'Name', 'Commercials', 'Large Specs', 'Small Specs']
 
-            final_cols = [c for c in core_cols + requested_cols if c in df.columns]
-            df = df[final_cols]
+        # Map dropdown values to actual DataFrame column names if they differ
+        requested_cols = []
+        requested_cols = [selected_columns] if isinstance(selected_columns, str) else selected_columns
+
+        joined_list = core_cols + requested_cols
+        final_cols = [c for c in joined_list if c in df.columns]
+        df = df[final_cols]
 
     return dbc.Table.from_dataframe(
         df,
@@ -462,6 +459,8 @@ def get_CFTC_df_selection(assets, selected_columns):
         hover=True,
         responsive=True,
         striped=True,
+        style={"minWidth": "1200px"},
+        # className="sticky-first-col",
     )
 
 
@@ -490,15 +489,15 @@ def download_positioning_table(n_clicks, selected_values):
 @app.callback(
     [Output('cot_positioning_column_select_input', 'options'),
      Output('cot_positioning_column_select_input', 'value')],
-    [Input('page_positioning_selector', 'value')]
+    Input('page_positioning_selector', 'value')
 )
 def cot_positioning_column_select_input(value):
-    print("pos table col select ", value)
-    options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
-    default_value = options[0]
-    # if not value:
-    #     return options, []
-    return options, options
+    options = []
+    options.append({'label': 'Comm Net Pos', 'value': 'Comm Net Pos'})
+    options.append({'label': 'Lrg Spec Net Pos', 'value': 'Lrg Spec Net Pos'})
+    options.append({'label': 'Sml Spec Net Pos', 'value': 'Sml Spec Net Pos'})
+    default_value = options[0].get('value') if options else None
+    return options, default_value
 
 
 positioning_layout = html.Div([
@@ -545,7 +544,7 @@ positioning_layout = html.Div([
                                 'border': f'1.5px solid {TEXT_COLOR}66',
                                 'borderColor': TEXT_COLOR,
                                 'fontSize': '0.8rem'
-                            }
+                }
                 ),
             ], width="auto"),
             dbc.Col([
@@ -555,8 +554,6 @@ positioning_layout = html.Div([
                 dcc.Dropdown(
                     persistence=True,
                     id='cot_positioning_column_select_input',
-                    # options=[{'label': 'Comm 26wk', 'value': 'Comm 26wk'}],
-                    # value=[],
                     multi=True,
                     className="dash-dropdown bg-dark text-white",
                     searchable=False,
@@ -567,7 +564,9 @@ positioning_layout = html.Div([
                         'borderColor': BRIGHTER_TEXT_COLOR,
                         'border': 'none',
                         'fontSize': '0.85rem',
-                        'textAlign': 'center'
+                        'textAlign': 'center',
+                        'width': '100%',
+                        'maxWidth': '300px'
                     }
                 ),
             ], width="auto"),
@@ -585,23 +584,23 @@ positioning_layout = html.Div([
                         searchable=False,
                         clearable=True,
                         style={
-                            'width': '440px',
                             'backgroundColor': BACKGROUND_COLOR,
                             'color': BRIGHTER_TEXT_COLOR,
                             'borderColor': BRIGHTER_TEXT_COLOR,
                             'border': 'none',
                             'fontSize': '0.85rem',
-                            'textAlign': 'center'
+                            'textAlign': 'center',
+                            'width': '100%',
+                            'maxWidth': '440px'
                         }
                     ),
-                    # html.Br(),
                     ], width="auto", className="ms-auto"),
         ], align="center", className="mb-4"),
     ], fluid=True),
 
     html.Br(),
     dbc.Row([
-        dbc.Col(dcc.Loading(html.Div(id='cot_positioning')), width=12)
+        dbc.Col(dcc.Loading(html.Div(id='cot_positioning'), className="table-responsive"), width=12)
     ], justify='center')
 ])
 
@@ -770,8 +769,9 @@ analysis_layout = html.Div([
         dbc.Col(
             dcc.Loading(
                 type="circle",
-                children=[dcc.Graph(id='analysis_stack', config={'scrollZoom': True,
-                                    'responsive': True}, style={'width': '100%'})],
+                children=[dcc.Graph(id='analysis_stack', config={'scrollZoom': False, 'doubleClick': 'reset',
+                                    'displayModeBar': True, 'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                                                                 'responsive': True}, style={'width': '100%'})],
             ),
             width=12,  # Full width column
             style={"padding": "0"}  # Centering the graph
@@ -832,7 +832,6 @@ def update_analysis_header(asset_class, asset_name):
      Input('global_setup_threshold_input', 'value')]
 )
 def update_analysis_stack(palette_name, asset, setup):
-    print("update analysis stack ", asset)
     if not asset:
         return go.Figure()
 
@@ -871,7 +870,7 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "comm_oi_pct", cur_row, "Commercials", color_palette[0], 0, showlegend=True)
     add_trace_to_all(fig, df, "lrg_oi_pct", cur_row, "Large Specs", color_palette[1], 1, showlegend=True)
     add_trace_to_all(fig, df, "sml_oi_pct", cur_row, "Small Specs", color_palette[2], 2, showlegend=True)
-    fig.update_yaxes(title="%", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
+    fig.update_yaxes(title="%", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
 
     # PLOT 2: Spearman Correlation (-1 to 1)
     # Plotting the relationship between position ranks and price ranks
@@ -880,8 +879,8 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "lrg_spearman", cur_row, "Large Specs", color_palette[1], 1)
     add_trace_to_all(fig, df, "sml_spearman", cur_row, "Small Specs", color_palette[2], 2)
     add_trace_to_all(fig, df, "price", cur_row, "Price", color_palette[3], 3, secondary=True, showlegend=True)
-    fig.update_yaxes(title="correlation", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
-    fig.update_yaxes(title="$", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True)
+    fig.update_yaxes(title="correlation", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
+    fig.update_yaxes(title="$", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
 
     # THIRD PLOT: Net Positions (Bars)
     cur_row = cur_row + 1
@@ -889,8 +888,8 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "lrg_net", cur_row, "Large Specs", color_palette[1], 1, is_bar=True)
     add_trace_to_all(fig, df, "sml_net", cur_row, "Small Specs", color_palette[2], 2, is_bar=True)
     add_trace_to_all(fig, df, "oi", cur_row, "Open Interest", color_palette[4], 3, secondary=True, showlegend=True)
-    fig.update_yaxes(title="net position", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False)
-    fig.update_yaxes(title="OI", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True)
+    fig.update_yaxes(title="net position", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
+    fig.update_yaxes(title="OI", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
 
     # FOURTH PLOT: Sentiment Context
     cur_row = cur_row + 1
@@ -900,7 +899,7 @@ def update_analysis_stack(palette_name, asset, setup):
     # Threshold Lines for Plot 4
     fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
-    fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR)
+    fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR, fixedrange=True)
 
     # FIFTH PLOT: Sentiment z-score
     cur_row = cur_row + 1
@@ -911,7 +910,7 @@ def update_analysis_stack(palette_name, asset, setup):
     fig.add_hline(y=-3.0, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=3.0, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", row=5, col=1)
-    fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR)
+    fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR, fixedrange=True)
 
     # Loop through the data to find 'Extreme' clusters
     for i in range(1, len(df)):
@@ -968,7 +967,9 @@ def update_analysis_stack(palette_name, asset, setup):
         hoverdistance=100,
         font=dict(size=10),
         margin=dict(t=80, b=50, l=10, r=10),
-        bargap=0.2
+        bargap=0.2,
+        xaxis=dict(fixedrange=False),
+        yaxis=dict(fixedrange=True)
     )
 
     return fig
@@ -1039,13 +1040,11 @@ heatmap_layout = html.Div([
 
     dbc.Row([
         dbc.Col([
-            # html.H5("Z-Score", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center', 'marginBottom': 0}),
-            dcc.Loading(dcc.Graph(id='market_z_score_heat_map', style={'minHeight': '400px'}))
+            dcc.Loading(dcc.Graph(id='market_z_score_heat_map', config={'staticPlot': True, 'displayModeBar': False}, style={'minHeight': '400px'}))
         ], width=6),
 
         dbc.Col([
-            # html.H5("Index", style={'color': BRIGHTER_TEXT_COLOR, 'textAlign': 'center', 'margiinBottom': 0}),
-            dcc.Loading(dcc.Graph(id='market_index_score_heat_map', style={'minHeight': '400px'}))
+            dcc.Loading(dcc.Graph(id='market_index_score_heat_map', config={'staticPlot': True, 'displayModeBar': False}, style={'minHeight': '400px'}))
         ], width=6)
     ], justify="center", className="mb-4")
 ])
@@ -1353,7 +1352,7 @@ sidebar = html.Div(
             dbc.AccordionItem([
                 dbc.Button(
                     [html.I(className="bi bi-cloud-download me-2"),
-                        "Download CFTC Data"],
+                        "CFTC Data"],
                     id="sidebar-full-download-btn",
                     color="secondary",
                     outline=True,
@@ -1368,22 +1367,7 @@ sidebar = html.Div(
 
                 dbc.Button(
                     [html.I(className="bi bi-cloud-download me-2"),
-                        "Download Position Table"],
-                    id="btn_download_csv",
-                    color="secondary",
-                    outline=True,
-                    className="w-100 mb-2",
-                    style={
-                        'color': TEXT_COLOR,
-                        'borderColor': f"{TEXT_COLOR}26",
-                        'whiteSpace': 'nowrap'
-                    }
-                ),
-                dcc.Download(id="download-positioning-csv"),
-
-                dbc.Button(
-                    [html.I(className="bi bi-cloud-download me-2"),
-                        "Download Real Test Data"],
+                        "Real Test Data"],
                     id="sidebar-real-test-download-btn",
                     color="secondary",
                     outline=True,

@@ -590,3 +590,52 @@ border: 1px solid #ABB8C9 !important;
     border-top: 1px solid rgba(171, 184, 201, 0.1) !important;
     padding: 0.5rem 0.75rem !important;
 }
+
+/* Allows the page to scroll even if the finger lands on the graph */
+.mobile-scroll-fix .main-svg {
+    pointer-events: none;
+}
+
+/* Re-enables interaction if the user clicks a specific toggle */
+.active-graph .main-svg {
+    pointer-events: all;
+}
+
+/* Custom scrollbar for responsive tables */
+.table-responsive::-webkit-scrollbar {
+    height: 6px; /* Slimmer for laptop screens */
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(171, 184, 201, 0.3); /* Matches your TEXT_COLOR */
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: rgba(171, 184, 201, 0.6);
+}
+
+/* Sticky First Column Logic */
+.sticky-first-col thead th:first-child(2),
+.sticky-first-col tbody td:first-child(2) {
+    position: sticky !important;
+    left: 10;
+    z-index: 10; /* Ensures it stays above other cells */
+    /* Must have a solid background color to prevent 'bleed through' */
+    background-color: #1a1a1a !important;
+    border-right: 2px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Ensure the header stays on top of the sticky column when scrolling vertically */
+.sticky-first-col thead th:first-child(2) {
+    z-index: 11;
+}
+
+/* Subtle shadow to indicate the scroll plane */
+.sticky-first-col tbody td:first-child(2) {
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+}

@@ -20,9 +20,9 @@ SMALL_LONG = "NonRept_Positions_Long_All"
 SMALL_SHORT = "NonRept_Positions_Short_All"
 
 # Columns to create for consumed COT data
-COMM_NET = "Comm_Positions_Net"
-LARGE_NET = "NonComm_Positions_Net"
-SMALL_NET = "NonRept_Positions_Net"
+COMM_NET = "Comm Net Pos"
+LARGE_NET = "Lrg Spec Net Pos"
+SMALL_NET = "Sml Spec Net Pos"
 
 COMM_Z_SCORE = "Comm_Z_Score"
 LARGE_Z_SCORE = "NonComm_Z_Score"
@@ -36,7 +36,7 @@ COMM_CORR = "Comm_Price_Spearman"
 LARGE_CORR = "Large_Price_Spearman"
 SMALL_CORR = "Small_Price_Spearman"
 
-COMM_26_IDX = "Comm-26-idx"
+COMM_26_IDX = "Comm 26wk"
 CLOSING_PRICE = "Closing_Price"
 WILLCO = "willco"
 
@@ -602,7 +602,8 @@ class CotCmrIndexer:
 
     def get_positioning_table_by_asset_class(self, asset_classes):
         cols = ['Date', 'Asset Class', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs', 'Comms (26-Week)', 'Willco']
+                'Commercials', 'Large Specs', 'Small Specs', 'Willco', COMM_26_IDX,
+                COMM_NET, LARGE_NET, SMALL_NET]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -621,12 +622,14 @@ class CotCmrIndexer:
                     comm_idx = df.iloc[-1]['Comm-custom-idx']
                     lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
                     sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
-
-                    iwIndex = df.iloc[-1][COMM_26_IDX]
                     willco = df.iloc[-1][WILLCO]
+                    iwIndex = df.iloc[-1][COMM_26_IDX]
+                    comm_net = df.iloc[-1][COMM_NET]
+                    lrg_net = df.iloc[-1][LARGE_NET]
+                    sml_net = df.iloc[-1][SMALL_NET]
 
                     new_df = pd.DataFrame(
-                        [[date, asset_class, symbol, name, comm_idx, lrg_idx, sml_idx, iwIndex, willco]], columns=positioning_df.columns)
+                        [[date, asset_class, symbol, name, comm_idx, lrg_idx, sml_idx, iwIndex, willco, comm_net, lrg_net, sml_net]], columns=positioning_df.columns)
                     if positioning_df.empty:
                         positioning_df = new_df
                     else:
