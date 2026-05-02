@@ -24,10 +24,6 @@ COMM_NET = "Comm Net Pos"
 LARGE_NET = "Lrg Spec Net Pos"
 SMALL_NET = "Sml Spec Net Pos"
 
-COMM_Z_SCORE = "Comm_Z_Score"
-LARGE_Z_SCORE = "NonComm_Z_Score"
-SMALL_Z_SCORE = "NonRept_Z_Score"
-
 COMM_PCT_OI = "Comm_OI_Pct"
 LARGE_PCT_OI = "NonComm_OI_Pct"
 SMALL_PCT_OI = "NonRept_OI_Pct"
@@ -36,7 +32,26 @@ COMM_CORR = "Comm_Price_Spearman"
 LARGE_CORR = "Large_Price_Spearman"
 SMALL_CORR = "Small_Price_Spearman"
 
-COMM_26_IDX = "Comm 26wk"
+COMM_CUSTOM_IDX = "Comm-custom-idx"
+LARGE_CUSTOM_IDX = "LrgSpec-custom-idx"
+SMALL_CUSTOM_IDX = "SmlSpec-custom-idx"
+COMM_26_IDX = "Comm-26-idx"
+LARGE_26_IDX = "LrgSpec-26-idx"
+SMALL_26_IDX = "SmlSpec-26-idx"
+COMM_52_IDX = "Comm-52-idx"
+LARGE_52_IDX = "LrgSpec-52-idx"
+SMALL_52_IDX = "SmlSpec-52-idx"
+
+COMM_CUSTOM_ZSCORE = "Comm-custom-zscore"
+LARGE_CUSTOM_ZSCORE = "LrgSpec-custom-zscore"
+SMALL_CUSTOM_ZSCORE = "SmlSpec-custom-zscore"
+COMM_26_ZSCORE = "Comm-26-zscore"
+LARGE_26_ZSCORE = "LrgSpec-26-zscore"
+SMALL_26_ZSCORE = "SmlSpec-26-zscore"
+COMM_52_ZSCORE = "Comm-52-zscore"
+LARGE_52_ZSCORE = "LrgSpec-52-zscore"
+SMALL_52_ZSCORE = "SmlSpec-52-zscore"
+
 CLOSING_PRICE = "Closing_Price"
 WILLCO = "willco"
 
@@ -154,6 +169,13 @@ class CotCmrIndexer:
                 0, len(self.instruments[instrument].df))
 
     @staticmethod
+    def calculate_cot_z_score(col_to_search, lb_weeks):
+        comm_mean = col_to_search.rolling(window=lb_weeks).mean()
+        comm_std = col_to_search.rolling(window=lb_weeks).std()
+        z_score = (col_to_search - comm_mean) / comm_std
+        return z_score
+
+    @staticmethod
     def calculate_cot_index(col_to_search, lb_idx, cur_idx):
         range_to_search = col_to_search[lb_idx:cur_idx+1]
         min_net = range_to_search.min()
@@ -168,29 +190,34 @@ class CotCmrIndexer:
     def process_lookback(lookback, df):
         lb_name = lookback[0]
         lb_weeks = lookback[1]
-        col_header_name = lb_name + "-idx"
+        idx_col_header_name = "custom-idx" if lb_name == "custom" else str(lb_weeks) + "-idx"
 
         for idx in range(len(df)):
             if lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, "Comm-" + col_header_name] = None
-                df.at[idx, "LrgSpec-" + col_header_name] = None
-                df.at[idx, "SmlSpec-" + col_header_name] = None
-                df.at[idx, COMM_26_IDX] = None
+                df.at[idx, "Comm-" + idx_col_header_name] = None
+                df.at[idx, "LrgSpec-" + idx_col_header_name] = None
+                df.at[idx, "SmlSpec-" + idx_col_header_name] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, "Comm-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
+                df.at[idx, "Comm-" + idx_col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[COMM_NET], lb_idx, idx)
-                df.at[idx, "LrgSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
+                df.at[idx, "LrgSpec-" + idx_col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[LARGE_NET], lb_idx, idx)
-                df.at[idx, "SmlSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
+                df.at[idx, "SmlSpec-" + idx_col_header_name] = CotCmrIndexer.calculate_cot_index(
                     df[SMALL_NET], lb_idx, idx)
 
-                # Always calculate the 26-week commercial Index for use in the IW process, even if the lookback being processed is not 26 weeks
-                if idx < 26:
-                    df.at[idx, COMM_26_IDX] = None
-                else:
-                    df.at[idx, COMM_26_IDX] = CotCmrIndexer.calculate_cot_index(
-                        df[COMM_NET], idx - 26, idx)
+        # Z-Score
+        zscore_col_header_name = "custom-zscore" if lb_name == "custom" else str(lb_weeks) + "-zscore"
+        df["Comm-" + zscore_col_header_name] = CotCmrIndexer.calculate_cot_z_score(
+            df[COMM_NET], lb_weeks)
+        df["LrgSpec-" + zscore_col_header_name] = CotCmrIndexer.calculate_cot_z_score(
+            df[LARGE_NET], lb_weeks)
+        df["SmlSpec-" + zscore_col_header_name] = CotCmrIndexer.calculate_cot_z_score(
+            df[SMALL_NET], lb_weeks)
+
+        # Handle initial NaNs to keep the plots clean
+        df[["Comm-" + zscore_col_header_name, "LrgSpec-" + zscore_col_header_name, "SmlSpec-" + zscore_col_header_name]
+           ] = df[["Comm-" + zscore_col_header_name, "LrgSpec-" + zscore_col_header_name, "SmlSpec-" + zscore_col_header_name]].fillna(0)
 
     @staticmethod
     def is_commodity(asset_class):
@@ -308,25 +335,6 @@ class CotCmrIndexer:
                 df[LARGE_CORR] = 0
                 df[SMALL_CORR] = 0
 
-            z_window = 52
-            # Commercials Z-Score
-            comm_mean = df[COMM_NET].rolling(window=z_window).mean()
-            comm_std = df[COMM_NET].rolling(window=z_window).std()
-            df[COMM_Z_SCORE] = (df[COMM_NET] - comm_mean) / comm_std
-
-            # Large Speculators Z-Score
-            lrg_mean = df[LARGE_NET].rolling(window=z_window).mean()
-            lrg_std = df[LARGE_NET].rolling(window=z_window).std()
-            df[LARGE_Z_SCORE] = (df[LARGE_NET] - lrg_mean) / lrg_std
-
-            # Small Speculators Z-Score
-            sml_mean = df[SMALL_NET].rolling(window=z_window).mean()
-            sml_std = df[SMALL_NET].rolling(window=z_window).std()
-            df[SMALL_Z_SCORE] = (df[SMALL_NET] - sml_mean) / sml_std
-
-            # Handle initial NaNs to keep the plots clean
-            df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]] = df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]].fillna(0)
-
             self.calculate_willco(26, df)
 
     def collect_symbol_summary_results(self, instrument):
@@ -337,7 +345,6 @@ class CotCmrIndexer:
         summary_df = pd.DataFrame()
         summary_df["Date"] = df[DATE]
         summary_df["Symbol"] = symbol
-        summary_df["COMM_26_IDX"] = df[COMM_26_IDX]
         summary_df["OpenInterest"] = df[INTEREST]
         summary_df["CommercialNet"] = df[COMM_NET]
         summary_df["LargeSpecNet"] = df[LARGE_NET]
@@ -390,7 +397,9 @@ class CotCmrIndexer:
             working_dir, csv_data, "positioning_summary.csv")
 
         cols = ['Date', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs']
+                COMM_CUSTOM_IDX, LARGE_CUSTOM_IDX, SMALL_CUSTOM_IDX,
+                COMM_26_IDX, LARGE_26_IDX, SMALL_26_IDX,
+                COMM_52_IDX, LARGE_52_IDX, SMALL_52_IDX]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -401,12 +410,13 @@ class CotCmrIndexer:
                 name = instrument.name
                 df = instrument.df
                 date = df.iloc[-1][DATE].date()
-                comm_idx = df.iloc[-1]['Comm-custom-idx']
-                lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-                sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
 
                 new_df = pd.DataFrame(
-                    [[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
+                    [[date, symbol, name,
+                      df.iloc[-1][COMM_CUSTOM_IDX], df.iloc[-1][LARGE_CUSTOM_IDX], df.iloc[-1][SMALL_CUSTOM_IDX],
+                      df.iloc[-1][COMM_26_IDX], df.iloc[-1][LARGE_26_IDX], df.iloc[-1][SMALL_26_IDX],
+                      df.iloc[-1][COMM_52_IDX], df.iloc[-1][LARGE_52_IDX], df.iloc[-1][SMALL_52_IDX]
+                      ]], columns=positioning_df.columns)
                 if positioning_df.empty:
                     positioning_df = new_df
                 else:
@@ -450,7 +460,7 @@ class CotCmrIndexer:
         commercial_idx_df["Symbol"] = [
             self.instruments[instrument].symbol] * len(df[DATE])
         commercial_idx_df["Type"] = 1  # Commercials index
-        commercial_idx_df["Value"] = df['Comm-custom-idx']
+        commercial_idx_df["Value"] = df[COMM_CUSTOM_IDX]
         commercial_idx_df = commercial_idx_df[commercial_idx_df["Value"] != -1]
 
         # Add large specs
@@ -459,7 +469,7 @@ class CotCmrIndexer:
         large_specs_idx_df["Symbol"] = [
             self.instruments[instrument].symbol] * len(df[DATE])
         large_specs_idx_df["Type"] = 2  # Large specs index
-        large_specs_idx_df["Value"] = df['LrgSpec-custom-idx']
+        large_specs_idx_df["Value"] = df[LARGE_CUSTOM_IDX]
         large_specs_idx_df = large_specs_idx_df[large_specs_idx_df["Value"] != -1]
 
         # Add small specs
@@ -468,7 +478,7 @@ class CotCmrIndexer:
         small_specs_idx_df["Symbol"] = [
             self.instruments[instrument].symbol] * len(df[DATE])
         small_specs_idx_df["Type"] = 3  # Small specs index
-        small_specs_idx_df["Value"] = df['SmlSpec-custom-idx']
+        small_specs_idx_df["Value"] = df[SMALL_CUSTOM_IDX]
         small_specs_idx_df = small_specs_idx_df[small_specs_idx_df["Value"] != -1]
 
         #
@@ -573,9 +583,9 @@ class CotCmrIndexer:
             result = pd.DataFrame()
             result["date"] = df[DATE]
 
-            result["comms"] = df['Comm-custom-idx']
-            result["lrg"] = df['LrgSpec-custom-idx']
-            result["sml"] = df['SmlSpec-custom-idx']
+            result["comms"] = df[COMM_CUSTOM_IDX]
+            result["lrg"] = df[LARGE_CUSTOM_IDX]
+            result["sml"] = df[SMALL_CUSTOM_IDX]
 
             result["comms_net"] = df[COMM_NET]
             result["lrg_net"] = df[LARGE_NET]
@@ -589,9 +599,9 @@ class CotCmrIndexer:
             result["lrg_spearman"] = df[LARGE_CORR]
             result["sml_spearman"] = df[SMALL_CORR]
 
-            result["comms-z"] = df[COMM_Z_SCORE]
-            result["lrg-z"] = df[LARGE_Z_SCORE]
-            result["sml-z"] = df[SMALL_Z_SCORE]
+            result["comms-z"] = df[COMM_CUSTOM_ZSCORE]
+            result["lrg-z"] = df[LARGE_CUSTOM_ZSCORE]
+            result["sml-z"] = df[SMALL_CUSTOM_ZSCORE]
 
             result["oi"] = df[INTEREST]
             result["price"] = df[CLOSING_PRICE]
@@ -619,9 +629,9 @@ class CotCmrIndexer:
                     name = instrument.name
                     df = instrument.df
                     date = df.iloc[-1][DATE].date()
-                    comm_idx = df.iloc[-1]['Comm-custom-idx']
-                    lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-                    sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
+                    comm_idx = df.iloc[-1][COMM_CUSTOM_IDX]
+                    lrg_idx = df.iloc[-1][LARGE_CUSTOM_IDX]
+                    sml_idx = df.iloc[-1][SMALL_CUSTOM_IDX]
                     willco = df.iloc[-1][WILLCO]
                     iwIndex = df.iloc[-1][COMM_26_IDX]
                     comm_net = df.iloc[-1][COMM_NET]
@@ -649,9 +659,9 @@ class CotCmrIndexer:
             name = self.instruments[instrument].name
             df = self.instruments[instrument].df
             date = df.iloc[-1][DATE].date()
-            comm_idx = df.iloc[-1]['Comm-custom-idx']
-            lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-            sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
+            comm_idx = df.iloc[-1][COMM_CUSTOM_IDX]
+            lrg_idx = df.iloc[-1][LARGE_CUSTOM_IDX]
+            sml_idx = df.iloc[-1][SMALL_CUSTOM_IDX]
 
             new_df = pd.DataFrame(
                 [[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
@@ -663,7 +673,7 @@ class CotCmrIndexer:
         return positioning_df
 
 
-    def get_asset_class_z_score_heat(self, asset_class):
+    def get_asset_class_z_score_heat(self, asset_class, lookback):
         """Returns the latest Z-scores for all assets in a class."""
         assets = self.get_assets_for_asset_class(asset_class)
         heat_data = []
@@ -674,16 +684,31 @@ class CotCmrIndexer:
                 df = instrument.df
                 # Get the most recent non-NaN Z-scores
                 latest = df.iloc[-1]
-                heat_data.append({
-                    "Asset": name,
-                    "Commercials": latest.get("Comm_Z_Score", 0),
-                    "Large Specs": latest.get("NonComm_Z_Score", 0),
-                    "Small Specs": latest.get("NonRept_Z_Score", 0)
-                })
+                if lookback == "26":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_26_ZSCORE, 0),
+                        "Large Specs": latest.get(LARGE_26_ZSCORE, 0),
+                        "Small Specs": latest.get(SMALL_26_ZSCORE, 0)
+                    })
+                elif lookback == "52":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_52_ZSCORE, 0),
+                        "Large Specs": latest.get(LARGE_52_ZSCORE, 0),
+                        "Small Specs": latest.get(SMALL_52_ZSCORE, 0)
+                    })
+                else:
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_CUSTOM_ZSCORE, 0),
+                        "Large Specs": latest.get(LARGE_CUSTOM_ZSCORE, 0),
+                        "Small Specs": latest.get(LARGE_CUSTOM_ZSCORE, 0)
+                    })
 
         return pd.DataFrame(heat_data)
 
-    def get_asset_class_index_heat(self, asset_class):
+    def get_asset_class_index_heat(self, asset_class, lookback):
         """Returns the latest Index for all assets in a class."""
         assets = self.get_assets_for_asset_class(asset_class)
         heat_data = []
@@ -694,11 +719,27 @@ class CotCmrIndexer:
                 df = instrument.df
                 # Get the most recent non-NaN Z-scores
                 latest = df.iloc[-1]
-                heat_data.append({
-                    "Asset": name,
-                    "Commercials": latest.get("Comm-custom-idx", 0),
-                    "Large Specs": latest.get("LrgSpec-custom-idx", 0),
-                    "Small Specs": latest.get("SmlSpec-custom-idx", 0)
-                })
+
+                if lookback == "26":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_26_IDX, 0),
+                        "Large Specs": latest.get(LARGE_26_IDX, 0),
+                        "Small Specs": latest.get(SMALL_26_IDX, 0)
+                    })
+                elif lookback == "52":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_52_IDX, 0),
+                        "Large Specs": latest.get(LARGE_52_IDX, 0),
+                        "Small Specs": latest.get(SMALL_52_IDX, 0)
+                    })
+                else:
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(COMM_CUSTOM_IDX, 0),
+                        "Large Specs": latest.get(LARGE_CUSTOM_IDX, 0),
+                        "Small Specs": latest.get(LARGE_CUSTOM_IDX, 0)
+                    })
 
         return pd.DataFrame(heat_data)

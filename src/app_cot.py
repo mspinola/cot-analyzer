@@ -1,96 +1,129 @@
+import constants
+import dash
+import utils
+from db import cotDatabase
+from indexer import cotIndexer
+
 import dash_bootstrap_components as dbc
 import io
-import logging
 import pandas as pd
 import plotly.graph_objects as go
 import pytz
-import time
 import zipfile
 
-from dateutil.relativedelta import relativedelta
 from dash import Dash, State, html, dcc, Input, Output, callback, callback_context
 from datetime import datetime, timedelta, timezone
-from flask import request
 from plotly.subplots import make_subplots
 
-from CotCmrIndexer import CotCmrIndexer
-from CotDatabase import CotDatabase
 
-TEXT_COLOR = "#ABB8C9"
-BRIGHTER_TEXT_COLOR = "#E2E8F0"
-HOVER_TEXT_COLOR = "#FFFFFF"  # "#00FFFF"
-BACKGROUND_COLOR = "#1a1a1a"  # "#0F172A"
-GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
 
-# Plotting Dimensions
-PIXELS_PER_ROW = 275
-FIXED_OVERHEAD = 120
-
-app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app = Dash(__name__, use_pages=False, external_stylesheets=[dbc.themes.DARKLY])
 server = app.server
 
-# Note, this is a slow operation, so we only want to do it once and pass the indexer around as needed.
-print("Loading COT Data... (this might take a moment)")
-start_time = time.time()
-cotIndexer = CotCmrIndexer()
-logging.info(f"Loading COT data took: {time.time() - start_time:.2f}s")
-start_time = time.time()
-cotDatabase = CotDatabase()
-logging.info(f"CotDatabase took: {time.time() - start_time:.2f}s")
-
 palette_options = cotIndexer.get_palette_names()
-app_timezone = "US/Eastern"
 asset_class_list = cotIndexer.get_asset_classes()
 asset_class_list.sort()
 asset_list = cotIndexer.get_instrument_names()
 
-
-def is_mobile():
-    """Detects if the user agent belongs to a mobile device."""
-    user_agent = request.headers.get("User-Agent", "").lower()
-    mobile_keywords = ["android", "webos", "iphone", "ipad", "ipod", "blackberry", "iemobile", "opera mini"]
-    return any(keyword in user_agent for keyword in mobile_keywords)
-
-
-def milliseconds_until_midnight():
-    """Calculate the number of milliseconds until the next midnight in the app's timezone."""
-    local_tz = pytz.timezone(app_timezone)
-    now = datetime.now(tz=local_tz)
-    next_midnight = (now + timedelta(days=1)).replace(hour=0,
-                                                      minute=0, second=0, microsecond=0)
-    delta = next_midnight - now
-    return int(delta.total_seconds() * 1000)
-
-
-def parse_setup_thresholds(setup):
-    if setup == '95 5':
-        max_threshold = 95
-        min_threshold = 5
-    elif setup == '90 10':
-        max_threshold = 9
-        min_threshold = 10
-    elif setup == '75 25':
-        max_threshold = 75
-        min_threshold = 25
-    else:
-        max_threshold = 101
-        min_threshold = -1
-
-    return min_threshold, max_threshold
-
-
 ###############################################################################
 #
-# Graphs
+# Graphs Layout
 #
 ###############################################################################
+graphs_layout = html.Div([
+    dbc.Container([
+        # ROW 1: Title
+        dbc.Row([
+            dbc.Col(html.H6(id='date-display', style={
+                    'color': constants.BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
+        ], justify="center", className="mb-1"),
+
+        # ROW 2: Update time
+        dbc.Row([
+            dbc.Col([
+                html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
+                       style={'fontSize': '0.75rem', 'margin': 0, 'color': constants.TEXT_COLOR}),
+                dcc.Interval(id="daily-interval",
+                             interval=utils.milliseconds_until_midnight(), n_intervals=0),
+            ], width="auto"),
+        ], justify="center", className="mb-4"),
+
+        html.Hr(style={
+            'color': constants.BRIGHTER_TEXT_COLOR,
+            'backgroundColor': constants.TEXT_COLOR,
+            'height': '1px',
+            'border': 'none',
+            'opacity': '0.5',
+            'marginTop': '10px',
+            'marginBottom': '30px',
+            'width': '95%'
+        }),
+
+        # ROW 3: Single Asset Class Selector and Multi Asset Selector
+        dbc.Row([
+            dbc.Col([
+                html.Label("Asset Class Selector", style={
+                           'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dbc.Select(
+                    persistence=True,
+                    id='graphs_single_asset_class_input',
+                    options=[{'label': x, 'value': x}
+                             for x in asset_class_list],
+                    value=f"{cotIndexer.get_default_asset_class()}",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'width': '220px',
+                           'color': 'constants.TEXT_COLOR', 'borderColor': f"{constants.TEXT_COLOR}26"}
+                ),
+            ], width="auto"
+            ),
+            dbc.Col([
+                html.Label("Asset Selector", style={
+                           'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dcc.Dropdown(
+                    persistence=True,
+                    id='graphs_multi_equity_selector_input',
+                    multi=True,
+                    className="dash-dropdown bg-dark text-white",
+                    searchable=False,
+                    clearable=True,
+                    style={
+                        'width': '440px',
+                        'backgroundColor': constants.BACKGROUND_COLOR,
+                        'color': constants.BRIGHTER_TEXT_COLOR,
+                        'borderColor': constants.BRIGHTER_TEXT_COLOR,
+                        'border': 'none',
+                        'fontSize': '0.85rem',
+                        'textAlign': 'center'
+                    }
+                ),
+                html.Br(),
+            ], width="auto", className="ms-auto"),  # ms-auto pushes this column to the right
+        ], justify="start", className="mb-4"),
+    ], fluid=True),
+
+    # Row for the COT graphs
+    dbc.Row(
+        dbc.Col(
+            dcc.Loading(
+                type="circle",
+                children=[dcc.Graph(id='cot_graphs', config={'scrollZoom': False, 'doubleClick': 'reset',
+                                    'displayModeBar': True, 'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                                                             'responsive': True}, style={'width': '100%'})],
+            ),
+            width=12,  # Full width column
+            style={"padding": "0"}  # Centering the graph
+        ),
+    )
+])
+
+
 @app.callback(
     Output("date-display", "children"),
     Input("daily-interval", "n_intervals")
 )
 def update_graphs_date(n):
     """Callback to update the date in the title of the graphs page."""
-    tz = pytz.timezone(app_timezone)
+    tz = pytz.timezone(constants.app_timezone)
     current_date = datetime.now(tz).strftime('%Y-%m-%d')
     return f"COT Analysis {current_date}"
 
@@ -105,9 +138,9 @@ def update_graphs_date(n):
 def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
     enabled_plots = 'Positioning'
     overlay_selection = 'Price'
-    min_threshold, max_threshold = parse_setup_thresholds(setup)
+    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
 
-    grid_color = GRID_COLOR
+    grid_color = constants.GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
     if selected_assets is None:
@@ -120,7 +153,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
 
     row_count = len(assets)
 
-    total_height = (PIXELS_PER_ROW * row_count) + FIXED_OVERHEAD
+    total_height = (constants.PIXELS_PER_ROW * row_count) + \
+        constants.FIXED_OVERHEAD
     v_spacing = 80 / total_height  # Consistent ~80px gap
 
     if enabled_plots == 'All':
@@ -198,34 +232,38 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
 
         # Positioning Plot
         if enabled_plots in ['All', 'Positioning']:
-            legend = cur_row == 1 and cur_col == num_cols  # Only show legend for the first plot
+            # Only show legend for the first plot
+            legend = cur_row == 1 and cur_col == num_cols
             fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
-                                name='commercials', marker_color=color_palette[0]), row=cur_row, col=cur_col, secondary_y=False)
+                                 name='commercials', marker_color=color_palette[0]), row=cur_row, col=cur_col, secondary_y=False)
             fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
-                                name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
+                                 name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
             fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
-                                name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
+                                 name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
 
             if overlay_selection == 'Price' and 'price' in df.columns:
                 fig.add_trace(go.Scatter(x=df.index, y=df["price"], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=1),
-                                    name='price'), row=cur_row, col=cur_col, secondary_y=True)
+                                         name='price'), row=cur_row, col=cur_col, secondary_y=True)
             elif overlay_selection == 'Open Interest':
                 fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[4], width=1),
-                                    name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
+                                         name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
             else:
                 pass
 
             if enabled_plots == 'All':
                 fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
-                                df.index[x_axis_start_range], df.index[-1]])
+                    df.index[x_axis_start_range], df.index[-1]])
             else:
-                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', autorange=True)
+                fig.update_xaxes(row=cur_row, col=cur_col,
+                                 showgrid=False, matches='x', autorange=True)
             fig.update_yaxes(row=cur_row, col=cur_col, title="net positions", showgrid=True,
-                            gridcolor=grid_color, gridwidth=1, secondary_y=False)
+                             gridcolor=grid_color, gridwidth=1, secondary_y=False)
             if overlay_selection == 'Open Interest':
-                fig.update_yaxes(row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
+                fig.update_yaxes(
+                    row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True)
             elif overlay_selection == 'Price':
-                fig.update_yaxes(row=cur_row, col=cur_col, title="price", showgrid=False, secondary_y=True)
+                fig.update_yaxes(row=cur_row, col=cur_col,
+                                 title="price", showgrid=False, secondary_y=True)
 
             # Loop through the data to find 'Extreme' clusters
             for i in range(1, len(df)):
@@ -251,16 +289,17 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=BACKGROUND_COLOR,
-        plot_bgcolor=BACKGROUND_COLOR,
-        font=dict(color=BRIGHTER_TEXT_COLOR),  # Sets color for all graph text
+        paper_bgcolor=constants.BACKGROUND_COLOR,
+        plot_bgcolor=constants.BACKGROUND_COLOR,
+        # Sets color for all graph text
+        font=dict(color=constants.BRIGHTER_TEXT_COLOR),
         showlegend=True,
         legend=dict(
             orientation="h",
             entrywidth=120,
             entrywidthmode='pixels',
-            bgcolor=BACKGROUND_COLOR,
-            font=dict(size=14, color=BRIGHTER_TEXT_COLOR),
+            bgcolor=constants.BACKGROUND_COLOR,
+            font=dict(size=14, color=constants.BRIGHTER_TEXT_COLOR),
             yanchor="bottom",
             y=1.15,
             x=0.5,
@@ -271,10 +310,11 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
         margin=dict(t=10, b=10, l=10, r=10),
         hovermode="x unified",
         hoverlabel=dict(bgcolor="rgba(20, 20, 20, 0.8)",
-                        font=dict(color=HOVER_TEXT_COLOR)),
+                        font=dict(color=constants.HOVER_TEXT_COLOR)),
         bargap=0.2,
     )
     return fig
+
 
 @app.callback(
     Output('cot_graphs_plot_input', 'value'),
@@ -292,6 +332,7 @@ def update_plot_dropdown_value(selection):
         enabled_plots = 'None'
     return enabled_plots
 
+
 @app.callback(
     Output('cot_graphs_plot_overlay_input', 'value'),
     Input('cot_graphs_plot_overlay_input', 'value')
@@ -303,107 +344,6 @@ def update_overlay_dropdown_value(selection):
         return 'Price'
     else:
         return 'None'
-
-@app.callback(
-    Output('global_setup_threshold_input', 'value'),
-    Input('global_setup_threshold_input', 'value')
-)
-def plot_setup_threshold_input(selection):
-    if selection == '95 5':
-        return '95 5'
-    elif selection == '90 10':
-        return '90 10'
-    elif selection == '75 25':
-        return '75 25'
-    else:
-        return 'None'
-
-
-graphs_layout = html.Div([
-    dbc.Container([
-        # ROW 1: Title
-        dbc.Row([
-            dbc.Col(html.H6(id='date-display', style={
-                    'color': BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
-        ], justify="center", className="mb-1"),
-
-        # ROW 2: Update time
-        dbc.Row([
-            dbc.Col([
-                html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
-                       style={'fontSize': '0.75rem', 'margin': 0, 'color': TEXT_COLOR}),
-                dcc.Interval(id="daily-interval",
-                             interval=milliseconds_until_midnight(), n_intervals=0),
-            ], width="auto"),
-        ], justify="center", className="mb-4"),
-
-        html.Hr(style={
-            'color': BRIGHTER_TEXT_COLOR,
-            'backgroundColor': TEXT_COLOR,
-            'height': '1px',
-            'border': 'none',
-            'opacity': '0.5',
-            'marginTop': '10px',
-            'marginBottom': '30px',
-            'width': '95%'
-        }),
-
-        # ROW 3: Single Asset Class Selector and Multi Asset Selector
-        dbc.Row([
-            dbc.Col([
-                html.Label("Asset Class Selector", style={
-                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
-                dbc.Select(
-                    persistence=True,
-                    id='graphs_single_asset_class_input',
-                    options=[{'label': x, 'value': x}
-                             for x in asset_class_list],
-                    value=f"{cotIndexer.get_default_asset_class()}",
-                    className="mb-3 bg-dark text-white border-secondary",
-                    style={'backgroundColor': BACKGROUND_COLOR, 'width': '220px',
-                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
-                ),
-                ], width="auto"
-            ),
-            dbc.Col([
-                html.Label("Asset Selector", style={
-                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='graphs_multi_equity_selector_input',
-                    multi=True,
-                    className="dash-dropdown bg-dark text-white",
-                    searchable=False,
-                    clearable=True,
-                    style={
-                        'width': '440px',
-                        'backgroundColor': BACKGROUND_COLOR,
-                        'color': BRIGHTER_TEXT_COLOR,
-                        'borderColor': BRIGHTER_TEXT_COLOR,
-                        'border': 'none',
-                        'fontSize': '0.85rem',
-                        'textAlign': 'center'
-                    }
-                ),
-                html.Br(),
-            ], width="auto", className="ms-auto"),  # ms-auto pushes this column to the right
-        ], justify="start", className="mb-4"),
-    ], fluid=True),
-
-    # Row for the COT graphs
-    dbc.Row(
-        dbc.Col(
-            dcc.Loading(
-                type="circle",
-                children=[dcc.Graph(id='cot_graphs', config={'scrollZoom': False, 'doubleClick': 'reset',
-                                    'displayModeBar': True, 'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
-                                                             'responsive': True}, style={'width': '100%'})],
-            ),
-            width=12,  # Full width column
-            style={"padding": "0"}  # Centering the graph
-        ),
-    )
-])
 
 
 @app.callback(
@@ -420,6 +360,8 @@ def update_multi_asset_dropdown_options(selected_class):
     return options, assets
 
 
+
+
 ###############################################################################
 #
 # Positioning Table
@@ -434,7 +376,7 @@ def get_CFTC_df_selection(assets, selected_columns):
     """Dash callback to update the positioning table"""
     # Determine the list of asset classes to fetch
     if not assets:
-        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': TEXT_COLOR})
+        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': constants.TEXT_COLOR})
 
     asset_list = [assets] if isinstance(assets, str) else assets
     df = cotIndexer.get_positioning_table_by_asset_class(asset_list)
@@ -505,22 +447,22 @@ positioning_layout = html.Div([
         # ROW 1: Title
         dbc.Row([
             dbc.Col(html.H6(id='date-display', style={
-                    'color': BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
+                    'color': constants.BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
         ], justify="center", className="mb-1"),
 
         # ROW 2: Update time
         dbc.Row([
             dbc.Col([
                 html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
-                       style={'fontSize': '0.75rem', 'margin': 0, 'color': TEXT_COLOR}),
+                       style={'fontSize': '0.75rem', 'margin': 0, 'color': constants.TEXT_COLOR}),
                 dcc.Interval(id="daily-interval",
-                             interval=milliseconds_until_midnight(), n_intervals=0),
+                             interval=utils.milliseconds_until_midnight(), n_intervals=0),
             ], width="auto"),
         ], justify="center", className="mb-4"),
 
         html.Hr(style={
-            'color': BRIGHTER_TEXT_COLOR,
-            'backgroundColor': TEXT_COLOR,
+            'color': constants.BRIGHTER_TEXT_COLOR,
+            'backgroundColor': constants.TEXT_COLOR,
             'height': '1px',
             'border': 'none',
             'opacity': '0.5',
@@ -533,16 +475,16 @@ positioning_layout = html.Div([
         dbc.Row([
             dbc.Col([
                 # html.Label("Download CSV", style={
-                #            'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                #            'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
                 dbc.Button([html.I(className="bi bi-download me-2"), "Download CSV"],
                            id="btn_download_csv",
                            color='secondary',
                            outline=True,
                            size="sm",
                            style={
-                                'color': TEXT_COLOR,
-                                'border': f'1.5px solid {TEXT_COLOR}66',
-                                'borderColor': TEXT_COLOR,
+                                'color': constants.TEXT_COLOR,
+                                'border': f'1.5px solid {constants.TEXT_COLOR}66',
+                                'borderColor': constants.TEXT_COLOR,
                                 'fontSize': '0.8rem'
                 }
                 ),
@@ -550,7 +492,7 @@ positioning_layout = html.Div([
             dbc.Col([
                 # Positioning Table Extended Data
                 html.Label("Table Data Selector", style={
-                               'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                               'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
                 dcc.Dropdown(
                     persistence=True,
                     id='cot_positioning_column_select_input',
@@ -559,9 +501,9 @@ positioning_layout = html.Div([
                     searchable=False,
                     clearable=True,
                     style={
-                        'backgroundColor': BACKGROUND_COLOR,
-                        'color': BRIGHTER_TEXT_COLOR,
-                        'borderColor': BRIGHTER_TEXT_COLOR,
+                        'backgroundColor': constants.BACKGROUND_COLOR,
+                        'color': constants.BRIGHTER_TEXT_COLOR,
+                        'borderColor': constants.BRIGHTER_TEXT_COLOR,
                         'border': 'none',
                         'fontSize': '0.85rem',
                         'textAlign': 'center',
@@ -572,7 +514,7 @@ positioning_layout = html.Div([
             ], width="auto"),
             dbc.Col([
                     html.Label("Asset Class Selector", style={
-                               'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                               'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
                     dcc.Dropdown(
                         persistence=True,
                         id='page_positioning_selector',
@@ -584,9 +526,9 @@ positioning_layout = html.Div([
                         searchable=False,
                         clearable=True,
                         style={
-                            'backgroundColor': BACKGROUND_COLOR,
-                            'color': BRIGHTER_TEXT_COLOR,
-                            'borderColor': BRIGHTER_TEXT_COLOR,
+                            'backgroundColor': constants.BACKGROUND_COLOR,
+                            'color': constants.BRIGHTER_TEXT_COLOR,
+                            'borderColor': constants.BRIGHTER_TEXT_COLOR,
                             'border': 'none',
                             'fontSize': '0.85rem',
                             'textAlign': 'center',
@@ -705,22 +647,22 @@ analysis_layout = html.Div([
         # ROW 1: Title
         dbc.Row([
             dbc.Col(html.H6(id='date-display', style={
-                    'color': BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
+                    'color': constants.BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
         ], justify="center", className="mb-1"),
 
         # ROW 2: Update time
         dbc.Row([
             dbc.Col([
                 html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
-                       style={'fontSize': '0.75rem', 'margin': 0, 'color': TEXT_COLOR}),
+                       style={'fontSize': '0.75rem', 'margin': 0, 'color': constants.TEXT_COLOR}),
                 dcc.Interval(id="daily-interval",
-                             interval=milliseconds_until_midnight(), n_intervals=0),
+                             interval=utils.milliseconds_until_midnight(), n_intervals=0),
             ], width="auto"),
         ], justify="center", className="mb-4"),
 
         html.Hr(style={
-            'color': BRIGHTER_TEXT_COLOR,
-            'backgroundColor': TEXT_COLOR,
+            'color': constants.BRIGHTER_TEXT_COLOR,
+            'backgroundColor': constants.TEXT_COLOR,
             'height': '1px',
             'border': 'none',
             'opacity': '0.5',
@@ -733,7 +675,7 @@ analysis_layout = html.Div([
         dbc.Row([
             dbc.Col([
                 html.Label("Asset Class Selector", style={
-                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                           'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
                 dbc.Select(
                     persistence=True,
                     id='analysis_single_asset_class_input',
@@ -741,21 +683,21 @@ analysis_layout = html.Div([
                              for x in asset_class_list],
                     value=f"{cotIndexer.get_default_asset_class()}",
                     className="mb-3 bg-dark text-white border-secondary",
-                    style={'backgroundColor': BACKGROUND_COLOR, 'width': '220px',
-                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'width': '220px',
+                           'color': 'constants.TEXT_COLOR', 'borderColor': f"{constants.TEXT_COLOR}26"}
                 ),
                 ], width="auto"
             ),
             dbc.Col([
                 html.Label("Asset Selector", style={
-                           'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                           'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
 
                 dbc.Select(
                     persistence=True,
                     id='analysis_single_asset_filter_input',
                     className="mb-3 bg-dark text-white border-secondary",
-                    style={'backgroundColor': BACKGROUND_COLOR, 'width': '220px',
-                           'color': 'TEXT_COLOR', 'borderColor': f"{TEXT_COLOR}26"}
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'width': '220px',
+                           'color': 'constants.TEXT_COLOR', 'borderColor': f"{constants.TEXT_COLOR}26"}
                 ),
             ], width="auto", className="ms-auto"),  # ms-auto pushes this column to the right
         ], justify="center", className="mb-1"),
@@ -802,24 +744,24 @@ def update_asset_dropdown_options(selected_class):
 )
 def update_analysis_header(asset_class, asset_name):
     if not asset_name:
-        return html.H6("SELECT ASSET", style={'color': TEXT_COLOR})
+        return html.H6("SELECT ASSET", style={'color': constants.TEXT_COLOR})
 
     # Fetch latest data point
     df = cotIndexer.get_symbols_custom_index(asset_name)
     if df is None or df.empty:
-        return html.H6(f"{asset_class} | {asset_name}", style={'color': BRIGHTER_TEXT_COLOR})
+        return html.H6(f"{asset_class} | {asset_name}", style={'color': constants.BRIGHTER_TEXT_COLOR})
 
     # Get the latest Z-score (using the column name from your DataFrame)
     latest_z = df['comms-z'].iloc[-1]
 
     # Determine color logic based on your 95/5 (Z=2.0) setup
-    z_color = "#4ade80" if latest_z >= 2.0 else "#f87171" if latest_z <= -2.0 else TEXT_COLOR
+    z_color = "#4ade80" if latest_z >= 2.0 else "#f87171" if latest_z <= -2.0 else constants.TEXT_COLOR
 
     return [
         html.H6(f"{asset_class.upper()} | {asset_name.upper()}",
-                style={'color': BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'marginBottom': '5px'}),
+                style={'color': constants.BRIGHTER_TEXT_COLOR, 'fontWeight': 'bold', 'marginBottom': '5px'}),
         html.Div([
-            html.Span("CURRENT COMMERCIAL Z-SCORE: ", style={'color': TEXT_COLOR, 'fontSize': '0.9rem'}),
+            html.Span("CURRENT COMMERCIAL Z-SCORE: ", style={'color': constants.TEXT_COLOR, 'fontSize': '0.9rem'}),
             html.Span(f"{latest_z:.2f}", style={'color': z_color, 'fontSize': '1.1rem', 'fontWeight': 'bold'})
         ])
     ]
@@ -835,7 +777,7 @@ def update_analysis_stack(palette_name, asset, setup):
     if not asset:
         return go.Figure()
 
-    min_threshold, max_threshold = parse_setup_thresholds(setup)
+    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     color_palette = cotIndexer.get_palette(palette_name)
     df = cotIndexer.get_symbols_custom_index(asset)
     if df is None:
@@ -870,7 +812,7 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "comm_oi_pct", cur_row, "Commercials", color_palette[0], 0, showlegend=True)
     add_trace_to_all(fig, df, "lrg_oi_pct", cur_row, "Large Specs", color_palette[1], 1, showlegend=True)
     add_trace_to_all(fig, df, "sml_oi_pct", cur_row, "Small Specs", color_palette[2], 2, showlegend=True)
-    fig.update_yaxes(title="%", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
+    fig.update_yaxes(title="%", row=cur_row, col=cur_col, gridcolor=constants.GRID_COLOR, secondary_y=False, fixedrange=True)
 
     # PLOT 2: Spearman Correlation (-1 to 1)
     # Plotting the relationship between position ranks and price ranks
@@ -879,8 +821,8 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "lrg_spearman", cur_row, "Large Specs", color_palette[1], 1)
     add_trace_to_all(fig, df, "sml_spearman", cur_row, "Small Specs", color_palette[2], 2)
     add_trace_to_all(fig, df, "price", cur_row, "Price", color_palette[3], 3, secondary=True, showlegend=True)
-    fig.update_yaxes(title="correlation", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
-    fig.update_yaxes(title="$", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
+    fig.update_yaxes(title="correlation", row=cur_row, col=cur_col, gridcolor=constants.GRID_COLOR, secondary_y=False, fixedrange=True)
+    fig.update_yaxes(title="$", row=cur_row, col=cur_col, gridcolor=constants.BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
 
     # THIRD PLOT: Net Positions (Bars)
     cur_row = cur_row + 1
@@ -888,8 +830,8 @@ def update_analysis_stack(palette_name, asset, setup):
     add_trace_to_all(fig, df, "lrg_net", cur_row, "Large Specs", color_palette[1], 1, is_bar=True)
     add_trace_to_all(fig, df, "sml_net", cur_row, "Small Specs", color_palette[2], 2, is_bar=True)
     add_trace_to_all(fig, df, "oi", cur_row, "Open Interest", color_palette[4], 3, secondary=True, showlegend=True)
-    fig.update_yaxes(title="net position", row=cur_row, col=cur_col, gridcolor=GRID_COLOR, secondary_y=False, fixedrange=True)
-    fig.update_yaxes(title="OI", row=cur_row, col=cur_col, gridcolor=BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
+    fig.update_yaxes(title="net position", row=cur_row, col=cur_col, gridcolor=constants.GRID_COLOR, secondary_y=False, fixedrange=True)
+    fig.update_yaxes(title="OI", row=cur_row, col=cur_col, gridcolor=constants.BACKGROUND_COLOR, secondary_y=True, fixedrange=True)
 
     # FOURTH PLOT: Sentiment Context
     cur_row = cur_row + 1
@@ -899,7 +841,7 @@ def update_analysis_stack(palette_name, asset, setup):
     # Threshold Lines for Plot 4
     fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
-    fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR, fixedrange=True)
+    fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=constants.GRID_COLOR, fixedrange=True)
 
     # FIFTH PLOT: Sentiment z-score
     cur_row = cur_row + 1
@@ -910,7 +852,7 @@ def update_analysis_stack(palette_name, asset, setup):
     fig.add_hline(y=-3.0, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=3.0, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", row=5, col=1)
-    fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=GRID_COLOR, fixedrange=True)
+    fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=constants.GRID_COLOR, fixedrange=True)
 
     # Loop through the data to find 'Extreme' clusters
     for i in range(1, len(df)):
@@ -948,19 +890,19 @@ def update_analysis_stack(palette_name, asset, setup):
         spikemode="across",
         spikesnap="cursor",
         spikethickness=1,
-        spikecolor=BRIGHTER_TEXT_COLOR,
+        spikecolor=constants.BRIGHTER_TEXT_COLOR,
         spikedash="solid",
         hoverformat="%Y-%m-%d",
         matches='x',
         layer="above traces",
         showticklabels=True,
-        tickfont_color=TEXT_COLOR
+        tickfont_color=constants.TEXT_COLOR
     )
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=BACKGROUND_COLOR,
-        plot_bgcolor=BACKGROUND_COLOR,
+        paper_bgcolor=constants.BACKGROUND_COLOR,
+        plot_bgcolor=constants.BACKGROUND_COLOR,
         height=1000,
         hovermode="x unified",
         spikedistance=1000,
@@ -983,24 +925,24 @@ def update_analysis_stack(palette_name, asset, setup):
 heatmap_layout = html.Div([
     dbc.Container([
         # ROW 1: Title
-        dbc.Row([
-            dbc.Col(html.H6(id='date-display', style={
-                    'color': BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
-        ], justify="center", className="mb-1"),
+        # dbc.Row([
+        #     dbc.Col(html.H6(id='date-display', style={
+        #             'color': constants.BRIGHTER_TEXT_COLOR, 'margin': 0, 'fontSize': '1.5rem'}), width="auto"),
+        # ], justify="center", className="mb-1"),
 
         # ROW 2: Update time
         dbc.Row([
             dbc.Col([
                 html.P(f"Latest update: {cotDatabase.latest_update_timestamp()}",
-                       style={'fontSize': '0.75rem', 'margin': 0, 'color': TEXT_COLOR}),
+                       style={'fontSize': '0.75rem', 'margin': 0, 'color': constants.TEXT_COLOR}),
                 dcc.Interval(id="daily-interval",
-                             interval=milliseconds_until_midnight(), n_intervals=0),
+                             interval=utils.milliseconds_until_midnight(), n_intervals=0),
             ], width="auto"),
         ], justify="center", className="mb-4"),
 
         html.Hr(style={
-            'color': BRIGHTER_TEXT_COLOR,
-            'backgroundColor': TEXT_COLOR,
+            'color': constants.BRIGHTER_TEXT_COLOR,
+            'backgroundColor': constants.TEXT_COLOR,
             'height': '1px',
             'border': 'none',
             'opacity': '0.5',
@@ -1009,52 +951,115 @@ heatmap_layout = html.Div([
             'width': '95%'
         }),
 
-        # ROW 3: Download Button and Asset Class Selector
+        # ROW: Layout Selector and Asset Class Selector
         dbc.Row([
             dbc.Col([
-                    html.Label("Asset Class Selector", style={
-                               'color': BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
-                    dcc.Dropdown(
-                        persistence=True,
-                        id='page_heatmap_selector',
-                        options=[{'label': x, 'value': x}
-                                 for x in asset_class_list],
-                        value=asset_class_list,  # This selects every item in the list by default
-                        multi=True,
-                        className="dash-dropdown bg-dark text-white",
-                        searchable=False,
-                        clearable=True,
-                        style={
-                            'width': '440px',
-                            'backgroundColor': BACKGROUND_COLOR,
-                            'color': BRIGHTER_TEXT_COLOR,
-                            'borderColor': BRIGHTER_TEXT_COLOR,
-                            'border': 'none',
-                            'fontSize': '0.85rem',
-                            'textAlign': 'center'
-                        }
-                    ),
-                    ], width="auto"),
-        ], justify="center", className="mb-4"),
+                html.Label("Layout View:",
+                            style={'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dbc.Select(
+                    id='heatmap_layout_selector',
+                    options=[
+                        {"label": "Both - Side by Side", "value": "side"},
+                        {"label": "Both - Stacked", "value": "stacked"},
+                        {"label": "Z-Score Only", "value": "z_only"},
+                        {"label": "Index Only", "value": "index_only"},
+                    ],
+                    value="stacked",
+                    size="sm",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'width': '220px',
+                        'color': 'constants.TEXT_COLOR', 'borderColor': f"{constants.TEXT_COLOR}26"}
+                )
+            ], width="auto"),
+
+            dbc.Col([
+                html.Label("Lookback:",
+                            style={'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dbc.Select(
+                    id='heatmap_lookback_selector',
+                    options=[
+                        {"label": "26 Weeks", "value": "26"},
+                        {"label": "52 Weeks", "value": "52"},
+                        {"label": "Custom", "value": "custom"},
+                    ],
+                    value="stacked",
+                    size="sm",
+                    className="mb-3 bg-dark text-white border-secondary",
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'width': '220px',
+                        'color': 'constants.TEXT_COLOR', 'borderColor': f"{constants.TEXT_COLOR}26"}
+                )
+            ], width="auto"),
+
+            dbc.Col([
+                html.Label("Asset Class Selector", style={
+                            'color': constants.BRIGHTER_TEXT_COLOR, 'fontSize': '0.85rem', 'marginRight': '5px', 'marginBottom': 0}),
+                dcc.Dropdown(
+                    persistence=True,
+                    id='page_heatmap_selector',
+                    options=[{'label': x, 'value': x}
+                                for x in asset_class_list],
+                    value=asset_class_list,  # This selects every item in the list by default
+                    multi=True,
+                    className="dash-dropdown bg-dark text-white",
+                    searchable=False,
+                    clearable=True,
+                    style={
+                        'width': '440px',
+                        'backgroundColor': constants.BACKGROUND_COLOR,
+                        'color': constants.BRIGHTER_TEXT_COLOR,
+                        'borderColor': constants.BRIGHTER_TEXT_COLOR,
+                        'border': 'none',
+                        'fontSize': '0.85rem',
+                        'textAlign': 'center'
+                    }
+                ),
+            ], width="auto")
+        ], justify="left", className="mb-4"),
+
+        # ROW: Heatmaps - Dynamic Content Container
+        html.Div(id='heatmap_display_container')
     ], fluid=True),
-
-    dbc.Row([
-        dbc.Col([
-            dcc.Loading(dcc.Graph(id='market_z_score_heat_map', config={'staticPlot': True, 'displayModeBar': False}, style={'minHeight': '400px'}))
-        ], width=6),
-
-        dbc.Col([
-            dcc.Loading(dcc.Graph(id='market_index_score_heat_map', config={'staticPlot': True, 'displayModeBar': False}, style={'minHeight': '400px'}))
-        ], width=6)
-    ], justify="center", className="mb-4")
 ])
 
 
 @app.callback(
-    Output('market_z_score_heat_map', 'figure'),
-    Input('page_heatmap_selector', 'value')
+    Output('heatmap_display_container', 'children'),
+    [Input('heatmap_layout_selector', 'value'),
+     Input('page_heatmap_selector', 'value'),
+     Input('heatmap_lookback_selector', 'value')]
 )
-def update_z_score_heat_map(assest_classes):
+def render_heatmap_layout(layout_type, assest_classes, lookback):
+    if not assest_classes:
+        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': constants.TEXT_COLOR})
+
+    fig_z = update_z_score_heat_map(assest_classes, lookback)
+    fig_index = update_index_heat_map(assest_classes, lookback)
+
+    z_graph = dcc.Graph(id='z_score_graph', figure=fig_z, config={'scrollZoom': False})
+    index_graph = dcc.Graph(id='index_graph', figure=fig_index, config={'scrollZoom': False})
+
+    if layout_type == "side":
+        # Two columns (width 6 each) for wide viewing
+        return dbc.Row([
+            dbc.Col(z_graph, lg=6, md=12),
+            dbc.Col(index_graph, lg=6, md=12)
+        ])
+
+    elif layout_type == "stacked":
+        # Full width (width 12) for vertical scrolling on smaller screens
+        return html.Div([
+            dbc.Row([dbc.Col(z_graph, width=12)], className="mb-4"),
+            dbc.Row([dbc.Col(index_graph, width=12)])
+        ])
+
+    elif layout_type == "z_only":
+        return dbc.Row([dbc.Col(z_graph, width=12)])
+
+    else: # index_only
+        return dbc.Row([dbc.Col(index_graph, width=12)])
+
+
+def update_z_score_heat_map(assest_classes, lookback):
     if not assest_classes:
         assest_classes = asset_class_list
 
@@ -1065,7 +1070,7 @@ def update_z_score_heat_map(assest_classes):
     }])
     final_df_list = [top_spacer]
     for asset_class in assest_classes:
-        class_df = cotIndexer.get_asset_class_z_score_heat(asset_class)
+        class_df = cotIndexer.get_asset_class_z_score_heat(asset_class, lookback)
         if class_df.empty:
             continue
 
@@ -1157,8 +1162,8 @@ def update_z_score_heat_map(assest_classes):
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=BACKGROUND_COLOR,
-        plot_bgcolor=BACKGROUND_COLOR,
+        paper_bgcolor=constants.BACKGROUND_COLOR,
+        plot_bgcolor=constants.BACKGROUND_COLOR,
         height=len(df) * 25 + 200,  # Dynamic height based on row count
         margin=dict(t=80, b=40, l=60, r=40),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1, fixedrange=True),
@@ -1172,11 +1177,7 @@ def update_z_score_heat_map(assest_classes):
     return fig
 
 
-@app.callback(
-    Output('market_index_score_heat_map', 'figure'),
-    Input('page_heatmap_selector', 'value')
-)
-def update_index_heat_map(assest_classes):
+def update_index_heat_map(assest_classes, lookback):
     if not assest_classes:
         assest_classes = asset_class_list
 
@@ -1188,7 +1189,7 @@ def update_index_heat_map(assest_classes):
     final_df_list = [top_spacer]
 
     for asset_class in assest_classes:
-        class_df = cotIndexer.get_asset_class_index_heat(asset_class)
+        class_df = cotIndexer.get_asset_class_index_heat(asset_class, lookback)
         if class_df.empty:
             continue
 
@@ -1280,8 +1281,8 @@ def update_index_heat_map(assest_classes):
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=BACKGROUND_COLOR,
-        plot_bgcolor=BACKGROUND_COLOR,
+        paper_bgcolor=constants.BACKGROUND_COLOR,
+        plot_bgcolor=constants.BACKGROUND_COLOR,
         height=len(df) * 25 + 200,  # Dynamic height based on row count
         margin=dict(t=80, b=40, l=60, r=40),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1),
@@ -1307,13 +1308,13 @@ SIDEBAR_STYLE = {
     'bottom': 0,
     'width': '15rem',
     'padding': '1rem 0.5rem',
-    'background-color': BACKGROUND_COLOR,
+    'background-color': constants.BACKGROUND_COLOR,
     'transition': 'all 0.5s',
     'overflow-y': 'auto',
     'overflow-x': 'hidden',
     'display': 'flex',
     'flex-direction': 'column',
-    'borderRight': f'1px solid {TEXT_COLOR}26',
+    'borderRight': f'1px solid {constants.TEXT_COLOR}26',
     'zIndex': 1000
 }
 # The sidebar state when 'hidden'
@@ -1335,7 +1336,7 @@ sidebar = html.Div(
     id="sidebar",
     children=[
         html.Div([
-            html.H3("", className="display-6", style={'color': BRIGHTER_TEXT_COLOR, 'padding': '1rem'}),
+            html.H3("", className="display-6", style={'color': constants.BRIGHTER_TEXT_COLOR, 'padding': '1rem'}),
             html.Hr(style={'opacity': '0.15'}),
         ], style={'marginTop': '3rem'}),
 
@@ -1344,7 +1345,7 @@ sidebar = html.Div(
             dbc.AccordionItem([
                 dbc.Nav([
                     dbc.NavLink("Heatmap", href="/heatmap", active="exact"),
-                    dbc.NavLink("Graphs", href="/graphs", active="exact"),
+                    dbc.NavLink("Graphs", href="/graphs", active="exact", className="py-2"),
                     dbc.NavLink("Positioning", href="/positioning", active="exact"),
                     dbc.NavLink("Analysis", href="/analysis", active="exact"),
                 ], vertical=True, pills=True),
@@ -1358,8 +1359,8 @@ sidebar = html.Div(
                     outline=True,
                     className="w-100 mb-2",
                     style={
-                        'color': TEXT_COLOR,
-                        'borderColor': f"{TEXT_COLOR}26",
+                        'color': constants.TEXT_COLOR,
+                        'borderColor': f"{constants.TEXT_COLOR}26",
                         'fontSize': '0.9rem'
                     }
                 ),
@@ -1373,32 +1374,32 @@ sidebar = html.Div(
                     outline=True,
                     className="w-100 mb-2",
                     style={
-                        'color': TEXT_COLOR,
-                        'borderColor': f"{TEXT_COLOR}26",
+                        'color': constants.TEXT_COLOR,
+                        'borderColor': f"{constants.TEXT_COLOR}26",
                         'fontSize': '0.9rem'
                     }
                 ),
                 dcc.Download(id="sidebar-real-test-download-logic")
             ], title="Data Download", item_id="data-download"),
             dbc.AccordionItem([
-                html.Label("Color Palette", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                html.Label("Color Palette", style={'color': constants.TEXT_COLOR, 'fontSize': '0.85rem'}),
                 dbc.Select(
                     persistence=True,
                     id='global_palette_input',
                     options=[{'label': x, 'value': x} for x in palette_options],
                     value=palette_options[0] if palette_options else None,
                     className="mb-3 bg-dark text-white border-secondary",
-                    style={'backgroundColor': BACKGROUND_COLOR, 'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'color': constants.TEXT_COLOR, 'borderColor': f"{constants.TEXT_COLOR}26"}
                 ),
 
-                html.Label("Setup Highlight", style={'color': TEXT_COLOR, 'fontSize': '0.85rem'}),
+                html.Label("Setup Highlight", style={'color': constants.TEXT_COLOR, 'fontSize': '0.85rem'}),
                 dbc.Select(
                     persistence=True,
                     id='global_setup_threshold_input',
                     options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
                     value=f"{'None', 'None'}",
                     className="mb-3 bg-dark text-white border-secondary",
-                    style={'backgroundColor': BACKGROUND_COLOR, 'color': TEXT_COLOR, 'borderColor': f"{TEXT_COLOR}26"}
+                    style={'backgroundColor': constants.BACKGROUND_COLOR, 'color': constants.TEXT_COLOR, 'borderColor': f"{constants.TEXT_COLOR}26"}
                 ),
                 dbc.Tooltip(
                     "Highlight plots with index extremes. This can be really slow.",
@@ -1415,10 +1416,10 @@ sidebar = html.Div(
                      "CFTC",
                      href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm",
                      target="_blank",
-                     style={'color': BRIGHTER_TEXT_COLOR,
+                     style={'color': constants.BRIGHTER_TEXT_COLOR,
                             'textDecoration': 'underline'}
                  ),
-                 ], style={'padding': '20px', 'text-align': 'center', 'fontSize': '0.8rem', 'color': TEXT_COLOR})
+                 ], style={'padding': '20px', 'text-align': 'center', 'fontSize': '0.8rem', 'color': constants.TEXT_COLOR})
     ],
     style=SIDEBAR_STYLE,
 )
@@ -1435,7 +1436,7 @@ def toggle_sidebar(pathname, n_clicks, current_style):
     ctx = callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    if is_mobile() and triggered_id == 'url':
+    if utils.is_mobile() and triggered_id == 'url':
         return SIDEBAR_HIDDEN_STYLE, CONTENT_STYLE_HIDDEN
 
     # Detect mobile on initial load (when n_clicks is None)
@@ -1451,7 +1452,7 @@ def toggle_sidebar(pathname, n_clicks, current_style):
 #
 ###############################################################################
 content = html.Div(id="page-content", style={"margin-left": "16rem", "padding": "1rem 1rem",
-                   "width": "calc(100% - 16rem)", "backgroundColor": BACKGROUND_COLOR})
+                   "width": "calc(100% - 16rem)", "backgroundColor": constants.BACKGROUND_COLOR})
 app.layout = html.Div([
     dcc.Location(id='url'),
     dbc.Button(
@@ -1464,13 +1465,14 @@ app.layout = html.Div([
             "top": "1rem",
             "left": "1rem",
             "zIndex": "1001",  # Higher than sidebar (1000)
-            "color": TEXT_COLOR,
-            "border": f"1px solid {TEXT_COLOR}26"
+            "color": constants.TEXT_COLOR,
+            "border": f"1px solid {constants.TEXT_COLOR}26"
         }
     ),
     sidebar,
     content,
-], style={"backgroundColor": BACKGROUND_COLOR, "minHeight": "100vh"})
+    # dash.page_container
+], style={"backgroundColor": constants.BACKGROUND_COLOR, "minHeight": "100vh"})
 
 @app.callback(
     Output('page-content', 'children'),
@@ -1502,3 +1504,17 @@ def update_active_links(pathname):
     is_heatmap = pathname == '/heatmap'
 
     return is_graphs, is_positioning, is_analysis, is_heatmap
+
+@app.callback(
+    Output('global_setup_threshold_input', 'value'),
+    Input('global_setup_threshold_input', 'value')
+)
+def plot_setup_threshold_input(selection):
+    if selection == '95 5':
+        return '95 5'
+    elif selection == '90 10':
+        return '90 10'
+    elif selection == '75 25':
+        return '75 25'
+    else:
+        return 'None'
