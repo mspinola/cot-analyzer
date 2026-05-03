@@ -9,9 +9,9 @@
 
 /* Ensure the arrow stays the same color when the user clicks it */
 .form-select:focus {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
-    font-size: 0.85rem !important;
-    min-height: 32px !important;
+    border-color: #ABB8C9 !important;    /* Matches the blue highlight */
+    box-shadow: 0 0 0 0.25rem rgba(55, 90, 127, 0.25) !important;
+    outline: 0;
 }
 
 /* Target the NEW Dash 4 Dropdown Variables */
@@ -30,19 +30,23 @@
 /* Target the dbc.Select (Bootstrap native) specifically */
 .form-select {
     background-color: #1a1a1a !important;
-    color: #ABB8C9 !important;
-    border-color: rgba(171, 184, 201, 0.3) !important;
+    color: #E2E8F0 !important;
+    border: 1px solid #ABB8C9 !important;
+    border-radius: 4px !important;
+    font-size: 0.85rem !important;
+    height: 38px !important;
+    padding-left: 10px !important;
 }
 
 /* Fix the white "Selected" and "Hover" backgrounds */
 .Select-option.is-focused, .Select-option:hover, .dropdown-item:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
 /* Fix for Multi-Select Tags (used in Positioning) */
 .Select--multi .Select-value {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid #ABB8C9 !important;
 }
 
@@ -108,7 +112,7 @@
 
 /* Hover effect on the list items so you can see what you're picking */
 .VirtualizedSelectFocusedOption {
-    background-color: #2d2d2d !important; /* Slightly lighter gray */
+    background-color: #1a1a1a !important; /* Slightly lighter gray */
     color: #FFFFFF !important;
 }
 
@@ -130,7 +134,7 @@
 /* This is likely why the search area looks white */
 .Select-input > input {
     color: #E2E8F0 !important;
-    background-color: #2d2d2d !important; /* Slightly lighter for contrast */
+    background-color: #1a1a1a !important; /* Slightly lighter for contrast */
     border-radius: 4px !important;
     padding-left: 10px !important;
 }
@@ -149,7 +153,7 @@
 
 /* 5. Hover state for the options */
 .VirtualizedSelectFocusedOption {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
@@ -180,7 +184,7 @@
 }
 
 .dash-dropdown-search-input input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     border: 1px solid #ABB8C9 !important;
 }
@@ -204,7 +208,7 @@
 .dash-options-list-option:hover,
 .dash-dropdown-option:hover,
 .dash-dropdown-option-highlighted {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     cursor: pointer !important;
 }
@@ -231,7 +235,7 @@
 
 /* If the counter is inside a small pill or badge in your version */
 .dash-dropdown-value-count-container {
-    background-color: #2d2d2d !important; /* Subtle gray background for the 'pill' */
+    background-color: #1a1a1a !important; /* Subtle gray background for the 'pill' */
     border-radius: 4px !important;
     margin-right: 8px !important;
 }
@@ -333,7 +337,7 @@
 
 /* 3. Ensure the search input box sits cleanly inside the dark container */
 .dash-dropdown-search-input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
     border-radius: 4px !important;
 }
@@ -353,7 +357,7 @@
 
 /* 3. Ensure the search input box sits cleanly inside the dark container */
 .dash-dropdown-search-input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
     border-radius: 4px !important;
 }
@@ -443,7 +447,7 @@ border: 1px solid #ABB8C9 !important;
 
 /* Changes the background of the 'pill' to stay dark */
 .dash-dropdown .Select--multi .Select-value {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid rgba(171, 184, 201, 0.4) !important;
 }
 
@@ -486,7 +490,7 @@ border: 1px solid #ABB8C9 !important;
 
 /* 3. Optional: Maintain the dark background for the pill */
 .dash-dropdown .dash-dropdown-value-item {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 0px solid rgba(171, 184, 201, 0.0) !important;
     border-radius: 0px !important;
     margin: 2px !important;
@@ -524,7 +528,7 @@ border: 1px solid #ABB8C9 !important;
 }
 
 #btn_download_csv:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     border-color: #ABB8C9 !important;
 }
@@ -545,7 +549,7 @@ border: 1px solid #ABB8C9 !important;
 
 /* Ensure the toggle button is always visible on hover */
 #btn-sidebar-toggle:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
@@ -638,4 +642,24 @@ border: 1px solid #ABB8C9 !important;
 /* Subtle shadow to indicate the scroll plane */
 .sticky-first-col tbody td:first-child(2) {
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Sets the background for the entire page */
+body, .container-fluid {
+    background-color: #1a1a1a !important;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-link {
+    color: #ABB8C9 !important; /* Your standard muted text */
+    font-size: 1.5rem;
+    transition: color 0.2s ease-in-out;
+}
+
+/* Style when the link is active */
+.nav-link.active {
+    color: #E2E8F0 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-weight: 600;
+    border-bottom: 2px solid #E2E8F0; /* Added for a clean 'Pro' look */
 }

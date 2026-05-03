@@ -18,7 +18,9 @@ def milliseconds_until_midnight():
     local_tz = pytz.timezone(constants.app_timezone)
     now = datetime.now(tz=local_tz)
     next_midnight = (now + timedelta(days=1)).replace(hour=0,
-                                                      minute=0, second=0, microsecond=0)
+                                                      minute=0,
+                                                      second=0,
+                                                      microsecond=0)
     delta = next_midnight - now
     return int(delta.total_seconds() * 1000)
 
