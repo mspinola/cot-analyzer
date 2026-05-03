@@ -257,29 +257,30 @@ def update_analysis_stack(palette_name, asset, setup, lookback):
     fig.update_yaxes(title="Std Dev", range=[-4, 4], row=cur_row, col=cur_col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
 
     # Loop through the data to find 'Extreme' clusters
-    for i in range(1, len(df)):
-        comms_idx = df['comms_idx'].iloc[i]
-        large_idx = df['lrg_idx'].iloc[i]
-        small_idx = df['sml_idx'].iloc[i]
-        if comms_idx is None or large_idx is None or small_idx is None:
-            continue
-        elif comms_idx >= max_threshold and large_idx <= min_threshold and small_idx <= min_threshold:
-            color = "rgba(255, 0, 0, 0.3)"  # Red Heat
-        elif comms_idx <= min_threshold and large_idx >= max_threshold and small_idx >= max_threshold:
-            color = "rgba(0, 255, 0, 0.3)"  # Green Heat
-        else:
-            continue
+    if min_threshold is not None and max_threshold is not None:
+        for i in range(1, len(df)):
+            comms_idx = df['comms_idx'].iloc[i]
+            large_idx = df['lrg_idx'].iloc[i]
+            small_idx = df['sml_idx'].iloc[i]
+            if comms_idx is None or large_idx is None or small_idx is None:
+                continue
+            elif comms_idx >= max_threshold and large_idx <= min_threshold and small_idx <= min_threshold:
+                color = "rgba(255, 0, 0, 0.3)"  # Red Heat
+            elif comms_idx <= min_threshold and large_idx >= max_threshold and small_idx >= max_threshold:
+                color = "rgba(0, 255, 0, 0.3)"  # Green Heat
+            else:
+                continue
 
-        # Highlight the specific week on the chart
-        fig.add_vrect(
-            row=setup_highlight_row,
-            col=cur_col,
-            x0=df.index[i-1],
-            x1=df.index[i],
-            fillcolor=color,
-            layer="below",
-            line_width=0,
-        )
+            # Highlight the specific week on the chart
+            fig.add_vrect(
+                row=setup_highlight_row,
+                col=cur_col,
+                x0=df.index[i-1],
+                x1=df.index[i],
+                fillcolor=color,
+                layer="below",
+                line_width=0,
+            )
 
     weeks_back = 78
     start_idx = max(0, len(df) - weeks_back)

@@ -148,6 +148,10 @@ def update_z_score_heat_map(asset_classes, setup, lookback):
         asset_classes = cotIndexer.get_asset_classes()
 
     min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
+    if min_threshold is None or max_threshold is None:
+        min_threshold = 5
+        max_threshold = 95
+
     top_spacer = pd.DataFrame([{
         "Asset": "TOP_SPACER",
         "Commercials": None, "Large Specs": None, "Small Specs": None,
@@ -265,6 +269,10 @@ def update_index_heat_map(asset_classes, setup, lookback):
         asset_classes = cotIndexer.get_asset_classes()
 
     min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
+    if min_threshold is None or max_threshold is None:
+        min_threshold = 5
+        max_threshold = 95
+
     top_spacer = pd.DataFrame([{
         "Asset": "TOP_SPACER",
         "Commercials": None, "Large Specs": None, "Small Specs": None,

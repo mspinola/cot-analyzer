@@ -23,21 +23,6 @@ layout = html.Div([
     dbc.Container([
         dbc.Row([
             dbc.Col([
-                html.Label("Lookback:", style=const.label_style),
-                dbc.Select(
-                    id='graphs_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "Custom"},
-                    ],
-                    value="Custom",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
-
-            dbc.Col([
                 html.Label("Asset Class Selector", style=const.label_style),
                 dbc.Select(
                     persistence=True,
@@ -74,29 +59,6 @@ layout = html.Div([
         ], justify='center')
     ], fluid=True),
 ])
-
-
-@callback(
-    Output('global_lookback_store', 'data'),
-    Input('graphs_lookback_selector', 'value')
-)
-def update_global_lookback(value):
-    print("graphs cb select lb: ", value)
-    if value == "26" or value == "52" or value == "Custom":
-        return value
-    else:
-        return "Custom"
-
-@callback(
-    Output('graphs_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data')
-)
-def update_local_lookback(value):
-    print("graphs cb redirect lb: ", value)
-    if value == "26" or value == "52" or value == "Custom":
-        return value
-    else:
-        return "Custom"
 
 
 @callback(

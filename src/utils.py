@@ -36,7 +36,7 @@ def parse_setup_thresholds(setup):
         max_threshold = 75
         min_threshold = 25
     else:
-        max_threshold = 101
-        min_threshold = -1
+        max_threshold = None
+        min_threshold = None
 
     return min_threshold, max_threshold
