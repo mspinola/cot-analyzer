@@ -1,12 +1,10 @@
 # Default lookback periods to include for each COT report
 lookbacks:
-  # - ["6-months", 26]
-  - ["1-years", 52]
-  # - ["18-months", 78]
-  # - ["2-years", 104]
+  - ["6-months", 26] # Required
+  - ["1-years", 52] # Required
 
 # Defines the years of COT data to download and process
-years: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+years: [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
 # Color palette for graphs (Commercials, Large Specs, Small Specs, Open Interest)
 # Dictionary of available color schemes
@@ -66,7 +64,7 @@ AssetClasses:
       - { Name: "Euro", Symbol: "6E", CustomLookbackWeeks: 92 }
       - { Name: "British Pound", Symbol: "6B", CustomLookbackWeeks: 32 }
       - { Name: "Japanese Yen", Symbol: "6J", CustomLookbackWeeks: 32 }
-      - { Name: "Mexican Peso", Symbol: "6M", CustomLookbackWeeks: 52 } # ?
+      # - { Name: "Mexican Peso", Symbol: "6M", CustomLookbackWeeks: 52 } # ?
       - { Name: "New Zealand", Symbol: "6N", CustomLookbackWeeks: 82 }
       - { Name: "US Dollar", Symbol: "DX", CustomLookbackWeeks: 28 }
 

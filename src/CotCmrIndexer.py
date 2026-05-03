@@ -1,3 +1,5 @@
+import constants as const
+
 import logging
 import math
 import os
@@ -6,40 +8,6 @@ import yaml
 import yfinance as yf
 
 import CotSymbolCodeMap as symbol_code_map
-
-# Columns of COT data to consume
-NAME = "Market_and_Exchange_Names"
-DATE = "Report_Date_as_MM_DD_YYYY"
-CODE = "CFTC_Contract_Market_Code"
-INTEREST = "Open_Interest_All"
-COMM_LONG = "Comm_Positions_Long_All"
-COMM_SHORT = "Comm_Positions_Short_All"
-LARGE_LONG = "NonComm_Positions_Long_All"
-LARGE_SHORT = "NonComm_Positions_Short_All"
-SMALL_LONG = "NonRept_Positions_Long_All"
-SMALL_SHORT = "NonRept_Positions_Short_All"
-
-# Columns to create for consumed COT data
-COMM_NET = "Comm_Positions_Net"
-LARGE_NET = "NonComm_Positions_Net"
-SMALL_NET = "NonRept_Positions_Net"
-
-COMM_Z_SCORE = "Comm_Z_Score"
-LARGE_Z_SCORE = "NonComm_Z_Score"
-SMALL_Z_SCORE = "NonRept_Z_Score"
-
-COMM_PCT_OI = "Comm_OI_Pct"
-LARGE_PCT_OI = "NonComm_OI_Pct"
-SMALL_PCT_OI = "NonRept_OI_Pct"
-
-COMM_CORR = "Comm_Price_Spearman"
-LARGE_CORR = "Large_Price_Spearman"
-SMALL_CORR = "Small_Price_Spearman"
-
-COMM_26_IDX = "Comm-26-idx"
-CLOSING_PRICE = "Closing_Price"
-WILLCO = "willco"
-
 
 class Instrument:
     def __init__(self, asset_class_, name_, symbol_, code_, custom_lookback_):
@@ -140,18 +108,29 @@ class CotCmrIndexer:
 
             # Load Excel file into pandas
             xl = pd.ExcelFile(xl_path)
-            df = pd.read_excel(xl, usecols=[NAME, DATE, CODE, INTEREST, LARGE_LONG,
-                               LARGE_SHORT, COMM_LONG, COMM_SHORT, SMALL_LONG, SMALL_SHORT], index_col=0)
+            df = pd.read_excel(xl, usecols=[const.MARKET_NAME_XLS, const.REPORT_DATE_XLS,
+                                            const.CONTRACT_CODE_XLS, const.OPEN_INTEREST_XLS,
+                                            const.COMM_LONG_POS_XLS, const.COMM_SHORT_POS_XLS,
+                                            const.LARGE_LONG_POS_XLS, const.LARGE_SHORT_POS_XLS,
+                                            const.SMALL_LONG_POS_XLS, const.SMALL_SHORT_POS_XLS
+                                            ], index_col=0)
 
             for instrument in self.supported_instruments:
                 self.instruments[instrument].append(
-                    df.loc[df[CODE] == instrument])
+                    df.loc[df[const.CONTRACT_CODE_XLS] == instrument])
 
         for instrument in self.supported_instruments:
             # Sort by date and add a row count index
-            self.instruments[instrument].sort_by_date(DATE, ascending=True)
+            self.instruments[instrument].sort_by_date(const.REPORT_DATE_XLS, ascending=True)
             self.instruments[instrument].df.index = range(
                 0, len(self.instruments[instrument].df))
+
+    @staticmethod
+    def calculate_cot_z_score(col_to_search, lb_weeks):
+        comm_mean = col_to_search.rolling(window=lb_weeks).mean()
+        comm_std = col_to_search.rolling(window=lb_weeks).std()
+        z_score = (col_to_search - comm_mean) / comm_std
+        return z_score
 
     @staticmethod
     def calculate_cot_index(col_to_search, lb_idx, cur_idx):
@@ -168,29 +147,60 @@ class CotCmrIndexer:
     def process_lookback(lookback, df):
         lb_name = lookback[0]
         lb_weeks = lookback[1]
-        col_header_name = lb_name + "-idx"
+        idx_col_header_name = "Custom Idx" if lb_name == "Custom" else str(lb_weeks) + " Idx"
 
         for idx in range(len(df)):
+            COMM_IDX = "Comm " + idx_col_header_name
+            LRG_IDX = "Lrg Spec " + idx_col_header_name
+            SML_IDX = "Sml Spec " + idx_col_header_name
             if lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, "Comm-" + col_header_name] = None
-                df.at[idx, "LrgSpec-" + col_header_name] = None
-                df.at[idx, "SmlSpec-" + col_header_name] = None
-                df.at[idx, COMM_26_IDX] = None
+                df.at[idx, COMM_IDX] = None
+                df.at[idx, LRG_IDX] = None
+                df.at[idx, SML_IDX] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, "Comm-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
-                    df[COMM_NET], lb_idx, idx)
-                df.at[idx, "LrgSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
-                    df[LARGE_NET], lb_idx, idx)
-                df.at[idx, "SmlSpec-" + col_header_name] = CotCmrIndexer.calculate_cot_index(
-                    df[SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_IDX] = CotCmrIndexer.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
+                df.at[idx, LRG_IDX] = CotCmrIndexer.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
+                df.at[idx, SML_IDX] = CotCmrIndexer.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
 
-                # Always calculate the 26-week commercial Index for use in the IW process, even if the lookback being processed is not 26 weeks
-                if idx < 26:
-                    df.at[idx, COMM_26_IDX] = None
-                else:
-                    df.at[idx, COMM_26_IDX] = CotCmrIndexer.calculate_cot_index(
-                        df[COMM_NET], idx - 26, idx)
+        # Z-Score
+        zscore_col_header_name = "Custom Zscore" if lb_name == "Custom" else str(lb_weeks) + " Zscore"
+        COMM_ZS = "Comm " + zscore_col_header_name
+        LRG_ZS = "Lrg Spec " + zscore_col_header_name
+        SML_ZS = "Sml Spec " + zscore_col_header_name
+        df[COMM_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.COMM_NET], lb_weeks)
+        df[LRG_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.LARGE_NET], lb_weeks)
+        df[SML_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.SMALL_NET], lb_weeks)
+        df[COMM_ZS] = df[COMM_ZS].fillna(0)
+        df[LRG_ZS] = df[LRG_ZS].fillna(0)
+        df[SML_ZS] = df[SML_ZS].fillna(0)
+
+        # Spearman Correlation
+        spearman_header_name = "Custom Spearman" if lb_name == "Custom" else str(lb_weeks) + " Spearman"
+        COMM_SPR = "Comm " + spearman_header_name
+        LRG_SPR = "Lrg Spec " + spearman_header_name
+        SML_SPR = "Sml Spec " + spearman_header_name
+        if const.CLOSING_PRICE in df.columns:
+            # Calculate the rank of the price and position within the rolling window
+            price_rank = df[const.CLOSING_PRICE].rolling(window=lb_weeks).rank()
+            comm_pos_rank = df[const.COMM_NET].rolling(window=lb_weeks).rank()
+            lrg_pos_rank = df[const.LARGE_NET].rolling(window=lb_weeks).rank()
+            sml_pos_rank = df[const.SMALL_NET].rolling(window=lb_weeks).rank()
+
+            # Pearson correlation of the ranks = Spearman correlation
+            # We apply a rolling correlation to the already-ranked series
+            df[COMM_SPR] = price_rank.rolling(window=lb_weeks).corr(comm_pos_rank)
+            df[LRG_SPR] = price_rank.rolling(window=lb_weeks).corr(lrg_pos_rank)
+            df[SML_SPR] = price_rank.rolling(window=lb_weeks).corr(sml_pos_rank)
+
+            df[COMM_SPR] = df[COMM_SPR].fillna(0)
+            df[LRG_SPR] = df[LRG_SPR].fillna(0)
+            df[SML_SPR] = df[SML_SPR].fillna(0)
+        else:
+            print(df.columns)
+            df[COMM_SPR] = 0
+            df[LRG_SPR] = 0
+            df[SML_SPR] = 0
 
     @staticmethod
     def is_commodity(asset_class):
@@ -206,149 +216,122 @@ class CotCmrIndexer:
             logging.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
             start_date = f"{self.years[0]}-01-01"
             price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
+            YAHOO_PRICE_TOKEN = 'Close'
 
             if not price_data.empty:
                 # Clean the price data
                 if isinstance(price_data.columns, pd.MultiIndex):
-                    price_series = price_data['Close'][ticker]
+                    price_series = price_data[YAHOO_PRICE_TOKEN][ticker]
                 else:
-                    price_series = price_data['Close']
+                    price_series = price_data[YAHOO_PRICE_TOKEN]
 
-                price_df = pd.DataFrame(price_series).rename(columns={'Close': 'Report_Date_Price'})
+                price_df = pd.DataFrame(price_series).rename(columns={YAHOO_PRICE_TOKEN: 'Report_Date_Price'})
                 # Convert price index to datetime and force nanosecond resolution
                 price_df.index = pd.to_datetime(price_df.index).tz_localize(None).astype('datetime64[ns]')
 
                 # Ensure COT dates are datetime and force matching nanosecond resolution
-                df[DATE] = pd.to_datetime(df[DATE]).dt.tz_localize(None).astype('datetime64[ns]')
+                df[const.REPORT_DATE_XLS] = pd.to_datetime(df[const.REPORT_DATE_XLS]).dt.tz_localize(None).astype('datetime64[ns]')
                 logging.debug(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
 
-                # Merge price data into the main dataframe based on the DATE column
+                # Merge price data into the main dataframe based on the const.DATE column
                 # Use 'forward' to find the closest next trading day if a Tuesday was a holiday
                 merged = pd.merge_asof(
-                    df.sort_values(DATE),
+                    df.sort_values(const.REPORT_DATE_XLS),
                     price_df.sort_values(by=price_df.index.name or 'Date'),
-                    left_on=DATE,
+                    left_on=const.REPORT_DATE_XLS,
                     right_index=True,
                     direction='forward'
                 )
-                instrument.df[CLOSING_PRICE] = merged[ticker]  # Add the closing price to the instrument's dataframe
+                instrument.df[const.CLOSING_PRICE] = merged[ticker]  # Add the closing price to the instrument's dataframe
 
                 # Refresh the local 'df' reference after the merge
                 # df = instrument.df
                 logging.info(f"Integrated report-date price for {symbol}")
             else:
-                instrument.df[CLOSING_PRICE] = None
+                instrument.df[const.CLOSING_PRICE] = None
                 logging.warning(f"No price data found for {ticker}")
         except Exception as e:
+            df[const.CLOSING_PRICE] = 0
             logging.error(f"Error fetching price for {symbol}: {e}")
 
-    def calculate_willco(self, lb_weeks, df):
+    def calculate_willco(self, col_name, lb_weeks, df):
         for idx in range(len(df)):
-            asset_class = self.get_instrument_from_code(df[CODE][idx]).asset_class
-            if not CotCmrIndexer.is_commodity(asset_class) or lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, WILLCO] = None
+            if lb_weeks < 0 or idx < lb_weeks:
+                df.at[idx, col_name] = None
             else:
                 # We find the rolling min and max of the Commercial Normalized Net position
-                oi_min = df[COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].min()
-                oi_max = df[COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].max()
+                oi_min = df[const.COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].min()
+                oi_max = df[const.COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].max()
 
                 if math.isnan(oi_max) or math.isnan(oi_min):
-                    df.at[idx, WILLCO] = None
+                    df.at[idx, col_name] = None
                 else:
                     # Adding a tiny epsilon to the denominator prevents division by zero
-                    cur_normalized_net = df.at[idx, COMM_PCT_OI]
-                    willco = int((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
-                    df.at[idx, WILLCO] = willco
-
+                    cur_normalized_net = df.at[idx, const.COMM_PCT_OI]
+                    # print(oi_min, " ", oi_max, " ", cur_normalized_net)
+                    willco = round((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
+                    df.at[idx, col_name] = willco
 
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
             df = self.instruments[instrument].df
 
             # Add new columns for net positions
-            df[COMM_NET] = df[COMM_LONG] - df[COMM_SHORT]
-            df[LARGE_NET] = df[LARGE_LONG] - df[LARGE_SHORT]
-            df[SMALL_NET] = df[SMALL_LONG] - df[SMALL_SHORT]
+            df[const.COMM_NET] = df[const.COMM_LONG_POS_XLS] - df[const.COMM_SHORT_POS_XLS]
+            df[const.LARGE_NET] = df[const.LARGE_LONG_POS_XLS] - df[const.LARGE_SHORT_POS_XLS]
+            df[const.SMALL_NET] = df[const.SMALL_LONG_POS_XLS] - df[const.SMALL_SHORT_POS_XLS]
 
             # Add new columns for position as percent of open interest
             # Adding epsilon (1e-9) to denominator prevents division by zero
-            df[COMM_PCT_OI] = round((df[COMM_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
-            df[LARGE_PCT_OI] = round((df[LARGE_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
-            df[SMALL_PCT_OI] = round((df[SMALL_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
-
-            CotCmrIndexer.process_lookback(
-                ["custom", self.instruments[instrument].custom_lookback], df)
-            for lookback in self.lookbacks:
-                CotCmrIndexer.process_lookback(lookback, df)
+            df[const.COMM_PCT_OI] = round((df[const.COMM_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
+            df[const.LARGE_PCT_OI] = round((df[const.LARGE_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
+            df[const.SMALL_PCT_OI] = round((df[const.SMALL_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
 
             self.retrieve_report_date_closing_prices(self.instruments[instrument])
 
-            corr_window = 26
-            if CLOSING_PRICE in df.columns:
-                logging.debug(f"Calculating Rolling Spearman Correlation for {self.instruments[instrument].symbol}...")
+            CotCmrIndexer.process_lookback(
+                ["Custom", self.instruments[instrument].custom_lookback], df)
+            for lookback in self.lookbacks:
+                CotCmrIndexer.process_lookback(lookback, df)
 
-                # Calculate the rank of the price and position within the rolling window
-                price_rank = df[CLOSING_PRICE].rolling(window=corr_window).rank()
-                comm_pos_rank = df[COMM_NET].rolling(window=corr_window).rank()
-                lrg_pos_rank = df[LARGE_NET].rolling(window=corr_window).rank()
-                sml_pos_rank = df[SMALL_NET].rolling(window=corr_window).rank()
-
-                # Pearson correlation of the ranks = Spearman correlation
-                # We apply a rolling correlation to the already-ranked series
-                df[COMM_CORR] = price_rank.rolling(window=corr_window).corr(comm_pos_rank)
-                df[LARGE_CORR] = price_rank.rolling(window=corr_window).corr(lrg_pos_rank)
-                df[SMALL_CORR] = price_rank.rolling(window=corr_window).corr(sml_pos_rank)
-
-                # Optional: Fill NaNs for the initial window period to avoid plotting artifacts
-                df[COMM_CORR] = df[COMM_CORR].fillna(0)
-                df[LARGE_CORR] = df[LARGE_CORR].fillna(0)
-                df[SMALL_CORR] = df[SMALL_CORR].fillna(0)
-            else:
-                df[COMM_CORR] = 0
-                df[LARGE_CORR] = 0
-                df[SMALL_CORR] = 0
-
-            z_window = 52
-            # Commercials Z-Score
-            comm_mean = df[COMM_NET].rolling(window=z_window).mean()
-            comm_std = df[COMM_NET].rolling(window=z_window).std()
-            df[COMM_Z_SCORE] = (df[COMM_NET] - comm_mean) / comm_std
-
-            # Large Speculators Z-Score
-            lrg_mean = df[LARGE_NET].rolling(window=z_window).mean()
-            lrg_std = df[LARGE_NET].rolling(window=z_window).std()
-            df[LARGE_Z_SCORE] = (df[LARGE_NET] - lrg_mean) / lrg_std
-
-            # Small Speculators Z-Score
-            sml_mean = df[SMALL_NET].rolling(window=z_window).mean()
-            sml_std = df[SMALL_NET].rolling(window=z_window).std()
-            df[SMALL_Z_SCORE] = (df[SMALL_NET] - sml_mean) / sml_std
-
-            # Handle initial NaNs to keep the plots clean
-            df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]] = df[[COMM_Z_SCORE, LARGE_Z_SCORE, SMALL_Z_SCORE]].fillna(0)
-
-            self.calculate_willco(26, df)
+            # WILLCO
+            self.calculate_willco(const.WILLCO_CUSTOM, self.instruments[instrument].custom_lookback, df)
+            self.calculate_willco(const.WILLCO_26, 26, df)
+            self.calculate_willco(const.WILLCO_52, 52, df)
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
-        symbol = self.instruments[instrument].symbol
 
         # Construct summary dataframe with only relevant columns for the summary csv
         summary_df = pd.DataFrame()
-        summary_df["Date"] = df[DATE]
-        summary_df["Symbol"] = symbol
-        summary_df["COMM_26_IDX"] = df[COMM_26_IDX]
-        summary_df["OpenInterest"] = df[INTEREST]
-        summary_df["CommercialNet"] = df[COMM_NET]
-        summary_df["LargeSpecNet"] = df[LARGE_NET]
-        summary_df["SmallSpecNet"] = df[SMALL_NET]
-        summary_df["WillCo"] = df[WILLCO]
-        summary_df["ClosingPrice"] = df[CLOSING_PRICE]
+        summary_df[const.DATE] = df[const.REPORT_DATE_XLS]
+        summary_df[const.SYMBOL] = self.instruments[instrument].symbol
+        summary_df[const.OPEN_INTEREST] = df[const.OPEN_INTEREST_XLS]
+        summary_df[const.COMM_NET] = df[const.COMM_NET]
+        summary_df[const.LARGE_NET] = df[const.LARGE_NET]
+        summary_df[const.SMALL_NET] = df[const.SMALL_NET]
+        summary_df[const.CLOSING_PRICE] = df[const.CLOSING_PRICE]
 
         # Grab index values
-        index_cols = [col for col in df.columns if "-idx" in col]
+        index_cols = [col for col in df.columns if " Idx" in col]
         for col in index_cols:
             summary_df[col] = df[col]
+
+        # Grab z-score values
+        index_cols = [col for col in df.columns if " Zscore" in col]
+        for col in index_cols:
+            summary_df[col] = df[col]
+
+        # Grab Spearman values
+        index_cols = [col for col in df.columns if " Spearman" in col]
+        for col in index_cols:
+            summary_df[col] = df[col]
+
+        # Grab WILLCO values
+        index_cols = [col for col in df.columns if "WILLCO" in col]
+        for col in index_cols:
+            summary_df[col] = df[col]
+
         return summary_df
 
     def collect_symbol_detailed_results(self, instrument):
@@ -379,8 +362,7 @@ class CotCmrIndexer:
 
             # Construct summary dataframe with only relevant columns for the summary csv
             summary_df = self.collect_symbol_summary_results(instrument)
-            summary_df.to_csv(summary_csv_path, sep=",",
-                              index=False, header=True)
+            summary_df.to_csv(summary_csv_path, sep=",", index=False, header=True)
 
     def export_weekly_summary_results_to_csv(self):
         working_dir = os.getcwd()
@@ -389,24 +371,39 @@ class CotCmrIndexer:
         summary_csv_path = os.path.join(
             working_dir, csv_data, "positioning_summary.csv")
 
-        cols = ['Date', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs']
+        cols = [const.DATE, const.SYMBOL, const.NAME,
+                const.COMM_CUSTOM_IDX, const.LARGE_CUSTOM_IDX, const.SMALL_CUSTOM_IDX,
+                const.COMM_26_IDX, const.LARGE_26_IDX, const.SMALL_26_IDX,
+                const.COMM_52_IDX, const.LARGE_52_IDX, const.SMALL_52_IDX,
+                const.COMM_CUSTOM_ZSCORE, const.LARGE_CUSTOM_ZSCORE, const.SMALL_CUSTOM_ZSCORE,
+                const.COMM_26_ZSCORE, const.LARGE_26_ZSCORE, const.SMALL_26_ZSCORE,
+                const.COMM_52_ZSCORE, const.LARGE_52_ZSCORE, const.SMALL_52_ZSCORE,
+                const.COMM_CUSTOM_CORR, const.LARGE_CUSTOM_CORR, const.SMALL_CUSTOM_CORR,
+                const.COMM_26_CORR, const.LARGE_26_CORR, const.SMALL_26_CORR,
+                const.COMM_52_CORR, const.LARGE_52_CORR, const.SMALL_52_CORR,
+                ]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
             instruments = self.get_assets_for_asset_class(asset)
             for instrument_name in instruments:
                 instrument = self.get_instrument_from_name(instrument_name)
-                symbol = instrument.symbol
-                name = instrument.name
                 df = instrument.df
-                date = df.iloc[-1][DATE].date()
-                comm_idx = df.iloc[-1]['Comm-custom-idx']
-                lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-                sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
 
                 new_df = pd.DataFrame(
-                    [[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
+                    [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.symbol, instrument.name,
+                      df.iloc[-1][const.COMM_CUSTOM_IDX], df.iloc[-1][const.LARGE_CUSTOM_IDX], df.iloc[-1][const.SMALL_CUSTOM_IDX],
+                      df.iloc[-1][const.COMM_26_IDX], df.iloc[-1][const.LARGE_26_IDX], df.iloc[-1][const.SMALL_26_IDX],
+                      df.iloc[-1][const.COMM_52_IDX], df.iloc[-1][const.LARGE_52_IDX], df.iloc[-1][const.SMALL_52_IDX],
+
+                      df.iloc[-1][const.COMM_CUSTOM_ZSCORE], df.iloc[-1][const.LARGE_26_ZSCORE], df.iloc[-1][const.SMALL_CUSTOM_ZSCORE],
+                      df.iloc[-1][const.COMM_26_ZSCORE], df.iloc[-1][const.LARGE_26_ZSCORE], df.iloc[-1][const.SMALL_26_ZSCORE],
+                      df.iloc[-1][const.COMM_52_ZSCORE], df.iloc[-1][const.LARGE_52_ZSCORE], df.iloc[-1][const.SMALL_52_ZSCORE],
+
+                      df.iloc[-1][const.COMM_CUSTOM_CORR], df.iloc[-1][const.LARGE_CUSTOM_CORR], df.iloc[-1][const.SMALL_CUSTOM_CORR],
+                      df.iloc[-1][const.COMM_26_CORR], df.iloc[-1][const.LARGE_26_CORR], df.iloc[-1][const.SMALL_26_CORR],
+                      df.iloc[-1][const.COMM_52_CORR], df.iloc[-1][const.LARGE_52_CORR], df.iloc[-1][const.SMALL_52_CORR],
+                      ]], columns=positioning_df.columns)
                 if positioning_df.empty:
                     positioning_df = new_df
                 else:
@@ -446,29 +443,29 @@ class CotCmrIndexer:
         #
         # Add commercials
         commercial_idx_df = pd.DataFrame()
-        commercial_idx_df["Date"] = df[DATE].apply(lambda x: x.date())
-        commercial_idx_df["Symbol"] = [
-            self.instruments[instrument].symbol] * len(df[DATE])
+        commercial_idx_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        commercial_idx_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol] * len(df[const.REPORT_DATE_XLS])
         commercial_idx_df["Type"] = 1  # Commercials index
-        commercial_idx_df["Value"] = df['Comm-custom-idx']
+        commercial_idx_df["Value"] = df[const.COMM_CUSTOM_IDX]
         commercial_idx_df = commercial_idx_df[commercial_idx_df["Value"] != -1]
 
         # Add large specs
         large_specs_idx_df = pd.DataFrame()
-        large_specs_idx_df["Date"] = df[DATE].apply(lambda x: x.date())
-        large_specs_idx_df["Symbol"] = [
-            self.instruments[instrument].symbol] * len(df[DATE])
+        large_specs_idx_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        large_specs_idx_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol] * len(df[const.REPORT_DATE_XLS])
         large_specs_idx_df["Type"] = 2  # Large specs index
-        large_specs_idx_df["Value"] = df['LrgSpec-custom-idx']
+        large_specs_idx_df["Value"] = df[const.LARGE_CUSTOM_IDX]
         large_specs_idx_df = large_specs_idx_df[large_specs_idx_df["Value"] != -1]
 
         # Add small specs
         small_specs_idx_df = pd.DataFrame()
-        small_specs_idx_df["Date"] = df[DATE].apply(lambda x: x.date())
-        small_specs_idx_df["Symbol"] = [
-            self.instruments[instrument].symbol] * len(df[DATE])
+        small_specs_idx_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        small_specs_idx_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol] * len(df[const.REPORT_DATE_XLS])
         small_specs_idx_df["Type"] = 3  # Small specs index
-        small_specs_idx_df["Value"] = df['SmlSpec-custom-idx']
+        small_specs_idx_df["Value"] = df[const.SMALL_CUSTOM_IDX]
         small_specs_idx_df = small_specs_idx_df[small_specs_idx_df["Value"] != -1]
 
         #
@@ -476,29 +473,29 @@ class CotCmrIndexer:
         #
         # Add commercials
         commercial_pos_df = pd.DataFrame()
-        commercial_pos_df["Date"] = df[DATE].apply(lambda x: x.date())
-        commercial_pos_df["Symbol"] = [
-            self.instruments[instrument].symbol + "_B"] * len(df[DATE])
+        commercial_pos_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        commercial_pos_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol + "_B"] * len(df[const.REPORT_DATE_XLS])
         commercial_pos_df["Type"] = 4  # Commercials net position
-        commercial_pos_df["Value"] = df[COMM_NET]
+        commercial_pos_df["Value"] = df[const.COMM_NET]
         commercial_pos_df = commercial_pos_df[commercial_pos_df["Value"] != -1]
 
         # Add large specs
         large_specs_pos_df = pd.DataFrame()
-        large_specs_pos_df["Date"] = df[DATE].apply(lambda x: x.date())
-        large_specs_pos_df["Symbol"] = [
-            self.instruments[instrument].symbol + "_B"] * len(df[DATE])
+        large_specs_pos_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        large_specs_pos_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol + "_B"] * len(df[const.REPORT_DATE_XLS])
         large_specs_pos_df["Type"] = 5  # Large specs net position
-        large_specs_pos_df["Value"] = df[LARGE_NET]
+        large_specs_pos_df["Value"] = df[const.LARGE_NET]
         large_specs_pos_df = large_specs_pos_df[large_specs_pos_df["Value"] != -1]
 
         # Add small specs
         small_specs_pos_df = pd.DataFrame()
-        small_specs_pos_df["Date"] = df[DATE].apply(lambda x: x.date())
-        small_specs_pos_df["Symbol"] = [
-            self.instruments[instrument].symbol + "_B"] * len(df[DATE])
+        small_specs_pos_df[const.DATE] = df[const.REPORT_DATE_XLS].apply(lambda x: x.date())
+        small_specs_pos_df[const.SYMBOL] = [
+            self.instruments[instrument].symbol + "_B"] * len(df[const.REPORT_DATE_XLS])
         small_specs_pos_df["Type"] = 6  # Small specs net position
-        small_specs_pos_df["Value"] = df[SMALL_NET]
+        small_specs_pos_df["Value"] = df[const.SMALL_NET]
         small_specs_pos_df = small_specs_pos_df[small_specs_pos_df["Value"] != -1]
 
         # Concatenate into one dataframe
@@ -566,43 +563,86 @@ class CotCmrIndexer:
                 return self.instruments[inst_code]
         return None
 
-    def get_symbols_custom_index(self, name):
+    def get_symbols_data(self, name, lookback):
         instrument = self.get_instrument_from_name(name)
         if instrument is not None:
+            idx_col_header_name = lookback + " Idx"
+            COMM_IDX = "Comm " + idx_col_header_name
+            LRG_IDX = "Lrg Spec " + idx_col_header_name
+            SML_IDX = "Sml Spec " + idx_col_header_name
+
+            zscore_col_header_name = lookback + " Zscore"
+            COMM_ZS = "Comm " + zscore_col_header_name
+            LRG_ZS = "Lrg Spec " + zscore_col_header_name
+            SML_ZS = "Sml Spec " + zscore_col_header_name
+
+            spearman_col_header_name = lookback + " Spearman"
+            COMM_SPR = "Comm " + spearman_col_header_name
+            LRG_SPR = "Lrg Spec " + spearman_col_header_name
+            SML_SPR = "Sml Spec " + spearman_col_header_name
+
+            willco_col_header_name = "WILLCO " + lookback
+            WILLCO = willco_col_header_name
+
             df = instrument.df
             result = pd.DataFrame()
-            result["date"] = df[DATE]
+            result[const.DATE] = df[const.REPORT_DATE_XLS]
 
-            result["comms"] = df['Comm-custom-idx']
-            result["lrg"] = df['LrgSpec-custom-idx']
-            result["sml"] = df['SmlSpec-custom-idx']
+            result["comms_idx"] = df[COMM_IDX]
+            result["lrg_idx"] = df[LRG_IDX]
+            result["sml_idx"] = df[SML_IDX]
 
-            result["comms_net"] = df[COMM_NET]
-            result["lrg_net"] = df[LARGE_NET]
-            result["sml_net"] = df[SMALL_NET]
+            result["comms_zscore"] = df[COMM_ZS]
+            result["lrg_zscore"] = df[LRG_ZS]
+            result["sml_zscore"] = df[SML_ZS]
 
-            result["comm_oi_pct"] = df[COMM_PCT_OI]
-            result["lrg_oi_pct"] = df[LARGE_PCT_OI]
-            result["sml_oi_pct"] = df[SMALL_PCT_OI]
+            result["comms_spearman"] = df[COMM_SPR]
+            result["lrg_spearman"] = df[LRG_SPR]
+            result["sml_spearman"] = df[SML_SPR]
 
-            result["comm_spearman"] = df[COMM_CORR]
-            result["lrg_spearman"] = df[LARGE_CORR]
-            result["sml_spearman"] = df[SMALL_CORR]
+            result["willco"] = df[WILLCO]
 
-            result["comms-z"] = df[COMM_Z_SCORE]
-            result["lrg-z"] = df[LARGE_Z_SCORE]
-            result["sml-z"] = df[SMALL_Z_SCORE]
+            result[const.COMM_NET] = df[const.COMM_NET]
+            result[const.LARGE_NET] = df[const.LARGE_NET]
+            result[const.SMALL_NET] = df[const.SMALL_NET]
 
-            result["oi"] = df[INTEREST]
-            result["price"] = df[CLOSING_PRICE]
+            result[const.COMM_PCT_OI] = df[const.COMM_PCT_OI]
+            result[const.LARGE_PCT_OI] = df[const.LARGE_PCT_OI]
+            result[const.SMALL_PCT_OI] = df[const.SMALL_PCT_OI]
 
-            result.set_index("date", inplace=True)
+            result[const.OPEN_INTEREST] = df[const.OPEN_INTEREST_XLS]
+            result[const.CLOSING_PRICE] = df[const.CLOSING_PRICE]
+
+            result.set_index(const.DATE, inplace=True)
             return result
         return None
 
-    def get_positioning_table_by_asset_class(self, asset_classes):
-        cols = ['Date', 'Asset Class', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs', 'Comms (26-Week)', 'Willco']
+    def get_positioning_table_by_asset_class(self, asset_classes, lookback):
+        idx_col_header_name = lookback + " Idx"
+        COMM_IDX = "Comm " + idx_col_header_name
+        LRG_IDX = "Lrg Spec " + idx_col_header_name
+        SML_IDX = "Sml Spec " + idx_col_header_name
+
+        zscore_col_header_name = lookback + " Zscore"
+        COMM_ZS = "Comm " + zscore_col_header_name
+        LRG_ZS = "Lrg Spec " + zscore_col_header_name
+        SML_ZS = "Sml Spec " + zscore_col_header_name
+
+        spearman_col_header_name = lookback + " Spearman"
+        COMM_SPR = "Comm " + spearman_col_header_name
+        LRG_SPR = "Lrg Spec " + spearman_col_header_name
+        SML_SPR = "Sml Spec " + spearman_col_header_name
+
+        willco_col_header_name = "WILLCO " + lookback
+        WILLCO = willco_col_header_name
+
+        cols = [const.DATE, const.ASSET_CLASS, const.SYMBOL, const.NAME,
+                COMM_IDX, LRG_IDX, SML_IDX,
+                COMM_ZS, LRG_ZS, SML_ZS,
+                COMM_SPR, LRG_SPR, SML_SPR,
+                const.COMM_NET, const.LARGE_NET, const.SMALL_NET,
+                WILLCO,
+               ]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -613,54 +653,24 @@ class CotCmrIndexer:
             for instrument_name in instruments:
                 instrument = self.get_instrument_from_name(instrument_name)
                 if not instrument is None:
-                    symbol = instrument.symbol
-                    asset_class = instrument.asset_class
-                    name = instrument.name
                     df = instrument.df
-                    date = df.iloc[-1][DATE].date()
-                    comm_idx = df.iloc[-1]['Comm-custom-idx']
-                    lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-                    sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
-
-                    iwIndex = df.iloc[-1][COMM_26_IDX]
-                    willco = df.iloc[-1][WILLCO]
 
                     new_df = pd.DataFrame(
-                        [[date, asset_class, symbol, name, comm_idx, lrg_idx, sml_idx, iwIndex, willco]], columns=positioning_df.columns)
+                        [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.asset_class, instrument.symbol, instrument.name,
+                          df.iloc[-1][COMM_IDX], df.iloc[-1][LRG_IDX], df.iloc[-1][SML_IDX],
+                          round(df.iloc[-1][COMM_ZS], 2), round(df.iloc[-1][LRG_ZS], 2), round(df.iloc[-1][SML_ZS], 2),
+                          round(df.iloc[-1][COMM_SPR], 2), round(df.iloc[-1][LRG_SPR], 2), round(df.iloc[-1][SML_SPR], 2),
+                          df.iloc[-1][const.COMM_NET], df.iloc[-1][const.LARGE_NET], df.iloc[-1][const.SMALL_NET],
+                          df.iloc[-1][WILLCO],
+                        ]], columns=positioning_df.columns)
+
                     if positioning_df.empty:
                         positioning_df = new_df
                     else:
                         positioning_df = pd.concat([positioning_df, new_df])
         return positioning_df
 
-    def get_positioning_table_by_symbol(self, requested_symbols):
-        cols = ['Date', 'Symbol', 'Name',
-                'Commercials', 'Large Specs', 'Small Specs']
-        positioning_df = pd.DataFrame(columns=cols)
-
-        for instrument in self.supported_instruments:
-            symbol = self.instruments[instrument].symbol
-            if not symbol in requested_symbols:
-                continue
-
-            name = self.instruments[instrument].name
-            df = self.instruments[instrument].df
-            date = df.iloc[-1][DATE].date()
-            comm_idx = df.iloc[-1]['Comm-custom-idx']
-            lrg_idx = df.iloc[-1]['LrgSpec-custom-idx']
-            sml_idx = df.iloc[-1]['SmlSpec-custom-idx']
-
-            new_df = pd.DataFrame(
-                [[date, symbol, name, comm_idx, lrg_idx, sml_idx]], columns=positioning_df.columns)
-            if positioning_df.empty:
-                positioning_df = new_df
-            else:
-                positioning_df = pd.concat([positioning_df, new_df])
-
-        return positioning_df
-
-
-    def get_asset_class_z_score_heat(self, asset_class):
+    def get_asset_class_z_score_heat(self, asset_class, lookback):
         """Returns the latest Z-scores for all assets in a class."""
         assets = self.get_assets_for_asset_class(asset_class)
         heat_data = []
@@ -671,16 +681,31 @@ class CotCmrIndexer:
                 df = instrument.df
                 # Get the most recent non-NaN Z-scores
                 latest = df.iloc[-1]
-                heat_data.append({
-                    "Asset": name,
-                    "Commercials": latest.get("Comm_Z_Score", 0),
-                    "Large Specs": latest.get("NonComm_Z_Score", 0),
-                    "Small Specs": latest.get("NonRept_Z_Score", 0)
-                })
+                if lookback == "26":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_26_ZSCORE, 0),
+                        "Large Specs": latest.get(const.LARGE_26_ZSCORE, 0),
+                        "Small Specs": latest.get(const.SMALL_26_ZSCORE, 0)
+                    })
+                elif lookback == "52":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_52_ZSCORE, 0),
+                        "Large Specs": latest.get(const.LARGE_52_ZSCORE, 0),
+                        "Small Specs": latest.get(const.SMALL_52_ZSCORE, 0)
+                    })
+                else:
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_CUSTOM_ZSCORE, 0),
+                        "Large Specs": latest.get(const.LARGE_CUSTOM_ZSCORE, 0),
+                        "Small Specs": latest.get(const.SMALL_CUSTOM_ZSCORE, 0)
+                    })
 
         return pd.DataFrame(heat_data)
 
-    def get_asset_class_index_heat(self, asset_class):
+    def get_asset_class_index_heat(self, asset_class, lookback):
         """Returns the latest Index for all assets in a class."""
         assets = self.get_assets_for_asset_class(asset_class)
         heat_data = []
@@ -691,11 +716,27 @@ class CotCmrIndexer:
                 df = instrument.df
                 # Get the most recent non-NaN Z-scores
                 latest = df.iloc[-1]
-                heat_data.append({
-                    "Asset": name,
-                    "Commercials": latest.get("Comm-custom-idx", 0),
-                    "Large Specs": latest.get("LrgSpec-custom-idx", 0),
-                    "Small Specs": latest.get("SmlSpec-custom-idx", 0)
-                })
+
+                if lookback == "26":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_26_IDX, 0),
+                        "Large Specs": latest.get(const.LARGE_26_IDX, 0),
+                        "Small Specs": latest.get(const.SMALL_26_IDX, 0)
+                    })
+                elif lookback == "52":
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_52_IDX, 0),
+                        "Large Specs": latest.get(const.LARGE_52_IDX, 0),
+                        "Small Specs": latest.get(const.SMALL_52_IDX, 0)
+                    })
+                else:
+                    heat_data.append({
+                        "Asset": name,
+                        "Commercials": latest.get(const.COMM_CUSTOM_IDX, 0),
+                        "Large Specs": latest.get(const.LARGE_CUSTOM_IDX, 0),
+                        "Small Specs": latest.get(const.SMALL_CUSTOM_IDX, 0)
+                    })
 
         return pd.DataFrame(heat_data)

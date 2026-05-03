@@ -72,4 +72,5 @@ class CotDatabase:
             tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
             if tz_aware is None:
                 tz_aware = "Unknown"
+        print("db latest time ", tz_aware),
         return tz_aware

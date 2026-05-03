@@ -9,14 +9,16 @@
 
 /* Ensure the arrow stays the same color when the user clicks it */
 .form-select:focus {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    border-color: #ABB8C9 !important;    /* Matches the blue highlight */
+    box-shadow: 0 0 0 0.25rem rgba(55, 90, 127, 0.25) !important;
+    outline: 0;
 }
 
 /* Target the NEW Dash 4 Dropdown Variables */
 :root {
     --Dash-Fill-Interactive-Strong: #1a1a1a; /* Background of the box */
-    --Dash-Stroke-Strong: #ABB8C9;           /* Border color */
-    --Dash-Text-Main: #E2E8F0;               /* Main text color */
+    --Dash-Stroke-Strong: #E2E8F0;           /* Border color */
+    --Dash-Text-Main: #ABB8C9;               /* Main text color */
 }
 
 /* Target the Legacy dcc.Dropdown classes (for compatibility) */
@@ -28,19 +30,23 @@
 /* Target the dbc.Select (Bootstrap native) specifically */
 .form-select {
     background-color: #1a1a1a !important;
-    color: #ABB8C9 !important;
-    border-color: rgba(171, 184, 201, 0.3) !important;
+    color: #E2E8F0 !important;
+    border: 1px solid #ABB8C9 !important;
+    border-radius: 4px !important;
+    font-size: 0.85rem !important;
+    height: 38px !important;
+    padding-left: 10px !important;
 }
 
 /* Fix the white "Selected" and "Hover" backgrounds */
 .Select-option.is-focused, .Select-option:hover, .dropdown-item:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
 /* Fix for Multi-Select Tags (used in Positioning) */
 .Select--multi .Select-value {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid #ABB8C9 !important;
 }
 
@@ -85,7 +91,10 @@
 .Select-control:active {
     background-color: #1a1a1a !important;
     border-color: #ABB8C9 !important;
-    box-shadow: none !important; /* Removes the blue/white glow */
+    box-shadow: 0 0 0 0.2rem rgba(171, 184, 201, 0.25) !important;
+/*    border-color: #ABB8C9 !important;
+    box-shadow: none !important;
+    */
 }
 
 /* The background of the entire list container (the part that drops down) */
@@ -103,7 +112,7 @@
 
 /* Hover effect on the list items so you can see what you're picking */
 .VirtualizedSelectFocusedOption {
-    background-color: #2d2d2d !important; /* Slightly lighter gray */
+    background-color: #1a1a1a !important; /* Slightly lighter gray */
     color: #FFFFFF !important;
 }
 
@@ -116,7 +125,7 @@
 /* 1. The entire dropdown menu container */
 .Select-menu-outer {
     background-color: #1a1a1a !important;
-    border: 1px solid #ABB8C9 !important;
+    border: 1px solid #E2E8F0 !important;
     border-top: none !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
 }
@@ -125,7 +134,7 @@
 /* This is likely why the search area looks white */
 .Select-input > input {
     color: #E2E8F0 !important;
-    background-color: #2d2d2d !important; /* Slightly lighter for contrast */
+    background-color: #1a1a1a !important; /* Slightly lighter for contrast */
     border-radius: 4px !important;
     padding-left: 10px !important;
 }
@@ -144,7 +153,7 @@
 
 /* 5. Hover state for the options */
 .VirtualizedSelectFocusedOption {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
@@ -175,7 +184,7 @@
 }
 
 .dash-dropdown-search-input input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     border: 1px solid #ABB8C9 !important;
 }
@@ -191,7 +200,7 @@
 .dash-options-list-option,
 .dash-dropdown-option {
     background-color: #1a1a1a !important;
-    color: #E2E8F0 !important;
+    color: #ABB8C9 !important;
     padding: 8px 12px !important;
 }
 
@@ -199,7 +208,7 @@
 .dash-options-list-option:hover,
 .dash-dropdown-option:hover,
 .dash-dropdown-option-highlighted {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     cursor: pointer !important;
 }
@@ -217,7 +226,7 @@
 
 /* Target the '9 selected' text specifically */
 .dash-dropdown-value-count {
-    color: #E2E8F0 !important;
+    color: #ABB8C9 !important;
     font-weight: 500 !important;
     padding-right: 5px !important;
     /* Ensure no white background is lingering behind the text */
@@ -226,7 +235,7 @@
 
 /* If the counter is inside a small pill or badge in your version */
 .dash-dropdown-value-count-container {
-    background-color: #2d2d2d !important; /* Subtle gray background for the 'pill' */
+    background-color: #1a1a1a !important; /* Subtle gray background for the 'pill' */
     border-radius: 4px !important;
     margin-right: 8px !important;
 }
@@ -328,7 +337,7 @@
 
 /* 3. Ensure the search input box sits cleanly inside the dark container */
 .dash-dropdown-search-input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
     border-radius: 4px !important;
 }
@@ -348,7 +357,7 @@
 
 /* 3. Ensure the search input box sits cleanly inside the dark container */
 .dash-dropdown-search-input {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     border: 1px solid rgba(171, 184, 201, 0.3) !important;
     border-radius: 4px !important;
 }
@@ -409,11 +418,37 @@
 .dash-dropdown .Select-control,
 .dash-dropdown .dash-dropdown-container,
 .dash-dropdown .dash-dropdown-values-container {
+border: 1px solid #ABB8C9 !important;
     background-color: #1a1a1a !important;
-    /* Use the exact same border color and width as dbc.Select */
-    border: 1px solid rgba(171, 184, 201, 0.3) !important;
-    min-height: 38px !important; /* Matches standard Bootstrap height */
     border-radius: 4px !important;
+    transition: 0.2s ease-in-out !important;
+    /*
+    background-color: #1a1a1a !important;
+    Use the exact same border color and width as dbc.Select */
+    /*
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    min-height: 38px !important;
+    border-radius: 4px !important;
+    */
+}
+
+/* Sets the text color of selected items in a multi-select dropdown */
+.dash-dropdown .Select--multi .Select-value-label {
+    /* Uses your BRIGHTER_TEXT_COLOR for maximum legibility */
+    color: #ABB8C9 !important;
+    font-size: 0.85rem !important;
+}
+
+/* Ensures the 'X' (remove) button next to the text also matches */
+.dash-dropdown .Select--multi .Select-value-icon {
+    color: #ABB8C9 !important; /* Your standard TEXT_COLOR */
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Changes the background of the 'pill' to stay dark */
+.dash-dropdown .Select--multi .Select-value {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.4) !important;
 }
 
 /* 2. Remove the ghost gray background inside the multi-select wrapper */
@@ -422,12 +457,54 @@
     background-color: transparent !important;
 }
 
+/* Match the hover state of the dropdown border to the button hover */
+.dash-dropdown .Select-control:hover {
+    border-color: rgba(171, 184, 201, 0.8) !important;
+    cursor: pointer;
+}
+
 /* 3. Ensure the text color matches the 'Slate' look */
 .dash-dropdown .Select-value-label,
+.dash-dropdown .Select-value-item,
+.dash-dropdown .Select--multi .Select-value-label,
 .dash-dropdown .Select-placeholder,
-.dash-dropdown .dash-dropdown-value-count {
-    color: #E2E8F0 !important;
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .dash-dropdown-values-container .dash-dropdown-value {
+    color: #ABB8C9 !important;
+    font-weight: 500 !important;
     line-height: 34px !important; /* Centers the text vertically */
+}
+
+/* 1. Target the text of the selected items */
+.dash-dropdown .dash-dropdown-value-item {
+    color: #E2E8F0 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-size: 0.85rem !important;
+}
+
+/* 2. Target the 'X' (remove) button next to the text */
+.dash-dropdown .dash-dropdown-value-item--remove {
+    color: #ABB8C9 !important; /* Your standard TEXT_COLOR */
+    cursor: pointer !important;
+    padding-left: 5px !important;
+}
+
+/* 3. Optional: Maintain the dark background for the pill */
+.dash-dropdown .dash-dropdown-value-item {
+    background-color: #1a1a1a !important;
+    border: 0px solid rgba(171, 184, 201, 0.0) !important;
+    border-radius: 0px !important;
+    margin: 2px !important;
+}
+
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .Select-value-label[data-selected-count] {
+    color: #E2E8F0 !important;
+}
+
+/* 3. Ensure the 'X' remove icon matches the theme */
+.dash-dropdown .Select-value-icon {
+    color: #ABB8C9 !important;
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
 }
 
 /* 4. Match the 'Focus' state exactly */
@@ -451,7 +528,7 @@
 }
 
 #btn_download_csv:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
     border-color: #ABB8C9 !important;
 }
@@ -472,7 +549,7 @@
 
 /* Ensure the toggle button is always visible on hover */
 #btn-sidebar-toggle:hover {
-    background-color: #2d2d2d !important;
+    background-color: #1a1a1a !important;
     color: #FFFFFF !important;
 }
 
@@ -486,3 +563,119 @@
     color: #999 !important; /* Ensure the color contrasts with your background */
 }
 
+/* Target the active (expanded) accordion header */
+.accordion-button:not(.collapsed) {
+    background-color: #2d3d50 !important; /* Muted blue-gray to match your 'Analysis' button */
+    color: #E2E8F0 !important;           /* Your BRIGHTER_TEXT_COLOR */
+    box-shadow: none !important;         /* Removes the default Bootstrap blue glow */
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* Ensure the text and background look correct when focused */
+.accordion-button:focus {
+    border-color: rgba(171, 184, 201, 0.3) !important;
+    box-shadow: 0 0 0 0.25rem rgba(64, 90, 125, 0.25) !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* Change the color of the accordion arrow (chevron) when expanded */
+.accordion-button:not(.collapsed)::after {
+    filter: brightness(0) invert(1); /* Flips the black arrow to white */
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* The body of the expanded item */
+.accordion-body {
+    background-color: #1a1a1a !important; /* Your BACKGROUND_COLOR */
+    color: #ABB8C9 !important;           /* Your TEXT_COLOR */
+    border-top: 1px solid rgba(171, 184, 201, 0.1) !important;
+    padding: 0.5rem 0.75rem !important;
+}
+
+/* Allows the page to scroll even if the finger lands on the graph */
+.mobile-scroll-fix .main-svg {
+    pointer-events: none;
+}
+
+/* Re-enables interaction if the user clicks a specific toggle */
+.active-graph .main-svg {
+    pointer-events: all;
+}
+
+/* Custom scrollbar for responsive tables */
+.table-responsive::-webkit-scrollbar {
+    height: 6px; /* Slimmer for laptop screens */
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(171, 184, 201, 0.3); /* Matches your TEXT_COLOR */
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: rgba(171, 184, 201, 0.6);
+}
+
+/* Sticky First Column Logic */
+.sticky-first-col thead th:first-child(2),
+.sticky-first-col tbody td:first-child(2) {
+    position: sticky !important;
+    left: 10;
+    z-index: 10; /* Ensures it stays above other cells */
+    /* Must have a solid background color to prevent 'bleed through' */
+    background-color: #1a1a1a !important;
+    border-right: 2px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Ensure the header stays on top of the sticky column when scrolling vertically */
+.sticky-first-col thead th:first-child(2) {
+    z-index: 11;
+}
+
+/* Subtle shadow to indicate the scroll plane */
+.sticky-first-col tbody td:first-child(2) {
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Sets the background for the entire page */
+body, .container-fluid {
+    background-color: #1a1a1a !important;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-link {
+    color: #ABB8C9 !important; /* Your standard muted text */
+    font-size: 1.5rem;
+    transition: color 0.2s ease-in-out;
+}
+
+/* Style when the link is active */
+.nav-link.active {
+    color: #E2E8F0 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-weight: 600;
+    border-bottom: 2px solid #E2E8F0; /* Added for a clean 'Pro' look */
+}
+
+/* Add space between the modebar groups */
+.modebar-group {
+    margin-left: 1px !important;
+    padding-left: 5px !important;
+}
+
+/* Add space between individual buttons */
+.modebar-btn {
+    margin-left: 8px !important;
+}
+
+/* Shift the entire modebar higher up to clear the horizontal legend */
+.js-plotly-plot .plotly .modebar {
+    top: -15px !important; /* Adjust this based on your legend height */
+}

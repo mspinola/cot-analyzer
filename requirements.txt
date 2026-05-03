@@ -10,3 +10,4 @@ pyyaml
 requests
 schedule
 xlrd
+yfinance
