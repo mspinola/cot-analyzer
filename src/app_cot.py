@@ -48,6 +48,7 @@ app.layout = dbc.Container(
     [
         dcc.Store(id='session_palette_theme_asset_store', storage_type='session'),
         dcc.Store(id='session_setup_highlight_asset_store', storage_type='session'),
+        dcc.Store(id='global_lookback_store', storage_type='session', data='custom'),
         navbar,
         dash.page_container
     ],

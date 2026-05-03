@@ -10,12 +10,29 @@ import plotly.graph_objects as go
 from datetime import datetime
 from dash import callback, dcc, html, Input, Output
 
+import utils
+
 dash.register_page(__name__, path="/heatmap")
 
 
 layout = html.Div([
     dbc.Container([
         dbc.Row([
+            dbc.Col([
+                html.Label("Lookback:", style=constants.label_style),
+                dbc.Select(
+                    id='heatmap_lookback_selector',
+                    options=[
+                        {"label": "26 Weeks", "value": "26"},
+                        {"label": "52 Weeks", "value": "52"},
+                        {"label": "Custom", "value": "Custom"},
+                    ],
+                    value="Custom",
+                    size="sm",
+                    className="mb-3 bg-dark text-white border-secondary",
+                )
+            ], width="auto"),
+
             dbc.Col([
                 html.Label("Layout View:", style=constants.label_style),
                 dbc.Select(
@@ -31,21 +48,6 @@ layout = html.Div([
                     className="mb-3 bg-dark text-white border-secondary",
                 )
             ], width="auto", className="ms-1"),
-
-            dbc.Col([
-                html.Label("Lookback:", style=constants.label_style),
-                dbc.Select(
-                    id='heatmap_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "custom"},
-                    ],
-                    value="stacked",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
 
             dbc.Col([
                 html.Label("Asset Class Selector", style=constants.label_style),
@@ -66,24 +68,56 @@ layout = html.Div([
         html.Hr(style=constants.hr_style),
 
         dbc.Row([
-            html.Div(id='heatmap_display_container')
+            dcc.Loading(
+                id="loading-heatmap",
+                type="dot", # Options: "graph", "cube", "circle", "dot", or "default"
+                children=html.Div(id='heatmap_display_container'),
+                color=constants.BRIGHTER_TEXT_COLOR
+            )
         ], justify='center')
     ], fluid=True),
 ])
 
 
 @callback(
+    Output('global_lookback_store', 'data'),
+    Input('heatmap_lookback_selector', 'value')
+)
+def update_global_lookback(value):
+    print("heatmap cb select lb: ", value)
+    if value == "26" or value == "52" or value == "Custom":
+        return value
+    else:
+        return "Custom"
+
+
+@callback(
+    Output('heatmap_lookback_selector', 'value'),
+    Input('global_lookback_store', 'data')
+)
+def update_local_lookback(value):
+    print("heatmap cb redirect lb: ", value)
+    if value == "26" or value == "52" or value == "Custom":
+        return value
+    else:
+        return "Custom"
+
+
+@callback(
     Output('heatmap_display_container', 'children'),
     [Input('heatmap_layout_selector', 'value'),
      Input('page_heatmap_selector', 'value'),
-     Input('heatmap_lookback_selector', 'value')]
+     Input('session_setup_highlight_asset_store', 'data'),
+     Input('global_lookback_store', 'data')]
 )
-def render_heatmap_layout(layout_type, assest_classes, lookback):
+def render_heatmap_layout(layout_type, assest_classes, setup, lookback):
+    print(setup)
+    print("heatmap cb plot lb: ", lookback)
     if not assest_classes:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': constants.TEXT_COLOR})
 
-    fig_z = update_z_score_heat_map(assest_classes, lookback)
-    fig_index = update_index_heat_map(assest_classes, lookback)
+    fig_z = update_z_score_heat_map(assest_classes, setup, lookback)
+    fig_index = update_index_heat_map(assest_classes, setup, lookback)
 
     z_graph = dcc.Graph(id='z_score_graph', figure=fig_z, config={'scrollZoom': False})
     index_graph = dcc.Graph(id='index_graph', figure=fig_index, config={'scrollZoom': False})
@@ -109,10 +143,11 @@ def render_heatmap_layout(layout_type, assest_classes, lookback):
         return dbc.Row([dbc.Col(index_graph, width=12)])
 
 
-def update_z_score_heat_map(asset_classes, lookback):
+def update_z_score_heat_map(asset_classes, setup, lookback):
     if not asset_classes:
         asset_classes = cotIndexer.get_asset_classes()
 
+    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     top_spacer = pd.DataFrame([{
         "Asset": "TOP_SPACER",
         "Commercials": None, "Large Specs": None, "Small Specs": None,
@@ -177,12 +212,10 @@ def update_z_score_heat_map(asset_classes, lookback):
         textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
         colorscale=[
             [0, '#ff4b2b'],
-            [0.05, '#ff4b2b'],
-            [0.10, '#f87171'],
-            [0.25, '#252C36'],
-            [0.75, '#252C36'],
-            [0.90, '#4ade80'],
-            [0.95, '#00c853'],
+            [min_threshold/100, '#ff4b2b'],
+            [min_threshold/100, '#252C36'],
+            [max_threshold/100, '#252C36'],
+            [max_threshold/100, '#00c853'],
             [1, '#00c853']
         ],
         zmin=-3, zmax=3,  # Force scale to Z-score range
@@ -227,10 +260,11 @@ def update_z_score_heat_map(asset_classes, lookback):
     return fig
 
 
-def update_index_heat_map(asset_classes, lookback):
+def update_index_heat_map(asset_classes, setup, lookback):
     if not asset_classes:
         asset_classes = cotIndexer.get_asset_classes()
 
+    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     top_spacer = pd.DataFrame([{
         "Asset": "TOP_SPACER",
         "Commercials": None, "Large Specs": None, "Small Specs": None,
@@ -296,12 +330,10 @@ def update_index_heat_map(asset_classes, lookback):
         textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
         colorscale=[
             [0, '#ff4b2b'],
-            [0.05, '#ff4b2b'],
-            [0.10, '#f87171'],
-            [0.25, "#252C36"],
-            [0.75, '#252C36'],
-            [0.90, '#4ade80'],
-            [0.95, '#00c853'],
+            [min_threshold/100, '#ff4b2b'],
+            [min_threshold/100, '#252C36'],
+            [max_threshold/100, '#252C36'],
+            [max_threshold/100, '#00c853'],
             [1, '#00c853']
         ],
         zmin=-0, zmax=100,

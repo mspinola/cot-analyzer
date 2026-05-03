@@ -1,4 +1,4 @@
-import constants
+import constants as const
 import utils
 
 import dash
@@ -23,7 +23,22 @@ layout = html.Div([
     dbc.Container([
         dbc.Row([
             dbc.Col([
-                html.Label("Asset Class Selector", style=constants.label_style),
+                html.Label("Lookback:", style=const.label_style),
+                dbc.Select(
+                    id='graphs_lookback_selector',
+                    options=[
+                        {"label": "26 Weeks", "value": "26"},
+                        {"label": "52 Weeks", "value": "52"},
+                        {"label": "Custom", "value": "Custom"},
+                    ],
+                    value="Custom",
+                    size="sm",
+                    className="mb-3 bg-dark text-white border-secondary",
+                )
+            ], width="auto"),
+
+            dbc.Col([
+                html.Label("Asset Class Selector", style=const.label_style),
                 dbc.Select(
                     persistence=True,
                     id='graphs_single_asset_class_input',
@@ -35,7 +50,7 @@ layout = html.Div([
             ], width="auto", className="ms-2 mt-2"),
 
             dbc.Col([
-                html.Label("Asset Selector", style=constants.label_style),
+                html.Label("Asset Selector", style=const.label_style),
                 dcc.Dropdown(
                     persistence=True,
                     id='graphs_multi_equity_selector_input',
@@ -45,15 +60,43 @@ layout = html.Div([
                     clearable=True,
                 ),
             ], width="auto"),
-        ], align="center", className="mb-4", style=constants.row_start_style),
+        ], align="center", className="mb-4", style=const.row_start_style),
 
-        html.Hr(style=constants.hr_style),
+        html.Hr(style=const.hr_style),
 
         dbc.Row([
-            html.Div(id='cot_graphs')
+            dcc.Loading(
+                id="loading-cot-graphs",
+                type="default", # Options: "graph", "cube", "circle", "dot", or "default"
+                children=html.Div(id='cot_graphs'),
+                color=const.BRIGHTER_TEXT_COLOR
+            )
         ], justify='center')
     ], fluid=True),
 ])
+
+
+@callback(
+    Output('global_lookback_store', 'data'),
+    Input('graphs_lookback_selector', 'value')
+)
+def update_global_lookback(value):
+    print("graphs cb select lb: ", value)
+    if value == "26" or value == "52" or value == "Custom":
+        return value
+    else:
+        return "Custom"
+
+@callback(
+    Output('graphs_lookback_selector', 'value'),
+    Input('global_lookback_store', 'data')
+)
+def update_local_lookback(value):
+    print("graphs cb redirect lb: ", value)
+    if value == "26" or value == "52" or value == "Custom":
+        return value
+    else:
+        return "Custom"
 
 
 @callback(
@@ -61,17 +104,17 @@ layout = html.Div([
     [Input('graphs_single_asset_class_input', 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('graphs_multi_equity_selector_input', 'value'),
-     Input('session_setup_highlight_asset_store', 'data')]
+     Input('global_lookback_store', 'data')]
 )
-def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
+def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
+    print("graphs cb plot lb: ", lookback)
     if selected_assets is None or len(selected_assets) == 0:
-        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': constants.BRIGHTER_TEXT_COLOR})
+        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
     enabled_plots = 'Positioning'
     overlay_selection = 'Price'
-    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
 
-    grid_color = constants.GRID_COLOR
+    grid_color = const.GRID_COLOR
     color_palette = cotIndexer.get_palette(palette_name)
 
     if selected_assets is None:
@@ -84,8 +127,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
 
     row_count = len(assets)
 
-    total_height = (constants.PIXELS_PER_ROW * row_count) + \
-        constants.FIXED_OVERHEAD
+    total_height = (const.PIXELS_PER_ROW * row_count) + \
+        const.FIXED_OVERHEAD
     v_spacing = 80 / total_height  # Consistent ~80px gap
 
     if enabled_plots == 'All':
@@ -118,75 +161,66 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
     for idx, asset in enumerate(assets):
         cur_row = idx + 1
         cur_col = 1
-        df = cotIndexer.get_symbols_custom_index(asset)
-
-        xaxis_weeks = 78
-        x_axis_start_range = max(0, len(df.index) - xaxis_weeks)
+        df = cotIndexer.get_symbols_data(asset, lookback)
 
         # Indexing Plot
         if enabled_plots in ['All', 'Indexing']:
             # Only show legend for the first plot
             legend = cur_row == 1 and cur_col == num_cols
-            fig.add_trace(go.Scatter(x=df.index, y=df["comms"], legendgroup='commercials', line_shape='hv', showlegend=legend, zorder=0, line=dict(color=color_palette[0], width=1),
+            fig.add_trace(go.Scatter(x=df.index, y=df["comms_idx"], legendgroup='commercials', line_shape='hv', showlegend=legend, zorder=0, line=dict(color=color_palette[0], width=1),
                                      name='commercials'), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Scatter(x=df.index, y=df["lrg"], legendgroup='large specs', line_shape='hv', showlegend=legend, zorder=1, line=dict(color=color_palette[1], width=1),
+            fig.add_trace(go.Scatter(x=df.index, y=df["large_idx"], legendgroup='large specs', line_shape='hv', showlegend=legend, zorder=1, line=dict(color=color_palette[1], width=1),
                                      name='large specs'), row=cur_row, col=cur_col)
-            fig.add_trace(go.Scatter(x=df.index, y=df["sml"], legendgroup='small specs', line_shape='hv', showlegend=legend, zorder=2, line=dict(color=color_palette[2], width=1),
+            fig.add_trace(go.Scatter(x=df.index, y=df["small_idx"], legendgroup='small specs', line_shape='hv', showlegend=legend, zorder=2, line=dict(color=color_palette[2], width=1),
                                      name='small specs'), row=cur_row, col=cur_col)
-            fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
-                             df.index[x_axis_start_range], df.index[-1]])
             fig.update_yaxes(row=cur_row, col=cur_col, title="index", fixedrange=True,
                              showgrid=True, gridcolor=grid_color, gridwidth=1, range=[0, 100])
 
-            # Loop through the data to find 'Extreme' clusters
-            for i in range(1, len(df)):
-                if df['comms'].iloc[i] is None or df['lrg'].iloc[i] or df['sml'].iloc[i] is None:
-                    continue
-                elif df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
-                    color = "rgba(255, 0, 0, 0.3)"  # Red Heat
-                elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
-                    color = "rgba(0, 255, 0, 0.3)"  # Green Heat
-                else:
-                    continue
+            weeks_back = 78
+            start_idx = max(0, len(df) - weeks_back)
+            start_date = df.index[start_idx]
+            end_date = df.index[-1]
 
-                # Highlight the specific week on the chart
-                fig.add_vrect(
-                    row=cur_row,
-                    col=cur_col,
-                    x0=df.index[i-1],
-                    x1=df.index[i],
-                    fillcolor=color,
-                    layer="below",
-                    line_width=0,
-                )
+            fig.update_xaxes(
+                row=cur_row, col=cur_col,
+                range=[start_date, end_date],
+                minallowed=df.index[0],   # User cannot scroll left past the first data point
+                maxallowed=df.index[-1],   # User cannot scroll right past the latest data point
+                showspikes=True,
+                spikemode="across",
+                spikesnap="cursor",
+                spikethickness=1,
+                spikecolor=const.BRIGHTER_TEXT_COLOR,
+                spikedash="solid",
+                hoverformat="%Y-%m-%d",
+                matches='x',
+                layer="above traces",
+                showticklabels=True,
+                tickfont_color=const.TEXT_COLOR,
+                showgrid=True
+            )
             cur_col = cur_col + 1
 
         # Positioning Plot
         if enabled_plots in ['All', 'Positioning']:
             # Only show legend for the first plot
             legend = cur_row == 1 and cur_col == num_cols
-            fig.add_trace(go.Bar(x=df.index, y=df["comms_net"], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
+            fig.add_trace(go.Bar(x=df.index, y=df[const.COMM_NET], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
                                  name='commercials', marker_color=color_palette[0]), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Bar(x=df.index, y=df["lrg_net"], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
+            fig.add_trace(go.Bar(x=df.index, y=df[const.LARGE_NET], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
                                  name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Bar(x=df.index, y=df["sml_net"], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
+            fig.add_trace(go.Bar(x=df.index, y=df[const.SMALL_NET], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
                                  name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
 
             if overlay_selection == 'Price' and 'price' in df.columns:
-                fig.add_trace(go.Scatter(x=df.index, y=df["price"], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=1),
+                fig.add_trace(go.Scatter(x=df.index, y=df[const.CLOSING_PRICE], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=1),
                                          name='price'), row=cur_row, col=cur_col, secondary_y=True)
             elif overlay_selection == 'Open Interest':
-                fig.add_trace(go.Scatter(x=df.index, y=df["oi"], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[4], width=1),
+                fig.add_trace(go.Scatter(x=df.index, y=df[const.OPEN_INTEREST], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[4], width=1),
                                          name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
             else:
                 pass
 
-            if enabled_plots == 'All':
-                fig.update_xaxes(row=cur_row, col=cur_col, showgrid=False, matches='x', range=[
-                    df.index[x_axis_start_range], df.index[-1]])
-            else:
-                fig.update_xaxes(row=cur_row, col=cur_col,
-                                 showgrid=False, matches='x', autorange=True)
             fig.update_yaxes(row=cur_row, col=cur_col, title="net positions", showgrid=True,
                              gridcolor=grid_color, gridwidth=1, secondary_y=False, fixedrange=True)
             if overlay_selection == 'Open Interest':
@@ -196,52 +230,52 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
                 fig.update_yaxes(row=cur_row, col=cur_col, fixedrange=True,
                                  title="price", showgrid=False, secondary_y=True)
 
-            # Loop through the data to find 'Extreme' clusters
-            for i in range(1, len(df)):
-                if df['comms'].iloc[i] is None or df['lrg'].iloc[i] is None or df['sml'].iloc[i] is None:
-                    continue
-                elif df['comms'].iloc[i] >= max_threshold and df['lrg'].iloc[i] <= min_threshold and df['sml'].iloc[i] <= min_threshold:
-                    color = "rgba(255, 0, 0, 0.3)"  # Red Heat
-                elif df['comms'].iloc[i] <= min_threshold and df['lrg'].iloc[i] >= max_threshold and df['sml'].iloc[i] >= max_threshold:
-                    color = "rgba(0, 255, 0, 0.3)"  # Green Heat
-                else:
-                    continue
+            weeks_back = 78
+            start_idx = max(0, len(df) - weeks_back)
+            start_date = df.index[start_idx]
+            end_date = df.index[-1]
 
-                # Highlight the specific week on the chart
-                fig.add_vrect(
-                    row=cur_row,
-                    col=cur_col,
-                    x0=df.index[i-1],
-                    x1=df.index[i],
-                    fillcolor=color,
-                    layer="below",
-                    line_width=0,
-                )
+            fig.update_xaxes(
+                row=cur_row, col=cur_col,
+                range=[start_date, end_date],
+                minallowed=df.index[0],   # User cannot scroll left past the first data point
+                maxallowed=df.index[-1],   # User cannot scroll right past the latest data point
+                showspikes=True,
+                spikemode="across",
+                spikesnap="cursor",
+                spikethickness=1,
+                spikecolor=const.BRIGHTER_TEXT_COLOR,
+                spikedash="solid",
+                hoverformat="%Y-%m-%d",
+                matches='x',
+                layer="above traces",
+                showticklabels=True,
+                tickfont_color=const.TEXT_COLOR,
+                showgrid=True
+            )
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=constants.BACKGROUND_COLOR,
-        plot_bgcolor=constants.BACKGROUND_COLOR,
+        paper_bgcolor=const.BACKGROUND_COLOR,
+        plot_bgcolor=const.BACKGROUND_COLOR,
         # Sets color for all graph text
-        font=dict(color=constants.BRIGHTER_TEXT_COLOR),
+        font=dict(color=const.BRIGHTER_TEXT_COLOR),
         showlegend=True,
         legend=dict(
             orientation="h",
-            entrywidth=120,
-            entrywidthmode='pixels',
-            bgcolor=constants.BACKGROUND_COLOR,
-            font=dict(size=14, color=constants.BRIGHTER_TEXT_COLOR),
             yanchor="bottom",
             y=1.15,
+            xanchor="center",
             x=0.5,
-            xanchor="center"
+            font=dict(size=14, color=const.BRIGHTER_TEXT_COLOR),
+            bgcolor=const.BACKGROUND_COLOR,
         ),
         autosize=True,
         height=total_height,
         margin=dict(t=10, b=10, l=10, r=10),
         hovermode="x unified",
         hoverlabel=dict(bgcolor="rgba(20, 20, 20, 0.8)",
-                        font=dict(color=constants.HOVER_TEXT_COLOR)),
+                        font=dict(color=const.HOVER_TEXT_COLOR)),
         bargap=0.2,
     )
     return dcc.Graph(figure=fig,
@@ -250,6 +284,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup):
                         'doubleClick': 'reset',
                         'displayModeBar': True,
                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                        'displayLogo': False,
                         'responsive': True}, style={'width': '100%'
                     })
 

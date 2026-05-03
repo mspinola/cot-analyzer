@@ -663,3 +663,19 @@ body, .container-fluid {
     font-weight: 600;
     border-bottom: 2px solid #E2E8F0; /* Added for a clean 'Pro' look */
 }
+
+/* Add space between the modebar groups */
+.modebar-group {
+    margin-left: 1px !important;
+    padding-left: 5px !important;
+}
+
+/* Add space between individual buttons */
+.modebar-btn {
+    margin-left: 8px !important;
+}
+
+/* Shift the entire modebar higher up to clear the horizontal legend */
+.js-plotly-plot .plotly .modebar {
+    top: -15px !important; /* Adjust this based on your legend height */
+}
