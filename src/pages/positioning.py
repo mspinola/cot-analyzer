@@ -62,17 +62,6 @@ layout = html.Div([
 
     html.Hr(style=constants.hr_style),
 
-    # dbc.Row([
-    #     dbc.Col([
-    #         html.H4("Positioning Data as of .",
-    #             style={
-    #                 'textAlign': 'left',
-    #                 'color': constants.BRIGHTER_TEXT_COLOR
-    #                 }
-    #         )
-    #     ], width=6, className="ms-3")
-    # ], justify='left'),
-
     dbc.Row([
         html.Div(id='cot_positioning')
     ], justify='center')

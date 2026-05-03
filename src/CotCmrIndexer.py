@@ -284,7 +284,8 @@ class CotCmrIndexer:
                 else:
                     # Adding a tiny epsilon to the denominator prevents division by zero
                     cur_normalized_net = df.at[idx, COMM_PCT_OI]
-                    willco = int((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
+                    # print(oi_min, " ", oi_max, " ", cur_normalized_net)
+                    willco = round((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
                     df.at[idx, WILLCO] = willco
 
 
@@ -299,9 +300,9 @@ class CotCmrIndexer:
 
             # Add new columns for position as percent of open interest
             # Adding epsilon (1e-9) to denominator prevents division by zero
-            df[COMM_PCT_OI] = round((df[COMM_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
-            df[LARGE_PCT_OI] = round((df[LARGE_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
-            df[SMALL_PCT_OI] = round((df[SMALL_NET] / (df[INTEREST] + 1e-9)) * 100, 0)
+            df[COMM_PCT_OI] = round((df[COMM_NET] / (df[INTEREST] + 1e-9)) * 100, 2)
+            df[LARGE_PCT_OI] = round((df[LARGE_NET] / (df[INTEREST] + 1e-9)) * 100, 2)
+            df[SMALL_PCT_OI] = round((df[SMALL_NET] / (df[INTEREST] + 1e-9)) * 100, 2)
 
             CotCmrIndexer.process_lookback(
                 ["custom", self.instruments[instrument].custom_lookback], df)
