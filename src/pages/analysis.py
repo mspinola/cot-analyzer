@@ -312,11 +312,12 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots):
             add_trace_to_all(fig, df, "lrg_idx", cur_row, "Large Specs", color_palette[1], 1)
             add_trace_to_all(fig, df, "sml_idx", cur_row, "Small Specs", color_palette[2], 2)
             add_trace_to_all(fig, df, const.CLOSING_PRICE, cur_row, "Price", color_palette[3], 3, secondary=True, showlegend=False)
-            fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
-            fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
             fig.update_yaxes(title="Index", range=[0, 100], row=cur_row, col=cur_col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
-            fig.add_hrect(y0=max_threshold, y1=100, fillcolor="red", opacity=0.03, line_width=0, row=cur_row, col=1)
-            fig.add_hrect(y0=0, y1=min_threshold, fillcolor="green", opacity=0.05, line_width=0, row=cur_row, col=1)
+            if max_threshold is not None and min_threshold is not None:
+                fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=cur_row, col=cur_col)
+                fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=0.5, row=cur_row, col=cur_col)
+                fig.add_hrect(y0=max_threshold, y1=100, fillcolor="red", opacity=0.03, line_width=0, row=cur_row, col=1)
+                fig.add_hrect(y0=0, y1=min_threshold, fillcolor="green", opacity=0.05, line_width=0, row=cur_row, col=1)
 
         elif p == "zscore":
             # PLOT: Sentiment z-score
