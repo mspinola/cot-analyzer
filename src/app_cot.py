@@ -40,7 +40,7 @@ navbar = dbc.NavbarSimple(
             ),
         ],
         color=constants.BLUE_BACKGROUND,
-        brand_href="/graphs",
+        brand_href="/",
         dark=True
 )
 
@@ -48,12 +48,20 @@ app.layout = dbc.Container(
     [
         dcc.Store(id='session_palette_theme_asset_store', storage_type='session'),
         dcc.Store(id='session_setup_highlight_asset_store', storage_type='session'),
-        dcc.Store(id='global_lookback_store', storage_type='session', data='custom'),
+        dcc.Store(id='global_lookback_store', storage_type='session', data='Custom'),
+        dcc.Location(id='url', refresh=True),
         navbar,
         dash.page_container
     ],
     fluid=True
 )
+
+@app.callback(Output('url', 'pathname'),
+              [Input('url', 'pathname')])
+def redirect_root(pathname):
+    if pathname == '/':
+        return '/positioning'
+    return dash.no_update
 
 @app.callback(
     Output("navbar_timestamp_text", "children"),
