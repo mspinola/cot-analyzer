@@ -30,7 +30,7 @@ def parse_setup_thresholds(setup):
         max_threshold = 95
         min_threshold = 5
     elif setup == '90 10':
-        max_threshold = 9
+        max_threshold = 90
         min_threshold = 10
     elif setup == '75 25':
         max_threshold = 75

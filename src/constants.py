@@ -27,6 +27,7 @@ OPEN_INTEREST = "Open Interest"
 COMM_NET = "Comm Net Pos"
 LARGE_NET = "Lrg Spec Net Pos"
 SMALL_NET = "Sml Spec Net Pos"
+LARGE_FLIP = "Lrg Spec Net Pos Flip"
 
 COMM_PCT_OI = "Comm OI Pct"
 LARGE_PCT_OI = "Lrg OI Pct"
@@ -67,13 +68,16 @@ WILLCO_CUSTOM = "WILLCO Custom"
 WILLCO_26 = "WILLCO 26"
 WILLCO_52 = "WILLCO 52"
 
+TENSION_Z_CUSTOM = "Tension Zscore Custom"
+TENSION_Z_26 = "Tension Zscore 26"
+TENSION_Z_52 = "Tension Zscore 52"
 
 TEXT_COLOR = "#ABB8C9"
 BRIGHTER_TEXT_COLOR = "#E2E8F0"
 HOVER_TEXT_COLOR = "#FFFFFF"
 BACKGROUND_COLOR = "#1a1a1a"
 BLUE_BACKGROUND = "#375a7f"
-GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
+GRID_COLOR = "rgba(255, 255, 255, 0.2)"  # Subtle white grid
 
 # Plotting Dimensions
 PIXELS_PER_ROW = 275

@@ -126,10 +126,10 @@ class CotCmrIndexer:
                 0, len(self.instruments[instrument].df))
 
     @staticmethod
-    def calculate_cot_z_score(col_to_search, lb_weeks):
-        comm_mean = col_to_search.rolling(window=lb_weeks).mean()
-        comm_std = col_to_search.rolling(window=lb_weeks).std()
-        z_score = (col_to_search - comm_mean) / comm_std
+    def calculate_z_score(col_to_search, lb_weeks):
+        roll_mean = col_to_search.rolling(window=lb_weeks).mean()
+        roll_std = col_to_search.rolling(window=lb_weeks).std()
+        z_score = (col_to_search - roll_mean) /  (roll_std + 1e-9)
         return z_score
 
     @staticmethod
@@ -142,6 +142,14 @@ class CotCmrIndexer:
         if max_net != min_net:
             result = round((cur_net - min_net) / (max_net - min_net) * 100)
         return int(result)
+
+    @staticmethod
+    def calculate_tension_index(col_to_search, lb_weeks):
+        roll_mean = col_to_search.rolling(window=lb_weeks).mean()
+        roll_std = col_to_search.rolling(window=lb_weeks).std()
+        z_score = (col_to_search - roll_mean) / roll_std
+        tension_osc = (col_to_search - roll_mean) / (roll_std + 1e-9)
+        return tension_osc
 
     @staticmethod
     def process_lookback(lookback, df):
@@ -168,12 +176,20 @@ class CotCmrIndexer:
         COMM_ZS = "Comm " + zscore_col_header_name
         LRG_ZS = "Lrg Spec " + zscore_col_header_name
         SML_ZS = "Sml Spec " + zscore_col_header_name
-        df[COMM_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.COMM_NET], lb_weeks)
-        df[LRG_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.LARGE_NET], lb_weeks)
-        df[SML_ZS] = CotCmrIndexer.calculate_cot_z_score(df[const.SMALL_NET], lb_weeks)
+        df[COMM_ZS] = CotCmrIndexer.calculate_z_score(df[const.COMM_NET], lb_weeks)
+        df[LRG_ZS] = CotCmrIndexer.calculate_z_score(df[const.LARGE_NET], lb_weeks)
+        df[SML_ZS] = CotCmrIndexer.calculate_z_score(df[const.SMALL_NET], lb_weeks)
         df[COMM_ZS] = df[COMM_ZS].fillna(0)
         df[LRG_ZS] = df[LRG_ZS].fillna(0)
         df[SML_ZS] = df[SML_ZS].fillna(0)
+
+        # Calculate Raw Tension: Large Spec Net / Abs(Commercial Net)
+        # Avoid division by zero by adding a small epsilon
+        raw_tension = df[const.LARGE_NET] / (df[const.COMM_NET].abs() + 1e-9)
+        tension_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
+        TENSION_Z = "Tension Zscore " + tension_col_header_name
+        df[TENSION_Z] = CotCmrIndexer.calculate_z_score(raw_tension, lb_weeks)
+        df[TENSION_Z] = df[TENSION_Z].fillna(0)
 
         # Spearman Correlation
         spearman_header_name = "Custom Spearman" if lb_name == "Custom" else str(lb_weeks) + " Spearman"
@@ -298,6 +314,10 @@ class CotCmrIndexer:
             self.calculate_willco(const.WILLCO_CUSTOM, self.instruments[instrument].custom_lookback, df)
             self.calculate_willco(const.WILLCO_26, 26, df)
             self.calculate_willco(const.WILLCO_52, 52, df)
+
+            # Check for sign change in Large Speculator Net Position
+            df[const.LARGE_FLIP] = (df[const.LARGE_NET] * df[const.LARGE_NET].shift(1) < 0)
+
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
@@ -584,6 +604,9 @@ class CotCmrIndexer:
             willco_col_header_name = "WILLCO " + lookback
             WILLCO = willco_col_header_name
 
+            tension_col_header_name = "Custom" if lookback == "Custom" else lookback
+            TENSION_Z = "Tension Zscore " + tension_col_header_name
+
             df = instrument.df
             result = pd.DataFrame()
             result[const.DATE] = df[const.REPORT_DATE_XLS]
@@ -602,9 +625,12 @@ class CotCmrIndexer:
 
             result["willco"] = df[WILLCO]
 
+            result["tension"] = df[TENSION_Z]
+
             result[const.COMM_NET] = df[const.COMM_NET]
             result[const.LARGE_NET] = df[const.LARGE_NET]
             result[const.SMALL_NET] = df[const.SMALL_NET]
+            result[const.LARGE_FLIP] = df[const.LARGE_FLIP]
 
             result[const.COMM_PCT_OI] = df[const.COMM_PCT_OI]
             result[const.LARGE_PCT_OI] = df[const.LARGE_PCT_OI]

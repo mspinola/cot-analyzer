@@ -192,8 +192,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
                 fig.update_yaxes(row=cur_row, col=cur_col, fixedrange=True,
                                  title="price", showgrid=False, secondary_y=True)
 
-            weeks_back = 78
-            start_idx = max(0, len(df) - weeks_back)
+            # weeks_back = 78
+            start_idx = 0  # max(0, len(df) - weeks_back)
             start_date = df.index[start_idx]
             end_date = df.index[-1]
 
@@ -226,7 +226,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.15,
+            y=1.1,
             xanchor="center",
             x=0.5,
             font=dict(size=14, color=const.BRIGHTER_TEXT_COLOR),
