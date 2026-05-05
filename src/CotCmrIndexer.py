@@ -213,7 +213,6 @@ class CotCmrIndexer:
             df[LRG_SPR] = df[LRG_SPR].fillna(0)
             df[SML_SPR] = df[SML_SPR].fillna(0)
         else:
-            print(df.columns)
             df[COMM_SPR] = 0
             df[LRG_SPR] = 0
             df[SML_SPR] = 0
@@ -528,8 +527,11 @@ class CotCmrIndexer:
 
         return result_df
 
-    def get_asset_classes(self):
-        return list(self.asset_class_map)
+    def get_asset_classes(self, sort=True):
+        classes = list(self.asset_class_map)
+        if sort:
+            classes.sort()
+        return classes
 
     def get_default_asset_class(self):
         first_key = ""
@@ -542,10 +544,12 @@ class CotCmrIndexer:
                 first_key = ""
         return first_key
 
-    def get_assets_for_asset_class(self, asset_class):
+    def get_assets_for_asset_class(self, asset_class, sort=True):
         result = []
         if asset_class in self.asset_class_map:
             result = list(self.asset_class_map[asset_class])
+        if sort:
+            result.sort()
         return result
 
     def get_instrument_names(self):
