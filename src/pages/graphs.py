@@ -173,7 +173,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
             for idx in range(len(assets)):
                 specs.append([{"secondary_y": False}])
 
-    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs)
+    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs, 0.7)
 
     cur_col = 1
     setup_highlight_row = None  # TODO make this a list
