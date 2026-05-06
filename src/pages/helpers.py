@@ -195,7 +195,7 @@ def get_setup_highlighting(fig, df, min_threshold, max_threshold, row, col):
     return fig
 
 def get_make_subplots_for_plots(rows, cols, titles, specs):
-    vertical_spacing = min( (1 / (rows - 1)), const.VERTICAL_SPACING)
+    vertical_spacing = min( (1 / (rows - 1)), const.VERTICAL_SPACING) if rows > 1 else const.VERTICAL_SPACING
     fig = make_subplots(
         rows=rows,
         cols=cols,
