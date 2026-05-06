@@ -4,44 +4,64 @@ import dash
 from db import cotDatabase
 
 import dash_bootstrap_components as dbc
-from dash import Dash, html, dcc, callback, Input, Output
+from dash import Dash, State, html, dcc, callback, Input, Output
 
 
 app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.DARKLY])
 server = app.server
 
-navbar = dbc.NavbarSimple(
-    children=[
-        dbc.NavItem(dbc.NavLink("Graphs", href="/graphs", active="partial")),
-        dbc.NavItem(dbc.NavLink("Table", href="/positioning", active="partial")),
-        dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="partial")),
-        dbc.NavItem(dbc.NavLink("Analysis", href="/analysis", active="partial")),
-        dbc.NavItem(dbc.NavLink("Options", href="/options", active="partial", className="me-1")),
-    ],
-        brand=[
-            html.P("COT Analyzer",
-                style={
-                    'color': constants.BRIGHTER_TEXT_COLOR,
-                    'margin': 0,
-                    'fontSize': '1.5rem'
-                }
+navbar = dbc.Navbar(
+    (
+        dbc.NavbarBrand(
+            html.Div([
+                html.P("COT Analyzer",
+                    style={
+                        'color': constants.BRIGHTER_TEXT_COLOR,
+                        'margin': 0,
+                        'fontSize': '1.5rem'
+                    }
+                ),
+                html.P(id='navbar_timestamp_text',
+                    style={
+                        'fontSize': '0.75rem',
+                        'margin': 0,
+                        'color': constants.TEXT_COLOR
+                    }
+                ),
+                dcc.Interval(
+                    id='navbar_update_interval',
+                    interval=5 * 60 * 1000,  # 5 minutes in msec
+                    n_intervals=0
+                ),
+            ]),
+            href="/",
+            className="ms-3 text-decoration-none"
+        ),
+
+        dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
+
+        dbc.Collapse(
+            dbc.Nav(
+                [
+                    dbc.NavItem(dbc.NavLink("Graphs", href="/graphs", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Table", href="/positioning", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Analysis", href="/analysis", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Options", href="/options", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("About", href="/about", active="partial", style={'fontSize': '0.9rem'}, className="me-2")),
+                ],
+                className="ms-auto",
+                navbar=True,
             ),
-            html.P(id='navbar_timestamp_text',
-                style={
-                    'fontSize': '0.95rem',
-                    'margin': 0,
-                    'color': constants.TEXT_COLOR
-                }
-            ),
-            dcc.Interval(
-                id='navbar_update_interval',
-                interval=5 * 60 * 1000,  # 5 minutes in msec
-                n_intervals=0
-            ),
-        ],
-        color=constants.BLUE_BACKGROUND,
-        brand_href="/",
-        dark=True
+            id="navbar-collapse",
+            is_open=False,
+            navbar=True,
+        ),
+    ),
+    color=constants.BLUE_BACKGROUND,
+    dark=True,
+    className="w-100", # Ensures the navbar spans the full width of the screen
+    expand="md",
 )
 
 app.layout = dbc.Container(
@@ -55,6 +75,17 @@ app.layout = dbc.Container(
     ],
     fluid=True
 )
+
+# Callback to toggle the collapse on small screens
+@app.callback(
+    Output("navbar-collapse", "is_open"),
+    [Input("navbar-toggler", "n_clicks")],
+    [State("navbar-collapse", "is_open")],
+)
+def toggle_navbar_collapse(n, is_open):
+    if n:
+        return not is_open
+    return is_open
 
 @app.callback(Output('url', 'pathname'),
               [Input('url', 'pathname')])

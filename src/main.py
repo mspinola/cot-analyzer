@@ -7,7 +7,7 @@ import sys
 import time
 
 from CotDataDownloader import CotDataDownloader
-from CotCmrIndexer import CotCmrIndexer
+from CotIndexer import CotIndexer
 from CotDatabase import CotDatabase
 
 # Configure logging
@@ -30,8 +30,8 @@ if __name__ == "__main__":
     enable_server = True
     if not enable_server:
         logging.warning(
-            "Server is disabled. Only running CotCmrIndexer initialization.")
-        cmrIndexer = CotCmrIndexer()
+            "Server is disabled. Only running CotIndexer initialization.")
+        cmrIndexer = CotIndexer()
     else:
         # Start the background process for hourly zip updates
         start_time = time.time()

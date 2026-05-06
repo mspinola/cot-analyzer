@@ -1,5 +1,5 @@
 
-import constants
+import constants as const
 from indexer import cotIndexer
 
 import dash
@@ -17,62 +17,72 @@ dash.register_page(__name__, path="/heatmap")
 
 layout = html.Div([
     dbc.Container([
-        dbc.Row([
-            dbc.Col([
-                html.Label("Lookback:", style=constants.label_style),
-                dbc.Select(
-                    id='heatmap_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "Custom"},
-                    ],
-                    value="Custom",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
+        dbc.Accordion([
+            dbc.AccordionItem([
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Lookback:", style=const.label_style),
+                        dbc.Select(
+                            id='heatmap_lookback_selector',
+                            options=[
+                                {"label": "26 Weeks", "value": "26"},
+                                {"label": "52 Weeks", "value": "52"},
+                                {"label": "Custom", "value": "Custom"},
+                            ],
+                            value="Custom",
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=12, md="auto"),
 
-            dbc.Col([
-                html.Label("Layout View:", style=constants.label_style),
-                dbc.Select(
-                    id='heatmap_layout_selector',
-                    options=[
-                        {"label": "Both - Side by Side", "value": "side"},
-                        {"label": "Both - Stacked", "value": "stacked"},
-                        {"label": "Z-Score Only", "value": "z_only"},
-                        {"label": "Index Only", "value": "index_only"},
-                    ],
-                    value="stacked",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto", className="ms-1"),
+                    dbc.Col([
+                        html.Label("Layout View:", style=const.label_style),
+                        dbc.Select(
+                            id='heatmap_layout_selector',
+                            options=[
+                                {"label": "Both - Side by Side", "value": "side"},
+                                {"label": "Both - Stacked", "value": "stacked"},
+                                {"label": "Z-Score Only", "value": "z_only"},
+                                {"label": "Index Only", "value": "index_only"},
+                            ],
+                            value="stacked",
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=12, md="auto"),
 
-            dbc.Col([
-                html.Label("Asset Class Selector", style=constants.label_style),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='page_heatmap_selector',
-                    options=[{'label': x, 'value': x}
-                                for x in cotIndexer.get_asset_classes()],
-                    value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
-                    multi=True,
-                    className="dash-dropdown bg-dark text-white",
-                    searchable=False,
-                    clearable=True,
-                ),
-            ], width="auto")
-        ], justify="left", className="mb-4", style=constants.row_start_style),
+                    dbc.Col([
+                        html.Label("Asset Class Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='page_heatmap_selector',
+                            options=[{'label': x, 'value': x}
+                                        for x in cotIndexer.get_asset_classes()],
+                            value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
+                            multi=True,
+                            className="dash-dropdown bg-dark text-white",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+                ], align="center"),
+            ],
+            title="HEATMAP CONFIGURATION",
+            item_id="chart_config"),
+        ],
+        start_collapsed=True, # Keeps it clean on initial mobile load
+        flush=True,
+        className="mb-3",
+        style={'backgroundColor': const.BACKGROUND_COLOR}),
 
-        html.Hr(style=constants.hr_style),
+        html.Hr(style=const.hr_style),
 
         dbc.Row([
             dcc.Loading(
                 id="loading-heatmap",
                 type="dot", # Options: "graph", "cube", "circle", "dot", or "default"
                 children=html.Div(id='heatmap_display_container'),
-                color=constants.BRIGHTER_TEXT_COLOR
+                color=const.BRIGHTER_TEXT_COLOR
             )
         ], justify='center')
     ], fluid=True),
@@ -114,7 +124,7 @@ def render_heatmap_layout(layout_type, assest_classes, setup, lookback):
     print(setup)
     print("heatmap cb plot lb: ", lookback)
     if not assest_classes:
-        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': constants.TEXT_COLOR})
+        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.TEXT_COLOR})
 
     fig_z = update_z_score_heat_map(assest_classes, setup, lookback)
     fig_index = update_index_heat_map(assest_classes, setup, lookback)
@@ -249,8 +259,8 @@ def update_z_score_heat_map(asset_classes, setup, lookback):
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=constants.BACKGROUND_COLOR,
-        plot_bgcolor=constants.BACKGROUND_COLOR,
+        paper_bgcolor=const.BACKGROUND_COLOR,
+        plot_bgcolor=const.BACKGROUND_COLOR,
         height=len(df) * 25 + 200,  # Dynamic height based on row count
         margin=dict(t=80, b=40, l=60, r=40),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1, fixedrange=True),
@@ -371,8 +381,8 @@ def update_index_heat_map(asset_classes, setup, lookback):
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor=constants.BACKGROUND_COLOR,
-        plot_bgcolor=constants.BACKGROUND_COLOR,
+        paper_bgcolor=const.BACKGROUND_COLOR,
+        plot_bgcolor=const.BACKGROUND_COLOR,
         height=len(df) * 25 + 200,  # Dynamic height based on row count
         margin=dict(t=80, b=40, l=60, r=40),  # Left margin for asset names
         xaxis=dict(side="top", dtick=1),

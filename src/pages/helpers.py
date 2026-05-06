@@ -132,6 +132,22 @@ def get_zscore_plot(fig, df, row, col, color_palette):
     fig.add_hrect(y0=-4, y1=-2, fillcolor="green", opacity=0.05, line_width=0, row=row, col=1)
     return fig
 
+def get_momentum_plot(fig, df, row, col, color_palette):
+    showlegend = row == 1
+    add_trace_to_all(fig, df, "comm_momentum", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, "lrg_momentum", row, "Large Specs", color_palette[1], 1, False, showlegend=showlegend)
+    add_trace_to_all(fig, df, "sml_momentum", row, "Small Specs", color_palette[2], 2, False, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    if const.ENABLE_HLINE_THRESHOLDS:
+        fig.add_hline(y=const.MOMENTUM_MIN_THRESHOLD, line_dash="dot", line_color="red", opacity=const.HLINE_OPACITY, row=row, col=col)
+        fig.add_hline(y=const.MOMENTUM_MAX_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=col)
+        fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", opacity=const.HLINE_OPACITY, row=row, col=col)
+    fig.update_yaxes(title="ROC", range=[-100, 100], row=row, col=col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
+    fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
+    fig.add_hrect(y0=const.MOMENTUM_MAX_THRESHOLD, y1=100, fillcolor="red", opacity=0.03, line_width=0, row=row, col=1)
+    fig.add_hrect(y0=const.MOMENTUM_MIN_THRESHOLD, y1=-100, fillcolor="green", opacity=0.05, line_width=0, row=row, col=1)
+    return fig
+
 def get_tension_plot(fig, df, row, col, color_palette):
     showlegend = row == 1
     add_trace_to_all(fig, df, "tension", row, "Tension", color_palette[4], 0, showlegend=showlegend)
@@ -178,12 +194,12 @@ def get_setup_highlighting(fig, df, min_threshold, max_threshold, row, col):
 
     return fig
 
-def get_make_subplots_for_plots(fig, rows, cols=1):
+def get_make_subplots_for_plots(rows, cols, titles, specs):
     fig = make_subplots(
-        rows=num_rows,
-        cols=1,
+        rows=rows,
+        cols=cols,
         shared_xaxes=True,
-        vertical_spacing=const.VERTICAL_SPACING if num_rows > 1 else 0,
+        vertical_spacing=const.VERTICAL_SPACING if rows > 1 else 0,
         subplot_titles=titles,
         specs=specs
     )

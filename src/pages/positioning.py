@@ -17,74 +17,84 @@ dash.register_page(
 
 layout = html.Div([
     dbc.Container([
+        dbc.Accordion([
+            dbc.AccordionItem([
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Lookback:", style=const.label_style),
+                        dbc.Select(
+                            id='positioning_lookback_selector',
+                            options=[
+                                {"label": "26 Weeks", "value": "26"},
+                                {"label": "52 Weeks", "value": "52"},
+                                {"label": "Custom", "value": "Custom"},
+                            ],
+                            value="Custom",
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=12, width="auto"),
+
+                    dbc.Col([
+                        # Positioning Table Extended Data
+                        html.Label("Table Data Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='cot_positioning_column_select_input',
+                            multi=True,
+                            className="mb-3 bg-dark text-white border-secondary",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        html.Label("Asset Class Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='page_positioning_selector',
+                            options=[{'label': x, 'value': x}
+                                    for x in cotIndexer.get_asset_classes()],
+                            value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
+                            multi=True,
+                            className="dash-dropdown bg-dark text-white",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        dbc.Button([html.I(className="bi bi-download mt-3"), "Download CSV"],
+                                id="btn_download_csv",
+                                color='secondary',
+                                outline=True,
+                                size="sm",
+                                className="mt-3",
+                                style=const.button_style
+                        ),
+                        dcc.Download(id="download_positioning_csv"),
+                    ], xs=12, md=4),
+                ], align="center"),
+            ],
+            title="TABLE CONFIGURATION",
+            item_id="chart_config"),
+        ],
+        start_collapsed=True, # Keeps it clean on initial mobile load
+        flush=True,
+        className="mb-3",
+        style={'backgroundColor': const.BACKGROUND_COLOR}),
+
+        html.Hr(style=const.hr_style),
+
         dbc.Row([
-            dbc.Col([
-                html.Label("Lookback:", style=const.label_style),
-                dbc.Select(
-                    id='positioning_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "Custom"},
-                    ],
-                    value="Custom",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
-
-            dbc.Col([
-                # Positioning Table Extended Data
-                html.Label("Table Data Selector", style=const.label_style),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='cot_positioning_column_select_input',
-                    multi=True,
-                    className="mb-3 bg-dark text-white border-secondary",
-                    searchable=False,
-                    clearable=True,
-                ),
-            ], width="auto", className="ms-2 mt-2"),
-
-            dbc.Col([
-                    html.Label("Asset Class Selector", style=const.label_style),
-                    dcc.Dropdown(
-                        persistence=True,
-                        id='page_positioning_selector',
-                        options=[{'label': x, 'value': x}
-                                 for x in cotIndexer.get_asset_classes()],
-                        value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
-                        multi=True,
-                        className="dash-dropdown bg-dark text-white",
-                        searchable=False,
-                        clearable=True,
-                    ),
-                    ], width="auto"),
-
-            dbc.Col([
-                dbc.Button([html.I(className="bi bi-download mt-3"), "Download CSV"],
-                           id="btn_download_csv",
-                           color='secondary',
-                           outline=True,
-                           size="sm",
-                           className="mt-3",
-                           style=const.button_style
-                ),
-                dcc.Download(id="download_positioning_csv"),
-            ], width="auto", className="ms-1"),
-        ], align="center", className="mb-4", style=const.row_start_style),
+            dcc.Loading(
+                id="loading-positioning-table",
+                type="default", # Options: "graph", "cube", "circle", "dot", or "default"
+                children=html.Div(id='cot_positioning'),
+                color=const.BRIGHTER_TEXT_COLOR
+            )
+        ], justify='center')
     ], fluid=True),
-
-    html.Hr(style=const.hr_style),
-
-    dbc.Row([
-        dcc.Loading(
-            id="loading-positioning-table",
-            type="default", # Options: "graph", "cube", "circle", "dot", or "default"
-            children=html.Div(id='cot_positioning'),
-            color=const.BRIGHTER_TEXT_COLOR
-        )
-    ], justify='center')
 ])
 
 

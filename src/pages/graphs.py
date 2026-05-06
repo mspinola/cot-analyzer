@@ -24,6 +24,7 @@ AVAILABLE_PLOTS = {
     "net_pos": "Net Positions",
     "index": "Positioning Index",
     "zscore": "Positioning Z-Score",
+    "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
 }
 
@@ -139,6 +140,7 @@ def update_local_lookback(value):
      Input('global_lookback_store', 'data')]
 )
 def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback):
+    print(selected_plot, " ", asset_class, " " , selected_assets, " ", setup , " " , lookback)
     selected_plots = [selected_plot]
     if selected_assets is None or len(selected_assets) == 0 or selected_plots is None:
         return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
@@ -164,71 +166,43 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
     # Define specs based on selection
     specs = []
     for p in selected_plots:
-        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "tension"]:
+        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]:
             for idx in range(len(assets)):
                 specs.append([{"secondary_y": True}])
         else:
             for idx in range(len(assets)):
                 specs.append([{"secondary_y": False}])
 
-    fig = make_subplots(
-        rows=num_rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.05 if num_rows > 1 else 0,
-        subplot_titles=titles,
-        specs=specs
-    )
+    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs)
 
     cur_col = 1
     setup_highlight_row = None  # TODO make this a list
-    for p in selected_plots:
-        if p == "oi_pct":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+    for idx, asset in enumerate(assets):
+        df = cotIndexer.get_symbols_data(asset, lookback)
+        if df is None:
+            return helpers.get_no_data_html_p()
+
+        for p in selected_plots:
+            if p == "oi_pct":
                 fig = helpers.get_open_interest_percent_plot(fig, df, idx + 1, cur_col, color_palette)
-        elif p == "willco":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == "willco":
                 fig = helpers.get_willco_plot(fig, df, idx + 1, cur_col, color_palette)
-        elif p == "spearman":
-            for idx, asset in enumerate(assets):
-                print("idx ", idx)
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == "spearman":
                 fig = helpers.get_spearman_plot(fig, df, idx + 1, cur_col, color_palette)
-        elif p == "net_pos":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == "net_pos":
                 fig = helpers.get_net_pos_plot(fig, df, idx + 1, cur_col, color_palette)
-        elif p == "index":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == "index":
                 setup_highlight_row = idx + 1
                 fig = helpers.get_index_plot(fig, df, idx + 1, cur_col, color_palette, min_threshold, max_threshold)
-        elif p == "zscore":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == "zscore":
                 fig = helpers.get_zscore_plot(fig, df, idx + 1, cur_col, color_palette)
-        elif p == "tension":
-            for idx, asset in enumerate(assets):
-                df = cotIndexer.get_symbols_data(asset, lookback)
-                if df is None:
-                    return helpers.get_no_data_html_p()
+            elif p == 'momentum':
+                fig = helpers.get_momentum_plot(fig, df, idx + 1, cur_col, color_palette)
+            elif p == "tension":
                 fig = helpers.get_tension_plot(fig, df, idx + 1, cur_col, color_palette)
 
-    fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
+            fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
+
     fig = helpers.get_update_layout_for_plots(fig, num_rows)
     # fig.update_layout(title_text=AVAILABLE_PLOTS[selected_plot], title_font=dict(size=16), title_x=0.5, title_y=0.99)
     fig = helpers.get_update_xaxes_for_plots(fig, df)
@@ -281,9 +255,9 @@ def update_overlay_dropdown_value(selection):
     Input('graphs_single_asset_class_input', 'value')
 )
 def update_multi_asset_dropdown_options(selected_class):
+    print("graphs cb multi asset ", selected_class)
     if not selected_class:
         return [], None
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
-    assets.sort()
     options = [{'label': x, 'value': x} for x in assets]
     return options, assets

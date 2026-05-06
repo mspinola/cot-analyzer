@@ -31,7 +31,7 @@ class Instrument:
         return f"{self.name} {self.symbol} {self.code} {self.custom_lookback}"
 
 
-class CotCmrIndexer:
+class CotIndexer:
     def __init__(self, real_test_data_dir='data/real_test_data', params_dir='config/params.yaml'):
         self.real_test_data_dir = real_test_data_dir
         self.params_dir = params_dir
@@ -152,6 +152,12 @@ class CotCmrIndexer:
         return tension_osc
 
     @staticmethod
+    def calculate_momentum_index(col_to_search):
+        result = col_to_search - col_to_search.shift(const.MOMENTUM_PERIOD)
+        result = result.fillna(0)
+        return result
+
+    @staticmethod
     def process_lookback(lookback, df):
         lb_name = lookback[0]
         lb_weeks = lookback[1]
@@ -167,18 +173,18 @@ class CotCmrIndexer:
                 df.at[idx, SML_IDX] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, COMM_IDX] = CotCmrIndexer.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
-                df.at[idx, LRG_IDX] = CotCmrIndexer.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
-                df.at[idx, SML_IDX] = CotCmrIndexer.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_IDX] = CotIndexer.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
+                df.at[idx, LRG_IDX] = CotIndexer.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
+                df.at[idx, SML_IDX] = CotIndexer.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
 
         # Z-Score
         zscore_col_header_name = "Custom Zscore" if lb_name == "Custom" else str(lb_weeks) + " Zscore"
         COMM_ZS = "Comm " + zscore_col_header_name
         LRG_ZS = "Lrg Spec " + zscore_col_header_name
         SML_ZS = "Sml Spec " + zscore_col_header_name
-        df[COMM_ZS] = CotCmrIndexer.calculate_z_score(df[const.COMM_NET], lb_weeks)
-        df[LRG_ZS] = CotCmrIndexer.calculate_z_score(df[const.LARGE_NET], lb_weeks)
-        df[SML_ZS] = CotCmrIndexer.calculate_z_score(df[const.SMALL_NET], lb_weeks)
+        df[COMM_ZS] = CotIndexer.calculate_z_score(df[const.COMM_NET], lb_weeks)
+        df[LRG_ZS] = CotIndexer.calculate_z_score(df[const.LARGE_NET], lb_weeks)
+        df[SML_ZS] = CotIndexer.calculate_z_score(df[const.SMALL_NET], lb_weeks)
         df[COMM_ZS] = df[COMM_ZS].fillna(0)
         df[LRG_ZS] = df[LRG_ZS].fillna(0)
         df[SML_ZS] = df[SML_ZS].fillna(0)
@@ -188,7 +194,7 @@ class CotCmrIndexer:
         raw_tension = df[const.LARGE_NET] / (df[const.COMM_NET].abs() + 1e-9)
         tension_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
         TENSION_Z = "Tension Zscore " + tension_col_header_name
-        df[TENSION_Z] = CotCmrIndexer.calculate_z_score(raw_tension, lb_weeks)
+        df[TENSION_Z] = CotIndexer.calculate_z_score(raw_tension, lb_weeks)
         df[TENSION_Z] = df[TENSION_Z].fillna(0)
 
         # Spearman Correlation
@@ -216,6 +222,17 @@ class CotCmrIndexer:
             df[COMM_SPR] = 0
             df[LRG_SPR] = 0
             df[SML_SPR] = 0
+
+        # Momentum Index
+        momentum_idx_header_name = "Custom Move Idx" if lb_name == "Custom" else str(lb_weeks) + " Move Idx"
+        idx_col_name = "Custom Idx" if lb_name == "Custom" else str(lb_weeks) + " Idx"
+        COMM_MOVE = "Comm " + momentum_idx_header_name
+        LRG_MOVE = "Lrg Spec " + momentum_idx_header_name
+        SML_MOVE = "Sml Spec " + momentum_idx_header_name
+        df[COMM_MOVE] = CotIndexer.calculate_momentum_index(df["Comm " + idx_col_name])
+        df[LRG_MOVE] = CotIndexer.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
+        df[SML_MOVE] = CotIndexer.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
+
 
     @staticmethod
     def is_commodity(asset_class):
@@ -304,10 +321,10 @@ class CotCmrIndexer:
 
             self.retrieve_report_date_closing_prices(self.instruments[instrument])
 
-            CotCmrIndexer.process_lookback(
+            CotIndexer.process_lookback(
                 ["Custom", self.instruments[instrument].custom_lookback], df)
             for lookback in self.lookbacks:
-                CotCmrIndexer.process_lookback(lookback, df)
+                CotIndexer.process_lookback(lookback, df)
 
             # WILLCO
             self.calculate_willco(const.WILLCO_CUSTOM, self.instruments[instrument].custom_lookback, df)
@@ -316,7 +333,6 @@ class CotCmrIndexer:
 
             # Check for sign change in Large Speculator Net Position
             df[const.LARGE_FLIP] = (df[const.LARGE_NET] * df[const.LARGE_NET].shift(1) < 0)
-
 
     def collect_symbol_summary_results(self, instrument):
         df = self.instruments[instrument].df
@@ -605,6 +621,11 @@ class CotCmrIndexer:
             LRG_SPR = "Lrg Spec " + spearman_col_header_name
             SML_SPR = "Sml Spec " + spearman_col_header_name
 
+            momentum_idx_header_name = lookback + " Move Idx"
+            COMM_MOM = "Comm " + momentum_idx_header_name
+            LRG_MOM = "Lrg Spec " + momentum_idx_header_name
+            SML_MOM = "Sml Spec " + momentum_idx_header_name
+
             willco_col_header_name = "WILLCO " + lookback
             WILLCO = willco_col_header_name
 
@@ -626,6 +647,10 @@ class CotCmrIndexer:
             result["comms_spearman"] = df[COMM_SPR]
             result["lrg_spearman"] = df[LRG_SPR]
             result["sml_spearman"] = df[SML_SPR]
+
+            result["comm_momentum"] = df[COMM_MOM]
+            result["lrg_momentum"] = df[LRG_MOM]
+            result["sml_momentum"] = df[SML_MOM]
 
             result["willco"] = df[WILLCO]
 

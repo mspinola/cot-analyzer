@@ -24,6 +24,7 @@ AVAILABLE_PLOTS = {
     "net_pos": "Net Positions",
     "index": "Positioning Index",
     "zscore": "Positioning Z-Score",
+    "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
 }
 
@@ -195,19 +196,12 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots):
     # Define specs based on selection
     specs = []
     for p in selected_plots:
-        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "tension"]:
+        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]:
             specs.append([{"secondary_y": True}])
         else:
             specs.append([{"secondary_y": False}])
 
-    fig = make_subplots(
-        rows=num_rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.05 if num_rows > 1 else 0,
-        subplot_titles=titles,
-        specs=specs
-    )
+    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs)
 
     cur_row = 1
     cur_col = 1
@@ -226,13 +220,16 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots):
             fig = helpers.get_index_plot(fig, df, cur_row, cur_col, color_palette, min_threshold, max_threshold)
         elif p == "zscore":
             fig = helpers.get_zscore_plot(fig, df, cur_row, cur_col, color_palette)
+        elif p == "momentum":
+            fig = helpers.get_momentum_plot(fig, df, cur_row, cur_col, color_palette)
         elif p == "tension":
             fig = helpers.get_tension_plot(fig, df, cur_row, cur_col, color_palette)
         cur_row += 1
 
-    fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
-    fig = helpers.get_update_xaxes_for_plots(fig, df)
-    fig = helpers.get_update_layout_for_plots(fig, num_rows)
+    if fig is not None:
+        fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
+        fig = helpers.get_update_xaxes_for_plots(fig, df)
+        fig = helpers.get_update_layout_for_plots(fig, num_rows)
 
     return dcc.Graph(figure=fig,
                      config={
