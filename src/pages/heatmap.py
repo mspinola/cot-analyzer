@@ -23,6 +23,7 @@ layout = html.Div([
                     dbc.Col([
                         html.Label("Lookback:", style=const.label_style),
                         dbc.Select(
+                            persistence=True,
                             id='heatmap_lookback_selector',
                             options=[
                                 {"label": "26 Weeks", "value": "26"},
@@ -38,6 +39,7 @@ layout = html.Div([
                     dbc.Col([
                         html.Label("Layout View:", style=const.label_style),
                         dbc.Select(
+                            persistence=True,
                             id='heatmap_layout_selector',
                             options=[
                                 {"label": "Both - Side by Side", "value": "side"},
@@ -52,6 +54,18 @@ layout = html.Div([
                     ], xs=12, md="auto"),
 
                     dbc.Col([
+                        html.Label("Setup Highlight", style=const.label_style),
+                        dbc.Select(
+                            persistence=True,
+                            id='heatmap_setup_highlight_input',
+                            options=[{'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
+                            value=f"{'None', 'None'}",
+                            className="mb-3 bg-dark text-white border-secondary",
+                            style={'backgroundColor': const.BACKGROUND_COLOR, 'color': const.TEXT_COLOR, 'borderColor': f"{const.TEXT_COLOR}26"}
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
                         html.Label("Asset Class Selector", style=const.label_style),
                         dcc.Dropdown(
                             persistence=True,
@@ -60,7 +74,7 @@ layout = html.Div([
                                         for x in cotIndexer.get_asset_classes()],
                             value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
                             multi=True,
-                            className="dash-dropdown bg-dark text-white",
+                            className="mb-3 dash-dropdown bg-dark text-white",
                             searchable=False,
                             clearable=True,
                         ),
@@ -117,17 +131,17 @@ def update_local_lookback(value):
     Output('heatmap_display_container', 'children'),
     [Input('heatmap_layout_selector', 'value'),
      Input('page_heatmap_selector', 'value'),
-     Input('session_setup_highlight_asset_store', 'data'),
-     Input('global_lookback_store', 'data')]
+     Input('heatmap_setup_highlight_input', 'value'),
+     Input('global_lookback_store', 'data'),
+     Input('session_palette_theme_asset_store', 'data')]
 )
-def render_heatmap_layout(layout_type, assest_classes, setup, lookback):
-    print(setup)
-    print("heatmap cb plot lb: ", lookback)
+def render_heatmap_layout(layout_type, assest_classes, setup, lookback, palette_name):
     if not assest_classes:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.TEXT_COLOR})
+    color_palette = cotIndexer.get_palette(palette_name)
 
-    fig_z = update_z_score_heat_map(assest_classes, setup, lookback)
-    fig_index = update_index_heat_map(assest_classes, setup, lookback)
+    fig_z = update_z_score_heat_map(assest_classes, setup, lookback, color_palette)
+    fig_index = update_index_heat_map(assest_classes, setup, lookback, color_palette)
 
     z_graph = dcc.Graph(id='z_score_graph', figure=fig_z, config={'scrollZoom': False})
     index_graph = dcc.Graph(id='index_graph', figure=fig_index, config={'scrollZoom': False})
@@ -153,7 +167,7 @@ def render_heatmap_layout(layout_type, assest_classes, setup, lookback):
         return dbc.Row([dbc.Col(index_graph, width=12)])
 
 
-def update_z_score_heat_map(asset_classes, setup, lookback):
+def update_z_score_heat_map(asset_classes, setup, lookback, color_palette):
     if not asset_classes:
         asset_classes = cotIndexer.get_asset_classes()
 
@@ -225,12 +239,12 @@ def update_z_score_heat_map(asset_classes, setup, lookback):
         texttemplate="%{text}",
         textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
         colorscale=[
-            [0, '#ff4b2b'],
-            [min_threshold/100, '#ff4b2b'],
+            [0, color_palette[0]],
+            [min_threshold/100, color_palette[0]],
             [min_threshold/100, '#252C36'],
             [max_threshold/100, '#252C36'],
-            [max_threshold/100, '#00c853'],
-            [1, '#00c853']
+            [max_threshold/100, color_palette[3]],
+            [1, color_palette[3]]
         ],
         zmin=-3, zmax=3,  # Force scale to Z-score range
         xgap=2,
@@ -274,7 +288,7 @@ def update_z_score_heat_map(asset_classes, setup, lookback):
     return fig
 
 
-def update_index_heat_map(asset_classes, setup, lookback):
+def update_index_heat_map(asset_classes, setup, lookback, color_palette):
     if not asset_classes:
         asset_classes = cotIndexer.get_asset_classes()
 
@@ -347,12 +361,12 @@ def update_index_heat_map(asset_classes, setup, lookback):
         texttemplate="%{text}",
         textfont={"size": 13, "family": "Consolas, monospace", "color": "#FFFFFF"},
         colorscale=[
-            [0, '#ff4b2b'],
-            [min_threshold/100, '#ff4b2b'],
+            [0, color_palette[0]],
+            [min_threshold/100, color_palette[0]],
             [min_threshold/100, '#252C36'],
             [max_threshold/100, '#252C36'],
-            [max_threshold/100, '#00c853'],
-            [1, '#00c853']
+            [max_threshold/100, color_palette[3]],
+            [1, color_palette[3]]
         ],
         zmin=-0, zmax=100,
         xgap=2,

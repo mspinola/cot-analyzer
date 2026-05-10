@@ -23,6 +23,7 @@ layout = html.Div([
                     dbc.Col([
                         html.Label("Lookback:", style=const.label_style),
                         dbc.Select(
+                            persistence=True,
                             id='positioning_lookback_selector',
                             options=[
                                 {"label": "26 Weeks", "value": "26"},
@@ -33,7 +34,7 @@ layout = html.Div([
                             size="sm",
                             className="mb-3 bg-dark text-white border-secondary",
                         )
-                    ], xs=12, width="auto"),
+                    ], xs=12, md="auto"),
 
                     dbc.Col([
                         # Positioning Table Extended Data
@@ -57,7 +58,7 @@ layout = html.Div([
                                     for x in cotIndexer.get_asset_classes()],
                             value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
                             multi=True,
-                            className="dash-dropdown bg-dark text-white",
+                            className="mb-3 dash-dropdown bg-dark text-white",
                             searchable=False,
                             clearable=True,
                         ),
@@ -69,11 +70,11 @@ layout = html.Div([
                                 color='secondary',
                                 outline=True,
                                 size="sm",
-                                className="mt-3",
+                                className="mb-3 mt-3",
                                 style=const.button_style
                         ),
                         dcc.Download(id="download_positioning_csv"),
-                    ], xs=12, md=4),
+                    ], xs=12, md="auto"),
                 ], align="center"),
             ],
             title="TABLE CONFIGURATION",

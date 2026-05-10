@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def add_trace_to_all(fig, df, col_name, row, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False):
+def add_trace_to_all(fig, df, col_name, row, col, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False):
     """ Global Legend Toggle Logic: Show legend only once, but use legendgroups to link all 5 plots"""
     if is_bar:
         fig.add_trace(go.Bar(
@@ -20,7 +20,7 @@ def add_trace_to_all(fig, df, col_name, row, name, color, zorder, visible=True, 
             zorder=zorder,
             marker=dict(opacity=1, line=dict(color=color, width=0.5))),
             row=row,
-            col=1,
+            col=col,
             secondary_y=secondary
         )
     else:
@@ -34,24 +34,24 @@ def add_trace_to_all(fig, df, col_name, row, name, color, zorder, visible=True, 
             line=dict(color=color, width=1),
             zorder=zorder),
             row=row,
-            col=1,
+            col=col,
             secondary_y=secondary
         )
 
 def get_open_interest_percent_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, const.COMM_PCT_OI, row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.LARGE_PCT_OI, row, "Large Specs", color_palette[1], 1, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.SMALL_PCT_OI, row, "Small Specs", color_palette[2], 2, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, const.COMM_PCT_OI, row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.LARGE_PCT_OI, row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.SMALL_PCT_OI, row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     fig.update_yaxes(title="%", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
     return fig
 
 def get_willco_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "willco", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "willco", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     if const.ENABLE_HLINE_THRESHOLDS:
         fig.add_hline(y=const.WILLCO_MAX_THRESHOLD, line_dash="dot", line_color="red", opacity=const.HLINE_OPACITY, row=row, col=col)
         fig.add_hline(y=const.WILLCO_MIN_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=col)
@@ -62,21 +62,21 @@ def get_willco_plot(fig, df, row, col, color_palette):
     return fig
 
 def get_spearman_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "comms_spearman", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, "lrg_spearman", row, "Large Specs", color_palette[1], 1, showlegend=showlegend)
-    add_trace_to_all(fig, df, "sml_spearman", row, "Small Specs", color_palette[2], 2, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "comms_spearman", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, "lrg_spearman", row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
+    add_trace_to_all(fig, df, "sml_spearman", row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     fig.update_yaxes(title="correlation", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
     return fig
 
 def get_net_pos_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, const.COMM_NET, row, "Commercials", color_palette[0], 0, is_bar=True, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.LARGE_NET, row, "Large Specs", color_palette[1], 1, is_bar=True, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.SMALL_NET, row, "Small Specs", color_palette[2], 2, is_bar=True, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.OPEN_INTEREST, row, "Open Interest", color_palette[4], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, const.COMM_NET, row, col, "Commercials", color_palette[0], 0, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.LARGE_NET, row, col, "Large Specs", color_palette[1], 1, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.SMALL_NET, row, col, "Small Specs", color_palette[2], 2, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest", color_palette[4], 3, secondary=True, showlegend=showlegend)
     fig.update_yaxes(title="net position", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="OI", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
 
@@ -101,11 +101,11 @@ def get_net_pos_plot(fig, df, row, col, color_palette):
     return fig
 
 def get_index_plot(fig, df, row, col, color_palette, min_threshold=None, max_threshold=None):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "comms_idx", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, "lrg_idx", row, "Large Specs", color_palette[1], 1, showlegend=showlegend)
-    add_trace_to_all(fig, df, "sml_idx", row, "Small Specs", color_palette[2], 2, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "comms_idx", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, "lrg_idx", row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
+    add_trace_to_all(fig, df, "sml_idx", row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     fig.update_yaxes(title="Index", range=[0, 100], row=row, col=col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
     fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
     if max_threshold is not None and min_threshold is not None:
@@ -117,11 +117,11 @@ def get_index_plot(fig, df, row, col, color_palette, min_threshold=None, max_thr
     return fig
 
 def get_zscore_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "comms_zscore", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, "lrg_zscore", row, "Large Specs", color_palette[1], 1, showlegend=showlegend)
-    add_trace_to_all(fig, df, "sml_zscore", row, "Small Specs", color_palette[2], 2, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "comms_zscore", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, "lrg_zscore", row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
+    add_trace_to_all(fig, df, "sml_zscore", row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     if const.ENABLE_HLINE_THRESHOLDS:
         fig.add_hline(y=const.ZSCORE_MIN_THRESHOLD, line_dash="dot", line_color="red", opacity=const.HLINE_OPACITY, row=row, col=col)
         fig.add_hline(y=const.ZSCORE_MAX_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=col)
@@ -133,11 +133,11 @@ def get_zscore_plot(fig, df, row, col, color_palette):
     return fig
 
 def get_momentum_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "comm_momentum", row, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, "lrg_momentum", row, "Large Specs", color_palette[1], 1, False, showlegend=showlegend)
-    add_trace_to_all(fig, df, "sml_momentum", row, "Small Specs", color_palette[2], 2, False, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "comm_momentum", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, "lrg_momentum", row, col, "Large Specs", color_palette[1], 1, False, showlegend=showlegend)
+    add_trace_to_all(fig, df, "sml_momentum", row, col, "Small Specs", color_palette[2], 2, False, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     if const.ENABLE_HLINE_THRESHOLDS:
         fig.add_hline(y=const.MOMENTUM_MIN_THRESHOLD, line_dash="dot", line_color="red", opacity=const.HLINE_OPACITY, row=row, col=col)
         fig.add_hline(y=const.MOMENTUM_MAX_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=col)
@@ -149,9 +149,9 @@ def get_momentum_plot(fig, df, row, col, color_palette):
     return fig
 
 def get_tension_plot(fig, df, row, col, color_palette):
-    showlegend = row == 1
-    add_trace_to_all(fig, df, "tension", row, "Tension", color_palette[4], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
+    showlegend = row == 1 and col == 1
+    add_trace_to_all(fig, df, "tension", row, col, "Tension", color_palette[4], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
     if const.ENABLE_HLINE_THRESHOLDS:
         fig.add_hline(y=const.ZSCORE_MIN_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=1)
         fig.add_hline(y=const.ZSCORE_MAX_THRESHOLD, line_dash="dot", line_color="red", opacity=const.HLINE_OPACITY, row=row, col=1)
@@ -197,6 +197,12 @@ def get_setup_highlighting(fig, df, min_threshold, max_threshold, row, col):
 def get_make_subplots_for_plots(rows, cols, titles, specs, vertical_spacing=const.VERTICAL_SPACING):
     if rows == 0:
         v_spacing = 0
+    elif rows <= 2:
+        v_spacing = vertical_spacing * 2
+    elif rows <= 2:
+        v_spacing = vertical_spacing * 3
+    elif rows <= 3:
+        v_spacing = vertical_spacing * 4
     elif rows <= 5:
         v_spacing = vertical_spacing
     else:
@@ -235,7 +241,7 @@ def get_update_xaxes_for_plots(fig, df):
     )
     return fig
 
-def get_update_layout_for_plots(fig, num_rows):
+def get_update_layout_for_plots(fig, num_rows, num_cols):
     dynamic_height = (num_rows * const.PIXELS_PER_PLOT) + (num_rows * const.PIXELS_OVERHEAD_PER_PLOT)
 
     fig.update_layout(
@@ -262,4 +268,9 @@ def get_update_layout_for_plots(fig, num_rows):
         xaxis=dict(fixedrange=False),
         yaxis=dict(fixedrange=True)
     )
+
+    # Adjust horizontal legend position if multiple columns are used
+    if num_cols > 1:
+        fig.update_layout(legend=dict(x=0.5, xanchor="center", y=1.05))
+
     return fig

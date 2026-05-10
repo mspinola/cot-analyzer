@@ -5,6 +5,7 @@ from indexer import cotIndexer
 
 import dash
 import dash_bootstrap_components as dbc
+import math
 import plotly.graph_objects as go
 
 from dash import State, html, dcc, Input, Output, callback
@@ -70,6 +71,22 @@ layout = html.Div([
                     ], xs=12, md="auto"),
 
                     dbc.Col([
+                        html.Label("Columns:", style=const.label_style),
+                        dbc.Select(
+                            id='analysis_columns_selector',
+                            persistence=True,
+                            options=[
+                                {"label": "1 Column", "value": "1"},
+                                {"label": "2 Columns", "value": "2"},
+                                {"label": "3 Columns", "value": "3"},
+                            ],
+                            value="1", # We'll handle responsive defaults in the callback
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=6, md="auto"),
+
+                    dbc.Col([
                         html.Label("Visible Plots", style=const.label_style),
                         dcc.Dropdown(
                             persistence=True,
@@ -110,7 +127,6 @@ layout = html.Div([
     Input('analysis_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("analysis cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -121,7 +137,6 @@ def update_global_lookback(value):
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("analysis cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -173,63 +188,92 @@ def update_analysis_header(asset_class, asset_name, lookback):
 
 
 @callback(
+    Output('analysis_columns_selector', 'value'),
+    Input('url', 'pathname'), # Triggers on page load
+    State('analysis_columns_selector', 'value')
+)
+def set_default_columns(pathname, current_val):
+    # Only set default if it hasn't been changed by the user (initial load)
+    if utils.is_mobile():
+        return "1"
+    else:
+        return "2" # Default for larger screens
+
+
+@callback(
     Output('analysis_stack', 'children'),
     [Input('session_palette_theme_asset_store', 'data'),
      Input('analysis_single_asset_filter_input', 'value'),
      Input('session_setup_highlight_asset_store', 'data'),
      Input('global_lookback_store', 'data'),
-     Input('analysis_plot_selector', 'value')]
+     Input('analysis_plot_selector', 'value'),
+     Input('analysis_columns_selector', 'value')]
 )
-def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots):
-    if not asset or not selected_plots:
+def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, num_cols):
+    if not asset or not selected_plots or selected_plots == 0:
         return html.P("SELECT ASSET AND PLOTS", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
     df = cotIndexer.get_symbols_data(asset, lookback)
     if df is None:
         return html.P("No Data", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
+    num_cols = int(num_cols)
+    num_selected = len(selected_plots)
+    num_rows = math.ceil(num_selected / num_cols)
+
     min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     color_palette = cotIndexer.get_palette(palette_name)
-    num_rows = len(selected_plots)
     titles = [AVAILABLE_PLOTS[p] for p in selected_plots]
 
     # Define specs based on selection
     specs = []
-    for p in selected_plots:
-        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]:
-            specs.append([{"secondary_y": True}])
-        else:
-            specs.append([{"secondary_y": False}])
+    plot_idx = 0
+    for r in range(num_rows):
+        row_specs = []
+        for c in range(num_cols):
+            if plot_idx < num_selected:
+                p = selected_plots[plot_idx]
+                # Most plots use secondary_y for Price or OI overlays
+                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
+                row_specs.append({"secondary_y": has_secondary})
+                plot_idx += 1
+            else:
+                row_specs.append(None) # Empty cell in grid
+        specs.append(row_specs)
 
-    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs)
+    fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
 
-    cur_row = 1
-    cur_col = 1
-    setup_highlight_row = None  # TODO make this a list
-    for p in selected_plots:
-        if p == "oi_pct":
-            fig = helpers.get_open_interest_percent_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "willco":
-            fig = helpers.get_willco_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "spearman":
-            fig = helpers.get_spearman_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "net_pos":
-            fig = helpers.get_net_pos_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "index":
-            setup_highlight_row = cur_row
-            fig = helpers.get_index_plot(fig, df, cur_row, cur_col, color_palette, min_threshold, max_threshold)
-        elif p == "zscore":
-            fig = helpers.get_zscore_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "momentum":
-            fig = helpers.get_momentum_plot(fig, df, cur_row, cur_col, color_palette)
-        elif p == "tension":
-            fig = helpers.get_tension_plot(fig, df, cur_row, cur_col, color_palette)
-        cur_row += 1
+    plot_idx = 0
+    for r in range(1, num_rows + 1):
+        for c in range(1, num_cols + 1):
+            if plot_idx < num_selected:
+                p = selected_plots[plot_idx]
+                setup_highlight_row = None # r if p == "index" else None
 
-    if fig is not None:
-        fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
-        fig = helpers.get_update_xaxes_for_plots(fig, df)
-        fig = helpers.get_update_layout_for_plots(fig, num_rows)
+                if p == "oi_pct":
+                    fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette)
+                elif p == "willco":
+                    fig = helpers.get_willco_plot(fig, df, r, c, color_palette)
+                elif p == "spearman":
+                    fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
+                elif p == "net_pos":
+                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                elif p == "index":
+                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                elif p == "zscore":
+                    fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
+                elif p == "momentum":
+                    fig = helpers.get_momentum_plot(fig, df, r, c, color_palette)
+                elif p == "tension":
+                    fig = helpers.get_tension_plot(fig, df, r, c, color_palette)
+
+                if setup_highlight_row:
+                    helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, r, c)
+
+                plot_idx += 1
+
+    fig = helpers.get_update_xaxes_for_plots(fig, df)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
 
     return dcc.Graph(figure=fig,
                      config={

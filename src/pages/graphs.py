@@ -4,9 +4,10 @@ import utils
 
 import dash
 import dash_bootstrap_components as dbc
+import math
 import plotly.graph_objects as go
 
-from dash import html, dcc, callback, Input, Output
+from dash import State, html, dcc, callback, Input, Output
 from indexer import cotIndexer
 from plotly.subplots import make_subplots
 
@@ -73,6 +74,22 @@ layout = html.Div([
                     ], xs=12, md="auto"),
 
                     dbc.Col([
+                        html.Label("Columns:", style=const.label_style),
+                        dbc.Select(
+                            id='graphs_columns_selector',
+                            persistence=True,
+                            options=[
+                                {"label": "1 Column", "value": "1"},
+                                {"label": "2 Columns", "value": "2"},
+                                {"label": "3 Columns", "value": "3"},
+                            ],
+                            value="1", # We'll handle responsive defaults in the callback
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=6, md="auto"),
+
+                    dbc.Col([
                         html.Label("Plot Selector", style=const.label_style),
                         dbc.Select(
                             persistence=True,
@@ -81,7 +98,7 @@ layout = html.Div([
                             value="net_pos",
                             className="mb-3 bg-dark text-white border-secondary",
                         ),
-                    ], xs=12, md=4),
+                    ], xs=6, md="auto"),
                 ], align="center"),
             ],
             title="CHART CONFIGURATION",
@@ -111,7 +128,6 @@ layout = html.Div([
     Input('graphs_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("graphs cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -123,11 +139,23 @@ def update_global_lookback(value):
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("graphs cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
         return "Custom"
+
+
+@callback(
+    Output('graphs_columns_selector', 'value'),
+    Input('url', 'pathname'), # Triggers on page load
+    State('graphs_columns_selector', 'value')
+)
+def set_default_columns(pathname, current_val):
+    # Only set default if it hasn't been changed by the user (initial load)
+    if utils.is_mobile():
+        return "1"
+    else:
+        return "2" # Default for larger screens
 
 
 @callback(
@@ -137,10 +165,10 @@ def update_local_lookback(value):
      Input('graphs_multi_equity_selector_input', 'value'),
      Input('session_setup_highlight_asset_store', 'data'),
      Input('graphs_plot_selector_input', 'value'),
-     Input('global_lookback_store', 'data')]
+     Input('global_lookback_store', 'data'),
+     Input('graphs_columns_selector', 'value')]
 )
-def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback):
-    print(selected_plot, " ", asset_class, " " , selected_assets, " ", setup , " " , lookback)
+def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback, num_cols):
     selected_plots = [selected_plot]
     if selected_assets is None or len(selected_assets) == 0 or selected_plots is None:
         return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
@@ -152,9 +180,12 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
     else:
         assets = cotIndexer.get_assets_for_asset_class(asset_class)
 
+    num_cols = int(num_cols)
+    num_selected = len(selected_plots) * len(assets)
+    num_rows = math.ceil(num_selected / num_cols)
+
     min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     color_palette = cotIndexer.get_palette(palette_name)
-    num_rows = len(selected_plots) * len(assets)
 
     titles = []
     for idx, asset in enumerate(assets):
@@ -165,47 +196,58 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
 
     # Define specs based on selection
     specs = []
-    for p in selected_plots:
-        if p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]:
-            for idx in range(len(assets)):
-                specs.append([{"secondary_y": True}])
-        else:
-            for idx in range(len(assets)):
-                specs.append([{"secondary_y": False}])
+    plot_idx = 0
+    for r in range(num_rows):
+        row_specs = []
+        for c in range(num_cols):
+            if plot_idx < num_selected:
+                p = selected_plots[0]
+                # Most plots use secondary_y for Price or OI overlays
+                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
+                # for idx in range(len(assets)):
+                row_specs.append({"secondary_y": has_secondary})
+                plot_idx += 1
+            else:
+                row_specs.append(None) # Empty cell in grid
+        specs.append(row_specs)
 
-    fig = helpers.get_make_subplots_for_plots(num_rows, 1, titles, specs)
+    fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
 
-    cur_col = 1
-    setup_highlight_row = None  # TODO make this a list
-    for idx, asset in enumerate(assets):
-        df = cotIndexer.get_symbols_data(asset, lookback)
-        if df is None:
-            return helpers.get_no_data_html_p()
+    plot_idx = 0
+    for r in range(1, num_rows + 1):
+        for c in range(1, num_cols + 1):
+            if plot_idx < num_selected:
+                df = cotIndexer.get_symbols_data(assets[plot_idx], lookback)
+                if df is None:
+                    return helpers.get_no_data_html_p()
 
-        for p in selected_plots:
-            if p == "oi_pct":
-                fig = helpers.get_open_interest_percent_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == "willco":
-                fig = helpers.get_willco_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == "spearman":
-                fig = helpers.get_spearman_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == "net_pos":
-                fig = helpers.get_net_pos_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == "index":
-                setup_highlight_row = idx + 1
-                fig = helpers.get_index_plot(fig, df, idx + 1, cur_col, color_palette, min_threshold, max_threshold)
-            elif p == "zscore":
-                fig = helpers.get_zscore_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == 'momentum':
-                fig = helpers.get_momentum_plot(fig, df, idx + 1, cur_col, color_palette)
-            elif p == "tension":
-                fig = helpers.get_tension_plot(fig, df, idx + 1, cur_col, color_palette)
+                p = selected_plots[0]
+                setup_highlight_row = None # r if p == "index" else None
 
-            fig = helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, setup_highlight_row, cur_col)
+                if p == "oi_pct":
+                    fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette)
+                elif p == "willco":
+                    fig = helpers.get_willco_plot(fig, df, r, c, color_palette)
+                elif p == "spearman":
+                    fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
+                elif p == "net_pos":
+                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                elif p == "index":
+                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                elif p == "zscore":
+                    fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
+                elif p == "momentum":
+                    fig = helpers.get_momentum_plot(fig, df, r, c, color_palette)
+                elif p == "tension":
+                    fig = helpers.get_tension_plot(fig, df, r, c, color_palette)
 
-    fig = helpers.get_update_layout_for_plots(fig, num_rows)
-    # fig.update_layout(title_text=AVAILABLE_PLOTS[selected_plot], title_font=dict(size=16), title_x=0.5, title_y=0.99)
+                if setup_highlight_row:
+                    helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, r, c)
+
+                plot_idx += 1
+
     fig = helpers.get_update_xaxes_for_plots(fig, df)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
 
     return dcc.Graph(figure=fig,
                      config={
@@ -255,7 +297,6 @@ def update_overlay_dropdown_value(selection):
     Input('graphs_single_asset_class_input', 'value')
 )
 def update_multi_asset_dropdown_options(selected_class):
-    print("graphs cb multi asset ", selected_class)
     if not selected_class:
         return [], None
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
