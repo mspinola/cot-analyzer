@@ -104,7 +104,6 @@ layout = html.Div([
     Input('positioning_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("positioning cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -115,7 +114,6 @@ def update_global_lookback(value):
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("positioning cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -180,7 +178,8 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
 
         core_cols = [
             const.ASSET_CLASS, const.SYMBOL, const.NAME,
-            COMM_IDX, LRG_IDX, SML_IDX, WILLCO
+            COMM_IDX, LRG_IDX, SML_IDX,
+            const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST,
             ]
 
         # Map dropdown values to actual DataFrame column names if they differ
@@ -190,7 +189,7 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
         joined_list = core_cols + requested_cols if requested_cols is not None else core_cols
         final_cols = [c for c in joined_list if c in df.columns]
         cftc_date = df[const.DATE].iloc[0]
-        df2 = df[final_cols]
+        df_display = df[final_cols]
 
     return html.Div([
         dbc.Row([
@@ -207,24 +206,26 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
             ], width="auto")
         ], justify='center'),
         dbc.Table.from_dataframe(
-            df2,
+            df_display,
             bordered=True,
             hover=True,
             responsive=True,
             striped=True,
-            style={"minWidth": "1200px"},
+            className="dense-table",
+            style={"fontSize": "0.8rem"},
+            # style={"minWidth": "1400px", "fontSize": "0.8rem"},
         )
     ])
 
 
 @callback(
     Output("download_positioning_csv", "data"),
-    Input("btn_download_csv", "n_clicks"),
+    [Input("btn_download_csv", "n_clicks"),
+     Input('global_lookback_store', 'data')],
     State('page_positioning_selector', 'value'),  # Capture current filter state
     prevent_initial_call=True,
 )
-def download_positioning_table(n_clicks, selected_values):
-    print(selected_values)
+def download_positioning_table(n_clicks, selected_values, lookback):
     if not n_clicks or not selected_values:
         return None
 
@@ -252,6 +253,9 @@ def cot_positioning_column_select_input(value, lookback):
     options.append({'label': const.COMM_NET, 'value': const.COMM_NET})
     options.append({'label': const.LARGE_NET, 'value': const.LARGE_NET})
     options.append({'label': const.SMALL_NET, 'value': const.SMALL_NET})
+    options.append({'label': const.COMM_NET_EST, 'value': const.COMM_NET_EST})
+    options.append({'label': const.LARGE_NET_EST, 'value': const.LARGE_NET_EST})
+    options.append({'label': const.SMALL_NET_EST, 'value': const.SMALL_NET_EST})
 
     zscore_col_header_name = lookback + " Zscore"
     COMM_ZS = "Comm " + zscore_col_header_name
@@ -274,7 +278,5 @@ def cot_positioning_column_select_input(value, lookback):
     options.append({'label': SML_SPR, 'value': SML_SPR})
     options.append({'label': WILLCO, 'value': WILLCO})
 
-
     default_value = None
-    # default_value = options[0].get('value') if options else None
     return options, default_value

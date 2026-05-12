@@ -77,21 +77,6 @@ layout = html.Div([
                         className="mb-3 bg-dark text-white border-secondary",
                         style={'backgroundColor': constants.BACKGROUND_COLOR, 'color': constants.TEXT_COLOR, 'borderColor': f"{constants.TEXT_COLOR}26"}
                     ),
-
-                    # html.Label("Setup Highlight", style=constants.label_style),
-                    # dbc.Select(
-                    #     persistence=True,
-                    #     id='home_page_setup_highlight_input',
-                    #     options=[{'label': 'None', 'value': 'None'}, {'label': '95 5', 'value': '95 5'}, {'label': '90 10', 'value': '90 10'}, {'label': '75 25', 'value': '75 25'}],
-                    #     value=f"{'None', 'None'}",
-                    #     className="mb-3 bg-dark text-white border-secondary",
-                    #     style={'backgroundColor': constants.BACKGROUND_COLOR, 'color': constants.TEXT_COLOR, 'borderColor': f"{constants.TEXT_COLOR}26"}
-                    # ),
-                    # dbc.Tooltip(
-                    #     "Highlight plots with index extremes. This can be really slow.",
-                    #     target="global_setup_threshold_input",
-                    #     placement="top"
-                    # ),
                 ], title="Theme Styling", item_id="theme-link"),
             ], active_item=["data-download", "theme-link"], flush=True, className="bg-dark"),
         ], width=6, className="ms-3"),

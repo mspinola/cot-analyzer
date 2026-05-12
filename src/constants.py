@@ -29,6 +29,13 @@ LARGE_NET = "Lrg Spec Net Pos"
 SMALL_NET = "Sml Spec Net Pos"
 LARGE_FLIP = "Lrg Spec Net Pos Flip"
 
+COMM_NET_EST = COMM_NET + " Est"
+LARGE_NET_EST = LARGE_NET + " Est"
+SMALL_NET_EST = SMALL_NET + " Est"
+COMM_IDX_EST = "Comm Est Idx"
+LARGE_IDX_EST = "Lrg Spec Est Idx"
+SMALL_IDX_EST = "Sml Spec Est Idx"
+
 COMM_PCT_OI = "Comm OI Pct"
 LARGE_PCT_OI = "Lrg OI Pct"
 SMALL_PCT_OI = "Sml OI Pct"

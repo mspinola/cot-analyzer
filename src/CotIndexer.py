@@ -1,5 +1,7 @@
 import constants as const
+import metrics
 
+import datetime
 import logging
 import math
 import os
@@ -8,6 +10,7 @@ import yaml
 import yfinance as yf
 
 import CotSymbolCodeMap as symbol_code_map
+import utils
 
 class Instrument:
     def __init__(self, asset_class_, name_, symbol_, code_, custom_lookback_):
@@ -125,66 +128,115 @@ class CotIndexer:
             self.instruments[instrument].df.index = range(
                 0, len(self.instruments[instrument].df))
 
-    @staticmethod
-    def calculate_z_score(col_to_search, lb_weeks):
-        roll_mean = col_to_search.rolling(window=lb_weeks).mean()
-        roll_std = col_to_search.rolling(window=lb_weeks).std()
-        z_score = (col_to_search - roll_mean) /  (roll_std + 1e-9)
-        return z_score
 
     @staticmethod
-    def calculate_cot_index(col_to_search, lb_idx, cur_idx):
-        range_to_search = col_to_search[lb_idx:cur_idx+1]
-        min_net = range_to_search.min()
-        max_net = range_to_search.max()
-        cur_net = col_to_search[cur_idx]
-        result = 50
-        if max_net != min_net:
-            result = round((cur_net - min_net) / (max_net - min_net) * 100)
-        return int(result)
+    def estimate_current_gap_positions(df, symbol, COMM_CORR, LARGE_CORR, SMALL_CORR):
+        """Estimates the net position change from Tuesday close to Friday."""
+        if df.empty:
+            return
+
+        # Tuesday's official data
+        last_row = df.iloc[-1]
+        tue_price = last_row[const.CLOSING_PRICE]
+        tue_oi = last_row[const.OPEN_INTEREST_XLS]
+        if tue_price == 0:
+            df.at[df.index[-1], const.COMM_NET_EST] = 0
+            df.at[df.index[-1], const.LARGE_NET_EST] = 0
+            df.at[df.index[-1], const.SMALL_NET_EST] = 0
+            return
+
+        # Fetch current data (Wed-Fri)
+        # symbol = instrument.symbol
+        ticker = f"{symbol}=F"
+        try:
+            # Fetch last 5 days to ensure we capture the Tue-Fri window
+            current_data = yf.download(ticker, period="5d", interval="1d", progress=False)
+            if current_data.empty:
+                df.at[df.index[-1], const.COMM_NET_EST] = 0
+                df.at[df.index[-1], const.LARGE_NET_EST] = 0
+                df.at[df.index[-1], const.SMALL_NET_EST] = 0
+                return
+
+            YAHOO_PRICE_TOKEN = 'Close'
+            YAHOO_VOLUME_TOKEN = 'Volume'
+            YAHOO_OI_TOKEN = 'Open Interest'
+            if isinstance(current_data.columns, pd.MultiIndex):
+                latest_price = current_data[YAHOO_PRICE_TOKEN][ticker].iloc[-1]
+                price_change_pct = (latest_price - tue_price) / tue_price
+                total_volume_since_tue = current_data[YAHOO_VOLUME_TOKEN][ticker].sum()
+                latest_oi = current_data[YAHOO_OI_TOKEN][ticker].iloc[-1] if YAHOO_OI_TOKEN in current_data else tue_oi
+                oi_net_change_pct = (latest_oi - tue_oi) / tue_oi if tue_oi else 0
+            else:
+                latest_price = current_data[YAHOO_PRICE_TOKEN].iloc[-1]
+                price_change_pct = (latest_price - tue_price) / tue_price
+                total_volume_since_tue = current_data[YAHOO_VOLUME_TOKEN].sum()
+                latest_oi = current_data[YAHOO_OI_TOKEN].iloc[-1] if YAHOO_OI_TOKEN in current_data else tue_oi
+                oi_net_change_pct = (latest_oi - tue_oi) / tue_oi if tue_oi else 0
+
+            # Calculate Volume Intensity:
+            # How much 'churn' has occurred relative to the total open contracts?
+            # A value of 1.0 means the equivalent of the entire Tuesday OI has traded.
+            volume_intensity = total_volume_since_tue / tue_oi if tue_oi else 0
+
+            # The Estimation Multiplier:
+            # Intensity (how much was traded) * Conviction (did the pool grow?)
+            # We cap Volume Intensity at a reasonable multiplier (e.g., 0.5) to avoid
+            # unrealistic swings on hyper-liquid days.
+            estimation_multiplier = min(volume_intensity, 0.5) * (1 + oi_net_change_pct)
+
+            # Apply the delta to the Tuesday net position
+            for net_col, corr_col in [
+                (const.COMM_NET, COMM_CORR),
+                (const.LARGE_NET, LARGE_CORR),
+                (const.SMALL_NET, SMALL_CORR)
+            ]:
+                est_col = f"{net_col} Est"
+
+                # The 'Delta' is the Tuesday Position size * Price Move * Correlation * Our Volume-Weighted Multiplier
+                delta = abs(last_row[net_col]) * price_change_pct * last_row[corr_col] * estimation_multiplier
+                df.at[df.index[-1], est_col] = round(last_row[net_col] + delta, 0)
+
+        except Exception as e:
+            logging.error(f"Error estimating gap for {symbol}: {e}")
+            df.at[df.index[-1], const.COMM_NET_EST] = 0
+            df.at[df.index[-1], const.LARGE_NET_EST] = 0
+            df.at[df.index[-1], const.SMALL_NET_EST] = 0
+
+        logging.debug(f"Estimated positions for {symbol} - Comm: {df.at[df.index[-1], const.COMM_NET_EST]}, Large: {df.at[df.index[-1], const.LARGE_NET_EST]}, Small: {df.at[df.index[-1], const.SMALL_NET_EST]}")
+
 
     @staticmethod
-    def calculate_tension_index(col_to_search, lb_weeks):
-        roll_mean = col_to_search.rolling(window=lb_weeks).mean()
-        roll_std = col_to_search.rolling(window=lb_weeks).std()
-        z_score = (col_to_search - roll_mean) / roll_std
-        tension_osc = (col_to_search - roll_mean) / (roll_std + 1e-9)
-        return tension_osc
-
-    @staticmethod
-    def calculate_momentum_index(col_to_search):
-        result = col_to_search - col_to_search.shift(const.MOMENTUM_PERIOD)
-        result = result.fillna(0)
-        return result
-
-    @staticmethod
-    def process_lookback(lookback, df):
+    def process_lookback(lookback, symbol, df):
         lb_name = lookback[0]
         lb_weeks = lookback[1]
         idx_col_header_name = "Custom Idx" if lb_name == "Custom" else str(lb_weeks) + " Idx"
+        willco_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
 
         for idx in range(len(df)):
             COMM_IDX = "Comm " + idx_col_header_name
             LRG_IDX = "Lrg Spec " + idx_col_header_name
             SML_IDX = "Sml Spec " + idx_col_header_name
+            WILLCO = "WILLCO " + willco_col_header_name
             if lb_weeks < 0 or idx < lb_weeks:
                 df.at[idx, COMM_IDX] = None
                 df.at[idx, LRG_IDX] = None
                 df.at[idx, SML_IDX] = None
+                df.at[idx, WILLCO] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, COMM_IDX] = CotIndexer.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
-                df.at[idx, LRG_IDX] = CotIndexer.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
-                df.at[idx, SML_IDX] = CotIndexer.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_IDX] = metrics.calculate_cot_index(symbol, df[const.COMM_NET], lb_idx, idx)
+                df.at[idx, LRG_IDX] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET], lb_idx, idx)
+                df.at[idx, SML_IDX] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, WILLCO] = metrics.calculate_willco(df[const.COMM_PCT_OI], lb_idx, idx)
 
         # Z-Score
         zscore_col_header_name = "Custom Zscore" if lb_name == "Custom" else str(lb_weeks) + " Zscore"
         COMM_ZS = "Comm " + zscore_col_header_name
         LRG_ZS = "Lrg Spec " + zscore_col_header_name
         SML_ZS = "Sml Spec " + zscore_col_header_name
-        df[COMM_ZS] = CotIndexer.calculate_z_score(df[const.COMM_NET], lb_weeks)
-        df[LRG_ZS] = CotIndexer.calculate_z_score(df[const.LARGE_NET], lb_weeks)
-        df[SML_ZS] = CotIndexer.calculate_z_score(df[const.SMALL_NET], lb_weeks)
+        df[COMM_ZS] = metrics.calculate_z_score(df[const.COMM_NET], lb_weeks)
+        df[LRG_ZS] = metrics.calculate_z_score(df[const.LARGE_NET], lb_weeks)
+        df[SML_ZS] = metrics.calculate_z_score(df[const.SMALL_NET], lb_weeks)
         df[COMM_ZS] = df[COMM_ZS].fillna(0)
         df[LRG_ZS] = df[LRG_ZS].fillna(0)
         df[SML_ZS] = df[SML_ZS].fillna(0)
@@ -194,7 +246,7 @@ class CotIndexer:
         raw_tension = df[const.LARGE_NET] / (df[const.COMM_NET].abs() + 1e-9)
         tension_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
         TENSION_Z = "Tension Zscore " + tension_col_header_name
-        df[TENSION_Z] = CotIndexer.calculate_z_score(raw_tension, lb_weeks)
+        df[TENSION_Z] = metrics.calculate_z_score(raw_tension, lb_weeks)
         df[TENSION_Z] = df[TENSION_Z].fillna(0)
 
         # Spearman Correlation
@@ -229,16 +281,13 @@ class CotIndexer:
         COMM_MOVE = "Comm " + momentum_idx_header_name
         LRG_MOVE = "Lrg Spec " + momentum_idx_header_name
         SML_MOVE = "Sml Spec " + momentum_idx_header_name
-        df[COMM_MOVE] = CotIndexer.calculate_momentum_index(df["Comm " + idx_col_name])
-        df[LRG_MOVE] = CotIndexer.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
-        df[SML_MOVE] = CotIndexer.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
+        df[COMM_MOVE] = metrics.calculate_momentum_index(df["Comm " + idx_col_name])
+        df[LRG_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
+        df[SML_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
 
 
     @staticmethod
-    def is_commodity(asset_class):
-        return asset_class.startswith("Energ") or asset_class.startswith("Grain") or asset_class.startswith("Metal") or asset_class.startswith("Soft")
-
-    def retrieve_report_date_closing_prices(self, instrument):
+    def retrieve_report_date_closing_prices(instrument, years):
         df = instrument.df
         symbol = instrument.symbol
         ticker = f"{symbol}=F"  # Yahoo Finance ticker format for futures contracts
@@ -246,7 +295,7 @@ class CotIndexer:
         try:
             # Fetch and Merge Closing Price for the Report Date
             logging.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
-            start_date = f"{self.years[0]}-01-01"
+            start_date = f"{years[0]}-01-01"
             price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
             YAHOO_PRICE_TOKEN = 'Close'
 
@@ -286,23 +335,6 @@ class CotIndexer:
             df[const.CLOSING_PRICE] = 0
             logging.error(f"Error fetching price for {symbol}: {e}")
 
-    def calculate_willco(self, col_name, lb_weeks, df):
-        for idx in range(len(df)):
-            if lb_weeks < 0 or idx < lb_weeks:
-                df.at[idx, col_name] = None
-            else:
-                # We find the rolling min and max of the Commercial Normalized Net position
-                oi_min = df[const.COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].min()
-                oi_max = df[const.COMM_PCT_OI].iloc[idx+1-lb_weeks:idx+1].max()
-
-                if math.isnan(oi_max) or math.isnan(oi_min):
-                    df.at[idx, col_name] = None
-                else:
-                    # Adding a tiny epsilon to the denominator prevents division by zero
-                    cur_normalized_net = df.at[idx, const.COMM_PCT_OI]
-                    # print(oi_min, " ", oi_max, " ", cur_normalized_net)
-                    willco = round((cur_normalized_net - oi_min) / (oi_max - oi_min + 1e-9) * 100)
-                    df.at[idx, col_name] = willco
 
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
@@ -313,23 +345,23 @@ class CotIndexer:
             df[const.LARGE_NET] = df[const.LARGE_LONG_POS_XLS] - df[const.LARGE_SHORT_POS_XLS]
             df[const.SMALL_NET] = df[const.SMALL_LONG_POS_XLS] - df[const.SMALL_SHORT_POS_XLS]
 
+            # We only estimate the last row (current week) since that's the only one that would have a gap between Tuesday and Friday
+            df[const.COMM_NET_EST] = df[const.COMM_NET]
+            df[const.LARGE_NET_EST] = df[const.LARGE_NET]
+            df[const.SMALL_NET_EST] = df[const.SMALL_NET]
+
             # Add new columns for position as percent of open interest
             # Adding epsilon (1e-9) to denominator prevents division by zero
             df[const.COMM_PCT_OI] = round((df[const.COMM_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
             df[const.LARGE_PCT_OI] = round((df[const.LARGE_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
             df[const.SMALL_PCT_OI] = round((df[const.SMALL_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)) * 100, 2)
 
-            self.retrieve_report_date_closing_prices(self.instruments[instrument])
+            self.retrieve_report_date_closing_prices(self.instruments[instrument], self.years)
 
             CotIndexer.process_lookback(
-                ["Custom", self.instruments[instrument].custom_lookback], df)
+                ["Custom", self.instruments[instrument].custom_lookback], self.instruments[instrument].symbol, df)
             for lookback in self.lookbacks:
-                CotIndexer.process_lookback(lookback, df)
-
-            # WILLCO
-            self.calculate_willco(const.WILLCO_CUSTOM, self.instruments[instrument].custom_lookback, df)
-            self.calculate_willco(const.WILLCO_26, 26, df)
-            self.calculate_willco(const.WILLCO_52, 52, df)
+                CotIndexer.process_lookback(lookback, self.instruments[instrument].symbol, df)
 
             # Check for sign change in Large Speculator Net Position
             df[const.LARGE_FLIP] = (df[const.LARGE_NET] * df[const.LARGE_NET].shift(1) < 0)
@@ -628,6 +660,7 @@ class CotIndexer:
 
             willco_col_header_name = "WILLCO " + lookback
             WILLCO = willco_col_header_name
+            print("Willco column name: ", WILLCO)
 
             tension_col_header_name = "Custom" if lookback == "Custom" else lookback
             TENSION_Z = "Tension Zscore " + tension_col_header_name
@@ -692,11 +725,13 @@ class CotIndexer:
         WILLCO = willco_col_header_name
 
         cols = [const.DATE, const.ASSET_CLASS, const.SYMBOL, const.NAME,
+                const.COMM_NET, const.LARGE_NET, const.SMALL_NET,
                 COMM_IDX, LRG_IDX, SML_IDX,
+                const.COMM_NET_EST, const.LARGE_NET_EST, const.SMALL_NET_EST,
+                const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST,
                 COMM_ZS, LRG_ZS, SML_ZS,
                 COMM_SPR, LRG_SPR, SML_SPR,
-                const.COMM_NET, const.LARGE_NET, const.SMALL_NET,
-                WILLCO,
+                WILLCO
                ]
         positioning_df = pd.DataFrame(columns=cols)
 
@@ -707,16 +742,29 @@ class CotIndexer:
             instruments = self.get_assets_for_asset_class(asset)
             for instrument_name in instruments:
                 instrument = self.get_instrument_from_name(instrument_name)
-                if not instrument is None:
+                if instrument:
                     df = instrument.df
+                    symbol = instrument.symbol
+                    self.estimate_current_gap_positions(df, symbol, COMM_SPR, LRG_SPR, SML_SPR)
+                    idx = len(df) - 1
+
+                    lb_weeks = utils.get_lookback_weeks(lookback, instrument)
+                    logging.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
+
+                    lb_idx = idx - lb_weeks
+                    df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)
+                    df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET_EST], lb_idx, idx)
+                    df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET_EST], lb_idx, idx)
 
                     new_df = pd.DataFrame(
                         [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.asset_class, instrument.symbol, instrument.name,
+                          df.iloc[-1][const.COMM_NET], df.iloc[-1][const.LARGE_NET], df.iloc[-1][const.SMALL_NET],
                           df.iloc[-1][COMM_IDX], df.iloc[-1][LRG_IDX], df.iloc[-1][SML_IDX],
+                          df.iloc[-1][const.COMM_NET_EST], df.iloc[-1][const.LARGE_NET_EST], df.iloc[-1][const.SMALL_NET_EST],
+                          df.iloc[-1][const.COMM_IDX_EST], df.iloc[-1][const.LARGE_IDX_EST], df.iloc[-1][const.SMALL_IDX_EST],
                           round(df.iloc[-1][COMM_ZS], 2), round(df.iloc[-1][LRG_ZS], 2), round(df.iloc[-1][SML_ZS], 2),
                           round(df.iloc[-1][COMM_SPR], 2), round(df.iloc[-1][LRG_SPR], 2), round(df.iloc[-1][SML_SPR], 2),
-                          df.iloc[-1][const.COMM_NET], df.iloc[-1][const.LARGE_NET], df.iloc[-1][const.SMALL_NET],
-                          df.iloc[-1][WILLCO],
+                          df.iloc[-1][WILLCO]
                         ]], columns=positioning_df.columns)
 
                     if positioning_df.empty:

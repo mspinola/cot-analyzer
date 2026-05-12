@@ -40,3 +40,12 @@ def parse_setup_thresholds(setup):
         min_threshold = None
 
     return min_threshold, max_threshold
+
+
+def get_lookback_weeks(lookback, instrument):
+    if lookback == "26":
+        return 26
+    elif lookback == "52":
+        return 52
+    else:
+        return instrument.custom_lookback

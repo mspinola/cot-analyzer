@@ -684,3 +684,19 @@ body, .container-fluid {
 .js-plotly-plot .plotly .modebar {
     top: -15px !important; /* Adjust this based on your legend height */
 }
+
+/* This property makes the browser respect the \n newlines in strings */
+.dense-table thead th {
+    white-space: pre-line !important;
+    vertical-align: bottom !important;
+    text-align: center !important;
+    line-height: 1.1 !important;
+    padding: 10px 5px !important;
+    letter-spacing: -0.5px !important;
+    font-size: 0.7rem !important;
+}
+
+/* Optional: Keep data cells on a single line to prevent row bloating */
+.dense-table tbody td {
+    white-space: nowrap !important;
+}
