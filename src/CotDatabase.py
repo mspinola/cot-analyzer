@@ -3,6 +3,7 @@ import os
 import sqlite3
 
 from datetime import datetime, timezone
+import pandas as pd
 from zoneinfo import ZoneInfo
 
 class CotDatabase:
@@ -25,8 +26,38 @@ class CotDatabase:
                 last_modified TEXT
             )
         ''')
+
+        # Add visitor logs table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS visitor_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                ip_address TEXT,
+                path TEXT,
+                user_agent TEXT
+            )
+        ''')
         conn.commit()
         conn.close()
+
+    def log_visit(self, ip, path, ua):
+        """Records a new visitor event to the database."""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute('''
+            INSERT INTO visitor_logs (timestamp, ip_address, path, user_agent)
+            VALUES (?, ?, ?, ?)
+        ''', (now, ip, path, ua))
+        conn.commit()
+        conn.close()
+
+    def get_visitor_stats(self):
+        """Retrieves recent logs for the admin dashboard."""
+        conn = sqlite3.connect(self.db_name)
+        df = pd.read_sql_query("SELECT * FROM visitor_logs ORDER BY id DESC LIMIT 500", conn)
+        conn.close()
+        return df
 
     def update_zip_file(self, year, last_modified):
         """Update the last modified date of the zip file in the database."""

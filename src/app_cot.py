@@ -1,14 +1,26 @@
 import constants
-
-import dash
 from db import cotDatabase
 
+import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, State, html, dcc, callback, Input, Output
+from flask import request
 
 
 app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.DARKLY])
 server = app.server
+
+@app.server.before_request
+def record_visit():
+    # Ignore internal Dash updates and assets to keep logs clean
+    if not any(x in request.path for x in ['_dash', 'assets', 'favicon']):
+        ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+        cotDatabase.log_visit(
+            ip_addr,
+            request.path,
+            request.headers.get('User-Agent')
+        )
+
 
 navbar = dbc.Navbar(
     (
@@ -92,6 +104,8 @@ def toggle_navbar_collapse(n, is_open):
 def redirect_root(pathname):
     if pathname == '/':
         return '/positioning'
+    elif pathname == '/admin':
+        return '/admin'
     return dash.no_update
 
 @app.callback(

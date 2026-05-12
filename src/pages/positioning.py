@@ -133,9 +133,14 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
 
     if not assets:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.TEXT_COLOR})
-
     asset_list = [assets] if isinstance(assets, str) else assets
-    df = cotIndexer.get_positioning_table_by_asset_class(asset_list, lookback)
+
+    # Only estimate if the user has selected an estimate column to display, otherwise skip to save time
+    estimate_gap = False
+    estimate_columns = [const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST]
+    if selected_columns is not None and any(col in estimate_columns for col in selected_columns):
+        estimate_gap = True
+    df = cotIndexer.get_positioning_table_by_asset_class(asset_list, lookback, estimate_gap)
 
     cftc_date = "unknown"
     if not df.empty:
@@ -179,7 +184,6 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
         core_cols = [
             const.ASSET_CLASS, const.SYMBOL, const.NAME,
             COMM_IDX, LRG_IDX, SML_IDX,
-            const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST,
             ]
 
         # Map dropdown values to actual DataFrame column names if they differ
@@ -253,6 +257,9 @@ def cot_positioning_column_select_input(value, lookback):
     options.append({'label': const.COMM_NET, 'value': const.COMM_NET})
     options.append({'label': const.LARGE_NET, 'value': const.LARGE_NET})
     options.append({'label': const.SMALL_NET, 'value': const.SMALL_NET})
+    options.append({'label': const.COMM_IDX_EST, 'value': const.COMM_IDX_EST})
+    options.append({'label': const.LARGE_IDX_EST, 'value': const.LARGE_IDX_EST})
+    options.append({'label': const.SMALL_IDX_EST, 'value': const.SMALL_IDX_EST})
     options.append({'label': const.COMM_NET_EST, 'value': const.COMM_NET_EST})
     options.append({'label': const.LARGE_NET_EST, 'value': const.LARGE_NET_EST})
     options.append({'label': const.SMALL_NET_EST, 'value': const.SMALL_NET_EST})

@@ -705,7 +705,7 @@ class CotIndexer:
             return result
         return None
 
-    def get_positioning_table_by_asset_class(self, asset_classes, lookback):
+    def get_positioning_table_by_asset_class(self, asset_classes, lookback, estimate_gap=False):
         idx_col_header_name = lookback + " Idx"
         COMM_IDX = "Comm " + idx_col_header_name
         LRG_IDX = "Lrg Spec " + idx_col_header_name
@@ -744,17 +744,22 @@ class CotIndexer:
                 instrument = self.get_instrument_from_name(instrument_name)
                 if instrument:
                     df = instrument.df
-                    symbol = instrument.symbol
-                    self.estimate_current_gap_positions(df, symbol, COMM_SPR, LRG_SPR, SML_SPR)
                     idx = len(df) - 1
+                    symbol = instrument.symbol
+                    if estimate_gap:
+                        self.estimate_current_gap_positions(df, symbol, COMM_SPR, LRG_SPR, SML_SPR)
 
-                    lb_weeks = utils.get_lookback_weeks(lookback, instrument)
-                    logging.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
+                        lb_weeks = utils.get_lookback_weeks(lookback, instrument)
+                        logging.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
 
-                    lb_idx = idx - lb_weeks
-                    df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)
-                    df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET_EST], lb_idx, idx)
-                    df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET_EST], lb_idx, idx)
+                        lb_idx = idx - lb_weeks
+                        df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)
+                        df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET_EST], lb_idx, idx)
+                        df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET_EST], lb_idx, idx)
+                    else:
+                        df.at[idx, const.COMM_IDX_EST] = 0
+                        df.at[idx, const.LARGE_IDX_EST] = 0
+                        df.at[idx, const.SMALL_IDX_EST] = 0
 
                     new_df = pd.DataFrame(
                         [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.asset_class, instrument.symbol, instrument.name,
