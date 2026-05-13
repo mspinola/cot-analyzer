@@ -5,6 +5,7 @@ from pydoc import html
 import signal
 import sys
 import time
+import utils
 
 from CotDataDownloader import CotDataDownloader
 from CotIndexer import CotIndexer
@@ -37,7 +38,7 @@ if __name__ == "__main__":
 
     enable_server = True
     if not enable_server:
-        logging.warning(
+        utils.cot_logger.warning(
             "Server is disabled. Only running CotIndexer initialization.")
         cmrIndexer = CotIndexer()
     else:
@@ -52,9 +53,9 @@ if __name__ == "__main__":
         try:
             start_time = time.time()
             app.run(host="0.0.0.0", port=port, debug=False)
-            logging.info(f"app.run took: {time.time() - start_time:.2f}s")
+            utils.cot_logger.info(f"app.run took: {time.time() - start_time:.2f}s")
         except KeyboardInterrupt:
-            logging.warning(
+            utils.cot_logger.warning(
                 "Keyboard interrupt received, terminating background update process...")
         finally:
             cot_data_update_process.terminate()

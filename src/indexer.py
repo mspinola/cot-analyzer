@@ -1,5 +1,6 @@
 import logging
 import time
+import utils
 
 from CotIndexer import CotIndexer
 
@@ -8,4 +9,4 @@ from CotIndexer import CotIndexer
 print("Loading COT Data... (this might take a moment)")
 start_time = time.time()
 cotIndexer = CotIndexer()
-logging.info(f"Loading COT data took: {time.time() - start_time:.2f}s")
+utils.cot_logger.info(f"Loading COT data took: {time.time() - start_time:.2f}s")

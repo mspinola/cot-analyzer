@@ -20,7 +20,7 @@ import utils
 log_file_name = "log/cot.log"
 os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_name),

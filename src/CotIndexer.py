@@ -1,9 +1,6 @@
 import constants as const
 import metrics
 
-import datetime
-import logging
-import math
 import os
 import pandas as pd
 import yaml
@@ -197,12 +194,12 @@ class CotIndexer:
                 df.at[df.index[-1], est_col] = round(last_row[net_col] + delta, 0)
 
         except Exception as e:
-            logging.error(f"Error estimating gap for {symbol}: {e}")
+            utils.cot_logger.error(f"Error estimating gap for {symbol}: {e}")
             df.at[df.index[-1], const.COMM_NET_EST] = 0
             df.at[df.index[-1], const.LARGE_NET_EST] = 0
             df.at[df.index[-1], const.SMALL_NET_EST] = 0
 
-        logging.debug(f"Estimated positions for {symbol} - Comm: {df.at[df.index[-1], const.COMM_NET_EST]}, Large: {df.at[df.index[-1], const.LARGE_NET_EST]}, Small: {df.at[df.index[-1], const.SMALL_NET_EST]}")
+        utils.cot_logger.debug(f"Estimated positions for {symbol} - Comm: {df.at[df.index[-1], const.COMM_NET_EST]}, Large: {df.at[df.index[-1], const.LARGE_NET_EST]}, Small: {df.at[df.index[-1], const.SMALL_NET_EST]}")
 
 
     @staticmethod
@@ -294,7 +291,7 @@ class CotIndexer:
 
         try:
             # Fetch and Merge Closing Price for the Report Date
-            logging.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
+            utils.cot_logger.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
             start_date = f"{years[0]}-01-01"
             price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
             YAHOO_PRICE_TOKEN = 'Close'
@@ -312,7 +309,7 @@ class CotIndexer:
 
                 # Ensure COT dates are datetime and force matching nanosecond resolution
                 df[const.REPORT_DATE_XLS] = pd.to_datetime(df[const.REPORT_DATE_XLS]).dt.tz_localize(None).astype('datetime64[ns]')
-                logging.debug(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
+                utils.cot_logger.debug(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
 
                 # Merge price data into the main dataframe based on the const.DATE column
                 # Use 'forward' to find the closest next trading day if a Tuesday was a holiday
@@ -326,14 +323,13 @@ class CotIndexer:
                 instrument.df[const.CLOSING_PRICE] = merged[ticker]  # Add the closing price to the instrument's dataframe
 
                 # Refresh the local 'df' reference after the merge
-                # df = instrument.df
-                logging.info(f"Integrated report-date price for {symbol}")
+                utils.cot_logger.info(f"Integrated report-date price for {symbol}")
             else:
                 instrument.df[const.CLOSING_PRICE] = None
-                logging.warning(f"No price data found for {ticker}")
+                utils.cot_logger.warning(f"No price data found for {ticker}")
         except Exception as e:
             df[const.CLOSING_PRICE] = 0
-            logging.error(f"Error fetching price for {symbol}: {e}")
+            utils.cot_logger.error(f"Error fetching price for {symbol}: {e}")
 
 
     def calculate_weekly_data(self):
@@ -660,7 +656,6 @@ class CotIndexer:
 
             willco_col_header_name = "WILLCO " + lookback
             WILLCO = willco_col_header_name
-            print("Willco column name: ", WILLCO)
 
             tension_col_header_name = "Custom" if lookback == "Custom" else lookback
             TENSION_Z = "Tension Zscore " + tension_col_header_name
@@ -750,7 +745,7 @@ class CotIndexer:
                         self.estimate_current_gap_positions(df, symbol, COMM_SPR, LRG_SPR, SML_SPR)
 
                         lb_weeks = utils.get_lookback_weeks(lookback, instrument)
-                        logging.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
+                        utils.cot_logger.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
 
                         lb_idx = idx - lb_weeks
                         df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)

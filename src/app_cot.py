@@ -6,7 +6,6 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, State, html, dcc, callback, Input, Output
 from flask import request
-import logging
 import requests
 
 app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.DARKLY])
@@ -50,7 +49,7 @@ def record_visit():
         )
 
         msg = f"IP: {ip_addr} | Path: {request.path}"
-        utils.visitor_logger.info(msg)
+        utils.cot_logger.info(msg)
 
 
 navbar = dbc.Navbar(

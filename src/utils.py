@@ -7,8 +7,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 
-def get_visitor_logger():
-    logger = logging.getLogger("visitor_logger")
+def get_cot_logger():
+    logger = logging.getLogger("cot_logger")
 
     # Prevents adding multiple handlers if the function is called twice
     if not logger.handlers:
@@ -17,7 +17,7 @@ def get_visitor_logger():
             os.makedirs(log_dir)
 
         handler = RotatingFileHandler(
-            os.path.join(log_dir, "visitor_access.log"),
+            os.path.join(log_dir, "cot_access.log"),
             maxBytes=10*1024*1024,
             backupCount=5
         )
@@ -29,31 +29,8 @@ def get_visitor_logger():
         logger.propagate = False
 
     return logger
-visitor_logger = get_visitor_logger()
-
-def get_downloader_logger():
-    logger = logging.getLogger("downloader_logger")
-
-    # Prevents adding multiple handlers if the function is called twice
-    if not logger.handlers:
-        log_dir = "log"
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-
-        handler = RotatingFileHandler(
-            os.path.join(log_dir, "downloader_access.log"),
-            maxBytes=10*1024*1024,
-            backupCount=5
-        )
-        formatter = logging.Formatter('%(asctime)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-        # Ensure it doesn't send logs to the root logger as well (prevents duplicates)
-        logger.propagate = False
-
-    return logger
-downloader_logger = get_downloader_logger()
+cot_logger = get_cot_logger()
+downloader_logger = get_cot_logger()
 
 def is_mobile():
     """Detects if the user agent belongs to a mobile device."""
