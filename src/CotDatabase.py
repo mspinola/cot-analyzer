@@ -34,21 +34,23 @@ class CotDatabase:
                 timestamp TEXT,
                 ip_address TEXT,
                 path TEXT,
-                user_agent TEXT
+                user_agent TEXT,
+                city TEXT,
+                country TEXT
             )
         ''')
         conn.commit()
         conn.close()
 
-    def log_visit(self, ip, path, ua):
+    def log_visit(self, ip, path, ua, city="Unknown", country="Unknown"):
         """Records a new visitor event to the database."""
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         c.execute('''
-            INSERT INTO visitor_logs (timestamp, ip_address, path, user_agent)
-            VALUES (?, ?, ?, ?)
-        ''', (now, ip, path, ua))
+            INSERT INTO visitor_logs (timestamp, ip_address, path, user_agent, city, country)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (now, ip, path, ua, city, country))
         conn.commit()
         conn.close()
 

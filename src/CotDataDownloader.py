@@ -14,12 +14,13 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from CotDatabase import CotDatabase
+import utils
 
 # Ensure directories exist
-log_file_name = "log/cot_downloader.log"
+log_file_name = "log/cot.log"
 os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_name),
@@ -53,7 +54,7 @@ class CotDataDownloader:
                 self.years.append(year)
 
             if datetime.now().year not in self.years:
-                logging.error(f"Current year {datetime.now().year} not found in {self.param_dir}. Adding it to the list of years to check.")
+                utils.downloader_logger.error(f"Current year {datetime.now().year} not found in {self.param_dir}. Adding it to the list of years to check.")
                 self.years.append(datetime.now().year)
 
     def check_zip_updates(self):
@@ -62,13 +63,13 @@ class CotDataDownloader:
         # Note: Ensure your system clock is in EST or handle offset
         schedule.every().friday.at("15:30").do(self.run_download_retry_loop)
 
-        logging.info("Scheduler active: Waiting for Friday at 3:30 PM EST.")
+        utils.downloader_logger.info("Scheduler active: Waiting for Friday at 3:30 PM EST.")
 
         while True:
             schedule.run_pending()
             time.sleep(60)
 
-        logging.info("Scheduler started: Checking for updates every Friday at 3:30 PM EST.")
+        utils.downloader_logger.info("Scheduler started: Checking for updates every Friday at 3:30 PM EST.")
 
     def run_download_retry_loop(self):
         """Retries the update every 2 minutes until the current year's data is found."""
@@ -77,26 +78,26 @@ class CotDataDownloader:
         max_attempts = 30
         attempt = 0
 
-        logging.info("Scheduler triggered... looking for new data")
+        utils.downloader_logger.info("Scheduler triggered... looking for new data")
         while not success and attempt < max_attempts:
             attempt += 1
-            logging.info(f"Friday Update Attempt {attempt} for year {current_year}...")
+            utils.downloader_logger.info(f"Friday Update Attempt {attempt} for year {current_year}...")
 
             updated = self.check_and_update_zip_files()
             if current_year in updated:
-                logging.info(f"Successfully captured {current_year} data.")
+                utils.downloader_logger.info(f"Successfully captured {current_year} data.")
                 success = True
             else:
-                logging.info("New data not available yet. Waiting 2 minutes to retry...")
+                utils.downloader_logger.info("New data not available yet. Waiting 2 minutes to retry...")
                 time.sleep(120)  # Wait 2 minutes between retries
 
             if not success:
-                logging.error(f"Failed to find new {current_year} data after {max_attempts} attempts.")
+                utils.downloader_logger.error(f"Failed to find new {current_year} data after {max_attempts} attempts.")
 
     def check_zip_updates_periodic(self, sleep_interval=3600):
         """Check for zip updates every hour."""
         while True:
-            logging.info("Starting the zip file update check.")
+            utils.downloader_logger.info("Starting the zip file update check.")
             self.check_and_update_zip_files()
             time.sleep(sleep_interval)
 
@@ -160,9 +161,9 @@ class CotDataDownloader:
                 server.starttls(context=context)
                 server.login(sender_email, password)
                 server.sendmail(sender_email, receiver_email, msg.as_string())
-            logging.info(f"Email notification successfully sent for updated years: {', '.join(map(str, updated_years))}")
+            utils.downloader_logger.info(f"Email notification successfully sent for updated years: {', '.join(map(str, updated_years))}")
         except Exception as e:
-            logging.error(f"Failed to send email notification: {e}")
+            utils.downloader_logger.error(f"Failed to send email notification: {e}")
 
     def check_and_update_zip_files(self):
         """Check for updates, download new zip files if available, and send email notification for updated years."""
@@ -172,36 +173,36 @@ class CotDataDownloader:
             # Download zip file if we don't have it or there is a new timestamp on the server
             last_modified = self.get_last_modified(year)
             if last_modified is None:
-                logging.warning(f"No 'Last-Modified' header for {year}.zip, skipping...")
+                utils.downloader_logger.warning(f"No 'Last-Modified' header for {year}.zip, skipping...")
                 continue
             try:
                 current_date = datetime.strptime(last_modified, '%a, %d %b %Y %H:%M:%S %Z')
             except ValueError:
-                logging.error(f"Could not parse 'Last-Modified' date for {year}.zip, skipping...")
+                utils.downloader_logger.error(f"Could not parse 'Last-Modified' date for {year}.zip, skipping...")
                 continue
 
             zipfile_last_modified = self.cotDatabase.get_zipfile_last_modified_time(year)
             if zipfile_last_modified:
                 if current_date > zipfile_last_modified:
-                    logging.info(f'Updating: {year}.zip')
+                    utils.downloader_logger.info(f'Updating: {year}.zip')
                     url = self.url_prefix + f'{year}.zip'
                     self.download_and_extract_zip(url, year)
                     self.cotDatabase.update_zip_file(year, zipfile_last_modified)
                     updated_years.append(year)
                 else:
-                    logging.info(f'No update needed for {year}.zip')
+                    utils.downloader_logger.info(f'No update needed for {year}.zip')
             else:
-                logging.info(f'Downloading: {year}.zip')
+                utils.downloader_logger.info(f'Downloading: {year}.zip')
                 url = self.url_prefix + f'{year}.zip'
                 self.download_and_extract_zip(url, year)
                 self.cotDatabase.update_zip_file(year, last_modified)
                 updated_years.append(year)
 
         if updated_years:
-            logging.info(f"Updated years: {', '.join(map(str, updated_years))}")
+            utils.downloader_logger.info(f"Updated years: {', '.join(map(str, updated_years))}")
             if self.enable_email_notifications:
                 self.send_email_notification(updated_years)
         else:
-            logging.info("No updates detected for any years.")
+            utils.downloader_logger.info("No updates detected for any years.")
 
         return updated_years

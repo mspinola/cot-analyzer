@@ -1,25 +1,56 @@
 import constants
 from db import cotDatabase
+import utils
 
 import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, State, html, dcc, callback, Input, Output
 from flask import request
-
+import logging
+import requests
 
 app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.DARKLY])
 server = app.server
 
 @app.server.before_request
 def record_visit():
+    # Define internal Dash and asset paths to ignore
+    ignored_paths = [
+        '/_dash-layout',
+        '/_dash-dependencies',
+        '/_dash-update-component',
+        '/assets/',
+        '/favicon.ico'
+    ]
+
     # Ignore internal Dash updates and assets to keep logs clean
-    if not any(x in request.path for x in ['_dash', 'assets', 'favicon']):
+    if not any(request.path.startswith(path) for path in ignored_paths):
         ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+
+        # Default values
+        city, country = "Internal", "Local"
+
+        # Skip lookup for localhost/internal IPs
+        if ip_addr not in ['127.0.0.1', 'localhost']:
+            try:
+                # Use ip-api.com (Limit: 45 requests per minute)
+                response = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=0.5).json()
+                if response.get('status') == 'success':
+                    city = response.get('city')
+                    country = response.get('country')
+            except Exception:
+                city, country = "Lookup", "Error"
+
         cotDatabase.log_visit(
             ip_addr,
             request.path,
-            request.headers.get('User-Agent')
+            request.headers.get('User-Agent'),
+            city,
+            country
         )
+
+        msg = f"IP: {ip_addr} | Path: {request.path}"
+        utils.visitor_logger.info(msg)
 
 
 navbar = dbc.Navbar(

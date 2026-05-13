@@ -18,9 +18,17 @@ logging.basicConfig(level=logging.INFO,
 def signal_handler(sig, frame):
     print('You pressed Ctrl+C!')
     sys.exit(0)
-
-
 signal.signal(signal.SIGINT, signal_handler)
+
+
+class NoDashComponentFilter(logging.Filter):
+    def filter(self, record):
+        # Returns False if the string is in the log message, which drops the log
+        return "_dash-update-component" not in record.getMessage()
+# Apply filter to the werkzeug logger
+log = logging.getLogger('werkzeug')
+log.addFilter(NoDashComponentFilter())
+
 
 if __name__ == "__main__":
     cotDownloader = CotDataDownloader()
