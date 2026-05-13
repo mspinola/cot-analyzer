@@ -3,28 +3,71 @@ import constants as const
 
 import dash
 import dash_bootstrap_components as dbc
+import os
 import pandas as pd
 import plotly.express as px
-from dash import html, dcc, callback, Input, Output
+from dash import html, dcc, callback, Input, Output, State
 
 dash.register_page(__name__, path='/admin')
 
-layout = dbc.Container([
-    html.H2("System Telemetry", className="mt-4 mb-4", style={'color': const.BRIGHTER_TEXT_COLOR}),
+def login_layout():
+    return dbc.Container([
+        dbc.Row([
+            dbc.Col([
+                html.H3("Admin Access Required", style={'color': const.BRIGHTER_TEXT_COLOR}),
+                dbc.Input(id='admin-pw-input', type='password', placeholder='Enter Password', className="mb-3"),
+                dbc.Button("Unlock Dashboard", id='admin-login-btn', color="primary"),
+                html.Div(id='admin-login-alert', className="mt-2")
+            ], width=4)
+        ], justify="center", style={'marginTop': '20%'})
+    ])
 
-    # Graphs Section
-    dbc.Row([
-        dbc.Col(dcc.Graph(id='visit-time-chart'), width=6),
-        dbc.Col(dcc.Graph(id='visitor-geo-chart'), width=6),
-    ], className="mb-4"),
+def admin_content():
+    return dbc.Container([
+        html.H2("System Telemetry", className="mt-4 mb-4", style={'color': const.BRIGHTER_TEXT_COLOR}),
 
-    # Logs Table Section
-    html.Hr(style=const.hr_style),
-    html.H4("Recent Access Logs", style={'color': const.TEXT_COLOR}),
-    html.Div(id='admin-log-table'),
+        # Graphs Section
+        dbc.Row([
+            dbc.Col(dcc.Graph(id='visit-time-chart'), width=6),
+            dbc.Col(dcc.Graph(id='visitor-geo-chart'), width=6),
+        ], className="mb-4"),
 
-    dcc.Interval(id='admin-refresh', interval=60*1000) # Refresh every minute
-], fluid=True)
+        # Logs Table Section
+        html.Hr(style=const.hr_style),
+        html.H4("Recent Access Logs", style={'color': const.TEXT_COLOR}),
+        html.Div(id='admin-log-table'),
+
+        dcc.Interval(id='admin-refresh', interval=60*1000) # Refresh every minute
+    ], fluid=True)
+
+def layout():
+    # This ID is the div that will switch between login and content
+    return html.Div(id='admin-main-container')
+
+@callback(
+    Output('admin-main-container', 'children'),
+    Input('session_admin_auth', 'data')
+)
+def render_admin_page(auth_data):
+    # If the session store has the correct token, show the admin content
+    if auth_data == "AUTHORIZED":
+        return admin_content()
+    return login_layout()
+
+@callback(
+    [Output('session_admin_auth', 'data'),
+     Output('admin-login-alert', 'children')],
+    Input('admin-login-btn', 'n_clicks'),
+    State('admin-pw-input', 'value'),
+    prevent_initial_call=True
+)
+def validate_login(n_clicks, password):
+    # DO NOT hardcode this in a production app.
+    # Use an environment variable: os.getenv('ADMIN_PASSWORD')
+    SECRET = os.getenv('COT_ADMIN_PASSWORD', 'default_dev_pw')
+    if password == SECRET:
+        return "AUTHORIZED", ""
+    return dash.no_update, dbc.Alert("Incorrect Password", color="danger")
 
 @callback(
     [Output('visit-time-chart', 'figure'),

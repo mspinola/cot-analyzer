@@ -3,6 +3,7 @@ Description=COT Analyzer
 After=network-online.target
 
 [Service]
+Environment="COT_ADMIN_PASSWORD=otislikeschuck"
 Type=simple
 User=root
 WorkingDirectory=/root/cot-analyzer/server-side
