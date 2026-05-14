@@ -30,7 +30,7 @@ logging.basicConfig(
 
 class CotDataDownloader:
     """Class to manage downloading and extracting CFTC data zip files."""
-    def __init__(self, data_dir='data/cot_data', xls_data_dir='data/xls_data', param_dir='config/params.yaml', send_email=False):
+    def __init__(self, data_dir='data/cot_data', xls_data_dir='data/xls_data', param_dir='config/params.yaml', send_email=True):
         self.data_dir = data_dir
         self.xls_data_dir = xls_data_dir
         self.param_dir = param_dir
