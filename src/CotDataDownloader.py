@@ -17,7 +17,7 @@ from CotDatabase import CotDatabase
 import utils
 
 # Ensure directories exist
-log_file_name = "log/cot.log"
+log_file_name = "log/" + utils.main_cot_logger_file
 os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -127,21 +127,21 @@ class CotDataDownloader:
                 try:
                     os.remove(new_file_path)
                 except PermissionError as e:
-                    print(f"Could not delete {new_file_path}: {e}")
+                    utils.get_cot_logger().error(f"Could not delete {new_file_path}: {e}")
                     return
 
             try:
                 shutil.move(extracted_file_path, new_file_path)
-                print(f"Renamed extracted file to: {new_file_path}")
+                utils.get_cot_logger().info(f"Renamed extracted file to: {new_file_path}")
             except PermissionError as e:
-                print(f"Error renaming file {extracted_file_path} to {new_file_path}: {e}")
+                utils.get_cot_logger().error(f"Error renaming file {extracted_file_path} to {new_file_path}: {e}")
 
     def send_email_notification(self, updated_years):
         """Send an email notification listing the years with new files downloaded."""
         sender_email = os.environ.get("EMAIL_USER")
-        receiver_email = os.environ.get("EMAIL_USER")
+        receiver_email = os.environ.get("RECEIVER_EMAIL_USER")
         password = os.environ.get("EMAIL_PASSWORD")
-        print(receiver_email, password)
+        utils.get_cot_logger().info(f"Sending email notification to {receiver_email}")
 
         subject = "New COT Zip Files Downloaded"
         body = "The following years had new zip files downloaded:\n\n" + "\n".join(map(str, updated_years))

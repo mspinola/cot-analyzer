@@ -1,4 +1,5 @@
-import logging
+import utils
+
 import os
 import sqlite3
 
@@ -84,13 +85,13 @@ class CotDatabase:
             try:
                 result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
             except Exception as e:
-                print(f"First attempt exception in date format {result}. {e}")
+                utils.get_cot_logger().info(f"First attempt exception in date format {result}. {e}")
                 try:
-                    print(f"2nd attempt on {row[0]}")
+                    utils.get_cot_logger().info(f"2nd attempt on {row[0]}")
                     result = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-                    print(f"2nd time worked {result}")
+                    utils.get_cot_logger().info(f"2nd time worked {result}")
                 except Exception as e:
-                    print(f"2nd time exception in date format {result}. {e}")
+                    utils.get_cot_logger().error(f"2nd time exception in date format {result}. {e}")
                     return None
                 return None
         return result
@@ -105,5 +106,5 @@ class CotDatabase:
             tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
             if tz_aware is None:
                 tz_aware = "Unknown"
-        print("db latest time ", tz_aware),
+        utils.get_cot_logger().info("db latest time %s", tz_aware)
         return tz_aware

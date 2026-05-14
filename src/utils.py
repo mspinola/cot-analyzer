@@ -7,8 +7,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 
+main_cot_logger_file = "app_cot_logger.log"
 def get_cot_logger():
-    logger = logging.getLogger("cot_logger")
+    logger = logging.getLogger(main_cot_logger_file)
 
     # Prevents adding multiple handlers if the function is called twice
     if not logger.handlers:
@@ -17,7 +18,7 @@ def get_cot_logger():
             os.makedirs(log_dir)
 
         handler = RotatingFileHandler(
-            os.path.join(log_dir, "cot_access.log"),
+            os.path.join(log_dir, main_cot_logger_file),
             maxBytes=10*1024*1024,
             backupCount=5
         )
