@@ -1,8 +1,10 @@
-import logging
+import utils
+
 import os
 import sqlite3
 
 from datetime import datetime, timezone
+import pandas as pd
 from zoneinfo import ZoneInfo
 
 class CotDatabase:
@@ -25,8 +27,40 @@ class CotDatabase:
                 last_modified TEXT
             )
         ''')
+
+        # Add visitor logs table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS visitor_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                ip_address TEXT,
+                path TEXT,
+                user_agent TEXT,
+                city TEXT,
+                country TEXT
+            )
+        ''')
         conn.commit()
         conn.close()
+
+    def log_visit(self, ip, path, ua, city="Unknown", country="Unknown"):
+        """Records a new visitor event to the database."""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute('''
+            INSERT INTO visitor_logs (timestamp, ip_address, path, user_agent, city, country)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (now, ip, path, ua, city, country))
+        conn.commit()
+        conn.close()
+
+    def get_visitor_stats(self):
+        """Retrieves recent logs for the admin dashboard."""
+        conn = sqlite3.connect(self.db_name)
+        df = pd.read_sql_query("SELECT * FROM visitor_logs ORDER BY id DESC LIMIT 500", conn)
+        conn.close()
+        return df
 
     def update_zip_file(self, year, last_modified):
         """Update the last modified date of the zip file in the database."""
@@ -51,13 +85,13 @@ class CotDatabase:
             try:
                 result = datetime.strptime(row[0], '%a, %d %b %Y %H:%M:%S %Z')
             except Exception as e:
-                print(f"First attempt exception in date format {result}. {e}")
+                utils.get_cot_logger().info(f"First attempt exception in date format {result}. {e}")
                 try:
-                    print(f"2nd attempt on {row[0]}")
+                    utils.get_cot_logger().info(f"2nd attempt on {row[0]}")
                     result = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-                    print(f"2nd time worked {result}")
+                    utils.get_cot_logger().info(f"2nd time worked {result}")
                 except Exception as e:
-                    print(f"2nd time exception in date format {result}. {e}")
+                    utils.get_cot_logger().error(f"2nd time exception in date format {result}. {e}")
                     return None
                 return None
         return result
@@ -72,5 +106,5 @@ class CotDatabase:
             tz_aware = tz_aware.strftime("%Y-%m-%d %H:%M:%S %Z")
             if tz_aware is None:
                 tz_aware = "Unknown"
-        print("db latest time ", tz_aware),
+        utils.get_cot_logger().info("db latest time %s", tz_aware)
         return tz_aware

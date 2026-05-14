@@ -17,74 +17,85 @@ dash.register_page(
 
 layout = html.Div([
     dbc.Container([
+        dbc.Accordion([
+            dbc.AccordionItem([
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Lookback:", style=const.label_style),
+                        dbc.Select(
+                            persistence=True,
+                            id='positioning_lookback_selector',
+                            options=[
+                                {"label": "26 Weeks", "value": "26"},
+                                {"label": "52 Weeks", "value": "52"},
+                                {"label": "Custom", "value": "Custom"},
+                            ],
+                            value="Custom",
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        # Positioning Table Extended Data
+                        html.Label("Table Data Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='cot_positioning_column_select_input',
+                            multi=True,
+                            className="mb-3 bg-dark text-white border-secondary",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        html.Label("Asset Class Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='page_positioning_selector',
+                            options=[{'label': x, 'value': x}
+                                    for x in cotIndexer.get_asset_classes()],
+                            value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
+                            multi=True,
+                            className="mb-3 dash-dropdown bg-dark text-white",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        dbc.Button([html.I(className="bi bi-download mt-3"), "Download CSV"],
+                                id="btn_download_csv",
+                                color='secondary',
+                                outline=True,
+                                size="sm",
+                                className="mb-3 mt-3",
+                                style=const.button_style
+                        ),
+                        dcc.Download(id="download_positioning_csv"),
+                    ], xs=12, md="auto"),
+                ], align="center"),
+            ],
+            title="TABLE CONFIGURATION",
+            item_id="chart_config"),
+        ],
+        start_collapsed=True, # Keeps it clean on initial mobile load
+        flush=True,
+        className="mb-3",
+        style={'backgroundColor': const.BACKGROUND_COLOR}),
+
+        html.Hr(style=const.hr_style),
+
         dbc.Row([
-            dbc.Col([
-                html.Label("Lookback:", style=const.label_style),
-                dbc.Select(
-                    id='positioning_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "Custom"},
-                    ],
-                    value="Custom",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
-
-            dbc.Col([
-                # Positioning Table Extended Data
-                html.Label("Table Data Selector", style=const.label_style),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='cot_positioning_column_select_input',
-                    multi=True,
-                    className="mb-3 bg-dark text-white border-secondary",
-                    searchable=False,
-                    clearable=True,
-                ),
-            ], width="auto", className="ms-2 mt-2"),
-
-            dbc.Col([
-                    html.Label("Asset Class Selector", style=const.label_style),
-                    dcc.Dropdown(
-                        persistence=True,
-                        id='page_positioning_selector',
-                        options=[{'label': x, 'value': x}
-                                 for x in cotIndexer.get_asset_classes()],
-                        value=cotIndexer.get_asset_classes(),  # This selects every item in the list by default
-                        multi=True,
-                        className="dash-dropdown bg-dark text-white",
-                        searchable=False,
-                        clearable=True,
-                    ),
-                    ], width="auto"),
-
-            dbc.Col([
-                dbc.Button([html.I(className="bi bi-download mt-3"), "Download CSV"],
-                           id="btn_download_csv",
-                           color='secondary',
-                           outline=True,
-                           size="sm",
-                           className="mt-3",
-                           style=const.button_style
-                ),
-                dcc.Download(id="download_positioning_csv"),
-            ], width="auto", className="ms-1"),
-        ], align="center", className="mb-4", style=const.row_start_style),
+            dcc.Loading(
+                id="loading-positioning-table",
+                type="default", # Options: "graph", "cube", "circle", "dot", or "default"
+                children=html.Div(id='cot_positioning'),
+                color=const.BRIGHTER_TEXT_COLOR
+            )
+        ], justify='center')
     ], fluid=True),
-
-    html.Hr(style=const.hr_style),
-
-    dbc.Row([
-        dcc.Loading(
-            id="loading-positioning-table",
-            type="default", # Options: "graph", "cube", "circle", "dot", or "default"
-            children=html.Div(id='cot_positioning'),
-            color=const.BRIGHTER_TEXT_COLOR
-        )
-    ], justify='center')
 ])
 
 
@@ -93,7 +104,6 @@ layout = html.Div([
     Input('positioning_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("positioning cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -104,7 +114,6 @@ def update_global_lookback(value):
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("positioning cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -124,9 +133,14 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
 
     if not assets:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.TEXT_COLOR})
-
     asset_list = [assets] if isinstance(assets, str) else assets
-    df = cotIndexer.get_positioning_table_by_asset_class(asset_list, lookback)
+
+    # Only estimate if the user has selected an estimate column to display, otherwise skip to save time
+    estimate_gap = False
+    estimate_columns = [const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST]
+    if selected_columns is not None and any(col in estimate_columns for col in selected_columns):
+        estimate_gap = True
+    df = cotIndexer.get_positioning_table_by_asset_class(asset_list, lookback, estimate_gap)
 
     cftc_date = "unknown"
     if not df.empty:
@@ -169,7 +183,7 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
 
         core_cols = [
             const.ASSET_CLASS, const.SYMBOL, const.NAME,
-            COMM_IDX, LRG_IDX, SML_IDX, WILLCO
+            COMM_IDX, LRG_IDX, SML_IDX,
             ]
 
         # Map dropdown values to actual DataFrame column names if they differ
@@ -179,7 +193,7 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
         joined_list = core_cols + requested_cols if requested_cols is not None else core_cols
         final_cols = [c for c in joined_list if c in df.columns]
         cftc_date = df[const.DATE].iloc[0]
-        df2 = df[final_cols]
+        df_display = df[final_cols]
 
     return html.Div([
         dbc.Row([
@@ -196,24 +210,26 @@ def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
             ], width="auto")
         ], justify='center'),
         dbc.Table.from_dataframe(
-            df2,
+            df_display,
             bordered=True,
             hover=True,
             responsive=True,
             striped=True,
-            style={"minWidth": "1200px"},
+            className="dense-table",
+            style={"fontSize": "0.8rem"},
+            # style={"minWidth": "1400px", "fontSize": "0.8rem"},
         )
     ])
 
 
 @callback(
     Output("download_positioning_csv", "data"),
-    Input("btn_download_csv", "n_clicks"),
+    [Input("btn_download_csv", "n_clicks"),
+     Input('global_lookback_store', 'data')],
     State('page_positioning_selector', 'value'),  # Capture current filter state
     prevent_initial_call=True,
 )
-def download_positioning_table(n_clicks, selected_values):
-    print(selected_values)
+def download_positioning_table(n_clicks, selected_values, lookback):
     if not n_clicks or not selected_values:
         return None
 
@@ -241,6 +257,12 @@ def cot_positioning_column_select_input(value, lookback):
     options.append({'label': const.COMM_NET, 'value': const.COMM_NET})
     options.append({'label': const.LARGE_NET, 'value': const.LARGE_NET})
     options.append({'label': const.SMALL_NET, 'value': const.SMALL_NET})
+    options.append({'label': const.COMM_IDX_EST, 'value': const.COMM_IDX_EST})
+    options.append({'label': const.LARGE_IDX_EST, 'value': const.LARGE_IDX_EST})
+    options.append({'label': const.SMALL_IDX_EST, 'value': const.SMALL_IDX_EST})
+    options.append({'label': const.COMM_NET_EST, 'value': const.COMM_NET_EST})
+    options.append({'label': const.LARGE_NET_EST, 'value': const.LARGE_NET_EST})
+    options.append({'label': const.SMALL_NET_EST, 'value': const.SMALL_NET_EST})
 
     zscore_col_header_name = lookback + " Zscore"
     COMM_ZS = "Comm " + zscore_col_header_name
@@ -263,7 +285,5 @@ def cot_positioning_column_select_input(value, lookback):
     options.append({'label': SML_SPR, 'value': SML_SPR})
     options.append({'label': WILLCO, 'value': WILLCO})
 
-
     default_value = None
-    # default_value = options[0].get('value') if options else None
     return options, default_value

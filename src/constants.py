@@ -27,6 +27,14 @@ OPEN_INTEREST = "Open Interest"
 COMM_NET = "Comm Net Pos"
 LARGE_NET = "Lrg Spec Net Pos"
 SMALL_NET = "Sml Spec Net Pos"
+LARGE_FLIP = "Lrg Spec Net Pos Flip"
+
+COMM_NET_EST = COMM_NET + " Est"
+LARGE_NET_EST = LARGE_NET + " Est"
+SMALL_NET_EST = SMALL_NET + " Est"
+COMM_IDX_EST = "Comm Est Idx"
+LARGE_IDX_EST = "Lrg Spec Est Idx"
+SMALL_IDX_EST = "Sml Spec Est Idx"
 
 COMM_PCT_OI = "Comm OI Pct"
 LARGE_PCT_OI = "Lrg OI Pct"
@@ -62,22 +70,37 @@ COMM_52_ZSCORE = "Comm 52 Zscore"
 LARGE_52_ZSCORE = "Lrg Spec 52 Zscore"
 SMALL_52_ZSCORE = "Sml Spec 52 Zscore"
 
+COMM_MOMENTUM_CUSTOM_IDX = "Comm Custom Move Idx"
+LARGE_MOMENTUM_CUSTOM_IDX = "Lrg Spec Custom Move Idx"
+SMALL_MOMENTUM_CUSTOM_IDX = "Sml Spec Custom Move Idx"
+COMM_MOMENTUM_26_IDX = "Comm 26 Move Idx"
+LARGE_MOMENTUM_26_IDX = "Lrg Spec 26 Move Idx"
+SMALL_MOMENTUM_26_IDX = "Sml Spec 26 Move Idx"
+COMM_MOMENTUM_26_IDX = "Comm 52 Move Idx"
+LARGE_MOMENTUM_26_IDX = "Lrg Spec 52 Move Idx"
+SMALL_MOMENTUM_26_IDX = "Sml Spec 52 Move Idx"
+MOMENTUM_PERIOD = 6
+
 CLOSING_PRICE = "Closing Price"
 WILLCO_CUSTOM = "WILLCO Custom"
 WILLCO_26 = "WILLCO 26"
 WILLCO_52 = "WILLCO 52"
 
+TENSION_Z_CUSTOM = "Tension Zscore Custom"
+TENSION_Z_26 = "Tension Zscore 26"
+TENSION_Z_52 = "Tension Zscore 52"
 
 TEXT_COLOR = "#ABB8C9"
 BRIGHTER_TEXT_COLOR = "#E2E8F0"
 HOVER_TEXT_COLOR = "#FFFFFF"
 BACKGROUND_COLOR = "#1a1a1a"
 BLUE_BACKGROUND = "#375a7f"
-GRID_COLOR = "rgba(255, 255, 255, 0.1)"  # Subtle white grid
+GRID_COLOR = "rgba(255, 255, 255, 0.2)"  # Subtle white grid
+EMPTY_COLOR = 'rgba(0, 0, 0, 0)'
 
 # Plotting Dimensions
-PIXELS_PER_ROW = 275
-FIXED_OVERHEAD = 120
+PIXELS_PER_ROW = 250
+FIXED_OVERHEAD = 25
 
 app_timezone = "US/Eastern"
 
@@ -128,3 +151,22 @@ link_style={
     'color': BRIGHTER_TEXT_COLOR,
     'fontSize': '1.5rem',
 }
+
+# Plot related
+WILLCO_MIN_THRESHOLD = 20
+WILLCO_MAX_THRESHOLD = 80
+
+ZSCORE_MIN_THRESHOLD = -2.0
+ZSCORE_MAX_THRESHOLD = 2.0
+
+MOMENTUM_MIN_THRESHOLD = -40
+MOMENTUM_MAX_THRESHOLD = 40
+
+PIXELS_PER_PLOT = 250
+PIXELS_OVERHEAD_PER_PLOT = 25
+
+VERTICAL_SPACING = 0.05
+ENABLE_HLINE_THRESHOLDS = False
+HLINE_OPACITY = 0.01
+
+DEFAULT_WEEKS_TO_VIEW = 78

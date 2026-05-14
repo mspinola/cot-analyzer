@@ -5,9 +5,10 @@ from pydoc import html
 import signal
 import sys
 import time
+import utils
 
 from CotDataDownloader import CotDataDownloader
-from CotCmrIndexer import CotCmrIndexer
+from CotIndexer import CotIndexer
 from CotDatabase import CotDatabase
 
 # Configure logging
@@ -18,9 +19,17 @@ logging.basicConfig(level=logging.INFO,
 def signal_handler(sig, frame):
     print('You pressed Ctrl+C!')
     sys.exit(0)
-
-
 signal.signal(signal.SIGINT, signal_handler)
+
+
+class NoDashComponentFilter(logging.Filter):
+    def filter(self, record):
+        # Returns False if the string is in the log message, which drops the log
+        return "_dash-update-component" not in record.getMessage()
+# Apply filter to the werkzeug logger
+log = logging.getLogger('werkzeug')
+log.addFilter(NoDashComponentFilter())
+
 
 if __name__ == "__main__":
     cotDownloader = CotDataDownloader()
@@ -29,9 +38,9 @@ if __name__ == "__main__":
 
     enable_server = True
     if not enable_server:
-        logging.warning(
-            "Server is disabled. Only running CotCmrIndexer initialization.")
-        cmrIndexer = CotCmrIndexer()
+        utils.cot_logger.warning(
+            "Server is disabled. Only running CotIndexer initialization.")
+        cmrIndexer = CotIndexer()
     else:
         # Start the background process for hourly zip updates
         start_time = time.time()
@@ -44,9 +53,9 @@ if __name__ == "__main__":
         try:
             start_time = time.time()
             app.run(host="0.0.0.0", port=port, debug=False)
-            logging.info(f"app.run took: {time.time() - start_time:.2f}s")
+            utils.cot_logger.info(f"app.run took: {time.time() - start_time:.2f}s")
         except KeyboardInterrupt:
-            logging.warning(
+            utils.cot_logger.warning(
                 "Keyboard interrupt received, terminating background update process...")
         finally:
             cot_data_update_process.terminate()

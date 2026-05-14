@@ -1,11 +1,13 @@
 import constants as const
+import pages.helpers as helpers
 import utils
 
 import dash
 import dash_bootstrap_components as dbc
+import math
 import plotly.graph_objects as go
 
-from dash import html, dcc, callback, Input, Output
+from dash import State, html, dcc, callback, Input, Output
 from indexer import cotIndexer
 from plotly.subplots import make_subplots
 
@@ -16,51 +18,96 @@ dash.register_page(
     path='/graphs'
 )
 
-asset_class_list = cotIndexer.get_asset_classes()
-asset_class_list.sort()
+AVAILABLE_PLOTS = {
+    "oi_pct": "Net Position % of OI",
+    "willco": "WillCo",
+    "spearman": "Spearman Correlation",
+    "net_pos": "Net Positions",
+    "index": "Positioning Index",
+    "zscore": "Positioning Z-Score",
+    "momentum": "Momentum Index",
+    "tension": "Tension Oscillator"
+}
 
 layout = html.Div([
     dbc.Container([
-        dbc.Row([
-            dbc.Col([
-                html.Label("Lookback:", style=const.label_style),
-                dbc.Select(
-                    id='graphs_lookback_selector',
-                    options=[
-                        {"label": "26 Weeks", "value": "26"},
-                        {"label": "52 Weeks", "value": "52"},
-                        {"label": "Custom", "value": "Custom"},
-                    ],
-                    value="Custom",
-                    size="sm",
-                    className="mb-3 bg-dark text-white border-secondary",
-                )
-            ], width="auto"),
+        dbc.Accordion([
+            dbc.AccordionItem([
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Lookback:", style=const.label_style),
+                        dbc.Select(
+                            id='graphs_lookback_selector',
+                            options=[
+                                {"label": "26 Weeks", "value": "26"},
+                                {"label": "52 Weeks", "value": "52"},
+                                {"label": "Custom", "value": "Custom"},
+                            ],
+                            value="Custom",
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=12, md="auto"),
 
-            dbc.Col([
-                html.Label("Asset Class Selector", style=const.label_style),
-                dbc.Select(
-                    persistence=True,
-                    id='graphs_single_asset_class_input',
-                    options=[{'label': x, 'value': x}
-                             for x in asset_class_list],
-                    value=f"{cotIndexer.get_default_asset_class()}",
-                    className="mb-3 bg-dark text-white border-secondary",
-                ),
-            ], width="auto", className="ms-2 mt-2"),
+                    dbc.Col([
+                        html.Label("Asset Class Selector", style=const.label_style),
+                        dbc.Select(
+                            persistence=True,
+                            id='graphs_single_asset_class_input',
+                            options=[{'label': x, 'value': x}
+                                    for x in cotIndexer.get_asset_classes()],
+                            value=f"{cotIndexer.get_default_asset_class()}",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        ),
+                    ], xs=12, md="auto"),
 
-            dbc.Col([
-                html.Label("Asset Selector", style=const.label_style),
-                dcc.Dropdown(
-                    persistence=True,
-                    id='graphs_multi_equity_selector_input',
-                    multi=True,
-                    className="dash-dropdown bg-dark text-white",
-                    searchable=False,
-                    clearable=True,
-                ),
-            ], width="auto"),
-        ], align="center", className="mb-4", style=const.row_start_style),
+                    dbc.Col([
+                        html.Label("Asset Selector", style=const.label_style),
+                        dcc.Dropdown(
+                            persistence=True,
+                            id='graphs_multi_equity_selector_input',
+                            multi=True,
+                            className="mb-3 dash-dropdown bg-dark text-white",
+                            searchable=False,
+                            clearable=True,
+                        ),
+                    ], xs=12, md="auto"),
+
+                    dbc.Col([
+                        html.Label("Columns:", style=const.label_style),
+                        dbc.Select(
+                            id='graphs_columns_selector',
+                            persistence=True,
+                            options=[
+                                {"label": "1 Column", "value": "1"},
+                                {"label": "2 Columns", "value": "2"},
+                                {"label": "3 Columns", "value": "3"},
+                            ],
+                            value="1", # We'll handle responsive defaults in the callback
+                            size="sm",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        )
+                    ], xs=6, md="auto"),
+
+                    dbc.Col([
+                        html.Label("Plot Selector", style=const.label_style),
+                        dbc.Select(
+                            persistence=True,
+                            id='graphs_plot_selector_input',
+                            options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
+                            value="net_pos",
+                            className="mb-3 bg-dark text-white border-secondary",
+                        ),
+                    ], xs=6, md="auto"),
+                ], align="center"),
+            ],
+            title="CHART CONFIGURATION",
+            item_id="chart_config"),
+        ],
+        start_collapsed=True, # Keeps it clean on initial mobile load
+        flush=True,
+        className="mb-3",
+        style={'backgroundColor': const.BACKGROUND_COLOR}),
 
         html.Hr(style=const.hr_style),
 
@@ -81,22 +128,34 @@ layout = html.Div([
     Input('graphs_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("graphs cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
         return "Custom"
+
 
 @callback(
     Output('graphs_lookback_selector', 'value'),
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("graphs cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
         return "Custom"
+
+
+@callback(
+    Output('graphs_columns_selector', 'value'),
+    Input('url', 'pathname'), # Triggers on page load
+    State('graphs_columns_selector', 'value')
+)
+def set_default_columns(pathname, current_val):
+    # Only set default if it hasn't been changed by the user (initial load)
+    if utils.is_mobile():
+        return "1"
+    else:
+        return "2" # Default for larger screens
 
 
 @callback(
@@ -104,18 +163,15 @@ def update_local_lookback(value):
     [Input('graphs_single_asset_class_input', 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('graphs_multi_equity_selector_input', 'value'),
-     Input('global_lookback_store', 'data')]
+     Input('session_setup_highlight_asset_store', 'data'),
+     Input('graphs_plot_selector_input', 'value'),
+     Input('global_lookback_store', 'data'),
+     Input('graphs_columns_selector', 'value')]
 )
-def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
-    print("graphs cb plot lb: ", lookback)
-    if selected_assets is None or len(selected_assets) == 0:
-        return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
-
-    enabled_plots = 'Positioning'
-    overlay_selection = 'Price'
-
-    grid_color = const.GRID_COLOR
-    color_palette = cotIndexer.get_palette(palette_name)
+def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback, num_cols):
+    selected_plots = [selected_plot]
+    if selected_assets is None or len(selected_assets) == 0 or selected_plots is None:
+        return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
     if selected_assets is None:
         assets = cotIndexer.get_assets_for_asset_class(asset_class)
@@ -123,161 +179,76 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
         assets = selected_assets  # Use specific user selections if provided
     else:
         assets = cotIndexer.get_assets_for_asset_class(asset_class)
-    assets.sort()
 
-    row_count = len(assets)
+    num_cols = int(num_cols)
+    num_selected = len(selected_plots) * len(assets)
+    num_rows = math.ceil(num_selected / num_cols)
 
-    total_height = (const.PIXELS_PER_ROW * row_count) + \
-        const.FIXED_OVERHEAD
-    v_spacing = 80 / total_height  # Consistent ~80px gap
-
-    if enabled_plots == 'All':
-        num_cols = 2
-    elif enabled_plots in ['Indexing', 'Positioning']:
-        num_cols = 1
-    else:
-        num_cols = 0
+    min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
+    color_palette = cotIndexer.get_palette(palette_name)
 
     titles = []
-    for asset in assets:
-        if enabled_plots in ['All', 'Indexing']:
-            titles.append(asset + " Index")
-        if enabled_plots in ['All', 'Positioning']:
-            titles.append(asset + " Positions")
-
-    specs = []
-    if enabled_plots in ['Indexing']:
-        specs = [[{"secondary_y": False}] for _ in range(row_count)]
-    if enabled_plots in ['Positioning']:
-        specs = [[{"secondary_y": True}] for _ in range(row_count)]
-    if enabled_plots in ['All']:
-        specs = [[{"secondary_y": False}, {"secondary_y": True}]
-                 for _ in range(row_count)]
-
-    fig = make_subplots(rows=row_count, shared_xaxes=False, cols=num_cols, subplot_titles=(
-        titles), specs=specs, horizontal_spacing=0.08, vertical_spacing=v_spacing)
-    fig.update_annotations(yshift=10, font=dict(size=15))
-
     for idx, asset in enumerate(assets):
-        cur_row = idx + 1
-        cur_col = 1
-        df = cotIndexer.get_symbols_data(asset, lookback)
+        if idx == 0:
+            titles.append(AVAILABLE_PLOTS[selected_plot] + ":  " + asset)
+        else:
+            titles.append(asset)
 
-        # Indexing Plot
-        if enabled_plots in ['All', 'Indexing']:
-            # Only show legend for the first plot
-            legend = cur_row == 1 and cur_col == num_cols
-            fig.add_trace(go.Scatter(x=df.index, y=df["comms_idx"], legendgroup='commercials', line_shape='hv', showlegend=legend, zorder=0, line=dict(color=color_palette[0], width=1),
-                                     name='commercials'), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Scatter(x=df.index, y=df["large_idx"], legendgroup='large specs', line_shape='hv', showlegend=legend, zorder=1, line=dict(color=color_palette[1], width=1),
-                                     name='large specs'), row=cur_row, col=cur_col)
-            fig.add_trace(go.Scatter(x=df.index, y=df["small_idx"], legendgroup='small specs', line_shape='hv', showlegend=legend, zorder=2, line=dict(color=color_palette[2], width=1),
-                                     name='small specs'), row=cur_row, col=cur_col)
-            fig.update_yaxes(row=cur_row, col=cur_col, title="index", fixedrange=True,
-                             showgrid=True, gridcolor=grid_color, gridwidth=1, range=[0, 100])
-
-            weeks_back = 78
-            start_idx = max(0, len(df) - weeks_back)
-            start_date = df.index[start_idx]
-            end_date = df.index[-1]
-
-            fig.update_xaxes(
-                row=cur_row, col=cur_col,
-                range=[start_date, end_date],
-                minallowed=df.index[0],   # User cannot scroll left past the first data point
-                maxallowed=df.index[-1],   # User cannot scroll right past the latest data point
-                showspikes=True,
-                spikemode="across",
-                spikesnap="cursor",
-                spikethickness=1,
-                spikecolor=const.BRIGHTER_TEXT_COLOR,
-                spikedash="solid",
-                hoverformat="%Y-%m-%d",
-                matches='x',
-                layer="above traces",
-                showticklabels=True,
-                tickfont_color=const.TEXT_COLOR,
-                showgrid=True
-            )
-            cur_col = cur_col + 1
-
-        # Positioning Plot
-        if enabled_plots in ['All', 'Positioning']:
-            # Only show legend for the first plot
-            legend = cur_row == 1 and cur_col == num_cols
-            fig.add_trace(go.Bar(x=df.index, y=df[const.COMM_NET], legendgroup='commercials', showlegend=legend, zorder=0, marker=dict(opacity=1, line=dict(color=color_palette[0])),
-                                 name='commercials', marker_color=color_palette[0]), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Bar(x=df.index, y=df[const.LARGE_NET], legendgroup='large specs', showlegend=legend, zorder=1, marker=dict(opacity=1, line=dict(color=color_palette[1])),
-                                 name='large specs', marker_color=color_palette[1]), row=cur_row, col=cur_col, secondary_y=False)
-            fig.add_trace(go.Bar(x=df.index, y=df[const.SMALL_NET], legendgroup='small specs', showlegend=legend, zorder=2, marker=dict(opacity=1, line=dict(color=color_palette[2])),
-                                 name='small specs', marker_color=color_palette[2]), row=cur_row, col=cur_col, secondary_y=False)
-
-            if overlay_selection == 'Price' and 'price' in df.columns:
-                fig.add_trace(go.Scatter(x=df.index, y=df[const.CLOSING_PRICE], legendgroup='price', showlegend=legend, zorder=3, line=dict(color=color_palette[3], width=1),
-                                         name='price'), row=cur_row, col=cur_col, secondary_y=True)
-            elif overlay_selection == 'Open Interest':
-                fig.add_trace(go.Scatter(x=df.index, y=df[const.OPEN_INTEREST], legendgroup='open interest', showlegend=legend, zorder=3, line=dict(color=color_palette[4], width=1),
-                                         name='open interest'), row=cur_row, col=cur_col, secondary_y=True)
+    # Define specs based on selection
+    specs = []
+    plot_idx = 0
+    for r in range(num_rows):
+        row_specs = []
+        for c in range(num_cols):
+            if plot_idx < num_selected:
+                p = selected_plots[0]
+                # Most plots use secondary_y for Price or OI overlays
+                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
+                # for idx in range(len(assets)):
+                row_specs.append({"secondary_y": has_secondary})
+                plot_idx += 1
             else:
-                pass
+                row_specs.append(None) # Empty cell in grid
+        specs.append(row_specs)
 
-            fig.update_yaxes(row=cur_row, col=cur_col, title="net positions", showgrid=True,
-                             gridcolor=grid_color, gridwidth=1, secondary_y=False, fixedrange=True)
-            if overlay_selection == 'Open Interest':
-                fig.update_yaxes(
-                    row=cur_row, col=cur_col, title="open interest", showgrid=False, secondary_y=True, fixedrange=True)
-            elif overlay_selection == 'Price':
-                fig.update_yaxes(row=cur_row, col=cur_col, fixedrange=True,
-                                 title="price", showgrid=False, secondary_y=True)
+    fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
 
-            weeks_back = 78
-            start_idx = max(0, len(df) - weeks_back)
-            start_date = df.index[start_idx]
-            end_date = df.index[-1]
+    plot_idx = 0
+    for r in range(1, num_rows + 1):
+        for c in range(1, num_cols + 1):
+            if plot_idx < num_selected:
+                df = cotIndexer.get_symbols_data(assets[plot_idx], lookback)
+                if df is None:
+                    return helpers.get_no_data_html_p()
 
-            fig.update_xaxes(
-                row=cur_row, col=cur_col,
-                range=[start_date, end_date],
-                minallowed=df.index[0],   # User cannot scroll left past the first data point
-                maxallowed=df.index[-1],   # User cannot scroll right past the latest data point
-                showspikes=True,
-                spikemode="across",
-                spikesnap="cursor",
-                spikethickness=1,
-                spikecolor=const.BRIGHTER_TEXT_COLOR,
-                spikedash="solid",
-                hoverformat="%Y-%m-%d",
-                matches='x',
-                layer="above traces",
-                showticklabels=True,
-                tickfont_color=const.TEXT_COLOR,
-                showgrid=True
-            )
+                p = selected_plots[0]
+                setup_highlight_row = None # r if p == "index" else None
 
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor=const.BACKGROUND_COLOR,
-        plot_bgcolor=const.BACKGROUND_COLOR,
-        # Sets color for all graph text
-        font=dict(color=const.BRIGHTER_TEXT_COLOR),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.15,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=14, color=const.BRIGHTER_TEXT_COLOR),
-            bgcolor=const.BACKGROUND_COLOR,
-        ),
-        autosize=True,
-        height=total_height,
-        margin=dict(t=10, b=10, l=10, r=10),
-        hovermode="x unified",
-        hoverlabel=dict(bgcolor="rgba(20, 20, 20, 0.8)",
-                        font=dict(color=const.HOVER_TEXT_COLOR)),
-        bargap=0.2,
-    )
+                if p == "oi_pct":
+                    fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette)
+                elif p == "willco":
+                    fig = helpers.get_willco_plot(fig, df, r, c, color_palette)
+                elif p == "spearman":
+                    fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
+                elif p == "net_pos":
+                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                elif p == "index":
+                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                elif p == "zscore":
+                    fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
+                elif p == "momentum":
+                    fig = helpers.get_momentum_plot(fig, df, r, c, color_palette)
+                elif p == "tension":
+                    fig = helpers.get_tension_plot(fig, df, r, c, color_palette)
+
+                if setup_highlight_row:
+                    helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, r, c)
+
+                plot_idx += 1
+
+    fig = helpers.get_update_xaxes_for_plots(fig, df)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
+
     return dcc.Graph(figure=fig,
                      config={
                         'scrollZoom': False,
@@ -285,7 +256,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, lookback):
                         'displayModeBar': True,
                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
                         'displayLogo': False,
-                        'responsive': True}, style={'width': '100%'
+                        'responsive': True},
+                        style={'width': '100%'
                     })
 
 
@@ -328,6 +300,5 @@ def update_multi_asset_dropdown_options(selected_class):
     if not selected_class:
         return [], None
     assets = cotIndexer.get_assets_for_asset_class(selected_class)
-    assets.sort()
     options = [{'label': x, 'value': x} for x in assets]
     return options, assets
