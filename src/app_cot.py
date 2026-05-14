@@ -81,7 +81,7 @@ navbar = dbc.Navbar(
                     n_intervals=0
                 ),
             ]),
-            href="/",
+            href="/positioning",
             className="ms-3 text-decoration-none"
         ),
 
@@ -117,7 +117,7 @@ app.layout = dbc.Container(
         dcc.Store(id='session_palette_theme_asset_store', storage_type='session'),
         dcc.Store(id='session_setup_highlight_asset_store', storage_type='session'),
         dcc.Store(id='global_lookback_store', storage_type='session', data='Custom'),
-        dcc.Location(id='url', refresh=True),
+        dcc.Location(id='url', refresh=False),
         navbar,
         dash.page_container
     ],
@@ -134,15 +134,6 @@ def toggle_navbar_collapse(n, is_open):
     if n:
         return not is_open
     return is_open
-
-@app.callback(Output('url', 'pathname'),
-              [Input('url', 'pathname')])
-def redirect_root(pathname):
-    if pathname == '/':
-        return '/positioning'
-    elif pathname == '/admin':
-        return '/admin'
-    return dash.no_update
 
 @app.callback(
     Output("navbar_timestamp_text", "children"),

@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 from collections import deque
 from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Input, Output, State
+from dash.exceptions import PreventUpdate
 
 
 dash.register_page(__name__, path='/admin')
@@ -109,11 +110,12 @@ def validate_login(n_clicks, password):
      Output('admin-log-table', 'children'),
      Output('server-log-viewer', 'children')],
     Input('admin-refresh', 'n_intervals'),
-    State('session_admin_auth', 'data')
+    Input('session_admin_auth', 'data'),
+    prevent_initial_call=True
 )
 def update_admin_stats(n, auth_data):
     if auth_data != "AUTHORIZED":
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return PreventUpdate
 
     df = cotDatabase.get_visitor_stats()
     if df.empty:
