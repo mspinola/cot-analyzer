@@ -11,7 +11,8 @@ from datetime import datetime
 # Register this file as a page
 dash.register_page(
     __name__,
-    path='/positioning'
+    path='/',
+    alias=['/positioning']
 )
 
 
