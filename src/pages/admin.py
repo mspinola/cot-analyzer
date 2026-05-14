@@ -36,7 +36,7 @@ def admin_content():
         ], className="mb-4"),
 
         html.Hr(style=const.hr_style),
-        html.H4("Server Logs (visitor_access.log)", style={'color': const.TEXT_COLOR}),
+        html.H4("Server Logs", style={'color': const.TEXT_COLOR}),
 
         # The Scrolling Log Viewer
         html.Div([
@@ -59,23 +59,34 @@ def admin_content():
         html.Hr(style=const.hr_style),
         html.H4("Recent Access Logs", style={'color': const.TEXT_COLOR}),
         html.Div(id='admin-log-table'),
-
-        dcc.Interval(id='admin-refresh', interval=10*1000) # Refresh every 30 seconds
     ], fluid=True)
 
 def layout():
-    # This ID is the div that will switch between login and content
-    return html.Div(id='admin-main-container')
+    return html.Div([
+        # The trigger must be static so Dash can always find it
+        dcc.Interval(id='admin-refresh', interval=30*1000),
+
+        # Div to hold the Login form
+        html.Div(id='admin-login-view', children=login_layout()),
+
+        # Div to hold the actual Dashboard (hidden by default)
+        html.Div(
+            id='admin-dashboard-view',
+            children=admin_content(),
+            style={'display': 'none'}
+        )
+    ])
 
 @callback(
-    Output('admin-main-container', 'children'),
+    [Output('admin-login-view', 'style'),
+     Output('admin-dashboard-view', 'style')],
     Input('session_admin_auth', 'data')
 )
-def render_admin_page(auth_data):
-    # If the session store has the correct token, show the admin content
+def toggle_admin_visibility(auth_data):
+    """Switches visibility between login and dashboard without removing IDs."""
     if auth_data == "AUTHORIZED":
-        return admin_content()
-    return login_layout()
+        return {'display': 'none'}, {'display': 'block'}
+    return {'display': 'block'}, {'display': 'none'}
 
 @callback(
     [Output('session_admin_auth', 'data'),
@@ -97,15 +108,19 @@ def validate_login(n_clicks, password):
      Output('visitor-geo-chart', 'figure'),
      Output('admin-log-table', 'children'),
      Output('server-log-viewer', 'children')],
-    Input('admin-refresh', 'n_intervals')
+    Input('admin-refresh', 'n_intervals'),
+    State('session_admin_auth', 'data')
 )
-def update_admin_stats(n):
+def update_admin_stats(n, auth_data):
+    if auth_data != "AUTHORIZED":
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
     df = cotDatabase.get_visitor_stats()
     if df.empty:
-        return px.scatter(title="No Data"), px.scatter(title="No Data"), html.P("No logs found.")
+        return px.scatter(title="No Data"), px.scatter(title="No Data"), html.P("No logs found."), html.P("No logs found.")
 
     # Fetch raw log content
-    log_content = get_log_tail("log/" + utils.main_cot_logger_file, n=100)
+    log_content = get_log_tail("logs/" + utils.main_cot_logger_file, n=100)
 
     # Time Chart
     df['timestamp'] = pd.to_datetime(df['timestamp'])

@@ -17,7 +17,7 @@ from CotDatabase import CotDatabase
 import utils
 
 # Ensure directories exist
-log_file_name = "log/" + utils.main_cot_logger_file
+log_file_name = "logs/" + utils.main_cot_logger_file
 os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,

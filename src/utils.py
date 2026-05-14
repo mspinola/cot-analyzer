@@ -13,7 +13,7 @@ def get_cot_logger():
 
     # Prevents adding multiple handlers if the function is called twice
     if not logger.handlers:
-        log_dir = "log"
+        log_dir = "logs"
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 

@@ -8,7 +8,12 @@ from dash import Dash, State, html, dcc, callback, Input, Output
 from flask import request
 import requests
 
-app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.DARKLY])
+app = Dash(
+    __name__,
+    use_pages=True,
+    external_stylesheets=[dbc.themes.DARKLY],
+    suppress_callback_exceptions=True
+)
 server = app.server
 
 @app.server.before_request
