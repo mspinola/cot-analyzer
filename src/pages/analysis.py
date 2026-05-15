@@ -23,7 +23,9 @@ AVAILABLE_PLOTS = {
     "willco": "WillCo",
     "spearman": "Spearman Correlation",
     "net_pos": "Net Positions",
+    "net_pos_normalized": "Net Positions Normalized",
     "index": "Positioning Index",
+    "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
@@ -256,8 +258,12 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
             if plot_idx < num_selected:
                 p = selected_plots[plot_idx]
                 # Most plots use secondary_y for Price or OI overlays
-                has_secondary = p in ["oi_pct", "willco", "spearman", "index", "zscore", "momentum", "tension"] and price_overlay
-                has_secondary = has_secondary or p in ["net_pos", "price"]
+                has_secondary = p in ["oi_pct", "willco", "spearman", "index",
+                                      'index_normalized', "zscore", "momentum",
+                                      "tension"] and price_overlay
+                has_secondary = has_secondary or p in ["net_pos",
+                                                       "net_pos_normalized",
+                                                       "price"]
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
             else:
@@ -282,9 +288,13 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
                 elif p == "spearman":
                     fig = helpers.get_spearman_plot(fig, df, r, c, color_palette, price_overlay)
                 elif p == "net_pos":
-                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette, price_overlay)
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET, const.LARGE_NET, const.SMALL_NET, r, c, color_palette, price_overlay)
+                elif p == "net_pos_normalized":
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM, r, c, color_palette, show_price=price_overlay)
                 elif p == "index":
-                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold, price_overlay)
+                    fig = helpers.get_index_plot(fig, df, "comms_idx", "lrg_idx", "sml_idx", r, c, color_palette, min_threshold, max_threshold, price_overlay)
+                elif p == "index_normalized":
+                    fig = helpers.get_index_plot(fig, df, "comms_norm_idx", "lrg_norm_idx", "sml_norm_idx", r, c, color_palette, min_threshold, max_threshold, price_overlay)
                 elif p == "zscore":
                     fig = helpers.get_zscore_plot(fig, df, r, c, color_palette, min_threshold, max_threshold, price_overlay)
                 elif p == "momentum":

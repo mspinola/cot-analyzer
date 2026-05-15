@@ -207,23 +207,33 @@ class CotIndexer:
         lb_name = lookback[0]
         lb_weeks = lookback[1]
         idx_col_header_name = "Custom Idx" if lb_name == "Custom" else str(lb_weeks) + " Idx"
+        norm_idx_col_header_name = "Custom Norm Idx" if lb_name == "Custom" else str(lb_weeks) + " Norm Idx"
         willco_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
 
         for idx in range(len(df)):
             COMM_IDX = "Comm " + idx_col_header_name
             LRG_IDX = "Lrg Spec " + idx_col_header_name
             SML_IDX = "Sml Spec " + idx_col_header_name
+            COMM_NORM_IDX = "Comm " + norm_idx_col_header_name
+            LRG_NORM_IDX = "Lrg Spec " + norm_idx_col_header_name
+            SML_NORM_IDX = "Sml Spec " + norm_idx_col_header_name
             WILLCO = "WILLCO " + willco_col_header_name
             if lb_weeks < 0 or idx < lb_weeks:
                 df.at[idx, COMM_IDX] = None
                 df.at[idx, LRG_IDX] = None
                 df.at[idx, SML_IDX] = None
+                df.at[idx, COMM_NORM_IDX] = None
+                df.at[idx, LRG_NORM_IDX] = None
+                df.at[idx, SML_NORM_IDX] = None
                 df.at[idx, WILLCO] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, COMM_IDX] = metrics.calculate_cot_index(symbol, df[const.COMM_NET], lb_idx, idx)
-                df.at[idx, LRG_IDX] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET], lb_idx, idx)
-                df.at[idx, SML_IDX] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_IDX] = metrics.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
+                df.at[idx, LRG_IDX] = metrics.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
+                df.at[idx, SML_IDX] = metrics.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_NORM_IDX] = metrics.calculate_cot_index(df[const.COMM_NET_NORM], lb_idx, idx)
+                df.at[idx, LRG_NORM_IDX] = metrics.calculate_cot_index(df[const.LARGE_NET_NORM], lb_idx, idx)
+                df.at[idx, SML_NORM_IDX] = metrics.calculate_cot_index(df[const.SMALL_NET_NORM], lb_idx, idx)
                 df.at[idx, WILLCO] = metrics.calculate_willco(df[const.COMM_PCT_OI], lb_idx, idx)
 
         # Z-Score
@@ -340,6 +350,11 @@ class CotIndexer:
             df[const.COMM_NET] = df[const.COMM_LONG_POS_XLS] - df[const.COMM_SHORT_POS_XLS]
             df[const.LARGE_NET] = df[const.LARGE_LONG_POS_XLS] - df[const.LARGE_SHORT_POS_XLS]
             df[const.SMALL_NET] = df[const.SMALL_LONG_POS_XLS] - df[const.SMALL_SHORT_POS_XLS]
+
+            # Add new columns for net positions normalized by open interest
+            df[const.COMM_NET_NORM] = df[const.COMM_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
+            df[const.LARGE_NET_NORM] = df[const.LARGE_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
+            df[const.SMALL_NET_NORM] = df[const.SMALL_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
 
             # We only estimate the last row (current week) since that's the only one that would have a gap between Tuesday and Friday
             df[const.COMM_NET_EST] = df[const.COMM_NET]
@@ -639,6 +654,11 @@ class CotIndexer:
             LRG_IDX = "Lrg Spec " + idx_col_header_name
             SML_IDX = "Sml Spec " + idx_col_header_name
 
+            norm_idx_col_header_name = lookback + " Norm Idx"
+            COMM_NORM_IDX = "Comm " + norm_idx_col_header_name
+            LRG_NORM_IDX = "Lrg Spec " + norm_idx_col_header_name
+            SML_NORM_IDX = "Sml Spec " + norm_idx_col_header_name
+
             zscore_col_header_name = lookback + " Zscore"
             COMM_ZS = "Comm " + zscore_col_header_name
             LRG_ZS = "Lrg Spec " + zscore_col_header_name
@@ -668,6 +688,10 @@ class CotIndexer:
             result["lrg_idx"] = df[LRG_IDX]
             result["sml_idx"] = df[SML_IDX]
 
+            result["comms_norm_idx"] = df[COMM_NORM_IDX]
+            result["lrg_norm_idx"] = df[LRG_NORM_IDX]
+            result["sml_norm_idx"] = df[SML_NORM_IDX]
+
             result["comms_zscore"] = df[COMM_ZS]
             result["lrg_zscore"] = df[LRG_ZS]
             result["sml_zscore"] = df[SML_ZS]
@@ -687,6 +711,9 @@ class CotIndexer:
             result[const.COMM_NET] = df[const.COMM_NET]
             result[const.LARGE_NET] = df[const.LARGE_NET]
             result[const.SMALL_NET] = df[const.SMALL_NET]
+            result[const.COMM_NET_NORM] = df[const.COMM_NET_NORM]
+            result[const.LARGE_NET_NORM] = df[const.LARGE_NET_NORM]
+            result[const.SMALL_NET_NORM] = df[const.SMALL_NET_NORM]
             result[const.LARGE_FLIP] = df[const.LARGE_FLIP]
 
             result[const.COMM_PCT_OI] = df[const.COMM_PCT_OI]
@@ -726,8 +753,7 @@ class CotIndexer:
                 const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST,
                 COMM_ZS, LRG_ZS, SML_ZS,
                 COMM_SPR, LRG_SPR, SML_SPR,
-                WILLCO
-               ]
+                WILLCO]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -748,9 +774,9 @@ class CotIndexer:
                         utils.cot_logger.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
 
                         lb_idx = idx - lb_weeks
-                        df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)
-                        df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET_EST], lb_idx, idx)
-                        df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET_EST], lb_idx, idx)
+                        df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(df[const.COMM_NET_EST], lb_idx, idx)
+                        df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(df[const.LARGE_NET_EST], lb_idx, idx)
+                        df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(df[const.SMALL_NET_EST], lb_idx, idx)
                     else:
                         df.at[idx, const.COMM_IDX_EST] = 0
                         df.at[idx, const.LARGE_IDX_EST] = 0

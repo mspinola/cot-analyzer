@@ -10,7 +10,7 @@ def calculate_z_score(col_to_search, lb_weeks):
     return z_score
 
 
-def calculate_cot_index(symbol, col_to_search, lb_idx, cur_idx):
+def calculate_cot_index(col_to_search, lb_idx, cur_idx):
     range_to_search = col_to_search[lb_idx:cur_idx+1]
     min_net = range_to_search.min()
     max_net = range_to_search.max()

@@ -23,7 +23,9 @@ AVAILABLE_PLOTS = {
     "willco": "WillCo",
     "spearman": "Spearman Correlation",
     "net_pos": "Net Positions",
+    "net_pos_normalized": "Net Positions Normalized",
     "index": "Positioning Index",
+    "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
@@ -204,7 +206,10 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
             if plot_idx < num_selected:
                 p = selected_plots[0]
                 # Most plots use secondary_y for Price or OI overlays
-                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
+                has_secondary = p in ["oi_pct", "willco", "spearman",
+                                      "net_pos", "net_pos_normalized",
+                                      "index", "index_normalized", "zscore",
+                                      "momentum", "tension"]
                 # for idx in range(len(assets)):
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
@@ -232,9 +237,13 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                 elif p == "spearman":
                     fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
                 elif p == "net_pos":
-                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette, show_price=True, show_flips=True)
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET, const.LARGE_NET, const.SMALL_NET, r, c, color_palette, show_price=True, show_flips=False)
+                elif p == "net_pos_normalized":
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM, r, c, color_palette, show_price=True, show_flips=False)
                 elif p == "index":
-                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                    fig = helpers.get_index_plot(fig, df, "comms_idx", "lrg_idx", "sml_idx", r, c, color_palette, min_threshold, max_threshold)
+                elif p == "index_normalized":
+                    fig = helpers.get_index_plot(fig, df, "comms_norm_idx", "lrg_norm_idx", "sml_norm_idx", r, c, color_palette, min_threshold, max_threshold)
                 elif p == "zscore":
                     fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
                 elif p == "momentum":

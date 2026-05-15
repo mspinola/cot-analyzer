@@ -1,5 +1,6 @@
 
 from dash import html
+from narwhals import col
 
 import constants as const
 import plotly.graph_objects as go
@@ -78,11 +79,11 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
     return fig
 
 
-def get_net_pos_plot(fig, df, row, col, color_palette, show_price=False, show_flips=False):
+def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_price=False, show_flips=False):
     showlegend = row == 1 and col == 1 or (show_price is False and row == 1 and col == 2)  # Show legend on first plot or on price plot if overlay is on
-    add_trace_to_all(fig, df, const.COMM_NET, row, col, "Commercials", color_palette[0], 0, is_bar=True, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.LARGE_NET, row, col, "Large Specs", color_palette[1], 1, is_bar=True, showlegend=showlegend)
-    add_trace_to_all(fig, df, const.SMALL_NET, row, col, "Small Specs", color_palette[2], 2, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, comms_col, row, col, "Commercials", color_palette[0], 0, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, lrg_col, row, col, "Large Specs", color_palette[1], 1, is_bar=True, showlegend=showlegend)
+    add_trace_to_all(fig, df, sml_col, row, col, "Small Specs", color_palette[2], 2, is_bar=True, showlegend=showlegend)
     add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest", color_palette[4], 3, secondary=True, showlegend=showlegend)
     fig.update_yaxes(title="net position", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="OI", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
@@ -107,11 +108,11 @@ def get_net_pos_plot(fig, df, row, col, color_palette, show_price=False, show_fl
     return fig
 
 
-def get_index_plot(fig, df, row, col, color_palette, min_threshold=None, max_threshold=None, show_price=True):
+def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, min_threshold=None, max_threshold=None, show_price=True):
     showlegend = row == 1 and col == 1 or (show_price is False and row == 1 and col == 2)  # Show legend on first plot or on price plot if overlay is on
-    add_trace_to_all(fig, df, "comms_idx", row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
-    add_trace_to_all(fig, df, "lrg_idx", row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
-    add_trace_to_all(fig, df, "sml_idx", row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
+    add_trace_to_all(fig, df, comms_col, row, col, "Commercials", color_palette[0], 0, showlegend=showlegend)
+    add_trace_to_all(fig, df, lrg_col, row, col, "Large Specs", color_palette[1], 1, showlegend=showlegend)
+    add_trace_to_all(fig, df, sml_col, row, col, "Small Specs", color_palette[2], 2, showlegend=showlegend)
     if show_price:
         add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, showlegend=showlegend)
         fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
