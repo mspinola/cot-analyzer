@@ -57,8 +57,8 @@ def get_willco_plot(fig, df, row, col, color_palette):
         fig.add_hline(y=const.WILLCO_MIN_THRESHOLD, line_dash="dot", line_color="green", opacity=const.HLINE_OPACITY, row=row, col=col)
     fig.update_yaxes(title="WILLCO", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
-    fig.add_hrect(y0=const.WILLCO_MAX_THRESHOLD, y1=100, fillcolor="red", opacity=0.03, line_width=0, row=row, col=1)
-    fig.add_hrect(y0=0, y1=const.WILLCO_MIN_THRESHOLD, fillcolor="green", opacity=0.05, line_width=0, row=row, col=1)
+    fig.add_hrect(y0=const.WILLCO_MAX_THRESHOLD, y1=100, fillcolor="green", opacity=0.05, line_width=0, row=row, col=1)
+    fig.add_hrect(y0=0, y1=const.WILLCO_MIN_THRESHOLD, fillcolor="red", opacity=0.03, line_width=0, row=row, col=1)
     return fig
 
 def get_spearman_plot(fig, df, row, col, color_palette):
