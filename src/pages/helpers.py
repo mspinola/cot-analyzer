@@ -78,7 +78,7 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
     return fig
 
 
-def get_net_pos_plot(fig, df, row, col, color_palette, show_price=False):
+def get_net_pos_plot(fig, df, row, col, color_palette, show_price=False, show_flips=False):
     showlegend = row == 1 and col == 1 or (show_price is False and row == 1 and col == 2)  # Show legend on first plot or on price plot if overlay is on
     add_trace_to_all(fig, df, const.COMM_NET, row, col, "Commercials", color_palette[0], 0, is_bar=True, showlegend=showlegend)
     add_trace_to_all(fig, df, const.LARGE_NET, row, col, "Large Specs", color_palette[1], 1, is_bar=True, showlegend=showlegend)
@@ -87,8 +87,7 @@ def get_net_pos_plot(fig, df, row, col, color_palette, show_price=False):
     fig.update_yaxes(title="net position", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
     fig.update_yaxes(title="OI", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
 
-    plot_flip = False
-    if plot_flip:
+    if show_flips:
         flip_dates = df[df[const.LARGE_FLIP] == True].index
         for flip_date in flip_dates:
             # Determine color based on the direction of the flip

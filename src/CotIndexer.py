@@ -280,7 +280,7 @@ class CotIndexer:
         SML_MOVE = "Sml Spec " + momentum_idx_header_name
         df[COMM_MOVE] = metrics.calculate_momentum_index(df["Comm " + idx_col_name])
         df[LRG_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
-        df[SML_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
+        df[SML_MOVE] = metrics.calculate_momentum_index(df["Sml Spec " + idx_col_name])
 
 
     @staticmethod

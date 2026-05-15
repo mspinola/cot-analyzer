@@ -232,7 +232,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                 elif p == "spearman":
                     fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
                 elif p == "net_pos":
-                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette, show_price=True, show_flips=True)
                 elif p == "index":
                     fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
                 elif p == "zscore":
