@@ -1,5 +1,6 @@
 import constants as const
 from indexer import cotIndexer
+import utils
 
 import dash
 import dash_bootstrap_components as dbc
@@ -129,6 +130,7 @@ def update_local_lookback(value):
 )
 def get_CFTC_df_selection(assets, selected_columns, setup, lookback):
     """Dash callback to update the positioning table"""
+    utils.cot_logger.info(f"Updating positioning table with assets={assets}, selected_columns={selected_columns}, setup={setup}, lookback={lookback}")
     # TODO use setup to color index values in the table
 
     if not assets:

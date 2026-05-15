@@ -1,7 +1,7 @@
 __pycache__
 .DS_Store
+.venv
 data
-log
 logs
 venv
 .env

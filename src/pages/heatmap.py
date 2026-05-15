@@ -136,6 +136,7 @@ def update_local_lookback(value):
      Input('session_palette_theme_asset_store', 'data')]
 )
 def render_heatmap_layout(layout_type, assest_classes, setup, lookback, palette_name):
+    utils.cot_logger.info(f"Rendering heatmap with Layout: {layout_type}, Asset Classes: {assest_classes}, Setup: {setup}, Lookback: {lookback}, Palette: {palette_name}")
     if not assest_classes:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': const.TEXT_COLOR})
     color_palette = cotIndexer.get_palette(palette_name)

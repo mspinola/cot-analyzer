@@ -169,6 +169,7 @@ def set_default_columns(pathname, current_val):
      Input('graphs_columns_selector', 'value')]
 )
 def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback, num_cols):
+    utils.cot_logger.info(f"Generating graphs for Asset Class: {asset_class}, Selected Assets: {selected_assets}, Plot: {selected_plot}, Lookback: {lookback}, Columns: {num_cols}")
     selected_plots = [selected_plot]
     if selected_assets is None or len(selected_assets) == 0 or selected_plots is None:
         return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
