@@ -706,3 +706,40 @@ body {
 .dense-table tbody td {
     white-space: nowrap !important;
 }
+
+/* 1. Size of the scrollbar (height for horizontal, width for vertical) */
+.ag-theme-alpine-dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+/* 2. The track (the background the scrollbar slides along) */
+.ag-theme-alpine-dark ::-webkit-scrollbar-track {
+    background: #1a1a1a; /* Matches your dark slate background */
+    border-radius: 4px;
+}
+
+/* 3. The thumb (the part you actually click and drag) */
+.ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
+    background: #3a3f47; /* A subtle, dim gray/blue */
+    border-radius: 4px;
+}
+
+/* 4. Hover effect when the user interacts with the scrollbar */
+.ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
+    background: #4f5660; /* Slightly lighter gray when hovered */
+}
+
+/* 5. Fallback for Firefox (Firefox doesn't use WebKit rules) */
+.ag-theme-alpine-dark {
+    scrollbar-color: #3a3f47 #1a1a1a; /* thumb-color track-color */
+    scrollbar-width: thin;
+}
+
+/* Match the bottom-left corner spacer to the dark scrollbar track */
+.ag-theme-alpine-dark .ag-horizontal-left-spacer,
+.ag-theme-alpine-dark .ag-horizontal-right-spacer {
+    background-color: #1a1a1a !important;
+    border-right: none !important;
+    border-left: none !important;
+}

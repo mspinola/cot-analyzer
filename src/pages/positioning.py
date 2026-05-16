@@ -288,7 +288,7 @@ def get_asset_class_accordions(df):
             ],
             className="ag-theme-quartz-dark",
             defaultColDef={"sortable": True, "filter": True},
-            dashGridOptions={"domLayout": "autoHeight", "pagination": True},
+            dashGridOptions={"domLayout": "autoHeight", "pagination": False},
             columnSize="autoSize",
         )
 
