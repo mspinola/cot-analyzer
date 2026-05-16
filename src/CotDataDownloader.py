@@ -228,6 +228,7 @@ class CotDataDownloader:
                 continue
 
             database_last_modified_time = self.cotDatabase.get_zipfile_last_modified_time(year)
+            utils.downloader_logger.info(f"Checking {year}.zip - Server date: {server_file_date}, Database date: {database_last_modified_time}")
             if database_last_modified_time:
                 if server_file_date > database_last_modified_time:
                     utils.downloader_logger.info(f'Updating: {year}.zip')
@@ -236,7 +237,7 @@ class CotDataDownloader:
                     self.cotDatabase.update_zip_file(year, server_file_date)
                     updated_years.append(year)
                 else:
-                    utils.downloader_logger.info(f'No update needed for {year}.zip')
+                    utils.downloader_logger.info(f'No update needed for {year}.zip with server date: {server_file_date} and database date: {database_last_modified_time}')
             else:
                 utils.downloader_logger.info(f'Downloading: {year}.zip')
                 url = self.url_prefix + f'{year}.zip'
