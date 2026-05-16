@@ -6,10 +6,7 @@ from indexer import cotIndexer
 import dash
 import dash_bootstrap_components as dbc
 import math
-import plotly.graph_objects as go
-
-from dash import State, html, dcc, Input, Output, callback
-from plotly.subplots import make_subplots
+from dash import dcc, html, callback, Input, Output, State
 
 
 # Register this file as a page
@@ -29,7 +26,7 @@ AVAILABLE_PLOTS = {
     "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
-    "tension": "Tension Oscillator"
+    "tension": "Tension/Imbalance Oscillator"
 }
 
 layout = html.Div([
@@ -58,7 +55,7 @@ layout = html.Div([
                             persistence=True,
                             id='analysis_single_asset_class_input',
                             options=[{'label': x, 'value': x}
-                                    for x in cotIndexer.get_asset_classes()],
+                                     for x in cotIndexer.get_asset_classes()],
                             value=f"{cotIndexer.get_default_asset_class()}",
                             className="mb-3 bg-dark text-white border-secondary",
                         ),

@@ -15,7 +15,7 @@ app = Dash(
         dbc.themes.DARKLY,
         "https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css"
     ],
-    suppress_callback_exceptions=True,
+    suppress_callback_exceptions=False,
 )
 server = app.server
 
@@ -93,10 +93,11 @@ navbar = dbc.Navbar(
         dbc.Collapse(
             dbc.Nav(
                 [
-                    dbc.NavItem(dbc.NavLink("Graphs", href="/graphs", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Asset Class", href="/graphs", active="partial", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Table", href="/", active="exact", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="partial", style={'fontSize': '0.9rem'})),
-                    dbc.NavItem(dbc.NavLink("Analysis", href="/analysis", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Asset Analysis", href="/analysis", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Aggregation", href="/aggregation", active="partial", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Options", href="/options", active="partial", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("About", href="/about", active="partial", style={'fontSize': '0.9rem'}, className="me-2")),
                 ],

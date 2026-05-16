@@ -47,7 +47,10 @@ The application normalizes the raw position data over user-defined **Lookback Pe
 * **How to Trade it:** It isolates the "Smart Money." Readings above `80` suggest Commercials are heavily accumulated and a bullish reversal is likely. Readings below `20` suggest they are distributing/shorting, warning of a bearish top. The app draws horizontal threshold lines to help you spot these zones.
 
 ### D. Tension Oscillator
-* **What it is:** A custom metric calculated as `Large Spec Net / Abs(Commercial Net)`, which is then Z-scored. It measures the "strain" between the trend-followers and the hedgers.
+* **What it is:** A custom metric calculated as `Large Spec Net / Abs(Commercial Net)`, which is then Z-scored. It measures the "strain" or imbalance between the trend-followers and the hedgers.
+    * a high positive z-score means the Large Specs are stretched to an extreme long position and the Commercials are stretched to an extreme short position. Therefore, a high positive tension z-score is a bearish signal indicating an overbought, crowded long trade that is ripe for a reversal.
+    * a low negative z-score means the Large Specs are stretched to an extreme short position and the Commercials are stretched to an extreme long position.
+When that "rubber band snaps back" in the direction of the Commercials, it results in downward price action.
 * **How to Trade it:** High tension indicates that Large Specs are aggressively fighting the Commercials. When tension reaches extreme standard deviations, the "rubber band" is stretched to its limit and is prone to snap back, usually in the direction of the Commercials' positioning.
 
 ### E. Net Position % of OI

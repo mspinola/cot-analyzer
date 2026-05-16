@@ -28,7 +28,7 @@ AVAILABLE_PLOTS = {
     "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
-    "tension": "Tension Oscillator"
+    "tension": "Tension/Imbalance Oscillator"
 }
 
 layout = html.Div([
