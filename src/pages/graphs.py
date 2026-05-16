@@ -191,11 +191,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
     color_palette = cotIndexer.get_palette(palette_name)
 
     titles = []
-    for idx, asset in enumerate(assets):
-        if idx == 0:
-            titles.append(AVAILABLE_PLOTS[selected_plot] + ":  " + asset)
-        else:
-            titles.append(asset)
+    for asset in assets:
+        titles.append(asset)
 
     # Define specs based on selection
     specs = []
@@ -210,7 +207,6 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                                       "net_pos", "net_pos_normalized",
                                       "index", "index_normalized", "zscore",
                                       "momentum", "tension"]
-                # for idx in range(len(assets)):
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
             else:
@@ -257,7 +253,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                 plot_idx += 1
 
     fig = helpers.get_update_xaxes_for_plots(fig, df)
-    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols, AVAILABLE_PLOTS[selected_plot])
 
     return dcc.Graph(figure=fig,
                      config={

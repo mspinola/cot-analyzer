@@ -11,8 +11,11 @@ import requests
 app = Dash(
     __name__,
     use_pages=True,
-    external_stylesheets=[dbc.themes.DARKLY],
-    suppress_callback_exceptions=True
+    external_stylesheets=[
+        dbc.themes.DARKLY,
+        "https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css"
+    ],
+    suppress_callback_exceptions=True,
 )
 server = app.server
 

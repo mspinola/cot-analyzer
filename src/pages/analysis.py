@@ -19,6 +19,7 @@ dash.register_page(
 )
 
 AVAILABLE_PLOTS = {
+    "price_candles": "Price (Candles)",
     "oi_pct": "Net Position % of OI",
     "willco": "WillCo",
     "spearman": "Spearman Correlation",
@@ -243,10 +244,6 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
 
     num_cols = int(num_cols)
     num_selected = len(selected_plots)
-    if not price_overlay:
-        num_selected += 1  # Account for the separate price plot when overlay is off
-        titles.insert(1, "Price")  # Add price title if overlay is on
-        selected_plots.insert(1, "price")  # We'll add the price as a separate plot if overlay is off
     num_rows = math.ceil(num_selected / num_cols)
 
     # Define specs based on selection
@@ -262,8 +259,7 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
                                       'index_normalized', "zscore", "momentum",
                                       "tension"] and price_overlay
                 has_secondary = has_secondary or p in ["net_pos",
-                                                       "net_pos_normalized",
-                                                       "price"]
+                                                       "net_pos_normalized"]
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
             else:
@@ -279,7 +275,7 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
                 p = selected_plots[plot_idx]
                 setup_highlight_row = None  # r if p == "index" else None
 
-                if p == "price":
+                if p == "price_candles":
                     fig = helpers.get_price_plot(fig, df, r, c, color_palette)
                 elif p == "oi_pct":
                     fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette, price_overlay)
@@ -308,14 +304,22 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
                 plot_idx += 1
 
     fig = helpers.get_update_xaxes_for_plots(fig, df)
-    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols, asset)
 
     return dcc.Graph(figure=fig,
                      config={
-                        'scrollZoom': False,
-                        'doubleClick': 'reset',
-                        'displayModeBar': True,
-                        'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
-                        'responsive': True},
-                        style={'width': '100%'
-                    })
+                         'scrollZoom': False,
+                         'doubleClick': 'reset',
+                         'displayModeBar': True,
+                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                         'responsive': True,
+                         # Enable the drawing tools in the mode bar
+                         #  'modeBarButtonsToAdd': [
+                         #      'drawline',
+                         #      'drawrect',
+                         #      'eraseshape'
+                         #  ],
+                         'displayLogo': False,
+                     },
+                     style={'width': '100%'}
+                     )

@@ -7,7 +7,6 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
 
-from datetime import datetime
 from dash import callback, dcc, html, Input, Output
 
 import utils
@@ -108,7 +107,6 @@ layout = html.Div([
     Input('heatmap_lookback_selector', 'value')
 )
 def update_global_lookback(value):
-    print("heatmap cb select lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:
@@ -120,7 +118,6 @@ def update_global_lookback(value):
     Input('global_lookback_store', 'data')
 )
 def update_local_lookback(value):
-    print("heatmap cb redirect lb: ", value)
     if value == "26" or value == "52" or value == "Custom":
         return value
     else:

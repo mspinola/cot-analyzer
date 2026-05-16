@@ -1,13 +1,24 @@
+# Server Side Setup
 
+## Setup SSL
 
-
-setup SSL
-
+```bash
 apt install nginx
 apt install certbot python3-certbot-nginx
 certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
 
-Create Env Variables
+## Set Timezone to Match Expected New York Database Update Time
+
+```bash
+# Check current timezone
+timedatectl
+
+# Set timezone to Eastern Time if needed
+sudo timedatectl set-timezone America/New_York
+```
+
+## Create Env Variables
 
 Create a hidden file in your project directory (e.g., .env) and restrict its permissions so only the service user can read it.
 
