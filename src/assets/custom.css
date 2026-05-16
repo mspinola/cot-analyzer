@@ -649,11 +649,17 @@ border: 1px solid #ABB8C9 !important;
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
 }
 
-/* Sets the background for the entire page */
-body, .container-fluid {
+//* Set background for both, but apply layout resets ONLY to the body */
+body {
     background-color: #1a1a1a !important;
     margin: 0;
     padding: 0;
+    overflow-x: hidden; /* Failsafe to hide any minor row overflows */
+}
+
+/* Let Bootstrap handle its own container padding */
+.container-fluid {
+    background-color: #1a1a1a !important;
 }
 
 .nav-link {
@@ -699,4 +705,49 @@ body, .container-fluid {
 /* Optional: Keep data cells on a single line to prevent row bloating */
 .dense-table tbody td {
     white-space: nowrap !important;
+}
+
+
+
+/* 1. Force Native Dark Mode & Base Backgrounds */
+.ag-theme-quartz-dark {
+    color-scheme: dark !important;
+    --ag-background-color: #1a1a1a !important;
+    --ag-header-background-color: #1a1a1a !important;
+}
+
+/* 2. Custom WebKit Scrollbar Geometry (Overrides Mac Auto-hide) */
+.ag-theme-quartz-dark ::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+    -webkit-appearance: none !important; /* Strips Apple's invisible UI */
+    display: block !important;
+}
+
+/* 3. Scrollbar Track & Thumb Coloring */
+.ag-theme-quartz-dark ::-webkit-scrollbar-track {
+    background: #1a1a1a !important;
+}
+
+.ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
+    background: #3a3f47 !important;
+    border-radius: 6px !important;
+    border: 2px solid #1a1a1a !important; /* Creates a clean padded look */
+}
+
+/* 4. Annihilate the White Safari Corners & Spacers (Under Pinned Columns) */
+.ag-theme-quartz-dark .ag-horizontal-left-spacer,
+.ag-theme-quartz-dark .ag-horizontal-right-spacer,
+.ag-theme-quartz-dark .ag-scroller-corner {
+    background: #1a1a1a !important;
+    background-color: #1a1a1a !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 5. Global WebKit Corner Catch-all (For absolute Safari compliance) */
+::-webkit-scrollbar-corner,
+.ag-theme-quartz-dark *::-webkit-scrollbar-corner {
+    background-color: #1a1a1a !important
 }

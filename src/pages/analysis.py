@@ -19,11 +19,14 @@ dash.register_page(
 )
 
 AVAILABLE_PLOTS = {
+    "price_candles": "Price (Candles)",
     "oi_pct": "Net Position % of OI",
     "willco": "WillCo",
     "spearman": "Spearman Correlation",
     "net_pos": "Net Positions",
+    "net_pos_normalized": "Net Positions Normalized",
     "index": "Positioning Index",
+    "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
@@ -98,6 +101,21 @@ layout = html.Div([
                             style={'minWidth': '250px'}
                         ),
                     ], xs=12, md=4),
+
+                    dbc.Col([
+                        html.Label("Price Overlay", style=const.label_style),
+                        dbc.RadioItems(
+                            id='analysis_price_overlay_radio',
+                            options=[
+                                {"label": "On", "value": True},
+                                {"label": "Off", "value": False},
+                            ],
+                            value=True, # Default to showing the price
+                            inline=True,
+                            className="mb-3",
+                            style={'color': const.TEXT_COLOR}
+                        )
+                    ], xs=6, md="auto"),
                 ], align="center"),
             ],
             title="CHART CONFIGURATION",
@@ -207,9 +225,12 @@ def set_default_columns(pathname, current_val):
      Input('session_setup_highlight_asset_store', 'data'),
      Input('global_lookback_store', 'data'),
      Input('analysis_plot_selector', 'value'),
-     Input('analysis_columns_selector', 'value')]
+     Input('analysis_columns_selector', 'value'),
+     Input('analysis_price_overlay_radio', 'value')]
 )
-def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, num_cols):
+def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, num_cols, price_overlay):
+    utils.cot_logger.info(f"Updating analysis stack with asset={asset}, setup={setup}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}, price_overlay={price_overlay}")
+
     if not asset or not selected_plots or selected_plots == 0:
         return html.P("SELECT ASSET AND PLOTS", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
@@ -217,13 +238,13 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
     if df is None:
         return html.P("No Data", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
-    num_cols = int(num_cols)
-    num_selected = len(selected_plots)
-    num_rows = math.ceil(num_selected / num_cols)
-
     min_threshold, max_threshold = utils.parse_setup_thresholds(setup)
     color_palette = cotIndexer.get_palette(palette_name)
     titles = [AVAILABLE_PLOTS[p] for p in selected_plots]
+
+    num_cols = int(num_cols)
+    num_selected = len(selected_plots)
+    num_rows = math.ceil(num_selected / num_cols)
 
     # Define specs based on selection
     specs = []
@@ -234,11 +255,15 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
             if plot_idx < num_selected:
                 p = selected_plots[plot_idx]
                 # Most plots use secondary_y for Price or OI overlays
-                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
+                has_secondary = p in ["oi_pct", "willco", "spearman", "index",
+                                      'index_normalized', "zscore", "momentum",
+                                      "tension"] and price_overlay
+                has_secondary = has_secondary or p in ["net_pos",
+                                                       "net_pos_normalized"]
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
             else:
-                row_specs.append(None) # Empty cell in grid
+                row_specs.append(None)  # Empty cell in grid
         specs.append(row_specs)
 
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
@@ -248,24 +273,30 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
         for c in range(1, num_cols + 1):
             if plot_idx < num_selected:
                 p = selected_plots[plot_idx]
-                setup_highlight_row = None # r if p == "index" else None
+                setup_highlight_row = None  # r if p == "index" else None
 
-                if p == "oi_pct":
-                    fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette)
+                if p == "price_candles":
+                    fig = helpers.get_price_plot(fig, df, r, c, color_palette)
+                elif p == "oi_pct":
+                    fig = helpers.get_open_interest_percent_plot(fig, df, r, c, color_palette, price_overlay)
                 elif p == "willco":
-                    fig = helpers.get_willco_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_willco_plot(fig, df, r, c, color_palette, price_overlay)
                 elif p == "spearman":
-                    fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_spearman_plot(fig, df, r, c, color_palette, price_overlay)
                 elif p == "net_pos":
-                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET, const.LARGE_NET, const.SMALL_NET, r, c, color_palette, price_overlay)
+                elif p == "net_pos_normalized":
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM, r, c, color_palette, show_price=price_overlay)
                 elif p == "index":
-                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                    fig = helpers.get_index_plot(fig, df, "comms_idx", "lrg_idx", "sml_idx", r, c, color_palette, min_threshold, max_threshold, price_overlay)
+                elif p == "index_normalized":
+                    fig = helpers.get_index_plot(fig, df, "comms_norm_idx", "lrg_norm_idx", "sml_norm_idx", r, c, color_palette, min_threshold, max_threshold, price_overlay)
                 elif p == "zscore":
-                    fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_zscore_plot(fig, df, r, c, color_palette, min_threshold, max_threshold, price_overlay)
                 elif p == "momentum":
-                    fig = helpers.get_momentum_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_momentum_plot(fig, df, r, c, color_palette, price_overlay)
                 elif p == "tension":
-                    fig = helpers.get_tension_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_tension_plot(fig, df, r, c, color_palette, price_overlay)
 
                 if setup_highlight_row:
                     helpers.get_setup_highlighting(fig, df, min_threshold, max_threshold, r, c)
@@ -273,14 +304,22 @@ def update_analysis_stack(palette_name, asset, setup, lookback, selected_plots, 
                 plot_idx += 1
 
     fig = helpers.get_update_xaxes_for_plots(fig, df)
-    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols, asset)
 
     return dcc.Graph(figure=fig,
                      config={
-                        'scrollZoom': False,
-                        'doubleClick': 'reset',
-                        'displayModeBar': True,
-                        'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
-                        'responsive': True},
-                        style={'width': '100%'
-                    })
+                         'scrollZoom': False,
+                         'doubleClick': 'reset',
+                         'displayModeBar': True,
+                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                         'responsive': True,
+                         # Enable the drawing tools in the mode bar
+                         #  'modeBarButtonsToAdd': [
+                         #      'drawline',
+                         #      'drawrect',
+                         #      'eraseshape'
+                         #  ],
+                         'displayLogo': False,
+                     },
+                     style={'width': '100%'}
+                     )

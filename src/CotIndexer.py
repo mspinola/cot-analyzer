@@ -125,7 +125,6 @@ class CotIndexer:
             self.instruments[instrument].df.index = range(
                 0, len(self.instruments[instrument].df))
 
-
     @staticmethod
     def estimate_current_gap_positions(df, symbol, COMM_CORR, LARGE_CORR, SMALL_CORR):
         """Estimates the net position change from Tuesday close to Friday."""
@@ -201,29 +200,38 @@ class CotIndexer:
 
         utils.cot_logger.debug(f"Estimated positions for {symbol} - Comm: {df.at[df.index[-1], const.COMM_NET_EST]}, Large: {df.at[df.index[-1], const.LARGE_NET_EST]}, Small: {df.at[df.index[-1], const.SMALL_NET_EST]}")
 
-
     @staticmethod
     def process_lookback(lookback, symbol, df):
         lb_name = lookback[0]
         lb_weeks = lookback[1]
         idx_col_header_name = "Custom Idx" if lb_name == "Custom" else str(lb_weeks) + " Idx"
+        norm_idx_col_header_name = "Custom Norm Idx" if lb_name == "Custom" else str(lb_weeks) + " Norm Idx"
         willco_col_header_name = "Custom" if lb_name == "Custom" else str(lb_weeks)
 
         for idx in range(len(df)):
             COMM_IDX = "Comm " + idx_col_header_name
             LRG_IDX = "Lrg Spec " + idx_col_header_name
             SML_IDX = "Sml Spec " + idx_col_header_name
+            COMM_NORM_IDX = "Comm " + norm_idx_col_header_name
+            LRG_NORM_IDX = "Lrg Spec " + norm_idx_col_header_name
+            SML_NORM_IDX = "Sml Spec " + norm_idx_col_header_name
             WILLCO = "WILLCO " + willco_col_header_name
             if lb_weeks < 0 or idx < lb_weeks:
                 df.at[idx, COMM_IDX] = None
                 df.at[idx, LRG_IDX] = None
                 df.at[idx, SML_IDX] = None
+                df.at[idx, COMM_NORM_IDX] = None
+                df.at[idx, LRG_NORM_IDX] = None
+                df.at[idx, SML_NORM_IDX] = None
                 df.at[idx, WILLCO] = None
             else:
                 lb_idx = idx - lb_weeks
-                df.at[idx, COMM_IDX] = metrics.calculate_cot_index(symbol, df[const.COMM_NET], lb_idx, idx)
-                df.at[idx, LRG_IDX] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET], lb_idx, idx)
-                df.at[idx, SML_IDX] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_IDX] = metrics.calculate_cot_index(df[const.COMM_NET], lb_idx, idx)
+                df.at[idx, LRG_IDX] = metrics.calculate_cot_index(df[const.LARGE_NET], lb_idx, idx)
+                df.at[idx, SML_IDX] = metrics.calculate_cot_index(df[const.SMALL_NET], lb_idx, idx)
+                df.at[idx, COMM_NORM_IDX] = metrics.calculate_cot_index(df[const.COMM_NET_NORM], lb_idx, idx)
+                df.at[idx, LRG_NORM_IDX] = metrics.calculate_cot_index(df[const.LARGE_NET_NORM], lb_idx, idx)
+                df.at[idx, SML_NORM_IDX] = metrics.calculate_cot_index(df[const.SMALL_NET_NORM], lb_idx, idx)
                 df.at[idx, WILLCO] = metrics.calculate_willco(df[const.COMM_PCT_OI], lb_idx, idx)
 
         # Z-Score
@@ -280,8 +288,7 @@ class CotIndexer:
         SML_MOVE = "Sml Spec " + momentum_idx_header_name
         df[COMM_MOVE] = metrics.calculate_momentum_index(df["Comm " + idx_col_name])
         df[LRG_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
-        df[SML_MOVE] = metrics.calculate_momentum_index(df["Lrg Spec " + idx_col_name])
-
+        df[SML_MOVE] = metrics.calculate_momentum_index(df["Sml Spec " + idx_col_name])
 
     @staticmethod
     def retrieve_report_date_closing_prices(instrument, years):
@@ -290,47 +297,62 @@ class CotIndexer:
         ticker = f"{symbol}=F"  # Yahoo Finance ticker format for futures contracts
 
         try:
-            # Fetch and Merge Closing Price for the Report Date
-            utils.cot_logger.debug(f"Retrieving closing prices for {symbol} from Yahoo Finance...")
+            utils.cot_logger.debug(f"Retrieving OHLC prices for {symbol} from Yahoo Finance...")
             start_date = f"{years[0]}-01-01"
             price_data = yf.download(ticker, start=start_date, interval="1d", progress=False)
-            YAHOO_PRICE_TOKEN = 'Close'
 
             if not price_data.empty:
-                # Clean the price data
+                # Clean the price data (safely handle multi-index if multiple tokens are returned)
                 if isinstance(price_data.columns, pd.MultiIndex):
-                    price_series = price_data[YAHOO_PRICE_TOKEN][ticker]
+                    price_df = price_data.loc[:, (['Open', 'High', 'Low', 'Close'], ticker)].copy()
+                    price_df.columns = price_df.columns.droplevel(1)
                 else:
-                    price_series = price_data[YAHOO_PRICE_TOKEN]
+                    price_df = price_data[['Open', 'High', 'Low', 'Close']].copy()
 
-                price_df = pd.DataFrame(price_series).rename(columns={YAHOO_PRICE_TOKEN: 'Report_Date_Price'})
                 # Convert price index to datetime and force nanosecond resolution
                 price_df.index = pd.to_datetime(price_df.index).tz_localize(None).astype('datetime64[ns]')
 
-                # Ensure COT dates are datetime and force matching nanosecond resolution
+                # Aggregate daily data into true weekly bars ending on Tuesdays (COT Report Day)
+                # This ensures the High/Low capture the full week's wick for Candlestick charts
+                weekly_price_df = price_df.resample('W-TUE').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last'
+                }).dropna()
+
+                # Ensure COT dates match resolution
                 df[const.REPORT_DATE_XLS] = pd.to_datetime(df[const.REPORT_DATE_XLS]).dt.tz_localize(None).astype('datetime64[ns]')
                 utils.cot_logger.debug(f"Successfully retrieved price data for {symbol} with {len(price_df)} records.")
 
-                # Merge price data into the main dataframe based on the const.DATE column
-                # Use 'forward' to find the closest next trading day if a Tuesday was a holiday
+                # Merge the aggregated weekly OHLC into the main dataframe
                 merged = pd.merge_asof(
                     df.sort_values(const.REPORT_DATE_XLS),
-                    price_df.sort_values(by=price_df.index.name or 'Date'),
+                    weekly_price_df.sort_values(by=weekly_price_df.index.name or 'Date'),
                     left_on=const.REPORT_DATE_XLS,
                     right_index=True,
-                    direction='forward'
+                    direction='backward' # Backward ensures we only use the week leading up to the report
                 )
-                instrument.df[const.CLOSING_PRICE] = merged[ticker]  # Add the closing price to the instrument's dataframe
 
-                # Refresh the local 'df' reference after the merge
-                utils.cot_logger.info(f"Integrated report-date price for {symbol}")
+                # Add the 4 new columns to the instrument's dataframe
+                instrument.df[const.OPEN_PRICE] = merged['Open']
+                instrument.df[const.HIGH_PRICE] = merged['High']
+                instrument.df[const.LOW_PRICE] = merged['Low']
+                instrument.df[const.CLOSING_PRICE] = merged['Close']
+
+                utils.cot_logger.info(f"Integrated Weekly OHLC prices for {symbol}")
             else:
-                instrument.df[const.CLOSING_PRICE] = None
+                instrument.df[const.OPEN_PRICE] = 0
+                instrument.df[const.HIGH_PRICE] = 0
+                instrument.df[const.LOW_PRICE] = 0
+                instrument.df[const.CLOSING_PRICE] = 0
                 utils.cot_logger.warning(f"No price data found for {ticker}")
         except Exception as e:
+            df[const.OPEN_PRICE] = 0
+            df[const.HIGH_PRICE] = 0
+            df[const.LOW_PRICE] = 0
             df[const.CLOSING_PRICE] = 0
             utils.cot_logger.error(f"Error fetching price for {symbol}: {e}")
-
 
     def calculate_weekly_data(self):
         for instrument in self.supported_instruments:
@@ -340,6 +362,11 @@ class CotIndexer:
             df[const.COMM_NET] = df[const.COMM_LONG_POS_XLS] - df[const.COMM_SHORT_POS_XLS]
             df[const.LARGE_NET] = df[const.LARGE_LONG_POS_XLS] - df[const.LARGE_SHORT_POS_XLS]
             df[const.SMALL_NET] = df[const.SMALL_LONG_POS_XLS] - df[const.SMALL_SHORT_POS_XLS]
+
+            # Add new columns for net positions normalized by open interest
+            df[const.COMM_NET_NORM] = df[const.COMM_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
+            df[const.LARGE_NET_NORM] = df[const.LARGE_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
+            df[const.SMALL_NET_NORM] = df[const.SMALL_NET] / (df[const.OPEN_INTEREST_XLS] + 1e-9)
 
             # We only estimate the last row (current week) since that's the only one that would have a gap between Tuesday and Friday
             df[const.COMM_NET_EST] = df[const.COMM_NET]
@@ -434,7 +461,7 @@ class CotIndexer:
         summary_csv_path = os.path.join(
             working_dir, csv_data, "positioning_summary.csv")
 
-        cols = [const.DATE, const.SYMBOL, const.NAME,
+        cols = [const.DATE, const.SYMBOL, const.NAME, const.LOOKBACK,
                 const.COMM_CUSTOM_IDX, const.LARGE_CUSTOM_IDX, const.SMALL_CUSTOM_IDX,
                 const.COMM_26_IDX, const.LARGE_26_IDX, const.SMALL_26_IDX,
                 const.COMM_52_IDX, const.LARGE_52_IDX, const.SMALL_52_IDX,
@@ -454,7 +481,7 @@ class CotIndexer:
                 df = instrument.df
 
                 new_df = pd.DataFrame(
-                    [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.symbol, instrument.name,
+                    [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.symbol, instrument.name, instrument.custom_lookback,
                       df.iloc[-1][const.COMM_CUSTOM_IDX], df.iloc[-1][const.LARGE_CUSTOM_IDX], df.iloc[-1][const.SMALL_CUSTOM_IDX],
                       df.iloc[-1][const.COMM_26_IDX], df.iloc[-1][const.LARGE_26_IDX], df.iloc[-1][const.SMALL_26_IDX],
                       df.iloc[-1][const.COMM_52_IDX], df.iloc[-1][const.LARGE_52_IDX], df.iloc[-1][const.SMALL_52_IDX],
@@ -639,6 +666,11 @@ class CotIndexer:
             LRG_IDX = "Lrg Spec " + idx_col_header_name
             SML_IDX = "Sml Spec " + idx_col_header_name
 
+            norm_idx_col_header_name = lookback + " Norm Idx"
+            COMM_NORM_IDX = "Comm " + norm_idx_col_header_name
+            LRG_NORM_IDX = "Lrg Spec " + norm_idx_col_header_name
+            SML_NORM_IDX = "Sml Spec " + norm_idx_col_header_name
+
             zscore_col_header_name = lookback + " Zscore"
             COMM_ZS = "Comm " + zscore_col_header_name
             LRG_ZS = "Lrg Spec " + zscore_col_header_name
@@ -668,6 +700,10 @@ class CotIndexer:
             result["lrg_idx"] = df[LRG_IDX]
             result["sml_idx"] = df[SML_IDX]
 
+            result["comms_norm_idx"] = df[COMM_NORM_IDX]
+            result["lrg_norm_idx"] = df[LRG_NORM_IDX]
+            result["sml_norm_idx"] = df[SML_NORM_IDX]
+
             result["comms_zscore"] = df[COMM_ZS]
             result["lrg_zscore"] = df[LRG_ZS]
             result["sml_zscore"] = df[SML_ZS]
@@ -687,6 +723,9 @@ class CotIndexer:
             result[const.COMM_NET] = df[const.COMM_NET]
             result[const.LARGE_NET] = df[const.LARGE_NET]
             result[const.SMALL_NET] = df[const.SMALL_NET]
+            result[const.COMM_NET_NORM] = df[const.COMM_NET_NORM]
+            result[const.LARGE_NET_NORM] = df[const.LARGE_NET_NORM]
+            result[const.SMALL_NET_NORM] = df[const.SMALL_NET_NORM]
             result[const.LARGE_FLIP] = df[const.LARGE_FLIP]
 
             result[const.COMM_PCT_OI] = df[const.COMM_PCT_OI]
@@ -694,6 +733,9 @@ class CotIndexer:
             result[const.SMALL_PCT_OI] = df[const.SMALL_PCT_OI]
 
             result[const.OPEN_INTEREST] = df[const.OPEN_INTEREST_XLS]
+            result[const.OPEN_PRICE] = df[const.OPEN_PRICE]
+            result[const.HIGH_PRICE] = df[const.HIGH_PRICE]
+            result[const.LOW_PRICE] = df[const.LOW_PRICE]
             result[const.CLOSING_PRICE] = df[const.CLOSING_PRICE]
 
             result.set_index(const.DATE, inplace=True)
@@ -705,6 +747,11 @@ class CotIndexer:
         COMM_IDX = "Comm " + idx_col_header_name
         LRG_IDX = "Lrg Spec " + idx_col_header_name
         SML_IDX = "Sml Spec " + idx_col_header_name
+
+        idx_norm_col_header_name = lookback + " Norm Idx"
+        COMM_NORM_IDX = "Comm " + idx_norm_col_header_name
+        LRG_NORM_IDX = "Lrg Spec " + idx_norm_col_header_name
+        SML_NORM_IDX = "Sml Spec " + idx_norm_col_header_name
 
         zscore_col_header_name = lookback + " Zscore"
         COMM_ZS = "Comm " + zscore_col_header_name
@@ -719,15 +766,18 @@ class CotIndexer:
         willco_col_header_name = "WILLCO " + lookback
         WILLCO = willco_col_header_name
 
-        cols = [const.DATE, const.ASSET_CLASS, const.SYMBOL, const.NAME,
+        cols = [const.DATE, const.ASSET_CLASS, const.OPEN_INTEREST,
+                const.SYMBOL, const.NAME, const.LOOKBACK,
                 const.COMM_NET, const.LARGE_NET, const.SMALL_NET,
+                const.COMM_PCT_OI, const.LARGE_PCT_OI, const.SMALL_PCT_OI,
                 COMM_IDX, LRG_IDX, SML_IDX,
                 const.COMM_NET_EST, const.LARGE_NET_EST, const.SMALL_NET_EST,
                 const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST,
+                const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM,
+                COMM_NORM_IDX, LRG_NORM_IDX, SML_NORM_IDX,
                 COMM_ZS, LRG_ZS, SML_ZS,
                 COMM_SPR, LRG_SPR, SML_SPR,
-                WILLCO
-               ]
+                WILLCO]
         positioning_df = pd.DataFrame(columns=cols)
 
         for asset in self.asset_class_map:
@@ -748,20 +798,24 @@ class CotIndexer:
                         utils.cot_logger.debug(f"Calculating indexes for {symbol} with lookback {lookback} ({lb_weeks} weeks)...")
 
                         lb_idx = idx - lb_weeks
-                        df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.COMM_NET_EST], lb_idx, idx)
-                        df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.LARGE_NET_EST], lb_idx, idx)
-                        df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(symbol, df[const.SMALL_NET_EST], lb_idx, idx)
+                        df.at[idx, const.COMM_IDX_EST] = metrics.calculate_cot_index(df[const.COMM_NET_EST], lb_idx, idx)
+                        df.at[idx, const.LARGE_IDX_EST] = metrics.calculate_cot_index(df[const.LARGE_NET_EST], lb_idx, idx)
+                        df.at[idx, const.SMALL_IDX_EST] = metrics.calculate_cot_index(df[const.SMALL_NET_EST], lb_idx, idx)
                     else:
                         df.at[idx, const.COMM_IDX_EST] = 0
                         df.at[idx, const.LARGE_IDX_EST] = 0
                         df.at[idx, const.SMALL_IDX_EST] = 0
 
                     new_df = pd.DataFrame(
-                        [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.asset_class, instrument.symbol, instrument.name,
+                        [[df.iloc[-1][const.REPORT_DATE_XLS].date(), instrument.asset_class, df.iloc[-1][const.OPEN_INTEREST_XLS],
+                          instrument.symbol, instrument.name, instrument.custom_lookback,
                           df.iloc[-1][const.COMM_NET], df.iloc[-1][const.LARGE_NET], df.iloc[-1][const.SMALL_NET],
+                          df.iloc[-1][const.COMM_PCT_OI], df.iloc[-1][const.LARGE_PCT_OI], df.iloc[-1][const.SMALL_PCT_OI],
                           df.iloc[-1][COMM_IDX], df.iloc[-1][LRG_IDX], df.iloc[-1][SML_IDX],
                           df.iloc[-1][const.COMM_NET_EST], df.iloc[-1][const.LARGE_NET_EST], df.iloc[-1][const.SMALL_NET_EST],
                           df.iloc[-1][const.COMM_IDX_EST], df.iloc[-1][const.LARGE_IDX_EST], df.iloc[-1][const.SMALL_IDX_EST],
+                          round(df.iloc[-1][const.COMM_NET_NORM], 2), round(df.iloc[-1][const.LARGE_NET_NORM], 2), round(df.iloc[-1][const.SMALL_NET_NORM], 2),
+                          df.iloc[-1][COMM_NORM_IDX], df.iloc[-1][LRG_NORM_IDX], df.iloc[-1][SML_NORM_IDX],
                           round(df.iloc[-1][COMM_ZS], 2), round(df.iloc[-1][LRG_ZS], 2), round(df.iloc[-1][SML_ZS], 2),
                           round(df.iloc[-1][COMM_SPR], 2), round(df.iloc[-1][LRG_SPR], 2), round(df.iloc[-1][SML_SPR], 2),
                           df.iloc[-1][WILLCO]

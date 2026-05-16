@@ -47,7 +47,8 @@ if __name__ == "__main__":
         from app_cot import app
 
         cot_data_update_process = multiprocessing.Process(
-            target=cotDownloader.check_zip_updates)
+            target=cotDownloader.check_for_database_updates
+        )
         cot_data_update_process.start()
 
         try:

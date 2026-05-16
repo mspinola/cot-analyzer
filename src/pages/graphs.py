@@ -23,7 +23,9 @@ AVAILABLE_PLOTS = {
     "willco": "WillCo",
     "spearman": "Spearman Correlation",
     "net_pos": "Net Positions",
+    "net_pos_normalized": "Net Positions Normalized",
     "index": "Positioning Index",
+    "index_normalized": "Positioning Index Normalized",
     "zscore": "Positioning Z-Score",
     "momentum": "Momentum Index",
     "tension": "Tension Oscillator"
@@ -169,6 +171,7 @@ def set_default_columns(pathname, current_val):
      Input('graphs_columns_selector', 'value')]
 )
 def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_plot, lookback, num_cols):
+    utils.cot_logger.info(f"Generating graphs for Asset Class: {asset_class}, Selected Assets: {selected_assets}, Plot: {selected_plot}, Lookback: {lookback}, Columns: {num_cols}")
     selected_plots = [selected_plot]
     if selected_assets is None or len(selected_assets) == 0 or selected_plots is None:
         return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
@@ -188,11 +191,8 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
     color_palette = cotIndexer.get_palette(palette_name)
 
     titles = []
-    for idx, asset in enumerate(assets):
-        if idx == 0:
-            titles.append(AVAILABLE_PLOTS[selected_plot] + ":  " + asset)
-        else:
-            titles.append(asset)
+    for asset in assets:
+        titles.append(asset)
 
     # Define specs based on selection
     specs = []
@@ -203,8 +203,10 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
             if plot_idx < num_selected:
                 p = selected_plots[0]
                 # Most plots use secondary_y for Price or OI overlays
-                has_secondary = p in ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore", "momentum", "tension"]
-                # for idx in range(len(assets)):
+                has_secondary = p in ["oi_pct", "willco", "spearman",
+                                      "net_pos", "net_pos_normalized",
+                                      "index", "index_normalized", "zscore",
+                                      "momentum", "tension"]
                 row_specs.append({"secondary_y": has_secondary})
                 plot_idx += 1
             else:
@@ -231,9 +233,13 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                 elif p == "spearman":
                     fig = helpers.get_spearman_plot(fig, df, r, c, color_palette)
                 elif p == "net_pos":
-                    fig = helpers.get_net_pos_plot(fig, df, r, c, color_palette)
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET, const.LARGE_NET, const.SMALL_NET, r, c, color_palette, show_price=True, show_flips=False)
+                elif p == "net_pos_normalized":
+                    fig = helpers.get_net_pos_plot(fig, df, const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM, r, c, color_palette, show_price=True, show_flips=False)
                 elif p == "index":
-                    fig = helpers.get_index_plot(fig, df, r, c, color_palette, min_threshold, max_threshold)
+                    fig = helpers.get_index_plot(fig, df, "comms_idx", "lrg_idx", "sml_idx", r, c, color_palette, min_threshold, max_threshold)
+                elif p == "index_normalized":
+                    fig = helpers.get_index_plot(fig, df, "comms_norm_idx", "lrg_norm_idx", "sml_norm_idx", r, c, color_palette, min_threshold, max_threshold)
                 elif p == "zscore":
                     fig = helpers.get_zscore_plot(fig, df, r, c, color_palette)
                 elif p == "momentum":
@@ -247,7 +253,7 @@ def get_cot_graphs(asset_class, palette_name, selected_assets, setup, selected_p
                 plot_idx += 1
 
     fig = helpers.get_update_xaxes_for_plots(fig, df)
-    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols)
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols, AVAILABLE_PLOTS[selected_plot])
 
     return dcc.Graph(figure=fig,
                      config={

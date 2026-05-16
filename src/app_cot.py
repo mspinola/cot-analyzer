@@ -11,8 +11,11 @@ import requests
 app = Dash(
     __name__,
     use_pages=True,
-    external_stylesheets=[dbc.themes.DARKLY],
-    suppress_callback_exceptions=True
+    external_stylesheets=[
+        dbc.themes.DARKLY,
+        "https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css"
+    ],
+    suppress_callback_exceptions=True,
 )
 server = app.server
 
@@ -81,7 +84,7 @@ navbar = dbc.Navbar(
                     n_intervals=0
                 ),
             ]),
-            href="/positioning",
+            href="/",
             className="ms-3 text-decoration-none"
         ),
 
@@ -91,7 +94,7 @@ navbar = dbc.Navbar(
             dbc.Nav(
                 [
                     dbc.NavItem(dbc.NavLink("Graphs", href="/graphs", active="partial", style={'fontSize': '0.9rem'})),
-                    dbc.NavItem(dbc.NavLink("Table", href="/positioning", active="partial", style={'fontSize': '0.9rem'})),
+                    dbc.NavItem(dbc.NavLink("Table", href="/", active="exact", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="partial", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Analysis", href="/analysis", active="partial", style={'fontSize': '0.9rem'})),
                     dbc.NavItem(dbc.NavLink("Options", href="/options", active="partial", style={'fontSize': '0.9rem'})),

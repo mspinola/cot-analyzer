@@ -96,6 +96,8 @@ class CotDataDownloader:
 
     def check_zip_updates_periodic(self, sleep_interval=3600):
         """Check for zip updates every hour."""
+        self.cotDatabase = CotDatabase()
+
         while True:
             utils.downloader_logger.info("Starting the zip file update check.")
             self.check_and_update_zip_files()
@@ -165,29 +167,73 @@ class CotDataDownloader:
         except Exception as e:
             utils.downloader_logger.error(f"Failed to send email notification: {e}")
 
+
+    def run_polling_window(self, attempts=20, interval_minutes=1):
+        """Polls periodically for a set number of attempts."""
+        utils.downloader_logger.info(f"Starting daily polling window ({attempts} attempts, {interval_minutes}m apart)...")
+
+        for attempt in range(1, attempts + 1):
+            updated_years = self.check_and_update_zip_files()
+
+            if updated_years:
+                utils.downloader_logger.warning(f"New file detected and downloaded on attempt {attempt}! Closing polling window.")
+                return  # Exit the loop early since we got the file
+
+            # Wait interval_minutes minutes before checking again
+            time.sleep(interval_minutes * 60)
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        utils.downloader_logger.warning(f"Polling window ended ({current_time}). No new data found.")
+
+
+    def check_for_database_updates(self):
+        """Schedule the polling window for every weekday at 15:25 Local Time."""
+        # Initialize DB here to avoid SQLite multiprocessing lock issues
+        self.cotDatabase = CotDatabase()
+
+        # Schedule for every weekday at the CFTC release time (15:25 Local Time)
+        database_release_time = "15:25"
+        schedule.every().monday.at(database_release_time).do(self.run_polling_window, attempts=20, interval_minutes=1)
+        schedule.every().tuesday.at(database_release_time).do(self.run_polling_window, attempts=20, interval_minutes=1)
+        schedule.every().wednesday.at(database_release_time).do(self.run_polling_window, attempts=20, interval_minutes=1)
+        schedule.every().thursday.at(database_release_time).do(self.run_polling_window, attempts=20, interval_minutes=1)
+        schedule.every().friday.at(database_release_time).do(self.run_polling_window, attempts=20, interval_minutes=1)
+        utils.downloader_logger.info(f"Smart scheduler active: Polling weekdays at {database_release_time}.")
+
+        # Schedule for every weekday morning to catch odd releases
+        schedule.every().monday.at("08:00").do(self.run_polling_window, attempts=5, interval_minutes=5)
+        schedule.every().tuesday.at("08:00").do(self.run_polling_window, attempts=5, interval_minutes=5)
+        schedule.every().wednesday.at("08:00").do(self.run_polling_window, attempts=5, interval_minutes=5)
+        schedule.every().thursday.at("08:00").do(self.run_polling_window, attempts=5, interval_minutes=5)
+        schedule.every().friday.at("08:00").do(self.run_polling_window, attempts=5, interval_minutes=5)
+
+        while True:
+            schedule.run_pending()
+            time.sleep(30)  # Check the schedule queue every 30 seconds
+
     def check_and_update_zip_files(self):
         """Check for updates, download new zip files if available, and send email notification for updated years."""
         updated_years = []
 
         for year in self.years:
             # Download zip file if we don't have it or there is a new timestamp on the server
-            last_modified = self.get_last_modified(year)
-            if last_modified is None:
-                utils.downloader_logger.warning(f"No 'Last-Modified' header for {year}.zip, skipping...")
+            last_modified_time_on_server = self.get_last_modified(year)
+            if last_modified_time_on_server is None:
+                utils.downloader_logger.warning(f"Server did not return 'Last-Modified' header for {year}.zip, skipping...")
                 continue
             try:
-                current_date = datetime.strptime(last_modified, '%a, %d %b %Y %H:%M:%S %Z')
+                server_file_date = datetime.strptime(last_modified_time_on_server, '%a, %d %b %Y %H:%M:%S %Z')
             except ValueError:
-                utils.downloader_logger.error(f"Could not parse 'Last-Modified' date for {year}.zip, skipping...")
+                utils.downloader_logger.error(f"Could not parse 'Last-Modified' server date for {year}.zip, skipping...")
                 continue
 
-            zipfile_last_modified = self.cotDatabase.get_zipfile_last_modified_time(year)
-            if zipfile_last_modified:
-                if current_date > zipfile_last_modified:
+            database_last_modified_time = self.cotDatabase.get_zipfile_last_modified_time(year)
+            if database_last_modified_time:
+                if server_file_date > database_last_modified_time:
                     utils.downloader_logger.info(f'Updating: {year}.zip')
                     url = self.url_prefix + f'{year}.zip'
                     self.download_and_extract_zip(url, year)
-                    self.cotDatabase.update_zip_file(year, zipfile_last_modified)
+                    self.cotDatabase.update_zip_file(year, server_file_date)
                     updated_years.append(year)
                 else:
                     utils.downloader_logger.info(f'No update needed for {year}.zip')
@@ -195,7 +241,8 @@ class CotDataDownloader:
                 utils.downloader_logger.info(f'Downloading: {year}.zip')
                 url = self.url_prefix + f'{year}.zip'
                 self.download_and_extract_zip(url, year)
-                self.cotDatabase.update_zip_file(year, last_modified)
+                self.cotDatabase.update_zip_file(year, server_file_date)
+                utils.downloader_logger.warning(f"Updated database {year}.zip, with new date: {server_file_date}")
                 updated_years.append(year)
 
         if updated_years:
