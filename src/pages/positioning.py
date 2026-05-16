@@ -287,7 +287,13 @@ def get_asset_class_accordions(df):
                 for col in group_df.columns if col != "Asset Class"
             ],
             className="ag-theme-quartz-dark",
-            defaultColDef={"sortable": True, "filter": True},
+            defaultColDef={
+                "sortable": True,
+                "filter": True,
+                "wrapHeaderText": True,
+                "autoHeaderHeight": True,
+                "initialWidth": 150,
+            },
             dashGridOptions={"domLayout": "autoHeight", "pagination": False},
             columnSize="autoSize",
         )
