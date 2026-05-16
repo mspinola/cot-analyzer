@@ -707,39 +707,47 @@ body {
     white-space: nowrap !important;
 }
 
-/* 1. Size of the scrollbar (height for horizontal, width for vertical) */
-.ag-theme-alpine-dark ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+
+
+/* 1. Force Native Dark Mode & Base Backgrounds */
+.ag-theme-quartz-dark {
+    color-scheme: dark !important;
+    --ag-background-color: #1a1a1a !important;
+    --ag-header-background-color: #1a1a1a !important;
 }
 
-/* 2. The track (the background the scrollbar slides along) */
-.ag-theme-alpine-dark ::-webkit-scrollbar-track {
-    background: #1a1a1a; /* Matches your dark slate background */
-    border-radius: 4px;
+/* 2. Custom WebKit Scrollbar Geometry (Overrides Mac Auto-hide) */
+.ag-theme-quartz-dark ::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+    -webkit-appearance: none !important; /* Strips Apple's invisible UI */
+    display: block !important;
 }
 
-/* 3. The thumb (the part you actually click and drag) */
-.ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
-    background: #3a3f47; /* A subtle, dim gray/blue */
-    border-radius: 4px;
+/* 3. Scrollbar Track & Thumb Coloring */
+.ag-theme-quartz-dark ::-webkit-scrollbar-track {
+    background: #1a1a1a !important;
 }
 
-/* 4. Hover effect when the user interacts with the scrollbar */
-.ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
-    background: #4f5660; /* Slightly lighter gray when hovered */
+.ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
+    background: #3a3f47 !important;
+    border-radius: 6px !important;
+    border: 2px solid #1a1a1a !important; /* Creates a clean padded look */
 }
 
-/* 5. Fallback for Firefox (Firefox doesn't use WebKit rules) */
-.ag-theme-alpine-dark {
-    scrollbar-color: #3a3f47 #1a1a1a; /* thumb-color track-color */
-    scrollbar-width: thin;
-}
-
-/* Match the bottom-left corner spacer to the dark scrollbar track */
-.ag-theme-alpine-dark .ag-horizontal-left-spacer,
-.ag-theme-alpine-dark .ag-horizontal-right-spacer {
+/* 4. Annihilate the White Safari Corners & Spacers (Under Pinned Columns) */
+.ag-theme-quartz-dark .ag-horizontal-left-spacer,
+.ag-theme-quartz-dark .ag-horizontal-right-spacer,
+.ag-theme-quartz-dark .ag-scroller-corner {
+    background: #1a1a1a !important;
     background-color: #1a1a1a !important;
-    border-right: none !important;
-    border-left: none !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 5. Global WebKit Corner Catch-all (For absolute Safari compliance) */
+::-webkit-scrollbar-corner,
+.ag-theme-quartz-dark *::-webkit-scrollbar-corner {
+    background-color: #1a1a1a !important
 }
