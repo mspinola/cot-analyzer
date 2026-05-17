@@ -113,7 +113,7 @@ BRIGHTER_TEXT_COLOR = "#E2E8F0"
 HOVER_TEXT_COLOR = "#FFFFFF"
 BACKGROUND_COLOR = "#1a1a1a"
 BLUE_BACKGROUND = "#375a7f"
-GRID_COLOR = "rgba(255, 255, 255, 0.2)"  # Subtle white grid
+GRID_COLOR = "rgba(55, 100, 100, 0.2)"
 EMPTY_COLOR = 'rgba(0, 0, 0, 0)'
 
 # Plotting Dimensions

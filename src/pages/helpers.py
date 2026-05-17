@@ -174,8 +174,8 @@ def get_momentum_plot(fig, df, row, col, color_palette, show_price=True):
     if show_price:
         add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
         fig.update_yaxes(title="$", row=row, col=col, gridcolor=const.EMPTY_COLOR, secondary_y=True, fixedrange=True)
-    fig.add_hline(y=const.MOMENTUM_MIN_THRESHOLD, line_dash="dot", line_color=const.TEXT_COLOR, opacity=0.5, row=row, col=col)
-    fig.add_hline(y=const.MOMENTUM_MAX_THRESHOLD, line_dash="dot", line_color=const.TEXT_COLOR, opacity=0.5, row=row, col=col)
+    # fig.add_hline(y=const.MOMENTUM_MIN_THRESHOLD, line_dash="dot", line_color=const.TEXT_COLOR, opacity=0.5, row=row, col=col)
+    # fig.add_hline(y=const.MOMENTUM_MAX_THRESHOLD, line_dash="dot", line_color=const.TEXT_COLOR, opacity=0.5, row=row, col=col)
     fig.update_yaxes(title="ROC", range=[-100, 100], row=row, col=col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
 
     showlegend = row == 1 and col == 1
@@ -236,6 +236,7 @@ def add_legend(fig, name, color):
     ))
     return fig
 
+
 def get_no_data_html_p():
     return html.P("No Data", style={'textAlign': 'center', 'color': const.BRIGHTER_TEXT_COLOR})
 
@@ -271,26 +272,27 @@ def get_setup_highlighting(fig, df, min_threshold, max_threshold, row, col):
 
 
 def get_make_subplots_for_plots(rows, cols, titles, specs, vertical_spacing=const.VERTICAL_SPACING):
-    if rows < 1:
-        v_spacing = 0
-    elif rows == 1:
-        v_spacing = vertical_spacing * 2
-    elif rows == 2:
-        v_spacing = vertical_spacing * 3
-    elif rows == 3:
-        v_spacing = vertical_spacing * 4
-    elif rows <= 5:
-        v_spacing = vertical_spacing
+    if cols == 1:
+        pixels_per_plot = 300  # Full width monitor = needs taller plots
+    elif cols == 2:
+        pixels_per_plot = 250
     else:
-        v_spacing = vertical_spacing / 2
-    v_spacing = 0.1
-    
+        pixels_per_plot = 200
+
+    # Estimate total height to calculate a fixed pixel spacing
+    dynamic_height = (rows * pixels_per_plot) + (rows * const.PIXELS_OVERHEAD_PER_PLOT)
+
+    if rows > 1:
+        v_spacing = 80.0 / dynamic_height
+    else:
+        v_spacing = 0.05
+
     fig = make_subplots(
         rows=rows,
         cols=cols,
         shared_xaxes=True,
         vertical_spacing=v_spacing,
-        horizontal_spacing=0.1,
+        horizontal_spacing=0.08,
         subplot_titles=titles,
         specs=specs
     )
@@ -315,9 +317,10 @@ def get_update_xaxes_for_plots(fig, df):
         hoverformat="%Y-%m-%d",
         matches='x',
         layer="above traces",
-        showticklabels=True,
+        showticklabels=True,  # Enable to show date labels on all x-axis
         tickfont_color=const.TEXT_COLOR,
-        rangeslider_visible=False
+        rangeslider_visible=False,
+        showgrid=False,
         # rangeslider=dict(
         #     visible=True,
         #     thickness=0.08,
@@ -329,6 +332,11 @@ def get_update_xaxes_for_plots(fig, df):
 
 def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None):
     dynamic_height = (num_rows * const.PIXELS_PER_PLOT) + (num_rows * const.PIXELS_OVERHEAD_PER_PLOT)
+
+    # Calculate Y coordinates so they are exactly N pixels above the plot area.
+    # This prevents the UI from flying away when the chart gets really tall.
+    buttons_y = 1.0 + (30.0 / dynamic_height)  # 30px above the plot
+    legend_y = 1.0 + (70.0 / dynamic_height)   # 70px above the plot
 
     layout_updates = dict(
         xaxis=dict(
@@ -344,7 +352,7 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None):
                 bgcolor=const.BACKGROUND_COLOR,
                 activecolor=const.BLUE_BACKGROUND,
                 font=dict(color=const.BRIGHTER_TEXT_COLOR),
-                y=1.05,          # Pushes the buttons above the top chart
+                y=buttons_y,
                 yanchor="bottom",
                 x=0.0,           # Aligns to the far left
                 xanchor="left"
@@ -360,7 +368,7 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None):
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.1,
+            y=legend_y,
             xanchor="center",
             x=0.7,
             font=dict(size=12, color=const.BRIGHTER_TEXT_COLOR),
@@ -377,7 +385,8 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None):
     if main_title:
         layout_updates['title'] = dict(
             text=main_title,
-            y=1.0,             # Aligns vertically with the legend
+            y=0.99,            # 0.99 places it just below the buttons and legend
+            yref='container',
             x=0.5,             # Places it in the center
             xanchor='center',
             yanchor='top',
@@ -385,9 +394,5 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None):
         )
 
     fig.update_layout(**layout_updates)
-
-    # Adjust horizontal legend position if multiple columns are used
-    if num_cols > 1:
-        fig.update_layout(legend=dict(x=0.5, xanchor="center", y=1.05))
 
     return fig

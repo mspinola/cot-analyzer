@@ -219,13 +219,13 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
     agg_df[const.SMALL_PCT_OI] = round(agg_df[const.SMALL_NET] / (agg_df[const.OPEN_INTEREST] + 1e-9) * 100, 2)
 
     # Average Oscillators and Z-Scores
-    agg_df['comms_zscore'] = grouped['comms_zscore'].mean()
-    agg_df['lrg_zscore'] = grouped['lrg_zscore'].mean()
-    agg_df['sml_zscore'] = grouped['sml_zscore'].mean()
+    agg_df['comms_zscore'] = round(grouped['comms_zscore'].mean(), 4)
+    agg_df['lrg_zscore'] = round(grouped['lrg_zscore'].mean(), 4)
+    agg_df['sml_zscore'] = round(grouped['sml_zscore'].mean(), 4)
 
-    agg_df['comms_idx'] = grouped['comms_idx'].mean()
-    agg_df['lrg_idx'] = grouped['lrg_idx'].mean()
-    agg_df['sml_idx'] = grouped['sml_idx'].mean()
+    agg_df['comms_idx'] = round(grouped['comms_idx'].mean(), 0)
+    agg_df['lrg_idx'] = round(grouped['lrg_idx'].mean(), 0)
+    agg_df['sml_idx'] = round(grouped['sml_idx'].mean(), 0)
 
     # Dynamic Subplot Layout Configuration
     num_cols = int(num_cols)
