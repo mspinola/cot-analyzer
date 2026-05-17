@@ -93,7 +93,6 @@ class CotDatabase:
                 except Exception as e:
                     utils.get_cot_logger().error(f"2nd time exception in date format {result}. {e}")
                     return None
-                return None
         return result
 
     def latest_update_timestamp(self):
