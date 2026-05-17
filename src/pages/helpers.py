@@ -77,8 +77,8 @@ def get_willco_plot(fig, df, row, col, color_palette, show_price=True):
     fig.add_hline(y=const.WILLCO_MIN_THRESHOLD, line_dash="dot", line_color="red", opacity=0.5, row=row, col=col)
     fig.add_hline(y=const.WILLCO_MAX_THRESHOLD, line_dash="dot", line_color="green", opacity=1, row=row, col=col)
     fig.update_yaxes(title="WILLCO", row=row, col=col, gridcolor=const.GRID_COLOR, secondary_y=False, fixedrange=True)
-    fig.add_hrect(y0=const.WILLCO_MAX_THRESHOLD, y1=100, fillcolor="green", opacity=0.07, line_width=0, row=row, col=1)
-    fig.add_hrect(y0=0, y1=const.WILLCO_MIN_THRESHOLD, fillcolor="red", opacity=0.05, line_width=0, row=row, col=1)
+    fig.add_hrect(y0=const.WILLCO_MAX_THRESHOLD, y1=100, fillcolor="green", opacity=0.07, line_width=0, row=row, col=col)
+    fig.add_hrect(y0=0, y1=const.WILLCO_MIN_THRESHOLD, fillcolor="red", opacity=0.05, line_width=0, row=row, col=col)
 
     showlegend = row == 1 and col == 1
     fig = update_legend(fig, showlegend, color_palette, show_price)
@@ -145,8 +145,8 @@ def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette
     if max_threshold is not None and min_threshold is not None:
         fig.add_hline(y=max_threshold, line_dash="dot", line_color="red", opacity=0.5, row=row, col=col)
         fig.add_hline(y=min_threshold, line_dash="dot", line_color="green", opacity=1, row=row, col=col)
-        fig.add_hrect(y0=max_threshold, y1=100, fillcolor="red", opacity=0.05, line_width=0, row=row, col=1)
-        fig.add_hrect(y0=0, y1=min_threshold, fillcolor="green", opacity=0.07, line_width=0, row=row, col=1)
+        fig.add_hrect(y0=max_threshold, y1=100, fillcolor="red", opacity=0.05, line_width=0, row=row, col=col)
+        fig.add_hrect(y0=0, y1=min_threshold, fillcolor="green", opacity=0.07, line_width=0, row=row, col=col)
 
     showlegend = row == 1 and col == 1
     fig = update_legend(fig, showlegend, color_palette, show_price)
@@ -191,8 +191,8 @@ def get_tension_plot(fig, df, row, col, color_palette, show_price=True):
     fig.add_hline(y=const.ZSCORE_MIN_THRESHOLD, line_dash="dot", line_color="green", opacity=1, row=row, col=1)
     fig.add_hline(y=const.ZSCORE_MAX_THRESHOLD, line_dash="dot", line_color="red", opacity=0.5, row=row, col=1)
     fig.update_yaxes(title="Std Dev", range=[-4, 4], row=row, col=col, secondary_y=False, gridcolor=const.GRID_COLOR, fixedrange=True)
-    fig.add_hrect(y0=2, y1=4, fillcolor="red", opacity=0.05, line_width=0, row=row, col=1)
-    fig.add_hrect(y0=-4, y1=-2, fillcolor="green", opacity=0.07, line_width=0, row=row, col=1)
+    fig.add_hrect(y0=2, y1=4, fillcolor="red", opacity=0.05, line_width=0, row=row, col=col)
+    fig.add_hrect(y0=-4, y1=-2, fillcolor="green", opacity=0.07, line_width=0, row=row, col=col)
 
     showlegend = row == 1 and col == 1
     fig = update_legend(fig, showlegend, color_palette, show_price)
@@ -271,7 +271,7 @@ def get_setup_highlighting(fig, df, min_threshold, max_threshold, row, col):
     return fig
 
 
-def get_make_subplots_for_plots(rows, cols, titles, specs, vertical_spacing=const.VERTICAL_SPACING):
+def get_make_subplots_for_plots(rows, cols, titles, specs):
     if cols == 1:
         pixels_per_plot = 300  # Full width monitor = needs taller plots
     elif cols == 2:

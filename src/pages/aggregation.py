@@ -247,7 +247,7 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
                 row_specs.append(None)
         specs.append(row_specs)
 
-    fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=titles, specs=specs, vertical_spacing=0.1)
+    fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
 
     plot_idx = 0
     for r in range(1, num_rows + 1):
