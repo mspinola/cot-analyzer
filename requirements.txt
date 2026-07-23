@@ -18,7 +18,10 @@ ruff==0.15.22           # Linter — pinned so CI installs it and stays reproduc
 tomli==2.0.1; python_version < "3.11"   # for scripts/check_dep_floors.py on <3.11
 
 # data/metrics layer (editable siblings). cotmetrics provides the COT index,
-# signals, indexer + the legacy ETL/options/scheduler; it depends on cotdata,
-# which is not on PyPI so it stays listed explicitly for the editable install.
+# signals, indexer + the legacy ETL/options/scheduler; it depends on cotdata.
+# Both are published on PyPI (cotdata, cotmetrics), but we install them EDITABLE
+# from sibling checkouts so in-workspace changes are picked up immediately and CI
+# catches integration breaks before those siblings are released. Pin the PyPI
+# releases instead if you want reproducible, checkout-free builds.
 -e ../cotdata
 -e ../cotmetrics[options,scheduler]
