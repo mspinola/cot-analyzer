@@ -66,9 +66,12 @@ echo 'COTDATA_STORE=~/code/cotdata_store' >> .env
 
 Use the launcher rather than `python src/main.py` directly. It changes to the repo root
 (several config reads resolve relative paths), points `COTMETRICS_CACHE` at this repo's
-`data_cache/` and `COTMETRICS_PARAMS` at its `config/params.yaml` so the metrics layer does
-not fall back to its own packaged copy, sources `.env`, and fails loudly if
-`COTDATA_STORE` is unset rather than surfacing later as confusing empty data.
+`data_cache/`, points `COTMETRICS_PARAMS` and `COT_VIZ_CONFIG` at the sibling
+`../cotmetrics-config/params.yaml` when that private config repo is checked out alongside
+(otherwise the metrics and viz layers fall back to the packaged sample and warn), sources
+`.env`, and fails loudly if `COTDATA_STORE` is unset rather than surfacing later as
+confusing empty data. You can still run `python src/main.py` directly if you export those
+variables yourself.
 
 ## Configuration
 
