@@ -1,0 +1,1217 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ============================================================
+   THEME DEFINITIONS
+   - :root defines Solarized Dark as the default fallback
+   - .theme-solarized-dark is the explicit Solarized Dark class
+   - .theme-modern-web matches the Citrini output HTML styling
+   ============================================================ */
+
+/* --- Solarized Dark (default / :root) --- */
+:root,
+.theme-solarized-dark {
+    --bg-color:               #1a1a1a;
+    --card-color:             #073642; /* Base02 */
+    --card-accent-color:      #002b36; /* Base03 - darker strip */
+    --nav-color:              #002b36; /* Base03 - navbar */
+    --text-light:             #eee8d5; /* Base2  */
+    --text-muted:             #93a1a1; /* Base1  */
+    --accordion-active-bg:    #073642; /* Base02 */
+    --border-color:           rgba(171, 184, 201, 0.2);
+    --font-family:            inherit;
+    --card-border-radius:     4px;
+    --card-backdrop-filter:   none;
+    --card-box-shadow:        none;
+    
+    /* Dynamic opacity variables */
+    --card-color-neutral:     #002b36; /* Base03 */
+    --card-color-active:      #073642; /* Base02 */
+    --border-color-dim:       rgba(147, 161, 161, 0.15); /* Dimmed base1 */
+}
+
+/* --- Modern (Citrini Index Dashboard style) --- */
+.theme-modern-web {
+    --bg-color:               #0b0f19;
+    --card-color:             rgba(22, 28, 45, 0.6);
+    --card-accent-color:      rgba(11, 15, 25, 0.8);
+    --nav-color:              rgba(11, 15, 25, 0.9);
+    --text-light:             #f3f4f6;
+    --text-muted:             #9ca3af;
+    --accent-color:           #3b82f6;
+    --accent-hover:           #60a5fa;
+    --success-color:          #10b981;
+    --danger-color:           #ef4444;
+    --accordion-active-bg:    rgba(22, 28, 45, 0.85);
+    --border-color:           rgba(255, 255, 255, 0.08);
+    --font-family:            'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --card-border-radius:     12px;
+    --card-backdrop-filter:   blur(12px);
+    --card-box-shadow:        0 4px 30px rgba(0, 0, 0, 0.2);
+
+    /* Dynamic opacity variables */
+    --card-color-neutral:     rgba(11, 15, 25, 0.4);
+    --card-color-active:      rgba(22, 28, 45, 0.6);
+    --border-color-dim:       rgba(255, 255, 255, 0.04);
+}
+
+/* ============================================================
+   THEME-DRIVEN COMPONENT RULES
+   ============================================================ */
+
+/* Apply Inter font across the whole Modern theme */
+.theme-modern-web,
+.theme-modern-web * {
+    font-family: var(--font-family) !important;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* --- Navbar --- */
+.navbar-custom {
+    background-color: var(--nav-color) !important;
+    position: relative;
+    z-index: 1100 !important;
+}
+.theme-modern-web .navbar-custom {
+    backdrop-filter: var(--card-backdrop-filter) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+.theme-modern-web .nav-link {
+    color: var(--text-muted) !important;
+    font-size: 0.9rem !important;
+}
+.theme-modern-web .nav-link.active {
+    color: var(--accent-hover) !important;
+    border-bottom: 2px solid var(--accent-hover) !important;
+    font-weight: 600 !important;
+}
+
+/* --- Citrini-style headings --- */
+.theme-modern-web h1,
+.theme-modern-web .h1 {
+    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    font-weight: 700 !important;
+    font-size: 1.75rem !important;
+}
+.theme-modern-web h2,
+.theme-modern-web .h2 {
+    color: #ffffff !important;
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 0.5rem !important;
+}
+.theme-modern-web h3,
+.theme-modern-web .h3,
+.theme-modern-web h4,
+.theme-modern-web .h4 {
+    color: var(--accent-hover) !important;
+    border-left: 3px solid var(--accent-color) !important;
+    padding-left: 0.5rem !important;
+    font-size: 1.0rem !important;
+}
+
+/* --- Bootstrap Cards → glassmorphism panels (like citrini <section>) --- */
+.signal-card {
+    background-color: var(--card-color) !important;
+}
+.theme-modern-web .card,
+.theme-modern-web .signal-card {
+    background: var(--card-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--card-border-radius) !important;
+    backdrop-filter: var(--card-backdrop-filter) !important;
+    box-shadow: var(--card-box-shadow) !important;
+    transition: transform 0.2s ease, border-color 0.2s ease !important;
+}
+.theme-modern-web .card:hover,
+.theme-modern-web .signal-card:hover {
+    transform: translateY(-2px) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.signal-card-accent {
+    background-color: var(--card-accent-color) !important;
+}
+.theme-modern-web .signal-card-accent {
+    background: var(--card-accent-color) !important;
+}
+
+/* --- Accordion → citrini section style --- */
+.theme-modern-web .accordion-item {
+    background: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--card-border-radius) !important;
+    backdrop-filter: var(--card-backdrop-filter) !important;
+    box-shadow: var(--card-box-shadow) !important;
+    margin-bottom: 1rem !important;
+}
+.theme-modern-web .accordion-button {
+    background: var(--card-color) !important;
+    color: var(--text-light) !important;
+    border-radius: var(--card-border-radius) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+}
+.theme-modern-web .accordion-button:not(.collapsed) {
+    background: var(--accordion-active-bg) !important;
+    color: #ffffff !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+.theme-modern-web .accordion-body {
+    background: var(--card-color) !important;
+    border-top: 1px solid var(--border-color) !important;
+    backdrop-filter: var(--card-backdrop-filter) !important;
+}
+
+/* --- Tables → theme-agnostic styling --- */
+.theme-modern-web table,
+.theme-modern-web .table,
+.theme-solarized-dark table,
+.theme-solarized-dark .table {
+    background: rgba(255, 255, 255, 0.01) !important;
+    font-size: 0.8rem !important;
+    color: var(--text-muted) !important;
+}
+.theme-modern-web thead th,
+.theme-modern-web .table thead th,
+.theme-solarized-dark thead th,
+.theme-solarized-dark .table thead th {
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: var(--text-light) !important;
+    font-weight: 600 !important;
+    border-bottom: 2px solid var(--border-color) !important;
+}
+.theme-modern-web tbody td,
+.theme-modern-web .table tbody td,
+.theme-solarized-dark tbody td,
+.theme-solarized-dark .table tbody td {
+    border-bottom: 1px solid var(--border-color) !important;
+    color: var(--text-muted) !important;
+    transition: color 0.1s, background-color 0.1s !important;
+}
+
+/* Explicit striped rows for dark themes */
+.theme-modern-web .table-striped tbody tr:nth-of-type(odd) td,
+.theme-solarized-dark .table-striped tbody tr:nth-of-type(odd) td {
+    background: rgba(255, 255, 255, 0.015) !important;
+}
+
+.theme-modern-web tbody tr:hover td,
+.theme-modern-web .table tbody tr:hover td,
+.theme-solarized-dark tbody tr:hover td,
+.theme-solarized-dark .table tbody tr:hover td {
+    color: var(--text-light) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* --- Inputs and Selects in Modern --- */
+.theme-modern-web .form-select,
+.theme-modern-web input[type="text"],
+.theme-modern-web input[type="search"] {
+    background: var(--card-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 10px !important;
+    color: var(--text-light) !important;
+    backdrop-filter: var(--card-backdrop-filter) !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+.theme-modern-web .form-select:focus,
+.theme-modern-web input:focus {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* --- Custom scrollbars → citrini style --- */
+.theme-modern-web ::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+.theme-modern-web ::-webkit-scrollbar-track {
+    background: var(--bg-color) !important;
+}
+.theme-modern-web ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 4px !important;
+}
+.theme-modern-web ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* --- Main page background --- */
+body,
+.container-fluid {
+    background-color: var(--bg-color) !important;
+}
+
+/* --- Accordion base (Solarized Dark) --- */
+.accordion-button:not(.collapsed) {
+    background-color: var(--accordion-active-bg) !important;
+}
+.accordion-body {
+    background-color: var(--bg-color) !important;
+}
+
+/* assets/custom.css */
+
+
+
+.form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.75rem center !important;
+    background-size: 16px 12px !important;
+}
+
+/* Ensure the arrow stays the same color when the user clicks it */
+.form-select:focus {
+    border-color: #93a1a1 !important;    /* Matches the blue highlight */
+    box-shadow: 0 0 0 0.25rem rgba(55, 90, 127, 0.25) !important;
+    outline: 0;
+}
+
+/* Target the NEW Dash 4 Dropdown Variables */
+:root {
+    --Dash-Fill-Interactive-Strong: #1a1a1a; /* Background of the box */
+    --Dash-Stroke-Strong: #eee8d5;           /* Border color */
+    --Dash-Text-Main: #93a1a1;               /* Main text color */
+}
+
+/* Target the Legacy dcc.Dropdown classes (for compatibility) */
+.Select-control, .Select-menu-outer, .VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #eee8d5 !important;
+}
+
+/* Target the dbc.Select (Bootstrap native) specifically */
+.form-select {
+    background-color: #1a1a1a !important;
+    color: #eee8d5 !important;
+    border: 1px solid #93a1a1 !important;
+    border-radius: 4px !important;
+    font-size: 0.85rem !important;
+    height: 38px !important;
+    padding-left: 10px !important;
+}
+
+/* Fix the white "Selected" and "Hover" backgrounds */
+.Select-option.is-focused, .Select-option:hover, .dropdown-item:hover {
+    background-color: #1a1a1a !important;
+    color: #FFFFFF !important;
+}
+
+/* Fix for Multi-Select Tags (used in Positioning) */
+.Select--multi .Select-value {
+    background-color: #1a1a1a !important;
+    border: 1px solid #93a1a1 !important;
+}
+
+/* Change the color of the 'X' (Clear) button */
+.Select-clear {
+    color: #eee8d5 !important;
+    opacity: 0.8;
+}
+
+.Select-clear:hover {
+    color: #FF4444 !important; /* Turns red when you hover to delete */
+}
+
+/* Change the color of the 'Down Carrot' (Arrow) */
+.Select-arrow {
+    border-color: #eee8d5 transparent transparent !important;
+}
+
+/* If your version uses SVG icons (Dash 4 / React-Select) */
+.Select-arrow-zone svg, .Select-clear-zone svg {
+    fill: #eee8d5 !important;
+    stroke: #eee8d5 !important;
+}
+
+/* Fix the "N Selected" text color specifically */
+.Select--multi .Select-value-label {
+    color: #eee8d5 !important;
+}
+
+/* Fix the background of the multi-select counter */
+/* This ensures the "N selected" box doesn't have a white ghost background */
+.Select-multi-value-wrapper {
+    background-color: transparent !important;
+}
+
+
+
+/* The main box background when clicked/focused */
+.is-focused:not(.is-open) > .Select-control,
+.is-open > .Select-control,
+.Select-control:focus,
+.Select-control:active {
+    background-color: #1a1a1a !important;
+    border-color: #93a1a1 !important;
+    box-shadow: 0 0 0 0.2rem rgba(171, 184, 201, 0.25) !important;
+/*    border-color: #93a1a1 !important;
+    box-shadow: none !important;
+    */
+}
+
+/* The background of the entire list container (the part that drops down) */
+.Select-menu-outer {
+    background-color: #1a1a1a !important;
+    border: 1px solid #93a1a1 !important;
+    color: #eee8d5 !important;
+}
+
+/* The actual items in the list */
+.VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #eee8d5 !important;
+}
+
+/* Hover effect on the list items so you can see what you're picking */
+.VirtualizedSelectFocusedOption {
+    background-color: #1a1a1a !important; /* Slightly lighter gray */
+    color: #FFFFFF !important;
+}
+
+/* Fix for the 'No results found' or loading text */
+.Select-noresults, .Select-loading-zone {
+    background-color: #1a1a1a !important;
+    color: #93a1a1 !important;
+}
+
+/* 1. The entire dropdown menu container */
+.Select-menu-outer {
+    background-color: #1a1a1a !important;
+    border: 1px solid #eee8d5 !important;
+    border-top: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 2. The Search Input inside the dropdown */
+/* Ensure the input itself is transparent so it doesn't block the placeholder/selected values */
+.Select-input > input,
+.dash-dropdown input,
+.dash-dropdown .Select-input input {
+    color: #eee8d5 !important;
+    background-color: transparent !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+    -webkit-text-fill-color: #eee8d5 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 3. The 'Select All / Deselect All' and Search header area */
+.Select-menu {
+    background-color: #1a1a1a !important;
+}
+
+/* 4. The individual options (Crypto, Currencies, etc.) */
+.VirtualizedSelectOption {
+    background-color: #1a1a1a !important;
+    color: #eee8d5 !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.1) !important;
+}
+
+/* 5. Hover state for the options */
+.VirtualizedSelectFocusedOption {
+    background-color: #1a1a1a !important;
+    color: #FFFFFF !important;
+}
+
+/* 6. The checkboxes and labels */
+/* In case they are using standard HTML checkboxes */
+.VirtualizedSelectOption input[type="checkbox"] {
+    accent-color: #93a1a1 !important; /* Sets the checkmark color */
+}
+
+/* 7. Action links (Select All / Deselect All) */
+.Select-menu-outer a,
+.Select-menu-outer .Select-all-none {
+    color: #93a1a1 !important;
+    text-decoration: none !important;
+    padding: 5px 10px !important;
+    display: inline-block !important;
+}
+
+.Select-menu-outer a:hover {
+    color: #FFFFFF !important;
+}
+
+/* The Search Area & Input Field */
+.dash-dropdown-search-container,
+.dash-dropdown-search-input {
+    background-color: #1a1a1a !important;
+    color: #eee8d5 !important;
+}
+
+.dash-dropdown-search-input input {
+    background-color: transparent !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+
+/* Select All / Deselect All Bar */
+.dash-dropdown-options-header,
+.dash-dropdown-all-none-container {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* The Individual Options (using the classes you provided) */
+.dash-options-list-option,
+.dash-dropdown-option {
+    background-color: #1a1a1a !important;
+    color: #93a1a1 !important;
+    padding: 8px 12px !important;
+}
+
+/* Hover and Active States */
+.dash-options-list-option:hover,
+.dash-dropdown-option:hover,
+.dash-dropdown-option-highlighted {
+    background-color: #1a1a1a !important;
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+}
+
+/* The Action Links (Select All / Deselect All) */
+.dash-dropdown-all-none-button {
+    color: #93a1a1 !important;
+    font-weight: bold !important;
+}
+
+.dash-dropdown-all-none-button:hover {
+    color: #FFFFFF !important;
+    text-decoration: underline !important;
+}
+
+/* Target the '9 selected' text specifically */
+.dash-dropdown-value-count {
+    color: #93a1a1 !important;
+    font-weight: 500 !important;
+    padding-right: 5px !important;
+    /* Ensure no white background is lingering behind the text */
+    background-color: transparent !important;
+}
+
+/* If the counter is inside a small pill or badge in your version */
+.dash-dropdown-value-count-container {
+    background-color: #1a1a1a !important; /* Subtle gray background for the 'pill' */
+    border-radius: 4px !important;
+    margin-right: 8px !important;
+}
+
+/* Style the entire right-side accessory zone of the dropdown */
+.dash-dropdown-values-container-accessories {
+    border-left: 1px solid rgba(171, 184, 201, 0.2) !important;
+    padding-left: 8px !important;
+    margin-left: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* 1. Target the bar containing 'Select All' specifically */
+.dash-dropdown-options-header,
+.dash-dropdown-all-none,
+.dash-dropdown-select-all-none,
+.dash-dropdown-header {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* 2. Target the text inside that bar so it doesn't stay dark gray */
+.dash-dropdown-options-header span,
+.dash-dropdown-options-header a,
+.dash-dropdown-all-none button {
+    color: #93a1a1 !important; /* Your Slate Gray */
+    font-size: 0.9rem !important;
+}
+
+/* 3. Hover state for the 'Select All' buttons */
+.dash-dropdown-options-header span:hover,
+.dash-dropdown-header a:hover {
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+}
+
+/* 4. The main menu wrapper - setting this to black is the 'Nuclear Option'
+   to prevent any white background from showing behind other elements */
+.dash-dropdown-menu,
+.dash-dropdown-options-container {
+    background-color: #1a1a1a !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.dash-dropdown-menu {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* 1. Target the bar containing the action buttons */
+.dash-dropdown-actions {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.2) !important;
+    display: flex !important;
+    padding: 4px 8px !important;
+}
+
+/* 2. Target the buttons/links inside that bar */
+.dash-dropdown-actions button,
+.dash-dropdown-actions span,
+.dash-dropdown-actions div {
+    color: #93a1a1 !important; /* Your Slate Gray */
+    background-color: transparent !important;
+    border: none !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+
+/* 3. Hover state for the actions */
+.dash-dropdown-actions button:hover,
+.dash-dropdown-actions span:hover {
+    color: #FFFFFF !important;
+    cursor: pointer !important;
+    text-decoration: underline !important;
+}
+
+/* 4. Fix the search bar container which often sits right above this */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid rgba(171, 184, 201, 0.1) !important;
+}
+
+/* 1. Target the main content wrapper around the search and headers */
+.dash-dropdown-content,
+.dash-dropdown-options-container-header {
+    background-color: #1a1a1a !important;
+    border: none !important;
+    /* This removes the white 'frame' around the search box */
+    padding: 0 !important;
+}
+
+/* 2. Target the search container itself to ensure no padding leaks white */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    padding: 8px 12px !important;
+    margin: 0 !important;
+}
+
+/* 3. Ensure the search input box sits cleanly inside the dark container */
+.dash-dropdown-search-input {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    border-radius: 4px !important;
+}
+
+/* 4. The overall menu border (the very outer edge) */
+.dash-dropdown-menu {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+}
+
+/* 2. Target the search container itself to ensure no padding leaks white */
+.dash-dropdown-search-container {
+    background-color: #1a1a1a !important;
+    padding: 8px 12px !important;
+    margin: 0 !important;
+}
+
+/* 3. Ensure the search input box sits cleanly inside the dark container */
+.dash-dropdown-search-input {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    border-radius: 4px !important;
+}
+
+/* Target the actual SVG icon inside the trigger area */
+.dash-dropdown-trigger-icon {
+    color: #93a1a1 !important; /* Sets the color if it's a font-icon */
+    fill: #93a1a1 !important;  /* Sets the color if it's an SVG (likely) */
+    stroke: #93a1a1 !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+/* Hover state for that specific icon */
+.dash-dropdown-trigger-icon:hover {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+    stroke: #FFFFFF !important;
+}
+
+/* Sometimes the parent container forces a scale or opacity we need to override */
+.dash-dropdown-trigger {
+    background-color: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* 1. Target the 'X' clear button container and icon */
+.dash-dropdown-clear {
+    color: #93a1a1 !important; /* Sets the color if it's a font/text icon */
+    opacity: 0.7 !important;   /* Makes it slightly subtle when idle */
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* 2. Target the SVG specifically if the class above doesn't catch the 'fill' */
+.dash-dropdown-clear svg {
+    fill: #93a1a1 !important;
+    stroke: #93a1a1 !important;
+}
+
+/* 3. The Hover State: Professional 'Red' for clearing data */
+.dash-dropdown-clear:hover {
+    color: #FF4444 !important; /* Subtle red indicates a destructive/clear action */
+    opacity: 1 !important;
+    cursor: pointer !important;
+}
+
+.dash-dropdown-clear:hover svg {
+    fill: #FF4444 !important;
+    stroke: #FF4444 !important;
+}
+
+/* 1. Force the Dropdown container and its children to use the dark background */
+.dash-dropdown,
+.dash-dropdown .Select-control,
+.dash-dropdown .dash-dropdown-container,
+.dash-dropdown .dash-dropdown-values-container {
+border: 1px solid #93a1a1 !important;
+    background-color: #1a1a1a !important;
+    border-radius: 4px !important;
+    transition: 0.2s ease-in-out !important;
+    /*
+    background-color: #1a1a1a !important;
+    Use the exact same border color and width as dbc.Select */
+    /*
+    border: 1px solid rgba(171, 184, 201, 0.3) !important;
+    min-height: 38px !important;
+    border-radius: 4px !important;
+    */
+}
+
+/* Sets the text color of selected items in a multi-select dropdown */
+.dash-dropdown .Select--multi .Select-value-label {
+    /* Uses your BRIGHTER_TEXT_COLOR for maximum legibility */
+    color: #93a1a1 !important;
+    font-size: 0.85rem !important;
+}
+
+/* Ensures the 'X' (remove) button next to the text also matches */
+.dash-dropdown .Select--multi .Select-value-icon {
+    color: #93a1a1 !important; /* Your standard TEXT_COLOR */
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Changes the background of the 'pill' to stay dark */
+.dash-dropdown .Select--multi .Select-value {
+    background-color: #1a1a1a !important;
+    border: 1px solid rgba(171, 184, 201, 0.4) !important;
+}
+
+/* 2. Remove the ghost gray background inside the multi-select wrapper */
+.dash-dropdown .Select-multi-value-wrapper,
+.dash-dropdown .dash-dropdown-values-container {
+    background-color: transparent !important;
+}
+
+/* Match the hover state of the dropdown border to the button hover */
+.dash-dropdown .Select-control:hover {
+    border-color: rgba(171, 184, 201, 0.8) !important;
+    cursor: pointer;
+}
+
+/* 3. Ensure the text color matches the 'Slate' look */
+.dash-dropdown .Select-value-label,
+.dash-dropdown .Select-value-item,
+.dash-dropdown .Select--multi .Select-value-label,
+.dash-dropdown .Select-placeholder,
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .dash-dropdown-values-container .dash-dropdown-value {
+    color: #93a1a1 !important;
+    font-weight: 500 !important;
+    line-height: 34px !important; /* Centers the text vertically */
+}
+
+/* 1. Target the text of the selected items */
+.dash-dropdown .dash-dropdown-value-item {
+    color: #eee8d5 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-size: 0.85rem !important;
+}
+
+/* 2. Target the 'X' (remove) button next to the text */
+.dash-dropdown .dash-dropdown-value-item--remove {
+    color: #93a1a1 !important; /* Your standard TEXT_COLOR */
+    cursor: pointer !important;
+    padding-left: 5px !important;
+}
+
+/* 3. Optional: Maintain the dark background for the pill */
+.dash-dropdown .dash-dropdown-value-item {
+    background-color: #1a1a1a !important;
+    border: 0px solid rgba(171, 184, 201, 0.0) !important;
+    border-radius: 0px !important;
+    margin: 2px !important;
+}
+
+.dash-dropdown .dash-dropdown-value-count,
+.dash-dropdown .Select-value-label[data-selected-count] {
+    color: #eee8d5 !important;
+}
+
+/* 3. Ensure the 'X' remove icon matches the theme */
+.dash-dropdown .Select-value-icon {
+    color: #93a1a1 !important;
+    border-right: 1px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* 4. Match the 'Focus' state exactly */
+/* This adds that subtle glow when you click the filter */
+.dash-dropdown .Select-control:focus-within {
+    border-color: #93a1a1 !important;
+    box-shadow: 0 0 0 0.25rem rgba(171, 184, 201, 0.25) !important;
+}
+
+.dash-dropdown .Select-multi-value-wrapper {
+    display: flex !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+/* Styling for the Download Button */
+#btn_download_csv {
+    background-color: transparent !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+#btn_download_csv:hover {
+    background-color: #1a1a1a !important;
+    color: #FFFFFF !important;
+    border-color: #93a1a1 !important;
+}
+
+/* Sidebar Download Button Styling */
+#sidebar-download-btn {
+    background-color: transparent !important;
+    border: 1px solid rgba(171, 184, 201, 0.2) !important;
+    transition: all 0.3s ease !important;
+}
+
+#sidebar-download-btn:hover {
+    background-color: rgba(171, 184, 201, 0.1) !important;
+    border-color: #93a1a1 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Export PNG Button specific styling */
+#oi_alignment_download_img_btn {
+    background-color: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.35) !important;
+    transition: all 0.3s ease !important;
+}
+
+#oi_alignment_download_img_btn:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-color: #FFFFFF !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Ensure the toggle button is always visible on hover */
+#btn-sidebar-toggle:hover {
+    background-color: #1a1a1a !important;
+    color: #FFFFFF !important;
+}
+
+/* If the icon isn't showing up, make sure Bootstrap Icons are loaded */
+.bi-list {
+    font-size: 1.5rem;
+    color: #E2E8F0;
+}
+
+.Select-placeholder {
+    color: #999 !important; /* Ensure the color contrasts with your background */
+}
+
+/* Target the active (expanded) accordion header */
+.accordion-button:not(.collapsed) {
+    /* background-color is now set by theme variables at the top of this file */
+    color: #eee8d5 !important;           /* Your BRIGHTER_TEXT_COLOR */
+    box-shadow: none !important;         /* Removes the default Bootstrap blue glow */
+    padding: 0.5rem 1rem !important;
+    font-size: 0.8rem !important;
+}
+
+/* Ensure the text and background look correct when focused */
+.accordion-button:focus {
+    border-color: rgba(171, 184, 201, 0.3) !important;
+    box-shadow: 0 0 0 0.25rem rgba(64, 90, 125, 0.25) !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* Change the color of the accordion arrow (chevron) when expanded */
+.accordion-button:not(.collapsed)::after {
+    filter: brightness(0) invert(1); /* Flips the black arrow to white */
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* The body of the expanded item */
+.accordion-body {
+    /* background-color is now set by theme variables at the top of this file */
+    color: #93a1a1 !important;           /* Your TEXT_COLOR */
+    border-top: 1px solid rgba(171, 184, 201, 0.1) !important;
+    padding: 0.5rem 0.75rem !important;
+}
+
+.accordion-item {
+    background-color: transparent !important;
+    border: 1px solid #333 !important;
+}
+
+/* Allows the page to scroll even if the finger lands on the graph */
+.mobile-scroll-fix .main-svg {
+    pointer-events: none;
+}
+
+/* Re-enables interaction if the user clicks a specific toggle */
+.active-graph .main-svg {
+    pointer-events: all;
+}
+
+/* Custom scrollbar for responsive tables */
+.table-responsive::-webkit-scrollbar {
+    height: 6px; /* Slimmer for laptop screens */
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(171, 184, 201, 0.3); /* Matches your TEXT_COLOR */
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: rgba(171, 184, 201, 0.6);
+}
+
+/* Sticky First Column Logic */
+.sticky-first-col thead th:first-child(2),
+.sticky-first-col tbody td:first-child(2) {
+    position: sticky !important;
+    left: 10;
+    z-index: 10; /* Ensures it stays above other cells */
+    /* Must have a solid background color to prevent 'bleed through' */
+    background-color: #1a1a1a !important;
+    border-right: 2px solid rgba(171, 184, 201, 0.2) !important;
+}
+
+/* Ensure the header stays on top of the sticky column when scrolling vertically */
+.sticky-first-col thead th:first-child(2) {
+    z-index: 11;
+}
+
+/* Subtle shadow to indicate the scroll plane */
+.sticky-first-col tbody td:first-child(2) {
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+}
+
+//* Set background for both, but apply layout resets ONLY to the body */
+body {
+    /* background-color is now set by theme variables at the top of this file */
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden; /* Failsafe to hide any minor row overflows */
+}
+
+/* Let Bootstrap handle its own container padding */
+/* .container-fluid background is now set by theme variables */
+
+.nav-link {
+    color: #93a1a1 !important; /* Your standard muted text */
+    font-size: 0.95rem;
+    transition: color 0.2s ease-in-out;
+}
+
+/* Style when the link is active */
+.nav-link.active {
+    color: #eee8d5 !important; /* Your BRIGHTER_TEXT_COLOR */
+    font-weight: 600;
+    border-bottom: 2px solid #eee8d5; /* Added for a clean 'Pro' look */
+}
+
+/* Add space between the modebar groups */
+.modebar-group {
+    margin-left: 1px !important;
+    padding-left: 5px !important;
+}
+
+/* Add space between individual buttons */
+.modebar-btn {
+    margin-left: 8px !important;
+}
+
+/* Shift the entire modebar higher up to clear the horizontal legend */
+.js-plotly-plot .plotly .modebar {
+    top: -15px !important; /* Adjust this based on your legend height */
+}
+
+/* This property makes the browser respect the \n newlines in strings */
+.dense-table thead th {
+    white-space: pre-line !important;
+    vertical-align: bottom !important;
+    text-align: center !important;
+    line-height: 1.1 !important;
+    padding: 10px 5px !important;
+    letter-spacing: -0.5px !important;
+    font-size: 0.7rem !important;
+}
+
+/* Optional: Keep data cells on a single line to prevent row bloating */
+.dense-table tbody td {
+    white-space: nowrap !important;
+}
+
+
+
+/* 1. Force Native Dark Mode & Base Backgrounds */
+.ag-theme-quartz-dark {
+    color-scheme: dark !important;
+    --ag-background-color: #1a1a1a !important;
+    --ag-header-background-color: #1a1a1a !important;
+}
+
+/* Make header font smaller */
+.ag-theme-quartz-dark .ag-header-cell-label,
+.ag-theme-quartz-dark .ag-header-cell-text {
+    font-size: 10px !important;
+}
+
+/* 2. Custom WebKit Scrollbar Geometry (Overrides Mac Auto-hide) */
+.ag-theme-quartz-dark ::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+    -webkit-appearance: none !important; /* Strips Apple's invisible UI */
+    display: block !important;
+}
+
+/* 3. Scrollbar Track & Thumb Coloring */
+.ag-theme-quartz-dark ::-webkit-scrollbar-track {
+    background: #1a1a1a !important;
+}
+
+.ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
+    background: #3a3f47 !important;
+    border-radius: 6px !important;
+    border: 2px solid #1a1a1a !important; /* Creates a clean padded look */
+}
+
+/* 4. Annihilate the White Safari Corners & Spacers (Under Pinned Columns) */
+.ag-theme-quartz-dark .ag-horizontal-left-spacer,
+.ag-theme-quartz-dark .ag-horizontal-right-spacer,
+.ag-theme-quartz-dark .ag-scroller-corner {
+    background: #1a1a1a !important;
+    background-color: #1a1a1a !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 5. Global WebKit Corner Catch-all (For absolute Safari compliance) */
+::-webkit-scrollbar-corner,
+.ag-theme-quartz-dark *::-webkit-scrollbar-corner {
+    background-color: #1a1a1a !important
+}
+
+/* ============================================================
+   PRINT STYLES
+   ============================================================ */
+@media print {
+    body, html, .container-fluid {
+        background-color: #1a1a1a !important; /* Solarized Dark background */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Hide the navbar and sidebar */
+    .navbar, .navbar-custom, #sidebar, #sidebar-wrapper {
+        display: none !important;
+    }
+
+    /* Hide the settings accordion and download button */
+    #oi-alignment-config-accordion, #oi_alignment_download_img_btn {
+        display: none !important;
+    }
+
+    /* Ensure graphs and layout take up the full printable page width */
+    .container, .container-fluid {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+
+/* Fix for Dash Dropdown rendering behind other components or clipped by accordion containers */
+.accordion-item, .accordion-collapse, .accordion-body {
+    overflow: visible !important;
+}
+
+.dash-dropdown,
+.dash-dropdown .Select-control,
+.Select-menu-outer,
+.dash-dropdown-menu {
+    z-index: 9999 !important;
+}
+
+/* Alternating group background for AG Grid matrix */
+.ag-theme-quartz-dark .lighter-group-header {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Badge Pill styles for grid cells */
+.badge-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-radius: 10px;
+    margin: 1px;
+}
+.badge-bull {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+    color: #10b981 !important;
+}
+.badge-bear {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+    color: #ef4444 !important;
+}
+.badge-neutral {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #9ca3af !important;
+}
+
+
+
+
+/* --- AG Grid Matrix Group Borders --- */
+.group-border-right {
+    border-right: 2px solid var(--border-color) !important;
+}
+
+/* Force dropdown input text to be visible in dark themes */
+.Select-control {
+    background-color: #1a1a1a !important;
+}
+
+.Select-input > input {
+    color: #ffffff !important;
+    text-shadow: none !important;
+}
+
+.Select-value-label {
+    color: #ffffff !important;
+}
+
+.dash-dropdown input,
+.dash-dropdown .Select-input > input,
+.dash-dropdown-search-input,
+.dash-dropdown-search-input input,
+.Select-input > input,
+[data-radix-popper-content-wrapper] input,
+.dash-dropdown-menu input {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    caret-color: #ffffff !important;
+}
+
+/* Fix Plotly Button Hover Colors (Range Selector and Update Menus) */
+g.updatemenu-button:hover rect,
+g.rangeselector:hover rect,
+g.selector-button:hover rect,
+g.updatemenu-item:hover rect {
+    fill: #073642 !important; /* Solarized Dark Base02 for hover */
+}
+
+/* Standardize markdown link colors in AG Grid */
+.ag-theme-quartz-dark a {
+    color: #3b82f6 !important;
+    text-decoration: none !important;
+}
+
+.ag-theme-quartz-dark a:hover {
+    text-decoration: underline !important;
+    color: #60a5fa !important;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Signal Card Hover Effect */
+.signal-card-hover {
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out !important;
+}
+.signal-card-hover:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+    z-index: 10;
+}
+
+/* Skeleton Loading Animation */
+@keyframes skeletonPulse {
+    0% { opacity: 0.5; }
+    50% { opacity: 0.8; }
+    100% { opacity: 0.5; }
+}
+.skeleton-pulse {
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+.skeleton-text {
+    background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 37%, rgba(255,255,255,0.05) 63%);
+    background-size: 400% 100%;
+    animation: skeletonLoading 1.4s ease infinite;
+    border-radius: 4px;
+}
+@keyframes skeletonLoading {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+.rc-slider-tooltip { display: none !important; }
+.dash-range-slider-input { display: none !important; }
+input.dash-input-container { display: none !important; }
+
+/* Bootstrap 5 dropped the breakpoint-scoped border utilities that Bootstrap 4 had
+   (`border-md-right`), so a plain `border-end` on a column keeps drawing once the
+   row stacks, leaving a stray vertical rule down the side of the card. Pair this
+   with `border-end` to show the divider only where columns sit side by side. */
+@media (max-width: 767.98px) {
+    .hide-border-below-md { border-right: 0 !important; }
+}

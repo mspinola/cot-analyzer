@@ -1,0 +1,73 @@
+name: Python package
+
+on:
+  push:
+    branches: [ "main" ]
+  # Every pull request, not just those into main. A stacked PR targets its parent
+  # branch rather than main, so a branch filter here leaves each step of a stack
+  # unchecked until it is retargeted, which is exactly when a regression is hardest
+  # to attribute.
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Test against peer repos' range: cotdata 3.9–3.13, crucible 3.9–3.12
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Check out cot-analyzer
+      uses: actions/checkout@v4
+      with:
+        path: cot-analyzer
+
+    - name: Check out cotdata (public sibling — resolves `-e ../cotdata` in requirements.txt)
+      uses: actions/checkout@v4
+      with:
+        repository: mspinola/cotdata
+        path: cotdata
+
+    - name: Check out cotmetrics (metrics/data layer — resolves `-e ../cotmetrics`)
+      uses: actions/checkout@v4
+      with:
+        repository: mspinola/cotmetrics
+        path: cotmetrics
+        # cotmetrics is PRIVATE — needs a token that can read it. Set repo secret
+        # COTMETRICS_TOKEN to a fine-grained PAT with Contents:read on mspinola/cotmetrics.
+        token: ${{ secrets.COTMETRICS_TOKEN }}
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      working-directory: cot-analyzer
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
+
+    - name: Verify internal dependency floors
+      # cotdata / cotmetrics are installed editable from ../ at whatever HEAD was
+      # checked out, so pip never enforces the version floors in pyproject.toml.
+      # This asserts the installed siblings actually satisfy those declared floors.
+      working-directory: cot-analyzer
+      run: python scripts/check_dep_floors.py
+
+    - name: Run linting
+      working-directory: cot-analyzer
+      run: python -m ruff check src tests
+
+    - name: Run tests
+      working-directory: cot-analyzer
+      env:
+        PYTHONPATH: src
+        # Dummy store so cotdata's COTDATA_STORE guard doesn't error at import.
+        COTDATA_STORE: /tmp/cotdata_store
+        COTMETRICS_CACHE: /tmp/cotmetrics_cache
+      run: |
+        mkdir -p /tmp/cotdata_store /tmp/cotmetrics_cache
+        pytest tests/

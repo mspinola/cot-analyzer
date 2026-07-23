@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cot-analyzer"
+version = "1.0.0"
+description = "Dash/Plotly web UI for COT positioning index, signals, and analysis."
+readme = "README.md"
+authors = [
+    {name = "Matt S.", email = "cotanalyzer@gmail.com"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "dash==4.3.0",
+    "dash-ag-grid==35.2.0",
+    "dash-bootstrap-components==2.0.4",
+    "dash-core-components==2.0.0",
+    "dash-html-components==2.0.0",
+    "dash-table==5.0.0",
+    "Flask-Compress==1.24",
+    "gunicorn==23.0.0",
+    "markdown==3.9",
+    "numpy==2.0.2",
+    "pandas==2.3.3",
+    "pyarrow==21.0.0",
+    "pytz==2026.2",
+    "pyyaml==6.0.3",
+    "requests==2.32.5",
+    "cotdata>=0.1.0",
+    "cotmetrics[options,scheduler]>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff==0.15.22"]
+
+[project.urls]
+Repository = "https://github.com/mspinola/cot-analyzer"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

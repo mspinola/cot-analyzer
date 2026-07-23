@@ -1,0 +1,45 @@
+# cot-analyzer example configuration.
+#
+# Public SAMPLE. Ships so the app runs out of the box with a small generic
+# universe and untuned 52-week lookbacks. Point COT_VIZ_CONFIG (and cotmetrics'
+# COTMETRICS_PARAMS) at your own file to supply a real universe / tuning.
+
+# Price type to use for daily estimations ("close" or "settlement").
+price_type: "settlement"
+
+# Max daily open-interest flow as a fraction of daily volume, per asset class.
+flow_caps:
+  Default: 0.10
+
+# Lookback windows (weeks) computed for every COT report.
+lookbacks:
+  - ["6-months", 26]
+  - ["1-years", 52]
+
+# Years of COT data to download and process.
+years: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
+
+# Instrument role: deploy (plotted, default), watch (plotted, not in book),
+# heldout (indexed but never plotted/selected).
+roles:
+  default: deploy
+
+# Color palettes for the plot/theme dropdowns (UI only).
+palettes:
+  "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
+  "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#00FF00", "#E2E8F0"]
+  "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#00FF00", "#ABB8C9"]
+  "CMR": ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0"]
+  "Solarized": ["#dc322f", "#268bd2", "#b58900", "#2aa198", "#fdf6e3"]
+
+# A small, generic universe. Public futures tickers, untuned 52-week lookbacks.
+AssetClasses:
+  - Equities:
+      - { Name: "S&P 500", Symbol: "ES", CustomLookbackWeeks: 52, TV_Chart: "SPY" }
+      - { Name: "Nasdaq", Symbol: "NQ", CustomLookbackWeeks: 52, TV_Chart: "QQQ" }
+      - { Name: "Russell 2000", Symbol: "RTY", CustomLookbackWeeks: 52, TV_Chart: "IWM", Role: heldout }
+  - Metals:
+      - { Name: "Gold", Symbol: "GC", CustomLookbackWeeks: 52, TV_Chart: "GOLD" }
+      - { Name: "Silver", Symbol: "SI", CustomLookbackWeeks: 52, TV_Chart: "SILVER" }
+  - Energies:
+      - { Name: "Crude Oil", Symbol: "CL", CustomLookbackWeeks: 52, TV_Chart: "USOIL" }

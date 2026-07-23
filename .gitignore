@@ -1,0 +1,28 @@
+__pycache__
+scratch/
+**/*.DS_Store
+.venv
+data
+logs
+venv
+.env
+run-local.bash
+run-local.sh
+data_cache
+cotmetrics_data
+*.egg-info/
+.history
+.pytest_cache
+
+# Ignore generated HTML reports
+src/assets/quantstats_*.html
+src/assets/ml_summary_report.html
+src/quantstats_reports/
+
+# Claude Code: ignore personal + transient agent state; the shared
+# settings.json can be added explicitly if the team wants it tracked.
+.claude/settings.local.json
+.claude/worktrees/
+# Local preview/dev-server launch config. Points at this checkout and assumes a
+# .venv beside it, so it is per-machine rather than shared.
+.claude/launch.json

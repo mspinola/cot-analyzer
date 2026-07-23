@@ -1,0 +1,24 @@
+[Unit]
+Description=COT Analyzer
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/trading_workspace/cot-analyzer/server-side
+EnvironmentFile=/root/trading_workspace/cot-analyzer/.env
+ExecStart=/bin/bash /root/trading_workspace/cot-analyzer/server-side/launch-cot-analyzer.sh
+Restart=always
+
+# The box has 11GB and no swap, so memory pressure kills rather than degrades, and the
+# kernel OOM-killer picks its own victim -- which need not be this process. This bounds
+# the app so an overrun becomes a clean restart of the right unit instead.
+#
+# Not a budget. Realistic peak is ~2GB: the app baseline plus the get_symbols_data frame
+# cache, which is 42 instruments x 2 bases x 3 lookbacks at ~2.9MB a frame, so ~730MB if
+# every lookback and model combination gets exercised. Steady state on one selection is
+# nearer 120MB. 4G is roughly double the peak so it should never fire in normal use.
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target
