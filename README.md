@@ -1,15 +1,27 @@
 # COT Analyzer
 
-Application to download [CFTC](https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm) COT legacy report:
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-    * generate csv files with per symbol data
-    * generate RealTest data as an Event List for each symbol
-    * calculate COT index value based on configurable lookback values for the 3 COT categories (Commercials, Large Speculators, and Small Speculators)
-    * generate visualization plots via Dash/Plotly for web browser viewing
-    * periodically download updated COT reports (released Fridays at 3:30 US/Eastern)
+A Dash/Plotly web app for exploring [CFTC](https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm)
+Commitments of Traders positioning. It's the UI layer on top of the
+[`cotmetrics`](https://github.com/mspinola/cotmetrics) metrics library and the
+[`cotdata`](https://github.com/mspinola/cotdata) store; it computes no metrics of its
+own. Given the CFTC legacy report, it will:
+
+* generate CSV files with per-symbol data
+* generate RealTest data as an Event List for each symbol
+* calculate the COT index from configurable lookbacks for the 3 COT categories (Commercials, Large Speculators, Small Speculators)
+* render positioning plots via Dash/Plotly for browser viewing
+* periodically download updated COT reports (released Fridays at 3:30 US/Eastern)
 
 ![Example Graphs](./doc/cot-indexing-graphs.png)
 ![Example Positioning Table](./doc/cot-positioning-table.png)
+
+> **This is a source application, not a PyPI package.** Clone it and run it. It expects
+> the `cotdata` and `cotmetrics` siblings checked out alongside it (`../cotdata`,
+> `../cotmetrics`) — `requirements.txt` installs them editable — and a populated
+> `COTDATA_STORE`. See Setup below.
 
 ## COT Data
 
@@ -17,10 +29,17 @@ Description of [COT Legacy Report data fields](https://www.cftc.gov/MarketReport
 
 ## Setup (uv)
 
+Check out the sibling repos alongside this one first, so the editable installs in
+`requirements.txt` resolve:
+
 ```bash
+git clone https://github.com/mspinola/cotdata
+git clone https://github.com/mspinola/cotmetrics
+git clone https://github.com/mspinola/cot-analyzer
+cd cot-analyzer
 uv venv
 source .venv/bin/activate
-uv pip install -r requirements.txt   # includes the editable cotdata data layer (-e ../cotdata)
+uv pip install -r requirements.txt   # includes the editable siblings (-e ../cotdata, -e ../cotmetrics)
 ```
 
 `requirements.txt` pulls in two local sibling packages, both editable:
@@ -102,6 +121,10 @@ travel, since the CFTC archives in it are downloaded and the CSV exports are gen
 **See [server-side/README.md](server-side/README.md)** for the full setup: which repos
 the server needs, the complete environment variable list, exactly what to sync, and the
 upgrade procedure. That file is the source of truth for deployment.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 
 
