@@ -15,8 +15,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Test against peer repos' range: cotdata 3.9–3.13, crucible 3.9–3.12
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        # Test against peer repos' range: cotdata 3.10–3.13, crucible 3.9–3.12
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - name: Check out cot-analyzer
