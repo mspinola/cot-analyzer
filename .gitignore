@@ -7,7 +7,6 @@ logs
 venv
 .env
 run-local.bash
-run-local.sh
 data_cache
 cotmetrics_data
 *.egg-info/
