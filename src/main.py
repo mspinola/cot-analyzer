@@ -6,7 +6,6 @@ import sys
 import time
 
 import cotmetrics.utils as utils
-from cotmetrics.pipelines.etl_scheduler import CotJobScheduler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -91,20 +90,8 @@ if __name__ == "__main__":
         utils.cot_logger.warning("Running in DEBUG mode.")
         dash_debug = True
 
-    cotDownloader = CotJobScheduler()
-
     # Check if we are in the Werkzeug reloader child process
     is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-
-    if not is_reloader:
-        # Trigger an initial ETL check if needed (only in the main parent process)
-        cotDownloader.run_polling_window(attempts=1, interval_minutes=1, force_disable_email=True)
-
-        if not os.path.exists('data/raw_cot_data.parquet'):
-            utils.cot_logger.warning("raw_cot_data.parquet not found! Forcing ETL pipeline to generate it...")
-            import importlib
-            etl_module = importlib.import_module("cotmetrics.pipelines.01_etl_downloader")
-            etl_module.run_etl_pipeline()
 
     enable_server = True
     if not enable_server:
@@ -125,19 +112,12 @@ if __name__ == "__main__":
                 utils.cot_logger.info("[FAST BOOT] Skipping eager cache validation.")
 
             if not getattr(args, 'fast', False):
-                # Start the background process for hourly zip updates
-                cot_data_update_process = multiprocessing.Process(
-                    target=cotDownloader.start_scheduler
-                )
-                cot_data_update_process.start()
-
                 options_update_process = multiprocessing.Process(
                     target=daily_options_update_scheduler
                 )
                 options_update_process.start()
             else:
                 utils.cot_logger.info("[FAST BOOT] Skipping background schedulers.")
-                cot_data_update_process = None
                 options_update_process = None
 
         from app_cot import app
@@ -152,9 +132,6 @@ if __name__ == "__main__":
                 "Keyboard interrupt received, terminating background update processes...")
         finally:
             if not is_reloader:
-                if cot_data_update_process:
-                    cot_data_update_process.terminate()
-                    cot_data_update_process.join()
                 if options_update_process:
                     options_update_process.terminate()
                     options_update_process.join()

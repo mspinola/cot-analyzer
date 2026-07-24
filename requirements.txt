@@ -24,4 +24,4 @@ tomli==2.0.1; python_version < "3.11"   # for scripts/check_dep_floors.py on <3.
 # catches integration breaks before those siblings are released. Pin the PyPI
 # releases instead if you want reproducible, checkout-free builds.
 -e ../cotdata
--e ../cotmetrics[options,scheduler]
+-e ../cotmetrics[options]

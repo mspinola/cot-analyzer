@@ -33,7 +33,7 @@ dependencies = [
     "pyyaml==6.0.3",
     "requests==2.32.5",
     "cotdata>=0.1.0",
-    "cotmetrics[options,scheduler]>=0.1.0",
+    "cotmetrics[options]>=0.1.0",
 ]
 
 [project.optional-dependencies]

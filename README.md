@@ -44,9 +44,10 @@ uv pip install -r requirements.txt   # includes the editable siblings (-e ../cot
 
 `requirements.txt` pulls in two local sibling packages, both editable:
 
-* **cotmetrics** (`-e ../cotmetrics[options,scheduler]`) is the data and metrics layer. It
-  owns the indexer, the COT index and signals, the ETL and scheduler, and options data.
-  This repo is the Dash application on top of it and computes no metrics of its own.
+* **cotmetrics** (`-e ../cotmetrics[options]`) is the data and metrics layer. It
+  owns the indexer, the COT index and signals, and options data. COT/price data is
+  produced by cotdata and read from the shared store. This repo is the Dash
+  application on top of it and computes no metrics of its own.
 * **cotdata** (`-e ../cotdata`) is the store beneath that. Prices and COT are read through
   `cotdata.get_prices` / `cotdata.get_cot`, backed by a shared file store.
 

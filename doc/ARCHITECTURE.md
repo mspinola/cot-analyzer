@@ -30,7 +30,7 @@ The system is decoupled into logical modules, ensuring data engineering pipeline
 ### The repo boundary: cot-analyzer and cotmetrics
 
 The data and metrics layer lives in a **separate package, `cotmetrics`**, installed as an
-editable sibling (`requirements.txt` carries `-e ../cotmetrics[options,scheduler]`, which
+editable sibling (`requirements.txt` carries `-e ../cotmetrics[options]`, which
 in turn depends on `-e ../cotdata`). This repo holds the Dash application and nothing else.
 
 The split matters when reading the rest of this document, so as a map:

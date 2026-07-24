@@ -9,7 +9,6 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 from cotmetrics.database import cotDatabase
-from cotmetrics.pipelines.etl_scheduler import CotJobScheduler
 from dash import ClientsideFunction, Input, Output, State, callback, clientside_callback, dcc, html
 from dash.exceptions import PreventUpdate
 
@@ -151,12 +150,15 @@ def trigger_manual_poll(n_clicks):
     if not n_clicks:
         return ""
 
-    # Instantiate a temporary downloader just for this check
-    # You can pass enable_email=False if you don't want to be spammed during manual tests
-    downloader = CotJobScheduler(enable_email=False)
-
-    # Run a single attempt
-    downloader.run_polling_window(attempts=1, interval_minutes=1)
+    try:
+        # Run cotdata-update to refresh the store
+        subprocess.run(
+            ['cotdata-update', '--cot-all'],
+            capture_output=True, text=True, check=True
+        )
+    except Exception as e:
+        utils.cot_logger.error(f"Manual data poll failed: {e}")
+        return f"Manual poll failed: {e}"
 
     # Run predictions in case they were missing or not generated
     try:
