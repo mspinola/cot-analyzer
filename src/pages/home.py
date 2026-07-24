@@ -59,7 +59,7 @@ active_setups_panel = html.Div(
                 dbc.Switch(
                     id="home_setups_show_near",
                     label="Approaching",
-                    value=True,
+                    value=False,
                     # Session-persisted like every other control on this page, so the
                     # choice survives a navigation away and back.
                     persistence=True,
@@ -230,7 +230,8 @@ def layout(**kwargs):
                                     html.Label("Model", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
                                     dbc.Select(
                                         id='home_model_selector',
-                                        persistence='session',
+                                        persistence=True,
+                                        persistence_type='local',
                                         # No "Both" here: it is a chart comparison view and
                                         # this page renders verdicts, which can only be
                                         # reached by one model at a time.
