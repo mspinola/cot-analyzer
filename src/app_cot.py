@@ -1,5 +1,3 @@
-import os
-
 import cotmetrics.models as models
 import cotmetrics.utils as utils
 import dash
