@@ -14,12 +14,6 @@ import viz_constants as vc
 
 utils.launch_logger.warning("Launch app_cot")
 
-if not os.path.exists('data/raw_cot_data.parquet'):
-    utils.cot_logger.warning("raw_cot_data.parquet not found! Forcing ETL pipeline to generate it before launching server...")
-    import importlib
-    etl_module = importlib.import_module("cotmetrics.pipelines.01_etl_downloader")
-    etl_module.run_etl_pipeline()
-
 app = Dash(
     __name__,
     use_pages=True,
