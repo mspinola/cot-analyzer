@@ -169,9 +169,7 @@ def get_CFTC_df_selection(assets, selected_columns, lookback, palette_name, targ
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     asset_list = (assets,) if isinstance(assets, str) else tuple(assets)
 
-    # Only estimate if the user has selected an estimate column to display, otherwise skip to save time
-    estimate_gap = any("Estimate" in col for col in selected_columns) if selected_columns else False
-    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, estimate_gap, target_date)
+    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date)
 
     if df.empty:
         return html.P("No data available for the selected asset classes.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
@@ -224,13 +222,6 @@ def get_CFTC_df_selection(assets, selected_columns, lookback, palette_name, targ
         if requested_cols and "Net Positioning" in requested_cols:
             i = requested_cols.index("Net Positioning")
             requested_cols[i:i+1] = [const.COMM_NET, const.LARGE_NET, const.SMALL_NET]
-
-        if requested_cols and "Estimated Indexing" in requested_cols:
-            i = requested_cols.index("Estimated Indexing")
-            requested_cols[i:i+1] = [const.COMM_IDX_EST, const.LARGE_IDX_EST, const.SMALL_IDX_EST]
-        if requested_cols and "Net Estimated Positioning" in requested_cols:
-            i = requested_cols.index("Net Estimated Positioning")
-            requested_cols[i:i+1] = [const.COMM_NET_EST, const.LARGE_NET_EST, const.SMALL_NET_EST]
 
         if requested_cols and "OI Percentage" in requested_cols:
             i = requested_cols.index("OI Percentage")
@@ -353,8 +344,7 @@ def download_positioning_table(n_clicks, selected_columns, lookback, target_date
     asset_list = (assets,) if isinstance(assets, str) else tuple(assets)
 
     # Fetch the dataframe
-    estimate_gap = any("Estimate" in col for col in selected_columns) if selected_columns else False
-    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, estimate_gap, target_date)
+    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date)
     if not df.empty:
         df = df.sort_values(by=['Asset Class', 'Name'], ascending=[True, True])
 
