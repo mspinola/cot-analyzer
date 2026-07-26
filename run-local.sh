@@ -42,11 +42,17 @@ if [ -z "$COTDATA_STORE" ]; then
     exit 1
 fi
 
-# CIT PY research notes (dated .md/.txt the /citpy page links) are hand-copied artifacts,
-# not a regenerable cache, so co-locate them with the durable store instead of cotmetrics'
-# default data dir: copy the dated folders into $COTDATA_STORE/citpy and they ride the
-# store's existing backup/sync. cotdata ignores non-manifest paths, so the subdir is inert
-# to it. Override by exporting COTMETRICS_CITPY yourself first.
-export COTMETRICS_CITPY="${COTMETRICS_CITPY:-$COTDATA_STORE/citpy}"
+# CIT PY research notes (dated .md/.txt the /citpy page links) are produced by a separate
+# tool and only read here. They used to default to $COTDATA_STORE/citpy, which was wrong
+# twice over: the store is a producer/consumer artifact that a sync mirrors, so a --delete
+# pass would remove a directory no producer creates, and keeping a second copy there meant
+# hand-refreshing it after every generator run. Set COTMETRICS_CITPY (see .env) to the
+# generator's own output directory instead. Unset, cotmetrics falls back to its XDG data
+# dir, which is what the deployed unit uses.
+if [ -z "$COTMETRICS_CITPY" ] && [ -d "$COTDATA_STORE/citpy" ]; then
+    echo "run-local.sh: $COTDATA_STORE/citpy still exists but is no longer read." >&2
+    echo "  Point COTMETRICS_CITPY at the notes' real home in .env, then delete it:" >&2
+    echo "    a store sync mirrors that path and will not preserve it." >&2
+fi
 
 .venv/bin/python src/main.py "$@"
