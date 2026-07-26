@@ -42,4 +42,11 @@ if [ -z "$COTDATA_STORE" ]; then
     exit 1
 fi
 
+# CIT PY research notes (dated .md/.txt the /citpy page links) are hand-copied artifacts,
+# not a regenerable cache, so co-locate them with the durable store instead of cotmetrics'
+# default data dir: copy the dated folders into $COTDATA_STORE/citpy and they ride the
+# store's existing backup/sync. cotdata ignores non-manifest paths, so the subdir is inert
+# to it. Override by exporting COTMETRICS_CITPY yourself first.
+export COTMETRICS_CITPY="${COTMETRICS_CITPY:-$COTDATA_STORE/citpy}"
+
 .venv/bin/python src/main.py "$@"
