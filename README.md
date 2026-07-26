@@ -15,8 +15,8 @@ own. Given the CFTC legacy report, it will:
 * render positioning plots via Dash/Plotly for browser viewing
 * periodically download updated COT reports (released Fridays at 3:30 US/Eastern)
 
-![Example Graphs](./doc/cot-indexing-graphs.png)
-![Example Positioning Table](./doc/cot-positioning-table.png)
+![Example Graphs](./docs/cot-indexing-graphs.png)
+![Example Positioning Table](./docs/cot-positioning-table.png)
 
 > **This is a source application, not a PyPI package.** Clone it and run it. It expects
 > the `cotdata` and `cotmetrics` siblings checked out alongside it (`../cotdata`,
