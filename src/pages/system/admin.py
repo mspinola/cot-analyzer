@@ -215,8 +215,10 @@ def update_admin_stats(n, auth_data):
     if df.empty:
         return px.scatter(title="No Data"), px.scatter(title="No Data"), html.P("No logs found."), html.P("No logs found.")
 
-    # Fetch raw log content
-    log_content = get_log_tail("logs/" + utils.main_cot_logger_file, n=100)
+    # Fetch raw log content from the same dir the logger writes to (utils.LOG_DIR,
+    # i.e. COTMETRICS_LOG_DIR). A hardcoded relative "logs/" only matched the
+    # pre-split layout and read nothing once the log dir became configurable.
+    log_content = get_log_tail(os.path.join(utils.LOG_DIR, utils.main_cot_logger_file), n=100)
 
     # Time Chart
     df['timestamp'] = pd.to_datetime(df['timestamp'])
