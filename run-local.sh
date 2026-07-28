@@ -5,10 +5,19 @@
 cd "$(dirname "$0")" || exit 1
 REPO="$(pwd)"
 
-# Point the metrics layer's derived cache at this repo's data_cache so the app
-# reuses the existing per-instrument parquet cache (cotmetrics defaults it to
-# ~/.cache/cotmetrics otherwise).
-export COTMETRICS_CACHE="${COTMETRICS_CACHE:-$REPO/data_cache}"
+# Local runtime state: the derived parquet cache, rotating logs, and the visitor-log
+# SQLite DB. Keep all three in one untracked dir off the workspace root, shared across
+# every checkout/worktree (trading_workspace is not a git repo, so nothing tracks it).
+# Unset, the library defaults scatter them across per-user XDG dirs (~/.cache for the
+# cache and logs, ~/.local/share for the DB); the DB default previously landed inside
+# the installed cotmetrics package tree. Override so a local run keeps them together and
+# out of ~/.cache. Export your own values first to opt out of any of these.
+_WORKSPACE="$(cd "$REPO/.." && pwd)"
+_LOCAL_STATE="$_WORKSPACE/.local-state/cot-analyzer"
+mkdir -p "$_LOCAL_STATE/data_cache" "$_LOCAL_STATE/logs"
+export COTMETRICS_CACHE="${COTMETRICS_CACHE:-$_LOCAL_STATE/data_cache}"
+export COTMETRICS_LOG_DIR="${COTMETRICS_LOG_DIR:-$_LOCAL_STATE/logs}"
+export COTMETRICS_DB="${COTMETRICS_DB:-$_LOCAL_STATE/cot_data.db}"
 
 # cot-analyzer ships a generic SAMPLE config/params.yaml since going public. Real runs
 # need the private universe + palettes, which live in the sibling cotmetrics-config repo.
