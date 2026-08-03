@@ -197,9 +197,24 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             (figure.data || []).forEach(function(t) { liveAxes[axisKeyOf(t)] = true; });
 
             // Reset Axes, Autoscale, or a double-click: hand each axis back to Plotly.
-            if ('xaxis.autorange' in relayoutData || 'autosize' in relayoutData) {
+            //
+            // `autosize` is grouped here but is NOT one of those gestures. It fires on
+            // first paint and on every window resize, where the reader has asked for
+            // nothing. Resetting on it threw away any range the server had computed
+            // before the reader ever saw it, which is why panels that fit their axis
+            // to the visible window server-side (get_net_pos_plot, and the category
+            // panels) still opened autoranged over their whole history.
+            //
+            // So on a resize, leave an explicitly ranged axis alone. Plotly reports
+            // autorange === true only for an axis it is ranging itself; one given an
+            // explicit range carries no autorange key at all. A genuine reset still
+            // hands back everything, including those.
+            var isReset = 'xaxis.autorange' in relayoutData;
+            if (isReset || 'autosize' in relayoutData) {
                 for (key in liveAxes) {
-                    if (layout[key]) { update[key + '.autorange'] = true; }
+                    if (!layout[key]) { continue; }
+                    if (!isReset && layout[key].autorange !== true) { continue; }
+                    update[key + '.autorange'] = true;
                 }
                 if (Object.keys(update).length) {
                     try { Plotly.relayout(gd, update); } catch (e) { return noUpdate; }

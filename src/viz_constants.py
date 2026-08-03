@@ -164,6 +164,94 @@ BASIS_LABELS = {
 BASIS_OVERLAY_DASH = "dash"
 BASIS_OVERLAY_TINT = 0.45  # blend toward white; 0 = unchanged, 1 = white
 
+# Disaggregated / TFF category colours, DERIVED from the five-slot palette rather than
+# added to it.
+#
+# Same problem and same answer as the overlay above. A palette is exactly five colours
+# and each one already means something; the Disaggregated and TFF reports each split
+# the board into five trader categories, which with price and open interest would need
+# seven. Widening the palette is not available either: the real one lives in the private
+# cotmetrics-config repo and every existing page assumes five slots.
+#
+# So categories map onto the three positioning slots by what they ARE, and the second
+# category sharing a slot is a lighter tint plus a dashed line. Slot 0 is the
+# hedging/intermediary side, slot 1 the speculative side, slot 2 the residual side. That
+# reading holds in both reports, which is why one map covers them: Producer/Merchant and
+# Dealer are the natural shorts, Managed Money and Leveraged Funds are the speculative
+# leg the legacy report pools into Non-Commercial, and Other Reportable sits beside the
+# sub-threshold residual in both.
+#
+# The tint never carries the distinction alone — each shared slot also differs in dash —
+# because at Solarized's tighter spacing a 0.45 tint of #dc322f and #dc322f itself are
+# close enough to lose against a busy background.
+# The sibling is derived by lightening OR darkening, chosen by the base colour's
+# luminance. A single direction does not work across the shipped palettes.
+#
+# Lightening a near-saturated colour only moves the channels that are not already
+# maxed. Slot 2 is yellow in most palettes, so #ffff00 lightened becomes #ffff4c:
+# red and green cannot go up, only blue moves, and both lines still read as plain
+# yellow. That is what made Other Reportable and Non-Reportable near-indistinguishable.
+# Darkening moves all three channels and preserves the hue, so yellow reads as olive.
+#
+# Measured over all five shipped palettes and both reports, this rule takes the worst
+# sibling-pair separation from 93 to 156 on a weighted-RGB distance. Only four colours
+# across all five palettes are bright enough to be darkened, and each keeps at least
+# 4.0:1 contrast against the #1a1a1a plot background (WCAG asks 3:1 for graphics), so
+# nothing gets darkened into the background.
+CATEGORY_TINT_LIGHTEN = 0.50
+CATEGORY_TINT_DARKEN = 0.40
+# Above this relative luminance, lightening has too little room left to be legible.
+CATEGORY_BRIGHT_LUMINANCE = 0.40
+
+# slot in the five-colour palette, and whether this category is the derived sibling
+# on that slot rather than the base colour.
+CATEGORY_PALETTE_MAP = {
+    "disagg": {
+        "producer_merchant": (0, False),
+        "swap": (0, True),
+        "managed_money": (1, False),
+        "other_reportable": (2, True),
+        "nonreportable": (2, False),
+    },
+    "tff": {
+        "dealer": (0, False),
+        "asset_manager": (1, True),
+        "leveraged": (1, False),
+        "other_reportable": (2, True),
+        "nonreportable": (2, False),
+    },
+}
+CATEGORY_TINT_DASH = "dash"
+
+# Diverging pair for the index-change columns: rose over the window, or fell.
+#
+# Fixed rather than drawn from the palette, because this encodes polarity, not
+# identity. Reusing a categorical slot would say "this bar is Producer/Merchant" when
+# it means "this went down". Teal and orange rather than the red/green a trading chart
+# reaches for by reflex: red/green is the worst pair for the commonest colour-vision
+# deficiency, and a positioning index rising is not a profit, so the P&L connotation
+# was never owed. Both are already in the Solarized set at the foot of this file.
+#
+# Checked with the dataviz validator against the #1a1a1a surface rather than by eye:
+# CVD separation deutan dE 14.8 and tritan 33.3 against a target of 8, normal-vision
+# dE 27.2, both inside the lightness band and over the chroma floor, both above 3:1
+# contrast. All five checks pass.
+# Spelled out rather than referencing SOLARIZED_DARK_CYAN / _ORANGE, which are defined
+# at the foot of this file and so are not bound yet at this point in the module.
+CATEGORY_DIVERGING_UP = "#2aa198"    # SOLARIZED_DARK_CYAN
+CATEGORY_DIVERGING_DOWN = "#cb4b16"  # SOLARIZED_DARK_ORANGE
+
+# How the page arranges the categories.
+LAYOUT_OVERLAY = "overlay"
+LAYOUT_FACET = "facet"
+LAYOUT_CHOICES = (LAYOUT_OVERLAY, LAYOUT_FACET)
+LAYOUT_LABELS = {
+    LAYOUT_OVERLAY: "Overlay",
+    LAYOUT_FACET: "Small multiples",
+}
+CATEGORY_PRICE_SLOT = 3
+CATEGORY_OI_SLOT = 4
+
 # Which plots the basis control applies to, and why it does not apply to the rest, now
 # live on the plot itself in components.plot_registry as `basis_aware` and
 # `invariant_note`. They moved for the same reason they were pulled out of the pages:
