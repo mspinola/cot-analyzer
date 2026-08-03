@@ -86,15 +86,24 @@ def get_make_subplots_for_plots(rows, cols, titles, specs, shared_xaxes=True):
     return fig
 
 
-def get_update_xaxes_for_plots(fig, df, exclude_plot_indices=None):
+def visible_weeks():
+    """How many weeks the chart opens on, narrower on a phone.
+
+    A y-axis that wants to fit what the reader can actually see has to agree with the
+    x-window this sets, so the number lives in one place rather than being recomputed
+    beside every axis.
+    """
     import flask
     is_mobile = False
     if flask.has_request_context():
         user_agent = flask.request.headers.get('User-Agent', '').lower()
         if any(kw in user_agent for kw in ['mobile', 'android', 'iphone', 'ipad', 'phone', 'ipod']):
             is_mobile = True
+    return 52 if is_mobile else const.DEFAULT_WEEKS_TO_VIEW
 
-    weeks_to_view = 52 if is_mobile else const.DEFAULT_WEEKS_TO_VIEW
+
+def get_update_xaxes_for_plots(fig, df, exclude_plot_indices=None):
+    weeks_to_view = visible_weeks()
     start_idx = max(0, len(df) - weeks_to_view)
     start_date = df.index[start_idx]
     end_date = df.index[-1] + pd.Timedelta(days=14)  # Add some padding to the right for better aesthetics

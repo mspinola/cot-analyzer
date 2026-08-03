@@ -166,6 +166,83 @@ def test_subplot_specs_grid_shape_matches_the_selection():
     assert grid[1][1]["secondary_y"] is False    # empty cell
 
 
+def _yrange(fig, secondary=False):
+    return (fig.layout.yaxis2 if secondary else fig.layout.yaxis).range
+
+
+@pytest.mark.parametrize("plot_id", ["spread", "traders", "net_pos", "pct_oi",
+                                     "zscore", "momentum", "long_short"])
+def test_panels_fit_the_visible_window_not_all_history(plot_id):
+    """The axis must fit what the chart opens on, not every point in the trace.
+
+    Plotly autoranges y over the whole trace while get_update_xaxes_for_plots opens
+    the chart on the last visible_weeks() only. Measured over the real 42-market
+    universe, that left the worst spreading panel using 7% of its axis. The clientside
+    autoscale only fires on a pan or zoom, so the first render, which is the view most
+    people never touch, was the one that looked wrong.
+    """
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report, n=400, seed=11)
+    # A historical spike far outside the visible window: the axis must ignore it.
+    spike = df.columns[df.columns.str.contains("Net Pos|Long|Short|Spread|Traders|Idx|Zscore|Move")]
+    df.loc[df.index[:50], spike] = df[spike].abs().max().max() * 50
+
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig = ct.build_panel(plot_id, _figure(plot_id), df, series, HEADER, 1, 1,
+                         PALETTE, showlegend=False)
+
+    rng = _yrange(fig)
+    assert rng is not None, f"{plot_id} left the axis autoranged"
+
+    window = df.iloc[-ct.visible_weeks():]
+    drawn = [np.asarray(t.y, dtype=float) for t in _named_traces(fig)
+             if t.name not in ("Price", "Open Interest")]
+    vis_lo = min(v[-len(window):].min() for v in drawn)
+    vis_hi = max(v[-len(window):].max() for v in drawn)
+
+    assert rng[0] <= vis_lo and rng[1] >= vis_hi, (
+        f"{plot_id} clips visible data: range {rng} vs data [{vis_lo}, {vis_hi}]")
+    span = rng[1] - rng[0]
+    assert (vis_hi - vis_lo) / span >= 0.5, (
+        f"{plot_id} visible data uses only {(vis_hi - vis_lo) / span:.0%} of its axis")
+
+
+def test_zero_stays_in_range_only_where_a_zero_line_is_drawn():
+    """Anchoring a trader-count axis at zero is what wasted its height.
+
+    Counts and spreading never approach zero, so their axes should not reach for it.
+    Net positions and gross long/short draw a zero line, so theirs must.
+    """
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+
+    def rng(pid):
+        return _yrange(ct.build_panel(pid, _figure(pid), df, series, HEADER, 1, 1,
+                                      PALETTE, showlegend=False))
+
+    # Counts and contract totals cannot be negative, so padding must not invent
+    # negative space. Whether the axis is tight enough is pinned by
+    # test_panels_fit_the_visible_window_not_all_history, which measures utilisation.
+    for pid in ("traders", "spread"):
+        lo, _ = rng(pid)
+        assert lo >= 0, f"{pid} axis goes negative ({lo}) for a non-negative quantity"
+
+    for pid in ("net_pos", "long_short"):
+        lo, hi = rng(pid)
+        assert lo <= 0 <= hi, f"{pid} draws a zero line but zero is off-axis"
+
+
+def test_index_panel_keeps_its_fixed_scale():
+    """The 0-100 index is a bounded scale, so it must not be refitted to the data."""
+    report = cot_categories.REPORT_TFF
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig = ct.build_panel("index", _figure("index"), df, series, HEADER, 1, 1,
+                         PALETTE, showlegend=False)
+    assert tuple(_yrange(fig)) == (0, 100)
+
+
 def test_sanitize_selection_drops_unknown_ids():
     assert ct.sanitize_selection(["index", "no_such_plot"]) == ["index"]
     assert ct.sanitize_selection([]) == list(ct.DEFAULT_PLOTS)

@@ -20,10 +20,11 @@ from collections import namedtuple
 
 import cotmetrics.categories as categories
 import cotmetrics.constants as const
+import pandas as pd
 
 import viz_constants as vc
 from components.plot_colors import darken_hex, lighten_hex, relative_luminance
-from components.plot_layout import get_nice_dtick
+from components.plot_layout import visible_weeks
 from components.plot_traces import add_legend_lines, add_trace_to_all
 
 # One drawable category: the cotmetrics spec (which knows the column names), plus the
@@ -89,7 +90,8 @@ def _price_overlay(fig, df, row, col, palette, zorder):
                      palette[vc.CATEGORY_PRICE_SLOT], zorder,
                      secondary=True, opacity=0.6)
     fig.update_yaxes(title="$", row=row, col=col, showgrid=False, zeroline=False,
-                     gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True)
+                     gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True,
+                     range=_fit_range(df, [const.CLOSING_PRICE]))
     return fig
 
 
@@ -100,8 +102,63 @@ def _primary_axis(fig, row, col, title, zeroline=False, y_range=None):
     return fig
 
 
+# Fraction of the span left as breathing room above and below the data, matching the
+# legacy Net Positions panel.
+_Y_PAD = 0.10
+
+
+def _fit_range(df, cols, include_zero=False, negate=()):
+    """Fit an axis to the window the chart opens on, not to all of history.
+
+    Plotly autoranges y over every point in the trace, but `get_update_xaxes_for_plots`
+    opens the chart on the last `visible_weeks()` only. On a market whose history dwarfs
+    its recent range the visible data then occupies a sliver of the axis: measured over
+    the 42-market universe, the worst spreading panel used 7% of its axis and the worst
+    trader-count panel 26%. The clientside autoscale fixes this on the first pan or
+    zoom, but nothing fires it on the initial render, which is the view most people
+    look at and never touch. This is the same reason `get_net_pos_plot` computes its
+    own range from a visible slice.
+
+    `include_zero` keeps the zero reference on screen for panels that draw a zero line.
+    `negate` names columns drawn flipped below the axis (gross shorts).
+    """
+    cols = [c for c in cols if c in df.columns]
+    if not cols:
+        return None
+    window = df.iloc[max(0, len(df) - visible_weeks()):]
+
+    lows, highs = [], []
+    for c in cols:
+        lo, hi = window[c].min(), window[c].max()
+        if pd.isna(lo) or pd.isna(hi):
+            continue
+        if c in negate:
+            lo, hi = -hi, -lo
+        lows.append(lo)
+        highs.append(hi)
+    if not lows:
+        return None
+
+    lo, hi = min(lows), max(highs)
+    non_negative = lo >= 0
+    if include_zero:
+        lo, hi = min(lo, 0), max(hi, 0)
+    span = hi - lo
+    if span == 0:
+        # A flat series still needs a visible band. Scale it to the series' own
+        # magnitude, since a fixed floor would swamp a percent or z-score panel.
+        span = abs(hi) * _Y_PAD or 1.0
+    low = lo - span * _Y_PAD
+    # Do not pad a count or a contract total into negative territory: trader counts
+    # and spreading cannot go below zero, so an axis that does is claiming something
+    # the data never says.
+    if non_negative:
+        low = max(low, 0)
+    return [low, hi + span * _Y_PAD]
+
+
 def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlegend,
-          y_title, zeroline=True, y_range=None, show_oi=False):
+          y_title, zeroline=True, y_range=None, show_oi=False, fit=True):
     """The shape every line panel shares: one line per category, then the chrome.
 
     `column_fn(spec)` names the column to draw, so the panels below differ only in
@@ -110,19 +167,26 @@ def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlege
     five bar series over a multi-year window collapses into noise, where five lines
     stay separable.
     """
+    columns = []
     for z, s in enumerate(series):
         column = column_fn(s.spec)
         if column in df.columns:
+            columns.append(column)
             add_trace_to_all(fig, df, column, row, col, s.label, s.color, z,
                              dash=s.dash)
     if show_oi and const.OPEN_INTEREST in df.columns:
         add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest",
                          palette[vc.CATEGORY_OI_SLOT], len(series), secondary=True)
         fig.update_yaxes(title="OI", row=row, col=col, showgrid=False, zeroline=False,
-                         gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True)
+                         gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True,
+                         range=_fit_range(df, [const.OPEN_INTEREST]))
     elif show_price:
         _price_overlay(fig, df, row, col, palette, len(series))
 
+    if y_range is None and fit:
+        # Zero stays on screen only where the panel draws a zero line to reference it.
+        # Forcing it onto a trader-count or spreading axis is what wastes the space.
+        y_range = _fit_range(df, columns, include_zero=zeroline)
     _primary_axis(fig, row, col, y_title, zeroline=zeroline, y_range=y_range)
     return _legend(fig, series, showlegend, palette, show_price and not show_oi,
                    show_oi=show_oi)
@@ -188,19 +252,26 @@ def get_category_long_short_plot(fig, df, series, lookback_header, row, col, pal
     shows it. Shorts are negated for display only, so the axis reads as one scale;
     the underlying column is a positive contract count.
     """
+    longs, shorts = [], []
     for z, s in enumerate(series):
         long_c = categories.long_col(s.spec)
         short_c = categories.short_col(s.spec)
         if long_c in df.columns:
+            longs.append(long_c)
             add_trace_to_all(fig, df, long_c, row, col, s.label, s.color, z * 2,
                              dash=s.dash)
         if short_c in df.columns:
+            shorts.append(short_c)
             flipped = df[[short_c]].copy()
             flipped[short_c] = -flipped[short_c]
             add_trace_to_all(fig, flipped, short_c, row, col, s.label, s.color,
                              z * 2 + 1, dash="dot")
 
-    _primary_axis(fig, row, col, "long / short", zeroline=True)
+    # Zero is the axis of symmetry here, so it is always in range: shorts are drawn
+    # below it and longs above.
+    _primary_axis(fig, row, col, "long / short", zeroline=True,
+                  y_range=_fit_range(df, longs + shorts, include_zero=True,
+                                     negate=set(shorts)))
     if show_price:
         _price_overlay(fig, df, row, col, palette, len(series) * 2)
     return _legend(fig, series, showlegend, palette, show_price)
@@ -228,13 +299,18 @@ def get_category_traders_plot(fig, df, series, lookback_header, row, col, palett
     arrives as a gap here rather than a zero. Non-Reportable has no counts at all by
     definition, so it does not appear.
     """
+    columns = []
     for z, s in enumerate(series):
         for column, dash in ((categories.traders_long_col(s.spec), s.dash),
                              (categories.traders_short_col(s.spec), "dot")):
             if column in df.columns:
+                columns.append(column)
                 add_trace_to_all(fig, df, column, row, col, s.label, s.color, z,
                                  dash=dash)
-    _primary_axis(fig, row, col, "traders", zeroline=False)
+    # No include_zero: counts never approach zero, so anchoring the axis there is
+    # what left this panel using a quarter of its height.
+    _primary_axis(fig, row, col, "traders", zeroline=False,
+                  y_range=_fit_range(df, columns))
     drawn = [s for s in series
              if categories.traders_long_col(s.spec) in df.columns]
     return _legend(fig, drawn, showlegend, palette, False)
@@ -307,14 +383,3 @@ def build_panel(plot_id, fig, df, series, lookback_header, row, col, palette,
     _, builder, _ = CATEGORY_SPECS[plot_id]
     return builder(fig, df, series, lookback_header, row, col, palette,
                    show_price=show_price, showlegend=showlegend) or fig
-
-
-def apply_tick_spacing(fig, df, series, row, col):
-    """Keep the primary axis ticks from auto-syncing to the secondary series."""
-    cols = [categories.net_col(s.spec) for s in series]
-    cols = [c for c in cols if c in df.columns]
-    if not cols:
-        return fig
-    span = float(df[cols].max().max() - df[cols].min().min())
-    fig.update_yaxes(dtick=get_nice_dtick(span), row=row, col=col, secondary_y=False)
-    return fig
