@@ -116,6 +116,7 @@ navbar = dbc.Navbar(
                             dbc.DropdownMenuItem("Asset Analysis", href="/analysis"),
                             dbc.DropdownMenuItem("OI Alignment", href="/oi_alignment"),
                             dbc.DropdownMenuItem("Aggregation", href="/aggregation"),
+                            dbc.DropdownMenuItem("Disagg / TFF", href="/categories"),
                             dbc.DropdownMenuItem("Table", href="/positioning"),
                         ],
                         nav=True,

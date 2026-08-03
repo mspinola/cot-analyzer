@@ -164,6 +164,53 @@ BASIS_LABELS = {
 BASIS_OVERLAY_DASH = "dash"
 BASIS_OVERLAY_TINT = 0.45  # blend toward white; 0 = unchanged, 1 = white
 
+# Disaggregated / TFF category colours, DERIVED from the five-slot palette rather than
+# added to it.
+#
+# Same problem and same answer as the overlay above. A palette is exactly five colours
+# and each one already means something; the Disaggregated and TFF reports each split
+# the board into five trader categories, which with price and open interest would need
+# seven. Widening the palette is not available either: the real one lives in the private
+# cotmetrics-config repo and every existing page assumes five slots.
+#
+# So categories map onto the three positioning slots by what they ARE, and the second
+# category sharing a slot is a lighter tint plus a dashed line. Slot 0 is the
+# hedging/intermediary side, slot 1 the speculative side, slot 2 the residual side. That
+# reading holds in both reports, which is why one map covers them: Producer/Merchant and
+# Dealer are the natural shorts, Managed Money and Leveraged Funds are the speculative
+# leg the legacy report pools into Non-Commercial, and Other Reportable sits beside the
+# sub-threshold residual in both.
+#
+# The tint never carries the distinction alone — each shared slot also differs in dash —
+# because at Solarized's tighter spacing a 0.45 tint of #dc322f and #dc322f itself are
+# close enough to lose against a busy background.
+# Tints are lighter than BASIS_OVERLAY_TINT's 0.45 on purpose. The overlay draws two
+# lines that mostly coincide, so it wants maximum separation; here the sibling is a
+# different series that must still read as belonging to its slot. At 0.45 the shipped
+# palettes' already-light reds and blues blend to near-white, and white reads as a
+# neutral series (price, open interest) rather than as Swap Dealers.
+CATEGORY_TINT = 0.30
+
+CATEGORY_PALETTE_MAP = {
+    "disagg": {
+        "producer_merchant": (0, 0.00),
+        "swap": (0, CATEGORY_TINT),
+        "managed_money": (1, 0.00),
+        "other_reportable": (2, CATEGORY_TINT),
+        "nonreportable": (2, 0.00),
+    },
+    "tff": {
+        "dealer": (0, 0.00),
+        "asset_manager": (1, CATEGORY_TINT),
+        "leveraged": (1, 0.00),
+        "other_reportable": (2, CATEGORY_TINT),
+        "nonreportable": (2, 0.00),
+    },
+}
+CATEGORY_TINT_DASH = "dash"
+CATEGORY_PRICE_SLOT = 3
+CATEGORY_OI_SLOT = 4
+
 # Which plots the basis control applies to, and why it does not apply to the rest, now
 # live on the plot itself in components.plot_registry as `basis_aware` and
 # `invariant_note`. They moved for the same reason they were pulled out of the pages:
