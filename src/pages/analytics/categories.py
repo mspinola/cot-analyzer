@@ -181,6 +181,19 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
+                            html.H6("Layout", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            dbc.Select(
+                                id='categories_layout_selector',
+                                persistence='session',
+                                options=[{"label": vc.LAYOUT_LABELS[v], "value": v}
+                                         for v in vc.LAYOUT_CHOICES],
+                                value=vc.LAYOUT_FACET,
+                                className="mb-3 bg-dark text-white border-secondary",
+                                style={'width': '150px'}
+                            ),
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
                             html.H6("Cols", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
                             dbc.Select(
                                 id='categories_columns_selector',
@@ -341,9 +354,10 @@ def set_default_columns(pathname, current_val):
     Input('categories_plot_selector', 'value'),
     Input('global_lookback_store', 'data'),
     Input('categories_columns_selector', 'value'),
+    Input('categories_layout_selector', 'value'),
 )
 def render_category_stack(palette_name, asset, report, selected_categories,
-                          selected_plots, lookback, num_cols):
+                          selected_plots, lookback, num_cols, layout_mode):
     if not asset:
         return html.P("Select an asset to view its category breakdown.",
                       style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
@@ -364,32 +378,54 @@ def render_category_stack(palette_name, asset, report, selected_categories,
                       style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
 
     plots = ct.sanitize_selection(selected_plots)
-    num_cols = int(num_cols or 1)
-    num_rows = math.ceil(len(plots) / num_cols)
     show_price = True
-
     lookback_header = df.attrs.get("lookback_header", " Custom")
-    titles = [AVAILABLE_PLOTS[p] for p in plots]
-    specs = ct.subplot_specs(plots, show_price=show_price, num_cols=num_cols)
-    fig = layout_helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
+    faceted = layout_mode == vc.LAYOUT_FACET
 
-    i = 0
-    for r in range(1, num_rows + 1):
-        for c in range(1, num_cols + 1):
-            if i >= len(plots):
-                break
-            # One legend for the whole stack: every panel draws the same categories,
-            # so repeating the entries per panel would be noise.
-            fig = ct.build_panel(plots[i], fig, df, series, lookback_header, r, c,
-                                 palette, show_price=show_price, showlegend=(i == 0))
-            i += 1
+    if faceted:
+        # Rows are categories and columns are panels, so the Cols control does not
+        # apply: the column count is the number of panels selected.
+        num_rows, num_cols = ct.facet_shape(plots, series, show_price)
+        fig = layout_helpers.get_make_subplots_for_facets(
+            num_rows, num_cols,
+            ct.facet_titles(plots, series, show_price),
+            ct.facet_specs(plots, series, show_price))
+        fig = ct.build_facet_figure(fig, df, series, plots, lookback_header, palette,
+                                    show_price=show_price)
+        height = layout_helpers.get_facet_figure_height(num_rows, num_cols)
+        # Every row is direct-labelled, so a legend would only repeat itself.
+        show_legend = False
+    else:
+        num_cols = int(num_cols or 1)
+        num_rows = math.ceil(len(plots) / num_cols)
+        titles = [AVAILABLE_PLOTS[p] for p in plots]
+        specs = ct.subplot_specs(plots, show_price=show_price, num_cols=num_cols)
+        fig = layout_helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
+        i = 0
+        for r in range(1, num_rows + 1):
+            for c in range(1, num_cols + 1):
+                if i >= len(plots):
+                    break
+                # One legend for the whole stack: every panel draws the same
+                # categories, so repeating the entries per panel would be noise.
+                fig = ct.build_panel(plots[i], fig, df, series, lookback_header, r, c,
+                                     palette, show_price=show_price,
+                                     showlegend=(i == 0))
+                i += 1
+        height = None
+        show_legend = True
 
     fig = layout_helpers.get_update_xaxes_for_plots(fig, df)
+    if faceted:
+        fig = layout_helpers.hide_inner_facet_xlabels(fig, num_rows, num_cols)
 
     weeks = df.attrs.get("lookback_weeks")
     main_title = (f"{asset}: {cot_categories.REPORT_LABELS[report]}"
                   f"{f' ({weeks}w lookback)' if weeks else ''}")
-    fig = layout_helpers.get_update_layout_for_plots(fig, num_rows, num_cols, main_title)
+    fig = layout_helpers.get_update_layout_for_plots(fig, num_rows, num_cols, main_title,
+                                                     height=height)
+    if not show_legend:
+        fig.update_layout(showlegend=False)
 
     return dcc.Graph(figure=fig,
                      id='categories_main_graph',

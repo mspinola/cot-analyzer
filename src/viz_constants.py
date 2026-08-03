@@ -222,6 +222,33 @@ CATEGORY_PALETTE_MAP = {
     },
 }
 CATEGORY_TINT_DASH = "dash"
+
+# Diverging pair for the index-change columns: rose over the window, or fell.
+#
+# Fixed rather than drawn from the palette, because this encodes polarity, not
+# identity. Reusing a categorical slot would say "this bar is Producer/Merchant" when
+# it means "this went down". Teal and orange rather than the red/green a trading chart
+# reaches for by reflex: red/green is the worst pair for the commonest colour-vision
+# deficiency, and a positioning index rising is not a profit, so the P&L connotation
+# was never owed. Both are already in the Solarized set at the foot of this file.
+#
+# Checked with the dataviz validator against the #1a1a1a surface rather than by eye:
+# CVD separation deutan dE 14.8 and tritan 33.3 against a target of 8, normal-vision
+# dE 27.2, both inside the lightness band and over the chroma floor, both above 3:1
+# contrast. All five checks pass.
+# Spelled out rather than referencing SOLARIZED_DARK_CYAN / _ORANGE, which are defined
+# at the foot of this file and so are not bound yet at this point in the module.
+CATEGORY_DIVERGING_UP = "#2aa198"    # SOLARIZED_DARK_CYAN
+CATEGORY_DIVERGING_DOWN = "#cb4b16"  # SOLARIZED_DARK_ORANGE
+
+# How the page arranges the categories.
+LAYOUT_OVERLAY = "overlay"
+LAYOUT_FACET = "facet"
+LAYOUT_CHOICES = (LAYOUT_OVERLAY, LAYOUT_FACET)
+LAYOUT_LABELS = {
+    LAYOUT_OVERLAY: "Overlay",
+    LAYOUT_FACET: "Small multiples",
+}
 CATEGORY_PRICE_SLOT = 3
 CATEGORY_OI_SLOT = 4
 

@@ -44,6 +44,18 @@ def pixels_per_plot_for_cols(cols):
     return 200
 
 
+# A faceted row carries one series, so it needs far less height than a panel holding
+# five. Tall enough to read a shape, short enough that five categories plus a price
+# row fit on one screen, which is the whole point of small multiples.
+FACET_ROW_HEIGHT = 120
+
+
+def get_facet_figure_height(rows, cols):
+    return (rows * FACET_ROW_HEIGHT
+            + max(0, rows - 1) * 12
+            + vc.PLOT_MARGIN_TOP + vc.PLOT_MARGIN_BOTTOM)
+
+
 def get_figure_height(rows, cols):
     """Total figure height in pixels.
 
@@ -64,6 +76,27 @@ def get_figure_height(rows, cols):
 def get_plot_area_height(rows, cols):
     """Figure height minus the fixed chrome — the space subplot domains actually span."""
     return get_figure_height(rows, cols) - vc.PLOT_MARGIN_TOP - vc.PLOT_MARGIN_BOTTOM
+
+
+def get_make_subplots_for_facets(rows, cols, titles, specs):
+    """Subplot grid for small multiples: many short rows, tight vertical spacing.
+
+    Separate from get_make_subplots_for_plots because faceting inverts what the gap is
+    for. Between full panels a gap separates unrelated charts; between facet rows it
+    only has to keep the marks apart, and a large one would push five categories off
+    the screen, which is the thing small multiples exist to avoid.
+    """
+    plot_area = get_facet_figure_height(rows, cols) - vc.PLOT_MARGIN_TOP - vc.PLOT_MARGIN_BOTTOM
+    v_spacing = (12.0 / plot_area) if rows > 1 and plot_area > 0 else 0.02
+    return make_subplots(
+        rows=rows,
+        cols=cols,
+        shared_xaxes=True,
+        vertical_spacing=v_spacing,
+        horizontal_spacing=0.10,
+        subplot_titles=titles,
+        specs=specs,
+    )
 
 
 def get_make_subplots_for_plots(rows, cols, titles, specs, shared_xaxes=True):
@@ -100,6 +133,20 @@ def visible_weeks():
         if any(kw in user_agent for kw in ['mobile', 'android', 'iphone', 'ipad', 'phone', 'ipod']):
             is_mobile = True
     return 52 if is_mobile else const.DEFAULT_WEEKS_TO_VIEW
+
+
+def hide_inner_facet_xlabels(fig, rows, cols):
+    """Date labels on the bottom row only.
+
+    make_subplots(shared_xaxes=True) already hides inner tick labels, but
+    get_update_xaxes_for_plots turns them back on for every axis, which is right for a
+    stack of independent panels and wrong for facets: seven rows of identical dates is
+    six rows of noise between the marks.
+    """
+    for r in range(1, rows):
+        for c in range(1, cols + 1):
+            fig.update_xaxes(showticklabels=False, row=r, col=c)
+    return fig
 
 
 def get_update_xaxes_for_plots(fig, df, exclude_plot_indices=None):
@@ -153,8 +200,8 @@ def get_update_xaxes_for_plots(fig, df, exclude_plot_indices=None):
     return fig
 
 
-def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None, hover_mode='x unified', show_scale_toggle=False):
-    dynamic_height = get_figure_height(num_rows, num_cols)
+def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None, hover_mode='x unified', show_scale_toggle=False, height=None):
+    dynamic_height = height or get_figure_height(num_rows, num_cols)
 
     # Calculate Y coordinates so they are exactly N pixels above the plot area.
     # This prevents the UI from flying away when the chart gets really tall.

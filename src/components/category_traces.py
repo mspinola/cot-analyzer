@@ -21,6 +21,7 @@ from collections import namedtuple
 import cotmetrics.categories as categories
 import cotmetrics.constants as const
 import pandas as pd
+import plotly.graph_objects as go
 
 import viz_constants as vc
 from components.plot_colors import darken_hex, lighten_hex, relative_luminance
@@ -195,16 +196,20 @@ def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlege
 # --- panels ---------------------------------------------------------------------
 
 def get_category_net_pos_plot(fig, df, series, lookback_header, row, col, palette,
-                              show_price=True, showlegend=True):
+                              show_price=True, showlegend=True, show_oi=True,
+                              y_range=None):
     """Net contracts per category, with open interest on the secondary axis.
 
     Open interest rather than price here: net position is denominated in contracts,
     so the question the panel invites is "large relative to what?", and OI is the
     denominator. The percent-of-OI panel answers it directly.
+
+    `show_oi` is off in small multiples, where open interest gets its own row instead
+    of a second scale.
     """
     return _draw(fig, df, series, categories.net_col, row, col, palette,
                  show_price=show_price, showlegend=showlegend,
-                 y_title="net contracts", show_oi=True)
+                 y_title="net contracts", show_oi=show_oi, y_range=y_range)
 
 
 def get_category_pct_oi_plot(fig, df, series, lookback_header, row, col, palette,
@@ -245,7 +250,7 @@ def get_category_momentum_plot(fig, df, series, lookback_header, row, col, palet
 
 
 def get_category_long_short_plot(fig, df, series, lookback_header, row, col, palette,
-                                 show_price=True, showlegend=True):
+                                 show_price=True, showlegend=True, y_range=None):
     """Gross long above the axis, gross short below it, one colour per category.
 
     Net position hides a category that doubled both sides. This is the panel that
@@ -270,8 +275,8 @@ def get_category_long_short_plot(fig, df, series, lookback_header, row, col, pal
     # Zero is the axis of symmetry here, so it is always in range: shorts are drawn
     # below it and longs above.
     _primary_axis(fig, row, col, "long / short", zeroline=True,
-                  y_range=_fit_range(df, longs + shorts, include_zero=True,
-                                     negate=set(shorts)))
+                  y_range=y_range or _fit_range(df, longs + shorts, include_zero=True,
+                                                negate=set(shorts)))
     if show_price:
         _price_overlay(fig, df, row, col, palette, len(series) * 2)
     return _legend(fig, series, showlegend, palette, show_price)
@@ -292,7 +297,7 @@ def get_category_spread_plot(fig, df, series, lookback_header, row, col, palette
 
 
 def get_category_traders_plot(fig, df, series, lookback_header, row, col, palette,
-                              show_price=False, showlegend=True):
+                              show_price=False, showlegend=True, y_range=None):
     """Reporting trader counts, long solid and short dotted.
 
     The CFTC suppresses a count where it would identify a trader, writing "." which
@@ -310,10 +315,42 @@ def get_category_traders_plot(fig, df, series, lookback_header, row, col, palett
     # No include_zero: counts never approach zero, so anchoring the axis there is
     # what left this panel using a quarter of its height.
     _primary_axis(fig, row, col, "traders", zeroline=False,
-                  y_range=_fit_range(df, columns))
+                  y_range=y_range or _fit_range(df, columns))
     drawn = [s for s in series
              if categories.traders_long_col(s.spec) in df.columns]
     return _legend(fig, drawn, showlegend, palette, False)
+
+
+def get_category_momentum_columns(fig, df, series, lookback_header, row, col, palette,
+                                  show_price=False, showlegend=True, y_range=None):
+    """The index change as diverging columns: teal above zero, orange below.
+
+    A change is a signed quantity, and a line makes the reader recover the sign from
+    position against a baseline they have to find first. A column anchored on zero
+    states it. This is the small-multiples form only: one row carries one category, so
+    the bars never occlude each other. In overlay mode five bar series would, which is
+    why that path stays on lines.
+
+    Colour here encodes polarity rather than identity, so it does not come from the
+    category palette. See CATEGORY_DIVERGING_UP.
+    """
+    cols = [categories.momentum_col(s.spec, lookback_header) for s in series]
+    cols = [c for c in cols if c in df.columns]
+    for column in cols:
+        values = df[column]
+        fig.add_trace(go.Bar(
+            x=df.index,
+            y=values,
+            name=column,
+            showlegend=False,
+            marker_color=[vc.CATEGORY_DIVERGING_DOWN if (v is not None and v < 0)
+                          else vc.CATEGORY_DIVERGING_UP for v in values],
+            marker_line_width=0,
+        ), row=row, col=col)
+
+    _primary_axis(fig, row, col, "index pts", zeroline=True,
+                  y_range=y_range or _fit_range(df, cols, include_zero=True))
+    return fig
 
 
 # --- the page's plot vocabulary --------------------------------------------------
@@ -338,6 +375,45 @@ CATEGORY_SPECS = {
 }
 
 DEFAULT_PLOTS = ["net_pos", "index"]
+
+# Which columns each panel draws, and whether its axis must keep zero in view. Used to
+# compute ONE y-scale per panel across every category, so faceted rows stay comparable:
+# a small multiple whose rows each carry their own scale is a lie by omission, since
+# equal-looking wiggles then mean different magnitudes.
+#
+# id -> (columns(spec, header) -> list, include_zero, negated columns(spec, header))
+_PANEL_COLUMNS = {
+    "net_pos": (lambda s, h: [categories.net_col(s)], True, None),
+    "pct_oi": (lambda s, h: [categories.pct_oi_col(s)], True, None),
+    "index": (lambda s, h: [categories.index_col(s, h)], False, None),
+    "zscore": (lambda s, h: [categories.zscore_col(s, h)], True, None),
+    "momentum": (lambda s, h: [categories.momentum_col(s, h)], True, None),
+    "long_short": (lambda s, h: [categories.long_col(s), categories.short_col(s)],
+                   True, lambda s, h: [categories.short_col(s)]),
+    "spread": (lambda s, h: [categories.spread_col(s)], False, None),
+    "traders": (lambda s, h: [categories.traders_long_col(s),
+                              categories.traders_short_col(s)], False, None),
+}
+
+# In small multiples each row holds one series, so a change reads better as a column
+# anchored on zero than as a line. Overlay keeps the line form, where five bar series
+# would occlude one another.
+_FACET_BUILDERS = {
+    "momentum": get_category_momentum_columns,
+}
+
+
+def shared_range(df, plot_id, series, lookback_header):
+    """One y-scale for a panel across every faceted category."""
+    if plot_id == "index":
+        return [0, 100]
+    cols_fn, include_zero, negate_fn = _PANEL_COLUMNS[plot_id]
+    cols, negate = [], set()
+    for s in series:
+        cols.extend(cols_fn(s.spec, lookback_header))
+        if negate_fn:
+            negate.update(negate_fn(s.spec, lookback_header))
+    return _fit_range(df, cols, include_zero=include_zero, negate=negate)
 
 
 def labels_for(plot_ids=None):
@@ -378,8 +454,99 @@ def subplot_specs(selected, show_price, num_cols):
 
 
 def build_panel(plot_id, fig, df, series, lookback_header, row, col, palette,
-                show_price=True, showlegend=True):
+                show_price=True, showlegend=True, y_range=None, facet=False):
     """Dispatch one panel by id. The page never calls a builder directly."""
-    _, builder, _ = CATEGORY_SPECS[plot_id]
-    return builder(fig, df, series, lookback_header, row, col, palette,
-                   show_price=show_price, showlegend=showlegend) or fig
+    builder = (_FACET_BUILDERS.get(plot_id) if facet else None) \
+        or CATEGORY_SPECS[plot_id][1]
+    accepts = builder.__code__.co_varnames[:builder.__code__.co_argcount]
+    kwargs = dict(show_price=show_price, showlegend=showlegend)
+    # Only some builders take an explicit range; the rest fit their own.
+    if y_range is not None and "y_range" in accepts:
+        kwargs["y_range"] = y_range
+    # Open interest rides a secondary axis in overlay; in facets it gets its own row.
+    if facet and "show_oi" in accepts:
+        kwargs["show_oi"] = False
+    return builder(fig, df, series, lookback_header, row, col, palette, **kwargs) or fig
+
+
+# --- small multiples --------------------------------------------------------------
+
+def facet_context_rows(plots, show_price):
+    """The non-category rows: price, and open interest when Net Positions is shown.
+
+    Both are context for the categories rather than categories themselves, and in the
+    overlay view both ride a second y-axis. Two scales on one plot align arbitrarily,
+    which invents a correlation the data does not contain, so here each gets its own
+    row against the same x. Faceting has already produced the row structure, so this
+    costs nothing.
+    """
+    rows = []
+    if show_price:
+        rows.append(("price", const.CLOSING_PRICE, "Price", vc.CATEGORY_PRICE_SLOT))
+    if "net_pos" in plots:
+        rows.append(("oi", const.OPEN_INTEREST, "Open Interest", vc.CATEGORY_OI_SLOT))
+    return rows
+
+
+def facet_shape(plots, series, show_price):
+    """Grid shape for the faceted view: a row per category, a column per panel."""
+    rows = len(series) + len(facet_context_rows(plots, show_price))
+    return max(1, rows), max(1, len(plots))
+
+
+def facet_titles(plots, series, show_price):
+    """Panel names on the top row only; every other cell is unlabelled.
+
+    Category identity rides on the y-axis title of the first column instead, so it is
+    stated once per row rather than repeated in every cell.
+    """
+    rows, cols = facet_shape(plots, series, show_price)
+    titles = []
+    for r in range(rows):
+        for c in range(cols):
+            titles.append(labels_for(plots).get(plots[c], "") if r == 0 else "")
+    return titles
+
+
+def facet_specs(plots, series, show_price):
+    rows, cols = facet_shape(plots, series, show_price)
+    return [[{"secondary_y": False} for _ in range(cols)] for _ in range(rows)]
+
+
+def build_facet_figure(fig, df, series, plots, lookback_header, palette,
+                       show_price=True):
+    """One category per row, one panel per column, one y-scale per column.
+
+    This is the answer to five series crossing each other on a single axis: reading one
+    category stops being a tracing exercise, and the shared per-column scale keeps the
+    rows honestly comparable. It also makes colour non-load-bearing, since every row
+    carries its own label, which is the relief the palette checks ask for on the two
+    shipped palettes whose lightened siblings sit near the chroma floor.
+    """
+    _, cols = facet_shape(plots, series, show_price)
+
+    def label_axis(text, r, c):
+        fig.update_yaxes(title_text=text if c == 1 else "", row=r, col=c,
+                         title_font=dict(size=9, color=vc.TEXT_COLOR))
+
+    for c, plot_id in enumerate(plots, start=1):
+        y_range = shared_range(df, plot_id, series, lookback_header)
+        for r, s in enumerate(series, start=1):
+            build_panel(plot_id, fig, df, [s], lookback_header, r, c, palette,
+                        show_price=False, showlegend=False, y_range=y_range,
+                        facet=True)
+            # Row identity, stated once, in text rather than by colour alone.
+            label_axis(s.label, r, c)
+
+    for i, (_, column, label, slot) in enumerate(
+            facet_context_rows(plots, show_price)):
+        if column not in df.columns:
+            continue
+        r = len(series) + 1 + i
+        for c in range(1, cols + 1):
+            add_trace_to_all(fig, df, column, r, c, label, palette[slot], 0,
+                             opacity=0.9)
+            fig.update_yaxes(row=r, col=c, gridcolor=vc.GRID_COLOR, zeroline=False,
+                             fixedrange=True, range=_fit_range(df, [column]))
+            label_axis(label, r, c)
+    return fig

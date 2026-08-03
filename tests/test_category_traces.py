@@ -15,6 +15,7 @@ from cotmetrics import categories as cot_categories
 import components.category_traces as ct
 import components.plot_layout as layout_helpers
 import viz_config
+import viz_constants as vc
 
 PALETTE = viz_config.get_palette(sorted(viz_config.get_palette_names())[0])
 HEADER = " 52"
@@ -241,6 +242,109 @@ def test_index_panel_keeps_its_fixed_scale():
     fig = ct.build_panel("index", _figure("index"), df, series, HEADER, 1, 1,
                          PALETTE, showlegend=False)
     assert tuple(_yrange(fig)) == (0, 100)
+
+
+def _facet(df, series, plots, show_price=True):
+    rows, cols = ct.facet_shape(plots, series, show_price)
+    fig = layout_helpers.get_make_subplots_for_facets(
+        rows, cols, ct.facet_titles(plots, series, show_price),
+        ct.facet_specs(plots, series, show_price))
+    return ct.build_facet_figure(fig, df, series, plots, HEADER, PALETTE,
+                                 show_price=show_price), rows, cols
+
+
+@pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
+def test_facet_gives_each_category_its_own_row(report):
+    """Small multiples: a row per category, a column per panel, plus context rows.
+
+    This is the answer to five series crossing on one axis, and the reason it works is
+    that each row carries one series, so nothing occludes anything.
+    """
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    plots = ["net_pos", "index"]
+    fig, rows, cols = _facet(df, series, plots)
+
+    # 5 categories + a price row + an open-interest row (net_pos is selected).
+    assert rows == len(series) + 2
+    assert cols == len(plots)
+
+    per_cell = {}
+    for t in fig.data:
+        per_cell.setdefault(t.yaxis, []).append(t)
+    assert all(len(v) == 1 for v in per_cell.values()), \
+        "a faceted cell must hold exactly one series"
+
+
+def test_facet_shares_one_y_scale_per_panel():
+    """Rows must be comparable, so a panel's scale spans every category.
+
+    Per-row autoscaling would make equal-looking wiggles mean different magnitudes,
+    which is a lie by omission in a small-multiples grid.
+    """
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig, rows, _ = _facet(df, series, ["net_pos"], show_price=False)
+
+    ranges = {tuple(fig.layout[k].range) for k in fig.layout
+              if k.startswith("yaxis") and fig.layout[k].range}
+    # The category rows share one range; the open-interest row has its own.
+    assert len(ranges) == 2, ranges
+
+
+def test_facet_context_rows_replace_the_second_y_axis():
+    """Price and open interest get their own rows rather than a second scale.
+
+    Two scales on one plot align arbitrarily and imply a correlation the data does not
+    contain, which is why the overlay's secondary axis does not survive faceting.
+    """
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+
+    fig, _, _ = _facet(df, series, ["net_pos"])
+    names = {t.name for t in fig.data}
+    assert {"Price", "Open Interest"} <= names
+    assert not any(getattr(t, "yaxis", "y").endswith("2") and t.name == "Price"
+                   for t in fig.data)
+
+    # Open interest is a Net Positions companion, so it appears only alongside it.
+    fig2, _, _ = _facet(df, series, ["index"])
+    assert "Open Interest" not in {t.name for t in fig2.data}
+
+
+def test_momentum_is_diverging_columns_when_faceted():
+    """A signed change reads as a column on a baseline, not as a line.
+
+    Colour encodes polarity here, so it comes from the validated diverging pair rather
+    than from the category palette, which would say "this bar is Managed Money" when it
+    means "this went down".
+    """
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    fig, _, _ = _facet(df, series, ["momentum"], show_price=False)
+
+    bars = [t for t in fig.data if t.type == "bar"]
+    assert len(bars) == len(series)
+
+    used = set()
+    for t in bars:
+        used.update(t.marker.color)
+    assert used <= {vc.CATEGORY_DIVERGING_UP, vc.CATEGORY_DIVERGING_DOWN}
+    assert vc.CATEGORY_DIVERGING_UP in used and vc.CATEGORY_DIVERGING_DOWN in used
+
+    # Overlay keeps lines: five bar series on one axis would occlude each other.
+    overlay = ct.build_panel("momentum", _figure("momentum"), df, series, HEADER,
+                             1, 1, PALETTE, showlegend=False)
+    assert not any(t.type == "bar" for t in overlay.data)
+
+
+def test_momentum_columns_sit_on_a_zero_baseline():
+    df = _frame(cot_categories.REPORT_TFF)
+    series = ct.category_series(cot_categories.REPORT_TFF, None, PALETTE, frame=df)
+    fig, _, _ = _facet(df, series, ["momentum"], show_price=False)
+    lo, hi = fig.layout.yaxis.range
+    assert lo <= 0 <= hi
 
 
 def test_sanitize_selection_drops_unknown_ids():
