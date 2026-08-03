@@ -22,7 +22,7 @@ import cotmetrics.categories as categories
 import cotmetrics.constants as const
 
 import viz_constants as vc
-from components.plot_colors import lighten_hex
+from components.plot_colors import darken_hex, lighten_hex, relative_luminance
 from components.plot_layout import get_nice_dtick
 from components.plot_traces import add_legend_lines, add_trace_to_all
 
@@ -46,18 +46,28 @@ def category_series(report, selected_keys, palette, frame=None):
     for spec in specs:
         if selected_keys is not None and spec.key not in selected_keys:
             continue
-        slot, tint = slot_map[spec.key]
-        color = lighten_hex(palette[slot], tint) if tint else palette[slot]
+        slot, is_sibling = slot_map[spec.key]
         out.append(CategorySeries(
             spec=spec,
             key=spec.key,
             label=spec.label,
-            color=color,
-            # Tinted siblings also differ in dash. At Solarized's spacing the tint
-            # alone is not a reliable distinction on a busy panel.
-            dash=vc.CATEGORY_TINT_DASH if tint else None,
+            color=sibling_color(palette[slot]) if is_sibling else palette[slot],
+            # Siblings also differ in dash. Colour alone is not a reliable
+            # distinction on a busy panel at 1px line width.
+            dash=vc.CATEGORY_TINT_DASH if is_sibling else None,
         ))
     return out
+
+
+def sibling_color(base):
+    """The second colour on a palette slot: lighter, or darker when already bright.
+
+    Direction is chosen by luminance rather than fixed, because a single direction
+    fails on the shipped palettes. See the note above CATEGORY_TINT_LIGHTEN.
+    """
+    if relative_luminance(base) > vc.CATEGORY_BRIGHT_LUMINANCE:
+        return darken_hex(base, vc.CATEGORY_TINT_DARKEN)
+    return lighten_hex(base, vc.CATEGORY_TINT_LIGHTEN)
 
 
 def _legend(fig, series, showlegend, palette, show_price, show_oi=False):

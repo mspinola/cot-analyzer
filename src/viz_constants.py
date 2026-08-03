@@ -184,27 +184,41 @@ BASIS_OVERLAY_TINT = 0.45  # blend toward white; 0 = unchanged, 1 = white
 # The tint never carries the distinction alone — each shared slot also differs in dash —
 # because at Solarized's tighter spacing a 0.45 tint of #dc322f and #dc322f itself are
 # close enough to lose against a busy background.
-# Tints are lighter than BASIS_OVERLAY_TINT's 0.45 on purpose. The overlay draws two
-# lines that mostly coincide, so it wants maximum separation; here the sibling is a
-# different series that must still read as belonging to its slot. At 0.45 the shipped
-# palettes' already-light reds and blues blend to near-white, and white reads as a
-# neutral series (price, open interest) rather than as Swap Dealers.
-CATEGORY_TINT = 0.30
+# The sibling is derived by lightening OR darkening, chosen by the base colour's
+# luminance. A single direction does not work across the shipped palettes.
+#
+# Lightening a near-saturated colour only moves the channels that are not already
+# maxed. Slot 2 is yellow in most palettes, so #ffff00 lightened becomes #ffff4c:
+# red and green cannot go up, only blue moves, and both lines still read as plain
+# yellow. That is what made Other Reportable and Non-Reportable near-indistinguishable.
+# Darkening moves all three channels and preserves the hue, so yellow reads as olive.
+#
+# Measured over all five shipped palettes and both reports, this rule takes the worst
+# sibling-pair separation from 93 to 156 on a weighted-RGB distance. Only four colours
+# across all five palettes are bright enough to be darkened, and each keeps at least
+# 4.0:1 contrast against the #1a1a1a plot background (WCAG asks 3:1 for graphics), so
+# nothing gets darkened into the background.
+CATEGORY_TINT_LIGHTEN = 0.50
+CATEGORY_TINT_DARKEN = 0.40
+# Above this relative luminance, lightening has too little room left to be legible.
+CATEGORY_BRIGHT_LUMINANCE = 0.40
 
+# slot in the five-colour palette, and whether this category is the derived sibling
+# on that slot rather than the base colour.
 CATEGORY_PALETTE_MAP = {
     "disagg": {
-        "producer_merchant": (0, 0.00),
-        "swap": (0, CATEGORY_TINT),
-        "managed_money": (1, 0.00),
-        "other_reportable": (2, CATEGORY_TINT),
-        "nonreportable": (2, 0.00),
+        "producer_merchant": (0, False),
+        "swap": (0, True),
+        "managed_money": (1, False),
+        "other_reportable": (2, True),
+        "nonreportable": (2, False),
     },
     "tff": {
-        "dealer": (0, 0.00),
-        "asset_manager": (1, CATEGORY_TINT),
-        "leveraged": (1, 0.00),
-        "other_reportable": (2, CATEGORY_TINT),
-        "nonreportable": (2, 0.00),
+        "dealer": (0, False),
+        "asset_manager": (1, True),
+        "leveraged": (1, False),
+        "other_reportable": (2, True),
+        "nonreportable": (2, False),
     },
 }
 CATEGORY_TINT_DASH = "dash"

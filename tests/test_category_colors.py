@@ -4,11 +4,14 @@ Store-free: viz_config falls back to the committed config/params.yaml when
 COT_VIZ_CONFIG is unset, which is what CI runs with.
 """
 
+import itertools
 import re
 
 import pytest
 from cotmetrics import categories as cot_categories
 
+import components.category_traces as ct
+import components.plot_colors as plot_colors
 import viz_config
 import viz_constants as vc
 from components.category_traces import category_series
@@ -46,27 +49,90 @@ def test_every_category_resolves_to_a_distinct_valid_color(palette_name, report)
     assert len(set(colors)) == len(colors), f"{palette_name}/{report}: {colors}"
 
 
-@pytest.mark.parametrize("report", REPORTS)
-def test_slot_siblings_are_distinguished_by_dash_not_only_tint(report):
-    """Two categories on one palette slot must differ in more than lightness.
+def _rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
-    Solarized's spacing is tight enough that a 0.45 tint alone can be lost against a
-    busy panel, so the tinted sibling is always the dashed one.
+
+def _separation(a, b):
+    """Weighted-RGB distance, a cheap stand-in for perceived difference.
+
+    Not a proper colour space, but enough to catch the failure this exists for: two
+    lines that a reader calls "almost identical". Plain hex inequality is not, which
+    is how Other Reportable and Non-Reportable shipped as two near-identical yellows.
     """
+    ra, rb = _rgb(a), _rgb(b)
+    rmean = (ra[0] + rb[0]) / 2
+    dr, dg, db = (x - y for x, y in zip(ra, rb))
+    return ((2 + rmean / 256) * dr * dr + 4 * dg * dg
+            + (2 + (255 - rmean) / 256) * db * db) ** 0.5
+
+
+# Measured floor. The rule scores 156 at worst across every shipped palette and both
+# reports; 140 leaves room for a palette tweak without pinning the exact arithmetic.
+MIN_SIBLING_SEPARATION = 140
+
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+@pytest.mark.parametrize("report", REPORTS)
+def test_slot_siblings_are_visibly_different_colors(palette_name, report):
+    """The two categories sharing a palette slot must be tellable apart.
+
+    The regression this pins: lightening an already-bright colour barely moves it,
+    because the maxed channels cannot go up. Slot 2 is yellow in most palettes, so
+    Other Reportable and Non-Reportable both rendered as plain yellow.
+    """
+    palette = viz_config.get_palette(palette_name)
+    series = {s.key: s for s in category_series(report, None, palette)}
+
     slots = {}
-    for key, (slot, tint) in vc.CATEGORY_PALETTE_MAP[report].items():
-        slots.setdefault(slot, []).append((key, tint))
+    for key, (slot, _) in vc.CATEGORY_PALETTE_MAP[report].items():
+        slots.setdefault(slot, []).append(key)
 
     for slot, members in slots.items():
-        if len(members) < 2:
-            continue
-        tints = [t for _, t in members]
-        assert sum(1 for t in tints if t == 0.0) == 1, (report, slot, members)
+        for a, b in itertools.combinations(members, 2):
+            got = _separation(series[a].color, series[b].color)
+            assert got >= MIN_SIBLING_SEPARATION, (
+                f"{palette_name}/{report} slot {slot}: {a} {series[a].color} vs "
+                f"{b} {series[b].color} separated by only {got:.0f}")
+
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+def test_bright_bases_are_darkened_and_stay_visible(palette_name):
+    """A bright base gets a darker sibling, not a lighter one, and stays legible.
+
+    Darkening is the only direction with room left on a saturated colour, but it must
+    not push the line into the background. WCAG asks 3:1 for graphical objects.
+    """
+    palette = viz_config.get_palette(palette_name)
+    bg = plot_colors.relative_luminance(vc.BACKGROUND_COLOR)
+
+    for base in palette[:3]:
+        sib = ct.sibling_color(base)
+        base_lum = plot_colors.relative_luminance(base)
+        sib_lum = plot_colors.relative_luminance(sib)
+        if base_lum > vc.CATEGORY_BRIGHT_LUMINANCE:
+            assert sib_lum < base_lum, f"{base} should darken, got {sib}"
+            contrast = (max(sib_lum, bg) + 0.05) / (min(sib_lum, bg) + 0.05)
+            assert contrast >= 3.0, f"{sib} only {contrast:.1f}:1 against the plot bg"
+        else:
+            assert sib_lum > base_lum, f"{base} should lighten, got {sib}"
+
+
+@pytest.mark.parametrize("report", REPORTS)
+def test_exactly_one_base_per_slot_and_siblings_are_dashed(report):
+    slots = {}
+    for key, (slot, is_sibling) in vc.CATEGORY_PALETTE_MAP[report].items():
+        slots.setdefault(slot, []).append((key, is_sibling))
+
+    for slot, members in slots.items():
+        bases = [k for k, sib in members if not sib]
+        assert len(bases) == 1, (report, slot, members)
 
     series = {s.key: s for s in category_series(
         report, None, viz_config.get_palette(PALETTES[0]))}
-    for key, (_, tint) in vc.CATEGORY_PALETTE_MAP[report].items():
-        assert (series[key].dash is not None) == (tint > 0), key
+    for key, (_, is_sibling) in vc.CATEGORY_PALETTE_MAP[report].items():
+        assert (series[key].dash is not None) == is_sibling, key
 
 
 @pytest.mark.parametrize("report", REPORTS)
