@@ -21,6 +21,7 @@ So the pipeline has two halves:
   ──────────────────────                 ───────────────────────
   Norgate Data Updater                   reads the synced store
   cotdata writes COTDATA_STORE   ─────►  computes indices, serves Dash
+  crowdmon writes the damage panel        renders it, cannot build it (py3.9)
                                          downloads CFTC COT itself (free)
 ```
 
@@ -145,6 +146,22 @@ COTDATA_STORE=/root/cotdata_store     # the synced price store, see step 6
 
 Nothing works without `COTDATA_STORE`. Every entry point resolves instruments through
 it, so a missing or empty store fails at import rather than degrading.
+
+**Optional, for the `/damage` page only:**
+
+```bash
+CROWDMON_STORE=/root/crowdmon_store   # crowdmon's damage panel, synced by the same script
+```
+
+Unset is fine and is the default state. It defaults to a sibling of the workspace, the same
+place `cotdata_store` sits, so on the layout above nothing needs setting at all. When the
+panel is absent the `/damage` page renders a "not available" card naming what produces it and
+every other page is unaffected; the reader never raises, because `use_pages=True` imports
+every page at startup and an exception there would take down the whole page registry.
+
+**This server cannot build that panel**, for the same reason it cannot build prices, plus one
+more: crowdmon requires Python 3.9's successor (`>=3.10`) and this box runs 3.9. It is built
+on the Windows/Norgate producer by `crowdmon/bin/publish_damage.sh` and synced here.
 
 **Required for the emailed Signal Matrix report:**
 
