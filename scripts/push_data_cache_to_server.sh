@@ -2,7 +2,7 @@
 #
 # Push the data the server cannot generate for itself.
 #
-# Exactly three payloads:
+# Three REQUIRED payloads and one optional:
 #
 #   cotdata_store     Futures prices and contract specs. Norgate is Windows-only, so
 #                     the server can never produce these. This lives OUTSIDE the repo,
@@ -10,6 +10,14 @@
 #                     and the server failed at import after an otherwise clean sync.
 #   data_cache/       Derived per-instrument parquet, plus the options snapshots.
 #   data/cot_data.db  The SQLite database the app reads.
+#
+# Optional, synced only when CROWDMON_STORE is set and present:
+#
+#   crowdmon_store    crowdmon's damage panel. Optional rather than required because the app
+#                     runs perfectly well without it: the /damage page renders a "not
+#                     available" card and every other page is unaffected. Making it a hard
+#                     requirement would block a routine data sync on a publisher that had not
+#                     run, which is the wrong trade for a page nothing else depends on.
 #
 # Deliberately NOT shipped: the rest of data/, about 780M of CFTC archives that the ETL
 # downloads from cftc.gov itself (xls_data, cot_data) and CSV exports that the app
@@ -25,6 +33,7 @@
 #   HOST=user@example.com     ssh target (empty means a local copy, used by the tests)
 #   REMOTE_ROOT=/path         workspace root on the server
 #   COTDATA_STORE=/path       source store; defaults to the app's own env var
+#   CROWDMON_STORE=/path      crowdmon damage panel; skipped entirely when unset
 #
 set -euo pipefail
 
@@ -40,6 +49,10 @@ cd "$PROJECT_ROOT"
 STORE_SRC="${COTDATA_STORE:-$(cd "$PROJECT_ROOT/../.." && pwd)/cotdata_store}"
 # On the server the store is a sibling of the workspace, not inside it.
 STORE_DEST="$(dirname "$REMOTE_ROOT")/cotdata_store"
+# Sibling of the workspace, exactly like cotdata_store, which is where
+# src/components/crowdmon_artifact.py looks by default.
+CROWDMON_SRC="${CROWDMON_STORE:-}"
+CROWDMON_DEST="$(dirname "$REMOTE_ROOT")/crowdmon_store"
 APP_DEST="$REMOTE_ROOT/cot-analyzer"
 
 PUSH=0
@@ -67,6 +80,13 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
+# The optional payload is checked separately and never blocks: an unset or absent
+# CROWDMON_STORE is a normal state, not a broken sync.
+if [ -n "$CROWDMON_SRC" ] && [ ! -d "$CROWDMON_SRC" ]; then
+    echo "note: CROWDMON_STORE=$CROWDMON_SRC does not exist; skipping the damage panel." >&2
+    CROWDMON_SRC=""
+fi
+
 # .DS_Store rides along from macOS otherwise; it is noise on a Linux box.
 RSYNC_OPTS=(-avz --no-o --no-g --human-readable --exclude='.DS_Store')
 if [ "$PUSH" -eq 1 ]; then
@@ -92,11 +112,20 @@ echo "  data_cache  ./data_cache"
 echo "              -> $(remote "$APP_DEST/data_cache")"
 echo "  database    ./data/cot_data.db"
 echo "              -> $(remote "$APP_DEST/data/")"
+if [ -n "$CROWDMON_SRC" ]; then
+    echo "  crowdmon    $CROWDMON_SRC"
+    echo "              -> $(remote "$CROWDMON_DEST")"
+else
+    echo "  crowdmon    (skipped: CROWDMON_STORE unset or absent)"
+fi
 echo
 
 if [ "$PUSH" -eq 1 ] && [ -n "$HOST" ]; then
     # rsync will not create missing parent directories on its own.
     ssh "$HOST" "mkdir -p '$STORE_DEST' '$APP_DEST/data_cache' '$APP_DEST/data'"
+    if [ -n "$CROWDMON_SRC" ]; then
+        ssh "$HOST" "mkdir -p '$CROWDMON_DEST'"
+    fi
 fi
 
 # Trailing slash on the sources: copy the CONTENTS into the destination, so a rename
@@ -109,6 +138,14 @@ rsync "${RSYNC_OPTS[@]}" ./data_cache/ "$(remote "$APP_DEST/data_cache/")"
 
 echo "--- database ---"
 rsync "${RSYNC_OPTS[@]}" ./data/cot_data.db "$(remote "$APP_DEST/data/")"
+
+if [ -n "$CROWDMON_SRC" ]; then
+    # --delete so a pruned week disappears on the server too. The publisher keeps a rolling
+    # window and the manifest names the current one, so an orphaned old directory is dead
+    # weight rather than a fallback.
+    echo "--- crowdmon damage panel ---"
+    rsync "${RSYNC_OPTS[@]}" --delete "$CROWDMON_SRC/" "$(remote "$CROWDMON_DEST/")"
+fi
 
 echo
 if [ "$PUSH" -eq 1 ]; then

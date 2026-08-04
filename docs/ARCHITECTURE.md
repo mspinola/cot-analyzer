@@ -45,6 +45,43 @@ The split matters when reading the rest of this document, so as a map:
 A useful rule when deciding where something belongs: `cotmetrics` carries no presentation
 config, and `cot-analyzer` computes no metrics.
 
+### The third source: crowdmon's damage panel
+
+Since 2026-08-04 this app also renders a **published artifact it does not produce**:
+[`crowdmon`](https://github.com/mspinola/crowdmon)'s damage panel, `D = C x I x Phi`, read
+from `CROWDMON_STORE` by `src/components/crowdmon_artifact.py` and rendered by
+`src/pages/analytics/damage.py`.
+
+**crowdmon is not an installed dependency, and cannot be.** Its production host requirement
+is the blocker: this server runs Python 3.9 and crowdmon declares `requires-python =
+">=3.10"`. Independently, its chain needs Norgate `unadj` **and** `propadj` prices plus a
+`contract_specs` table, and per `server-side/README.md` this box cannot produce prices
+however it is provisioned. So the panel is built on the machine with that subscription and
+synced here as a file, exactly as `cotdata_store` already is. crowdmon's
+`docs/adr/ADR-0001-crowdmon-publishes-a-panel-rather-than-being-imported.md` is the decision.
+
+The rule above is unchanged and this does not bend it. Rendering a column somebody else
+computed is not computing it. The line that decides the next case is crowdmon's:
+
+> **Aggregating a published value by a published group key is presentation. Deriving the
+> value is a metric.**
+
+Two consequences worth knowing before touching that page:
+
+- **No crowdmon vocabulary may be written down in this repo**, comments included. The state
+  names, quadrant labels, severity threshold and caveat prose are all carried in the
+  artifact's manifest, generated from crowdmon's live constants at publish time.
+  `tests/test_damage_vocabulary.py` enforces it. That is the one obligation their ADR places
+  on a consumer, and without it the artifact is a convention rather than a contract.
+- **This app now joins two peer consumers of the same store.** `cotmetrics` computes a
+  unitless positioning index and `crowdmon` computes a fragility-weighted composite; crowdmon
+  is forbidden from importing `cotmetrics` precisely so the two cannot produce one blended
+  answer. They meet here for the first time, on separate pages, and nothing enforces
+  consistency between them because there is no sense in which they should agree. In
+  particular the damage page groups by **crowdmon's** asset classes, which come from
+  cotdata's registry and are not `config/params.yaml`'s `AssetClasses`; its column header
+  says so.
+
 ### A. The Orchestrator (`src/main.py`)
 - Acts as the central traffic controller.
 - Spawns the scheduler processes.
