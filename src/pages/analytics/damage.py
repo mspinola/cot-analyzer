@@ -421,9 +421,26 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
         font={"color": vc.TEXT_COLOR},
         margin={"l": 60, "r": 20, "t": 30, "b": 60},
         legend={"orientation": "h", "yanchor": "bottom", "y": -0.28, "x": 0},
+        # Ticks are PINNED rather than chosen. Left to itself plotly resolves this axis to
+        # `dtick "D1"`, which prints only the mantissa of each tick and carries the decade in
+        # the label's vertical position (measured: y 499 for `1` and `10` against y 490 for
+        # every single digit). On the buy side, which spans 0.0033 to 66.91 sigma on
+        # 2026-07-28, that renders the glyph `2` three times meaning 0.2, 2 and 20, and the
+        # only unambiguous anchor left in the picture is the dashed `close at 1.5` line.
+        # Explicit labels cost the minor gridlines and buy back the scale.
         xaxis={"title": "distance to the nearest flip that forces this side "
                         "(daily sigma, log scale)",
-               "type": "log", "gridcolor": vc.GRID_COLOR},
+               "type": "log", "gridcolor": vc.GRID_COLOR,
+               "tickmode": "array",
+               # Spanning both sides' ranges, which differ by more than a decade at each
+               # end: sell runs 0.13 to 48.9 sigma and buy 0.0018 to 69.0 on 2026-07-28.
+               # Plotly drops an out-of-range entry silently, so the list covers the union
+               # and each side keeps the subset it can show. `1.5` is in the list because
+               # the dashed close line sits there and a threshold nobody can read off the
+               # axis is a threshold stated twice and legible once.
+               "tickvals": [0.01, 0.1, 0.2, 0.5, 1, 1.5, 5, 10, 20, 50],
+               "ticktext": ["0.01", "0.1", "0.2", "0.5", "1", "1.5",
+                            "5", "10", "20", "50"]},
         # Headroom above 1, because `D` is a percentile and the markets pinned AT 1.000 are
         # the ones a reader came for. A range that stops just past the maximum leaves the
         # bubble, and the label above a bubble too small to hold one, sliced by the plot
