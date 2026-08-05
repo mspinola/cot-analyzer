@@ -1,8 +1,43 @@
 #!/bin/bash
 #
+# ============================================================================
+# DEPRECATED 2026-08-04. Do not use. It is kept, not deleted, because
+# server-side/README.md leans on it in four places and a reader following an
+# obsolete-but-present script fails more loudly than one following a dangling
+# reference. It now refuses to run.
+#
+# WHY. This pushes from the MAC, and the Mac is a read-only replica rather than a
+# producer. cotdata/docs/SYNCING.md documents the real topology: one Windows
+# server produces everything and feeds two replicas, the Mac over SMB
+# (robocopy /MIR, docs/examples/windows/sync-store.cmd) and this Linux dash
+# server over SSH (rsync, docs/examples/windows/push-to-server.cmd). A Mac push
+# is a replica pushing to a replica, and whichever side syncs second wins
+# silently.
+#
+# It had also been unable to run since PR #12 routed runtime state out of the
+# repo: the preflight still demanded ./data/cot_data.db, which moved to
+# .local-state/cot-analyzer/, so it exited 1. The stale ./data_cache was the
+# quieter half, a Jul 28 copy that would have been pushed over the server's
+# without comment had the preflight passed. Both are symptoms of a script nobody
+# had run in a while, not bugs to fix.
+#
+# WHAT REPLACES IT, per payload:
+#   cotdata_store     cotdata/docs/examples/windows/push-to-server.cmd
+#   crowdmon panel    crowdmon/docs/examples/windows/push-panel.cmd
+#   data_cache/, db   regenerated on the server by cotmetrics. If that turns out
+#                     to be wrong, the fix is a Windows-side push modelled on the
+#                     two above, not a revival of this file.
+#
+# The crowdmon damage panel briefly rode here as an optional fourth payload
+# (#14). That was dead code: it was wired into a script that does not run. The
+# payload is gone from here and lives in crowdmon's own Windows template.
+# ============================================================================
+#
+# Original header follows.
+#
 # Push the data the server cannot generate for itself.
 #
-# Three REQUIRED payloads and one optional:
+# Exactly three payloads:
 #
 #   cotdata_store     Futures prices and contract specs. Norgate is Windows-only, so
 #                     the server can never produce these. This lives OUTSIDE the repo,
@@ -11,24 +46,9 @@
 #   data_cache/       Derived per-instrument parquet, plus the options snapshots.
 #   data/cot_data.db  The SQLite database the app reads.
 #
-# Optional, synced only when CROWDMON_STORE is set and present:
-#
-#   crowdmon_store    crowdmon's damage panel, built by crowdmon/bin/publish_damage.py on
-#                     THIS machine before this script runs. Optional rather than required
-#                     because the app
-#                     runs perfectly well without it: the /damage page renders a "not
-#                     available" card and every other page is unaffected. Making it a hard
-#                     requirement would block a routine data sync on a publisher that had not
-#                     run, which is the wrong trade for a page nothing else depends on.
-#
 # Deliberately NOT shipped: the rest of data/, about 780M of CFTC archives that the ETL
 # downloads from cftc.gov itself (xls_data, cot_data) and CSV exports that the app
 # writes rather than reads (csv_data). The earlier version sent all of it.
-#
-# RUN THIS FROM THE WINDOWS/NORGATE PRODUCER. That is where the prices and the contract
-# specs exist, and it is therefore where every payload below has to be built before it can be
-# shipped. Running it from a machine that merely READS a synced store will push whatever that
-# machine happens to have, which is a copy of an older sync.
 #
 # Dry run by default. Nothing moves until you pass --push.
 #
@@ -40,9 +60,26 @@
 #   HOST=user@example.com     ssh target (empty means a local copy, used by the tests)
 #   REMOTE_ROOT=/path         workspace root on the server
 #   COTDATA_STORE=/path       source store; defaults to the app's own env var
-#   CROWDMON_STORE=/path      crowdmon damage panel; skipped entirely when unset
 #
 set -euo pipefail
+
+# Refuse rather than warn. A deprecated sync that still runs is one that will be run.
+cat >&2 <<'DEPRECATED'
+push_data_cache_to_server.sh is DEPRECATED and does nothing.
+
+The Mac is a read-only replica, not a producer. Everything the server needs is
+pushed from the Windows box:
+
+  cotdata store   cotdata/docs/examples/windows/push-to-server.cmd
+  crowdmon panel  crowdmon/docs/examples/windows/push-panel.cmd
+
+See cotdata/docs/SYNCING.md for the topology and cotdata/docs/WINDOWS_SCHEDULING.md
+for how those are scheduled. Set CROWDMON_ALLOW_LEGACY_PUSH=1 to run this anyway,
+which you almost certainly do not want: it would push a replica over a replica.
+DEPRECATED
+if [ "${CROWDMON_ALLOW_LEGACY_PUSH:-0}" != "1" ]; then
+    exit 2
+fi
 
 HOST="${HOST:?set HOST to the deploy target, e.g. HOST=user@your-server}"
 REMOTE_ROOT="${REMOTE_ROOT:-/root/trading_workspace}"
@@ -56,10 +93,6 @@ cd "$PROJECT_ROOT"
 STORE_SRC="${COTDATA_STORE:-$(cd "$PROJECT_ROOT/../.." && pwd)/cotdata_store}"
 # On the server the store is a sibling of the workspace, not inside it.
 STORE_DEST="$(dirname "$REMOTE_ROOT")/cotdata_store"
-# Sibling of the workspace, exactly like cotdata_store, which is where
-# src/components/crowdmon_artifact.py looks by default.
-CROWDMON_SRC="${CROWDMON_STORE:-}"
-CROWDMON_DEST="$(dirname "$REMOTE_ROOT")/crowdmon_store"
 APP_DEST="$REMOTE_ROOT/cot-analyzer"
 
 PUSH=0
@@ -87,13 +120,6 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
-# The optional payload is checked separately and never blocks: an unset or absent
-# CROWDMON_STORE is a normal state, not a broken sync.
-if [ -n "$CROWDMON_SRC" ] && [ ! -d "$CROWDMON_SRC" ]; then
-    echo "note: CROWDMON_STORE=$CROWDMON_SRC does not exist; skipping the damage panel." >&2
-    CROWDMON_SRC=""
-fi
-
 # .DS_Store rides along from macOS otherwise; it is noise on a Linux box.
 RSYNC_OPTS=(-avz --no-o --no-g --human-readable --exclude='.DS_Store')
 if [ "$PUSH" -eq 1 ]; then
@@ -119,20 +145,11 @@ echo "  data_cache  ./data_cache"
 echo "              -> $(remote "$APP_DEST/data_cache")"
 echo "  database    ./data/cot_data.db"
 echo "              -> $(remote "$APP_DEST/data/")"
-if [ -n "$CROWDMON_SRC" ]; then
-    echo "  crowdmon    $CROWDMON_SRC"
-    echo "              -> $(remote "$CROWDMON_DEST")"
-else
-    echo "  crowdmon    (skipped: CROWDMON_STORE unset or absent)"
-fi
 echo
 
 if [ "$PUSH" -eq 1 ] && [ -n "$HOST" ]; then
     # rsync will not create missing parent directories on its own.
     ssh "$HOST" "mkdir -p '$STORE_DEST' '$APP_DEST/data_cache' '$APP_DEST/data'"
-    if [ -n "$CROWDMON_SRC" ]; then
-        ssh "$HOST" "mkdir -p '$CROWDMON_DEST'"
-    fi
 fi
 
 # Trailing slash on the sources: copy the CONTENTS into the destination, so a rename
@@ -145,14 +162,6 @@ rsync "${RSYNC_OPTS[@]}" ./data_cache/ "$(remote "$APP_DEST/data_cache/")"
 
 echo "--- database ---"
 rsync "${RSYNC_OPTS[@]}" ./data/cot_data.db "$(remote "$APP_DEST/data/")"
-
-if [ -n "$CROWDMON_SRC" ]; then
-    # --delete so a pruned week disappears on the server too. The publisher keeps a rolling
-    # window and the manifest names the current one, so an orphaned old directory is dead
-    # weight rather than a fallback.
-    echo "--- crowdmon damage panel ---"
-    rsync "${RSYNC_OPTS[@]}" --delete "$CROWDMON_SRC/" "$(remote "$CROWDMON_DEST/")"
-fi
 
 echo
 if [ "$PUSH" -eq 1 ]; then

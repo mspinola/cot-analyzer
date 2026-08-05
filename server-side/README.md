@@ -230,25 +230,33 @@ default price path.
 Three things are gitignored and must be copied from the machine that produced them.
 Run these **from the producer**, not the server.
 
-Use the script, which knows all three payloads and dry-runs by default:
+> **`scripts/push_data_cache_to_server.sh` is DEPRECATED and refuses to run.** It pushed
+> from the **Mac**, which is a read-only replica rather than a producer, so it was a replica
+> pushing to a replica. `cotdata/docs/SYNCING.md` documents the real topology: one Windows
+> server produces everything and feeds two replicas, the Mac over SMB and this dash server
+> over SSH. The script is kept rather than deleted so a reader who finds it here gets a
+> message naming its replacement instead of a dangling reference.
 
-```bash
-./scripts/push_data_cache_to_server.sh            # show what would move
-./scripts/push_data_cache_to_server.sh --push     # transfer
-```
+Everything is pushed **from the Windows producer**, by Task Scheduler running scheduler
+copies of two templates. See `cotdata/docs/WINDOWS_SCHEDULING.md` for how they are wired
+and chained behind `errorlevel` guards.
 
-It sends the store (~234M), `data_cache/` (~85M) and `data/cot_data.db` (~37M), and
-refuses to run at all if any of the three is missing locally, rather than leaving the
-server with a partial set it cannot boot from. Override `HOST`, `REMOTE_ROOT` or
-`COTDATA_STORE` if your layout differs.
+| payload | pushed by |
+|---|---|
+| the cotdata store (~234M) | `cotdata/docs/examples/windows/push-to-server.cmd` |
+| the crowdmon damage panel (~35M) | `crowdmon/docs/examples/windows/push-panel.cmd` |
 
-The equivalent by hand:
+**`data_cache/` and `data/cot_data.db` are not pushed by either.** They are cotmetrics
+runtime state, and PR #12 moved them out of this repo into `.local-state/cot-analyzer/`,
+so the deprecated script could not have shipped them anyway. The server regenerates the
+cache on first use. **If that turns out to be wrong**, the fix is a third Windows-side
+template modelled on the two above, not a revival of the Mac script.
+
+The store push by hand, for reference, is:
 
 ```bash
 rsync -avz --no-o --no-g --progress --exclude='.DS_Store' \
-      ~/code/cotdata_store/ USER@HOST:/root/cotdata_store/
-rsync -avz --no-o --no-g --progress --exclude='.DS_Store' \
-      ./data_cache/ USER@HOST:/root/trading_workspace/cot-analyzer/data_cache/
+      /path/to/cotdata_store/ USER@HOST:/root/cotdata_store/
 ```
 
 `data/` is a third gitignored directory, and most of it does **not** need to travel:
@@ -257,14 +265,9 @@ rsync -avz --no-o --no-g --progress --exclude='.DS_Store' \
   `cftc.gov` and extracts on its own.
 - `csv_data` (221M) is export output the app writes, not an input it reads.
 
-The part worth syncing is the SQLite database:
-
-```bash
-rsync -avz --no-o --no-g --progress ./data/cot_data.db USER@HOST:/root/trading_workspace/cot-analyzer/data/
-```
-
-Syncing the whole of `data/` works but ships about 800M to save a download the server
-does anyway.
+None of it is pushed today. The SQLite database moved to `.local-state/cot-analyzer/`
+in PR #12 and the server maintains its own; syncing the whole of `data/` would ship about
+800M to save a download the server does anyway.
 
 ## 7. Install the service
 
@@ -344,11 +347,12 @@ ssh USER@HOST '
   cd /root/trading_workspace/cotmetrics   && git pull &&
   cd /root/trading_workspace/cot-analyzer && git pull
 '
-# only if the release changed derived-cache contents
-rsync -avz --no-o --no-g ./data_cache/ USER@HOST:/root/trading_workspace/cot-analyzer/data_cache/
-
 ssh USER@HOST 'systemctl restart cot-analyzer && systemctl status cot-analyzer'
 ```
+
+> A release that changes derived-cache contents no longer ships a cache from here: the
+> server rebuilds it. The `data_cache` push that used to sit in this block went with
+> `push_data_cache_to_server.sh`, per §6.
 
 Editable installs mean a `git pull` in `cotmetrics` or `cotdata` needs no reinstall, but
 it **does** need the restart, because the running process already imported them.
