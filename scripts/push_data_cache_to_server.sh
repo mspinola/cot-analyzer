@@ -13,7 +13,9 @@
 #
 # Optional, synced only when CROWDMON_STORE is set and present:
 #
-#   crowdmon_store    crowdmon's damage panel. Optional rather than required because the app
+#   crowdmon_store    crowdmon's damage panel, built by crowdmon/bin/publish_damage.py on
+#                     THIS machine before this script runs. Optional rather than required
+#                     because the app
 #                     runs perfectly well without it: the /damage page renders a "not
 #                     available" card and every other page is unaffected. Making it a hard
 #                     requirement would block a routine data sync on a publisher that had not
@@ -22,6 +24,11 @@
 # Deliberately NOT shipped: the rest of data/, about 780M of CFTC archives that the ETL
 # downloads from cftc.gov itself (xls_data, cot_data) and CSV exports that the app
 # writes rather than reads (csv_data). The earlier version sent all of it.
+#
+# RUN THIS FROM THE WINDOWS/NORGATE PRODUCER. That is where the prices and the contract
+# specs exist, and it is therefore where every payload below has to be built before it can be
+# shipped. Running it from a machine that merely READS a synced store will push whatever that
+# machine happens to have, which is a copy of an older sync.
 #
 # Dry run by default. Nothing moves until you pass --push.
 #

@@ -160,8 +160,26 @@ every other page is unaffected; the reader never raises, because `use_pages=True
 every page at startup and an exception there would take down the whole page registry.
 
 **This server cannot build that panel**, for the same reason it cannot build prices, plus one
-more: crowdmon requires Python 3.9's successor (`>=3.10`) and this box runs 3.9. It is built
-on the Windows/Norgate producer by `crowdmon/bin/publish_damage.sh` and synced here.
+more: crowdmon requires Python 3.9's successor (`>=3.10`) and this box runs 3.9.
+
+Any *other* machine with a readable store can build it, though, so the rule is not "crowdmon
+needs Windows". The panel simply has to be built **upstream of whatever ships it**, and today
+that is the Windows/Norgate producer, because the sync originates there. Unlike prices, the
+panel is not vendor data: it is derived output that any machine with the store regenerates
+identically, so if the sync origin moves, the publish moves with it.
+
+On Windows use the portable driver, since `bin/publish_damage.sh` is bash and the launchd
+agent beside it is macOS:
+
+```
+set COTDATA_STORE=...\cotdata_store
+set CROWDMON_STORE=...\crowdmon_store
+.venv\Scripts\python bin\publish_damage.py
+```
+
+**Publish before the sync runs.** Nothing enforces that ordering, and getting it backwards
+ships last week's panel beside this week's prices, which the `/damage` page reports as a
+staleness banner rather than an error.
 
 **Required for the emailed Signal Matrix report:**
 
