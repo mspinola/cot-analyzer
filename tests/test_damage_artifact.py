@@ -23,6 +23,7 @@ import pandas as pd
 import pytest
 
 import components.crowdmon_artifact as artifact
+import viz_constants as vc
 
 
 def _panel(week="2026-07-28"):
@@ -66,7 +67,9 @@ def _manifest(week="2026-07-28", version=artifact.SUPPORTED_SCHEMA):
         "quadrant": {"00": "cell a", "01": "cell b", "10": "cell c", "11": "cell d"},
         "close_sigma": 1.5,
         "damage_bands": [[0.9, "band one"], [0.75, "band two"], [0.0, "band three"]],
-        "factor_questions": {"crowding": "q"},
+        "factor_questions": {"crowding": "how lopsided",
+                             "illiquidity": "how long to get out",
+                             "fragility": "how much is forceable"},
         "notes": {"score_state": {"not_a_number": "a note the page must print"}},
         "reading_instructions": [],
         "standing": ["a standing caveat", "another one"],
@@ -275,3 +278,288 @@ def test_a_click_with_no_market_behind_it_opens_nothing(store):
     import pages.analytics.damage as page
 
     assert page._drill({"rowId": "not-a-market"}, "sell")[0] is False
+
+
+# ── bubble labels ───────────────────────────────────────────────────────────
+def _two_bubbles():
+    """One market that dwarfs the other, so the smaller falls under the legibility gate."""
+    return pd.DataFrame({
+        "symbol": ["BIG", "SML"], "sigma": [0.25, 0.64], "d": [0.96, 0.80],
+        "open_interest": [1_000_000.0, 40_000.0],
+        "market_name": ["A - X", "B - X"], "market_code": ["001", "002"],
+        "crowding_long": [0.5, 0.5], "illiquidity_sell": [0.6, 0.6],
+        "fragility": [0.7, 0.7], "dtl_sell": [3.0, 4.0],
+    })
+
+
+def test_a_bubble_too_small_to_hold_its_ticker_is_not_labelled(store):
+    """An unreadable label costs ink and a collision and says nothing."""
+    import pages.analytics.damage as page
+
+    trace = page._trace(_two_bubbles(), name="n", color="#2aa198", filled=False,
+                        oi_max=1_000_000.0)
+    assert list(trace.text) == ["BIG", ""]
+    assert list(trace.textposition) == ["middle center", "top center"]
+
+
+def test_a_market_with_a_claim_on_attention_is_named_however_small(store):
+    """Size may decide where a label sits; it may not decide who gets one.
+
+    Against a panel-wide scale the pixel gate means "small market", and open interest is not
+    why a reader wants a name. On the 2026-07-28 panel a size-only rule named 5 of the 35
+    plotted sell-side markets and emptied a populated cell.
+    """
+    import pages.analytics.damage as page
+
+    trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
+                        oi_max=1_000_000.0, label_all=True)
+    assert list(trace.text) == ["BIG", "SML"]
+    # Still moved outside the bubble it does not fit in, rather than shrunk to fit.
+    assert list(trace.textposition) == ["middle center", "top center"]
+
+
+def test_bubble_area_is_open_interest_across_the_whole_figure(store):
+    """Every trace is drawn against one scale, so a bubble means the same thing everywhere.
+
+    Normalising per trace ranks a market against its own quadrant, which draws the largest
+    member of every cell at the same size whatever its open interest. That is the one channel
+    a reader takes for size, so it has to report size.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    week = artifact.latest_week(art)
+    oi_max = page._panel_open_interest_max(week)
+    fig = page._figure(week, art.manifest, "sell")
+
+    seen = {}
+    for trace in fig.data:
+        for code, px in zip(trace.customdata[:, 1], trace.marker.size):
+            seen[code] = px
+    by_code = dict(zip(week["market_code"], pd.to_numeric(week["open_interest"])))
+
+    assert len(seen) > 1
+    for code, px in seen.items():
+        assert px == pytest.approx(8.0 + 22.0 * (by_code[code] / oi_max) ** 0.5)
+    # Two markets in DIFFERENT cells, so a per-trace scale would have tied them at 30.
+    biggest = max(seen, key=lambda c: by_code[c])
+    assert max(seen.values()) == seen[biggest], (
+        "the largest bubble on the figure must be the largest market on the figure")
+    assert sum(1 for px in seen.values() if px == max(seen.values())) == 1
+
+
+def test_every_quadrant_cell_is_told_apart_by_its_marker_alone(store):
+    """A legend swatch has no position, so colour and fill must carry both axes.
+
+    Spending both channels on the single bit "is this the cell to act on" left the other
+    three cells drawing identical markers, and only their counts distinguished the legend
+    entries. Each channel now takes one axis.
+    """
+    import pages.analytics.damage as page
+
+    styles = {(c, s): page._cell_style(c, s)
+              for c in (True, False) for s in (True, False)}
+    assert len(set(styles.values())) == 4, "two cells still draw the same marker"
+
+
+def test_the_acted_on_cell_is_still_the_only_filled_alarm_marker(store):
+    """Giving the other cells a marker of their own must not dilute the one that matters."""
+    import pages.analytics.damage as page
+
+    loud = [k for k, v in ((k, page._cell_style(*k))
+                           for k in [(True, True), (True, False),
+                                     (False, True), (False, False)])
+            if v == (vc.CATEGORY_DIVERGING_DOWN, True)]
+    assert loud == [(True, True)]
+
+
+def test_a_right_aligned_column_is_sized_to_its_header(store):
+    """`rightAligned` splits the icon and the label to opposite edges of the cell.
+
+    Any width past what the label needs opens between them, and a lone filter icon with a
+    gap after it reads as an unnamed empty column rather than as a wide one. ag-grid's
+    unset default is 200px, which on a one-character header left a 154px hole.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    grid = page._grid(artifact.latest_week(art), art.manifest, "sell")
+    numeric = [c for c in grid.columnDefs if c.get("type") == "rightAligned"]
+    assert numeric
+    for col in numeric:
+        assert col["width"] <= 124, "{} is wider than its header".format(col["field"])
+
+
+def test_the_single_letter_factors_carry_the_producer_s_own_question(store):
+    """`factor_questions` is published for this and was reaching nothing."""
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    grid = page._grid(artifact.latest_week(art), art.manifest, "sell")
+    tips = {c["field"]: c.get("headerTooltip")
+            for c in grid.columnDefs if c["field"] in ("C", "I", "Phi")}
+    assert tips == {"C": "how lopsided", "I": "how long to get out",
+                    "Phi": "how much is forceable"}
+
+
+def test_a_market_pinned_at_the_top_of_the_range_is_drawn_whole(store):
+    """`D` is a percentile, and the markets at 1.000 are the ones a reader came for.
+
+    A range stopping just past the maximum slices the bubble, and slices the label above a
+    bubble too small to hold one inside. Both halves are checked: headroom for the common
+    case, and `cliponaxis` for a market landing exactly on a bound.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    fig = page._figure(artifact.latest_week(art), art.manifest, "sell")
+    top = fig.layout.yaxis.range[1]
+    tallest = max(max(t.marker.size) for t in fig.data)
+
+    # Marker RADIUS plus a label above it, converted from px into data units against the
+    # plotting area, must fit between the highest possible point and the top of the frame.
+    plot_px = fig.layout.height - fig.layout.margin.t - fig.layout.margin.b
+    headroom_px = (top - 1.0) / (top - fig.layout.yaxis.range[0]) * plot_px
+    assert headroom_px > tallest / 2 + 11, (
+        "a bubble at D 1.000 with a label above it does not fit under the frame")
+    assert all(t.cliponaxis is False for t in fig.data)
+
+
+def test_the_asset_class_is_a_column_a_reader_can_see(store):
+    """It was configured as a row group, which this build cannot do, so it only hid itself.
+
+    `rowGroup` is ag-grid Enterprise and `dash_ag_grid` loads the community bundle unless
+    `enableEnterpriseModules` is set. Nothing sets it, so the grouping never ran and the
+    `hide: True` beside it was the whole of that config's effect.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    grid = page._grid(artifact.latest_week(art), art.manifest, "sell")
+    klass = next(c for c in grid.columnDefs if c["field"] == "asset_class")
+    assert not klass.get("hide") and not klass.get("rowGroup")
+    assert {row["asset_class"] for row in grid.rowData} == {"Grains", "Equities", "Metals"}
+    assert "groupDefaultExpanded" not in grid.dashGridOptions, (
+        "an option configuring a feature this build does not load claims that it runs")
+
+
+# ── the glossary ────────────────────────────────────────────────────────────
+def test_every_measured_column_the_grid_shows_is_defined_on_the_page(store):
+    """A reader must not have to open another repo to learn what `Phi` is.
+
+    Keyed on the grid's own field names, so adding a column to `_grid` without a glossary
+    entry fails here. A glossary that silently omits an entry reads as complete, and a
+    reader cannot tell a missing definition from a term nobody thought needed one.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    grid = page._grid(artifact.latest_week(art), art.manifest, "sell")
+    shown = {c["field"] for c in grid.columnDefs if not c.get("hide")}
+    defined = {t[0] for t in page.glossary_terms(art.manifest)}
+    assert shown - defined - set(page.IDENTITY_COLUMNS) == set()
+
+
+def test_the_definitions_are_the_producer_s_words_and_not_a_paraphrase(store):
+    """The whole point of reading them from the manifest is that they cannot drift."""
+    import pages.analytics.damage as page
+
+    asked = _manifest()["factor_questions"]
+    bodies = {t[0]: t[3] for t in page.glossary_terms(_manifest())}
+    assert bodies["C"] == asked["crowding"]
+    assert bodies["I"] == asked["illiquidity"]
+    assert bodies["Phi"] == asked["fragility"]
+
+
+def test_a_term_the_artifact_never_defines_says_so_rather_than_vanishing(store):
+    """Silence would read as self-explanatory, and inventing one here is what is banned."""
+    import pages.analytics.damage as page
+
+    bodies = {t[0]: t[3] for t in page.glossary_terms(_manifest())}
+    for field, _, _ in page.UNDEFINED_TERMS:
+        assert field in bodies and "not defined in the panel" in bodies[field]
+
+    # And a factor whose question the producer stops publishing degrades the same way,
+    # rather than rendering an empty cell that reads as "nothing to say".
+    stripped = dict(_manifest(), factor_questions={})
+    assert "not defined in the panel" in {t[0]: t[3]
+                                     for t in page.glossary_terms(stripped)}["Phi"]
+
+
+def test_the_reading_instructions_reach_the_page(store):
+    """Published with the first panel and rendered nowhere until now.
+
+    A manifest key with no consumer is indistinguishable from one that does not exist,
+    which is how this page ended up with a long preamble and no definitions.
+    """
+    import pages.analytics.damage as page
+
+    manifest = dict(_manifest(), reading_instructions=[
+        {"column": "beta", "misreading": "a misreading someone made",
+         "why_not": "and why it is wrong", "ref": "2026-08-02 SS B2"}])
+    rendered = str(page._misreadings(manifest))
+    for fragment in ("beta", "a misreading someone made", "and why it is wrong",
+                     "2026-08-02 SS B2"):
+        assert fragment in rendered
+
+    # A caveat with no column is about the panel, not about `D`. Attributing a general
+    # warning to one number is a quieter version of the misreading it exists to prevent.
+    general = dict(manifest, reading_instructions=[
+        {"column": None, "misreading": "a panel-wide misreading", "why_not": "", "ref": ""}])
+    assert "this panel" in str(page._misreadings(general))
+
+
+def test_the_glossary_survives_a_manifest_that_carries_none_of_it(store):
+    """An older panel must degrade to a thin glossary, never to a broken page."""
+    import pages.analytics.damage as page
+
+    bare = {k: v for k, v in _manifest().items()
+            if k not in ("factor_questions", "notes", "damage_bands",
+                         "quadrant", "reading_instructions")}
+    empty = artifact.Artifact(state=artifact.OK, manifest=bare)
+    assert page._glossary(empty) is not None
+    assert page._glossary(artifact.Artifact(state=artifact.OK)) is not None
+
+
+def test_the_two_sides_share_one_size_scale(store):
+    """Toggling the radio must not resize a market that did not change."""
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    week = artifact.latest_week(art)
+    assert (page._panel_open_interest_max(week)
+            == pd.to_numeric(week["open_interest"]).max())
+
+
+def test_the_severe_cell_is_labelled_and_the_contradicted_one_is_gated(monkeypatch, store):
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    fig = page._figure(artifact.latest_week(art), art.manifest, "sell")
+    by_name = {t.name: t for t in fig.data}
+    severe = next(t for n, t in by_name.items() if "cell d" in n)
+    assert all(t for t in severe.text), "every market in the acted-on cell must be named"
+    assert next(t for n, t in by_name.items() if "no cell" in n).mode == "markers+text"
+
+
+def test_label_colour_contrasts_with_a_filled_bubble_and_matches_an_open_one(store):
+    """Only a label read against a fill is chosen to oppose that fill."""
+    import pages.analytics.damage as page
+
+    assert page._label_color("#cb4b16", True, True) == "#ffffff"
+    assert page._label_color("#ffe08a", True, True) == "#0b1416"
+    assert page._label_color("#586e75", False, True) == "#586e75"
+
+
+def test_a_label_pushed_outside_a_bubble_stops_using_the_fill_contrast(store):
+    """It has left the marker, so it is read against the page, not against the fill.
+
+    With a light fill the fill-contrast colour is near-black, which on this page's dark
+    background would remove the label rather than merely recolour it.
+    """
+    import pages.analytics.damage as page
+
+    assert page._label_color("#ffe08a", True, False) == "#ffe08a"
+    trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
+                        oi_max=1_000_000.0, label_all=True)
+    assert list(trace.textfont.color) == ["#ffffff", "#cb4b16"]

@@ -52,6 +52,7 @@ import plotly.graph_objects as go
 from dash import Input, Output, callback, dcc, html, no_update
 
 import components.crowdmon_artifact as artifact
+import components.plot_colors as plot_colors
 import viz_constants as vc
 
 dash.register_page(__name__, path="/damage")
@@ -61,6 +62,35 @@ SIDES = (("sell", "Forced selling"), ("buy", "Forced buying"))
 #: Marker for a market whose observed pool contradicts the price signal. Plotted, because
 #: hiding it would be its own kind of silence, but visibly outside the quadrant scheme.
 CONTRADICTED_COLOR = "#586e75"
+
+#: The producer's public write-up. A link out is allowed; a dependency on it is not, which
+#: is why every definition on the page is rendered from the panel's own manifest and this is
+#: only where a reader goes for the formulas.
+CROWDMON_DOCS = ("https://github.com/mspinola/crowdmon/blob/main/docs/design/"
+                 "crowdmon_plain_language_summary.md")
+
+#: Columns the grid publishes that the artifact carries no definition for. Listed rather
+#: than quietly omitted, and each still shows the panel field it is built from, which is at
+#: least enough to look the term up. Each is `(grid field, header, field in the panel)`.
+#:
+#: Emptying this tuple is the goal: crowdmon already publishes `factor_questions` for the
+#: three factors, and these four want the same treatment at the producer rather than a
+#: definition typed in here, which is what `tests/test_damage_vocabulary.py` forbids and
+#: what would go stale the first time the formula moved.
+UNDEFINED_TERMS = (
+    ("offside_sigma", "Offside (sigma)", "trigger_<side>_sigma"),
+    ("offside_pct", "Offside (%)", "trigger_<side>_pct"),
+    ("T_days", "T (days)", "dtl_<side>"),
+    ("beta", "beta", "beta"),
+)
+
+#: Grid columns that identify the row rather than measure it, so they need no definition.
+IDENTITY_COLUMNS = ("name", "symbol", "asset_class", "market_code")
+
+#: Marker diameter (px) below which a 2-3 character ticker will not sit legibly inside the
+#: bubble. Below it the label moves outside or is dropped rather than shrunk: an unreadable
+#: label is worse than none, because it still costs the ink and the collision.
+MIN_MARKER_FOR_LABEL = 16.0
 
 
 # ── layout ──────────────────────────────────────────────────────────────────
@@ -75,6 +105,7 @@ def layout(**kwargs):
         dbc.Container([
             _provenance(art),
             _standing(art),
+            _glossary(art),
             dbc.Row([
                 dbc.Col(dbc.RadioItems(
                     id="damage-side", options=[{"label": lab, "value": s}
@@ -155,6 +186,135 @@ def _standing(art) -> dbc.Alert:
         color="secondary", className="mt-2")
 
 
+def glossary_terms(manifest):
+    """One entry per measured grid column: `(grid field, header, panel field, body)`.
+
+    Keyed by the grid's own field name so that a column added to `_grid` without a
+    definition FAILS rather than simply going unexplained. A glossary that silently omits
+    an entry reads as complete, and a reader cannot tell a missing definition from a term
+    nobody thought needed one.
+
+    Every `body` is a manifest string rendered verbatim, or `_undefined` where the artifact
+    ships the column and no words for it. Nothing here paraphrases the producer.
+    """
+    asked = manifest.get("factor_questions") or {}
+    notes = manifest.get("notes") or {}
+    bands = manifest.get("damage_bands") or []
+    quadrant = manifest.get("quadrant") or {}
+    strata = notes.get("band_advice") or {}
+    states = notes.get("score_state") or {}
+
+    joined = "; ".join(quadrant[k] for k in sorted(quadrant, reverse=True))
+    terms = [
+        ("D", "D pct", "damage_<side>_pct",
+         ["Banded by the producer as ",
+          html.Span(", ".join("{:g}+ {}".format(floor, label) for floor, label in bands),
+                    style={"fontStyle": "italic"}),
+          "." if bands else _undefined()]),
+        ("cell", "Quadrant", "computed on this page",
+         ["Which side of the two dashed lines a market falls on, at ",
+          html.B("{:g} sigma".format(manifest.get("close_sigma") or 1.5)),
+          " across and the second band floor above. ", joined]),
+        ("C", "C", "crowding_<side>", asked.get("crowding") or _undefined()),
+        ("I", "I", "illiquidity_<side>", asked.get("illiquidity") or _undefined()),
+        ("Phi", "Phi", "fragility", asked.get("fragility") or _undefined()),
+        ("state", "Why no D", "score_state_<side>",
+         "; ".join("{}: {}".format(k, v) for k, v in sorted(states.items()) if v)
+         or _undefined()),
+        ("stratum", "stratum", "stratum",
+         "; ".join("{}: {}".format(k, v) for k, v in sorted(strata.items()))
+         or _undefined()),
+    ]
+    return terms + [(field, label, panel, _undefined())
+                    for field, label, panel in UNDEFINED_TERMS]
+
+
+def _term(label: str, field: str, body) -> html.Tr:
+    """One glossary row: what this page calls it, where it comes from, what it means.
+
+    The first two cells are this repo's own doing, because this page invents its column
+    headers (`C`, `I`, `Phi`, `D pct`) and the panel does not ship them. The third is
+    always the producer's own words, never a paraphrase.
+    """
+    pad = {"verticalAlign": "top", "paddingRight": "1rem", "paddingBottom": "0.4rem"}
+    return html.Tr([
+        html.Td(html.B(label), style=dict(pad, whiteSpace="nowrap")),
+        html.Td(html.Code(field, style={"opacity": 0.7}),
+                style=dict(pad, whiteSpace="nowrap")),
+        html.Td(body, style=dict(pad, paddingRight="0")),
+    ])
+
+
+def _glossary(art) -> dbc.Alert:
+    """Every column on this page, defined ON this page.
+
+    A reader should not have to open another repo to learn what `Phi` is, and until now
+    nothing here said. The definitions are still not written down in this repo: each is a
+    manifest string rendered verbatim, so the producer stays the single source and this
+    block cannot drift from it. What this repo contributes is the mapping from the header it
+    invented to the panel field underneath.
+
+    Three of the artifact's own keys were reaching nothing before this: `factor_questions`,
+    `reading_instructions` and `notes.band_advice` were all published and all unread. A
+    manifest key with no consumer is indistinguishable from one that does not exist, which
+    is how a page ends up with a long preamble and no definitions.
+
+    Where the artifact carries no definition for a term the grid shows, this says so rather
+    than inventing one. That gap is real, and naming it is what gets it published upstream.
+    """
+    rows = [_term(label, field, body)
+            for _, label, field, body in glossary_terms(art.manifest)]
+
+    return dbc.Alert([
+        html.H6("What each column is", className="mb-2"),
+        html.Table(html.Tbody(rows), style={"fontSize": "0.85rem", "width": "100%"}),
+        _misreadings(art.manifest),
+        html.P(["Every definition above is the producer's own, published with the panel. ",
+                html.A("The full write-up", href=CROWDMON_DOCS, target="_blank",
+                       rel="noopener noreferrer"),
+                " carries the formulas and the measurements behind them."],
+               className="mb-0 mt-2", style={"fontSize": "0.8rem", "opacity": 0.8}),
+    ], color="dark", className="mt-2")
+
+
+def _undefined() -> str:
+    """What to print when the artifact ships a column and no words for it.
+
+    Silence would read as "self-explanatory", which none of these are, and inventing a
+    definition here is the duplicate-of-a-living-document failure this page exists to
+    avoid. Saying it plainly is also the only pressure on the producer to publish one.
+    """
+    return "not defined in the panel, so not defined here. See the write-up below."
+
+
+def _misreadings(manifest) -> html.Div:
+    """`reading_instructions`: what a column must NOT be read as, in the producer's words.
+
+    Published since the first panel and rendered nowhere until now. These are the errors
+    the producer measured someone making, so they are worth more than another definition.
+    """
+    items = manifest.get("reading_instructions") or []
+    if not items:
+        return html.Div()
+    return html.Div([
+        html.P(html.B("What these columns do not mean"),
+               className="mb-1 mt-2", style={"fontSize": "0.85rem"}),
+    ] + [
+        # A null `column` is a caveat about the panel as a whole, NOT about `D`. Defaulting
+        # it to a column name would attribute a general warning to one number, which is a
+        # quieter version of the misreading these entries exist to prevent.
+        html.P([html.Code(item["column"], style={"opacity": 0.7}) if item.get("column")
+                else html.Span("this panel", style={"opacity": 0.7}), " ",
+                html.Span("is not: ", style={"opacity": 0.7}),
+                item.get("misreading") or "",
+                (". " + item["why_not"]) if item.get("why_not") else ".",
+                html.Span("  ({})".format(item.get("ref") or ""),
+                          style={"opacity": 0.55})],
+               className="mb-1", style={"fontSize": "0.8rem"})
+        for item in items
+    ])
+
+
 # ── the quadrant ────────────────────────────────────────────────────────────
 def _quadrant_label(manifest, close: bool, severe: bool) -> str:
     """The cell's name, from the artifact. Never spelled out in this repo."""
@@ -190,6 +350,7 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
     contradicted = frame[agrees == False]                               # noqa: E712
     placed = frame[agrees != False]                                     # noqa: E712
 
+    oi_max = _panel_open_interest_max(week)
     fig = go.Figure()
     # The two lines ARE the quadrant, so they are drawn to be read rather than to be
     # tasteful, and each carries the number that defines it. Both come from the artifact.
@@ -208,12 +369,12 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
                           & ((placed["d"] >= floor) == is_severe)]
             if part.empty:
                 continue
+            color, filled = _cell_style(is_close, is_severe)
             fig.add_trace(_trace(
                 part, name="{}  ({})".format(
                     _quadrant_label(manifest, is_close, is_severe), len(part)),
-                color=(vc.CATEGORY_DIVERGING_DOWN if (is_close and is_severe)
-                       else vc.CATEGORY_DIVERGING_UP),
-                filled=is_close and is_severe))
+                color=color, filled=filled, oi_max=oi_max,
+                label_all=is_close or is_severe))
 
     if not contradicted.empty:
         # Plotted with an open marker and NO quadrant, mirroring crowdmon's renderer, which
@@ -221,7 +382,8 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
         fig.add_trace(_trace(
             contradicted,
             name="pool on the other side, no cell  ({})".format(len(contradicted)),
-            color=CONTRADICTED_COLOR, filled=False, symbol="circle-open"))
+            color=CONTRADICTED_COLOR, filled=False, oi_max=oi_max,
+            marker_symbol="circle-open"))
 
     fig.update_layout(
         template="plotly_dark", height=560,
@@ -232,22 +394,112 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
         xaxis={"title": "distance to the nearest flip that forces this side "
                         "(daily sigma, log scale)",
                "type": "log", "gridcolor": vc.GRID_COLOR},
+        # Headroom above 1, because `D` is a percentile and the markets pinned AT 1.000 are
+        # the ones a reader came for. A range that stops just past the maximum leaves the
+        # bubble, and the label above a bubble too small to hold one, sliced by the plot
+        # edge: on 2026-07-28 that was nat gas at D 1.000 and RBOB at 0.987, the top two
+        # rows of the table. The ticks still stop at 1; only the frame goes higher.
         yaxis={"title": "D percentile, against this market's own history",
-               "range": [0, 1.02], "gridcolor": vc.GRID_COLOR},
+               "range": [0, 1.08], "dtick": 0.2, "gridcolor": vc.GRID_COLOR},
     )
     return fig
 
 
-def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool,
-           symbol: str = "circle") -> go.Scatter:
-    size = pd.to_numeric(part["open_interest"], errors="coerce").fillna(0.0)
-    size = 8.0 + 22.0 * (size / size.max() if size.max() else 0.0) ** 0.5
+def _label_color(color: str, filled: bool, inside: bool) -> str:
+    """Readable text for a bubble, given how that bubble is drawn and where the text sits.
+
+    Only a label INSIDE a filled marker is read against the fill. An open marker is
+    transparent and a label pushed outside has left the marker altogether, so both are read
+    against the page and the marker colour is what carries.
+
+    `inside` is not redundant with `filled`: the fill-contrast colour is chosen to oppose the
+    fill, so applying it to a label that has moved outside puts it against the wrong
+    background. With today's dark fill that is white text on a dark page, which merely loses
+    the colour coding; with a light fill it would be near-black on a dark page, and the label
+    would be gone rather than ugly.
+    """
+    if not (filled and inside):
+        return color
+    return "#0b1416" if plot_colors.relative_luminance(color) > 0.5 else "#ffffff"
+
+
+def _cell_style(is_close: bool, is_severe: bool):
+    """How one quadrant cell is drawn: `(colour, filled)`, one visual channel per axis.
+
+    Two binary axes need two channels. Spending BOTH colour and fill on the same single bit
+    ("is this the cell to act on") leaves nothing to separate the other three, and position
+    is not available to a legend swatch, so three positionally distinct cells collapsed into
+    three identical entries and only their counts told them apart.
+
+    So each channel takes one axis, and each maps to one of the two dashed reference lines:
+
+    ==========  ====================  =====================
+    .           severe (above the y)  not severe
+    ==========  ====================  =====================
+    close       filled alarm          filled neutral
+    not close   open alarm            open neutral
+    ==========  ====================  =====================
+
+    Hue carries severity because that is `D` itself, the thing the page reports; fill carries
+    closeness because a solid mark reads as more imminent than an outline. The cell a reader
+    acts on remains the only filled alarm mark, so nothing is taken away from it.
+    """
+    color = vc.CATEGORY_DIVERGING_DOWN if is_severe else vc.CATEGORY_DIVERGING_UP
+    return color, is_close
+
+
+def _panel_open_interest_max(week: pd.DataFrame) -> float:
+    """The one scale every bubble on both charts is drawn against.
+
+    Taken over the WHOLE week rather than over the rows a trace happens to hold, so that area
+    is proportional to open interest across the entire figure. Normalising per trace ranks a
+    market against its own quadrant instead, which draws the largest member of every cell at
+    the same size: on 2026-07-28 that put corn (1.74M) and the Nasdaq (0.29M) at an identical
+    30px, so the one channel that looks like size was not reporting size.
+
+    Over the week and not merely over the plotted rows, so both sides of the radio share a
+    scale and toggling does not resize a market that did not change. A side whose largest
+    market has no trigger therefore tops out below 30px, which is honest: it is the smaller
+    book. On this week the sell side reaches 20.5px against the buy side's 30.0.
+    """
+    oi = pd.to_numeric(week["open_interest"], errors="coerce").max()
+    return float(oi) if oi > 0 else 1.0
+
+
+def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool, oi_max: float,
+           marker_symbol: str = "circle", label_all: bool = False) -> go.Scatter:
+    oi = pd.to_numeric(part["open_interest"], errors="coerce").fillna(0.0)
+    # Diameter as the square root of open interest, so AREA carries the quantity. That is the
+    # comparison a reader's eye performs whether or not the code intended it.
+    size = 8.0 + 22.0 * (oi / oi_max) ** 0.5
+
+    # The ticker goes INSIDE the bubble where it fits. `MIN_MARKER_FOR_LABEL` is a fact about
+    # 8px type in a circle, so it may decide PLACEMENT and nothing else. What it must not
+    # decide is which markets are worth naming: against a panel-wide scale it now means
+    # "small market", and open interest is not why a reader wants a name. Anything with a
+    # claim on attention (either condition met) is named wherever it will fit, and the cell
+    # where neither is met is left to the hover, because 35 overlapping tickers say less than
+    # a dozen. Open interest spans 755x on this week, so a size-only rule named 5 of the 35
+    # markets on the sell side and dropped both members of one populated cell.
+    tickers = part["symbol"].fillna("").astype(str)
+    fits = size >= MIN_MARKER_FOR_LABEL
+    labels = tickers if label_all else tickers.where(fits, "")
+    positions = ["middle center" if ok else "top center" for ok in fits]
+    colors = [_label_color(color, filled, ok) for ok in fits]
+
     return go.Scatter(
-        x=part["sigma"], y=part["d"], mode="markers", name=name,
+        x=part["sigma"], y=part["d"], mode="markers+text", name=name,
+        # A glyph is allowed to overhang the axes. The y range carries the headroom for the
+        # common case; this is what stops a market landing exactly at D 0.000, or at the
+        # left edge of the log x axis, from being sliced instead of drawn.
+        cliponaxis=False,
+        text=labels, textposition=positions,
+        textfont={"size": 8, "color": colors,
+                  "family": "SFMono-Regular, Menlo, monospace"},
         customdata=part[["market_name", "market_code", "crowding_long",
                          "illiquidity_sell", "fragility", "dtl_sell"]].values,
         marker={"size": size, "color": color if filled else "rgba(0,0,0,0)",
-                "symbol": symbol, "line": {"color": color, "width": 2}},
+                "symbol": marker_symbol, "line": {"color": color, "width": 2}},
         hovertemplate=("<b>%{customdata[0]}</b><br>"
                        "D pct %{y:.3f}<br>offside %{x:.2f} sigma<br>"
                        "C %{customdata[2]:.3f}  I %{customdata[3]:.3f}  "
@@ -318,12 +570,26 @@ def _grid(week: pd.DataFrame, manifest, side: str) -> dag.AgGrid:
     frame = frame.drop(columns=[c for c in frame.columns if c.startswith("damage_")
                                 or c.startswith("trigger_") or c == other], errors="ignore")
 
-    num = {"filter": "agNumberColumnFilter", "type": "rightAligned"}
+    # `rightAligned` pins the header LABEL to the right of the cell and leaves the filter
+    # icon at the left, so any width beyond what the label needs opens as a gap BETWEEN
+    # them. Left at ag-grid's 200px default that gap ran to 154px on a one-character header,
+    # which does not read as a wide column: it reads as a filter icon belonging to an empty
+    # unnamed column, and then as a missing header. Size these to their labels instead.
+    num = {"filter": "agNumberColumnFilter", "type": "rightAligned",
+           "width": 124, "minWidth": 96}
+    factor = dict(num, width=96)
+    asked = manifest.get("factor_questions") or {}
     columns = [
-        {"field": "asset_class", "headerName": "Asset class (crowdmon / cotdata registry)",
-         "rowGroup": True, "hide": True},
         {"field": "name", "headerName": "Market", "minWidth": 210, "tooltipField": "state"},
         {"field": "symbol", "maxWidth": 90},
+        # An ordinary column, NOT a row group. `rowGroup` is an ag-grid Enterprise feature
+        # and `dash_ag_grid` loads the community bundle unless `enableEnterpriseModules` is
+        # set, which nothing here sets, so the grouping this column was written for never ran
+        # and `hide: True` was the only part of that config with an effect: the asset class
+        # was simply invisible. A dead flag that silently degrades to hiding data is worse
+        # than no flag.
+        {"field": "asset_class", "headerName": "Asset class (crowdmon / cotdata registry)",
+         "minWidth": 150},
         {"field": "D", "headerName": "D pct", "sort": "desc",
          "valueFormatter": {"function": "params.value == null ? '' : "
                                         "d3.format('.3f')(params.value)"}, **num},
@@ -335,15 +601,18 @@ def _grid(week: pd.DataFrame, manifest, side: str) -> dag.AgGrid:
         {"field": "offside_pct", "headerName": "Offside (%)",
          "valueFormatter": {"function": "params.value == null ? '' : "
                                         "d3.format('.2%')(params.value)"}, **num},
-        {"field": "C", "valueFormatter": {"function": "params.value == null ? '' : "
-                                                      "d3.format('.3f')(params.value)"},
-         **num},
-        {"field": "I", "valueFormatter": {"function": "params.value == null ? '' : "
-                                                      "d3.format('.3f')(params.value)"},
-         **num},
-        {"field": "Phi", "valueFormatter": {"function": "params.value == null ? '' : "
-                                                        "d3.format('.3f')(params.value)"},
-         **num},
+        # A one-letter header on a factor nobody can look up is the same silence the state
+        # columns exist to break, and crowdmon publishes the question each factor answers
+        # for exactly this. Nothing consumed `factor_questions` before now.
+        {"field": "C", "headerTooltip": asked.get("crowding"),
+         "valueFormatter": {"function": "params.value == null ? '' : "
+                                        "d3.format('.3f')(params.value)"}, **factor},
+        {"field": "I", "headerTooltip": asked.get("illiquidity"),
+         "valueFormatter": {"function": "params.value == null ? '' : "
+                                        "d3.format('.3f')(params.value)"}, **factor},
+        {"field": "Phi", "headerTooltip": asked.get("fragility"),
+         "valueFormatter": {"function": "params.value == null ? '' : "
+                                        "d3.format('.3f')(params.value)"}, **factor},
         {"field": "T_days", "headerName": "T (days)",
          "valueFormatter": {"function": "params.value == null ? '' : "
                                         "d3.format('.2f')(params.value)"}, **num},
@@ -356,17 +625,18 @@ def _grid(week: pd.DataFrame, manifest, side: str) -> dag.AgGrid:
     return dag.AgGrid(
         id="damage-grid-table",
         # The market code IS the row identity, so `cellClicked.rowId` is directly the key
-        # into the published briefs. Without this ag-grid hands back a row index, which the
-        # asset-class grouping then reorders, so the drill-down would open the wrong market
-        # rather than fail visibly.
+        # into the published briefs. Without this ag-grid hands back a row index, and every
+        # column here is sortable, so the first click on a header would start opening the
+        # wrong market's numbers under this market's name rather than failing visibly.
         getRowId="params.data.market_code",
         rowData=frame.to_dict("records"), columnDefs=columns,
         className="ag-theme-quartz-dark",
         style={"height": "62vh", "width": "100%", "fontSize": "13px"},
         defaultColDef={"sortable": True, "filter": True, "resizable": True,
                        "wrapHeaderText": True, "autoHeaderHeight": True, "minWidth": 100},
+        # No `groupDefaultExpanded`: it went with the row grouping, and an option that
+        # configures a feature this build does not load is a claim that it runs.
         dashGridOptions={"rowHeight": 30, "tooltipShowDelay": 400,
-                         "groupDefaultExpanded": 1,
                          # Nulls last, so an unscored market never reads as a low one.
                          "accentedSort": True},
     )
