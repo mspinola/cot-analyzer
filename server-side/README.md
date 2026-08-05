@@ -246,11 +246,16 @@ and chained behind `errorlevel` guards.
 | the cotdata store (~234M) | `cotdata/docs/examples/windows/push-to-server.cmd` |
 | the crowdmon damage panel (~35M) | `crowdmon/docs/examples/windows/push-panel.cmd` |
 
-**`data_cache/` and `data/cot_data.db` are not pushed by either.** They are cotmetrics
-runtime state, and PR #12 moved them out of this repo into `.local-state/cot-analyzer/`,
-so the deprecated script could not have shipped them anyway. The server regenerates the
-cache on first use. **If that turns out to be wrong**, the fix is a third Windows-side
-template modelled on the two above, not a revival of the Mac script.
+**`data_cache/` and `data/cot_data.db` are not pushed by either, and that is correct.**
+They are cotmetrics runtime state, and PR #12 moved them out of this repo into
+`.local-state/cot-analyzer/`, so the deprecated script could not have shipped them anyway.
+**The server rebuilds the cache itself** — confirmed by the maintainer on 2026-08-04, not
+inferred from the push having been broken. `CotIndexer` writes per-instrument parquet under
+`COTMETRICS_CACHE` on first use and busts it on the upstream `cotdata.schema_version()` plus
+`METRICS_CACHE_VERSION`, so a store push is the only input it needs.
+
+The first sync after a release is therefore slower than steady state, because the cache is
+cold. That is a latency cost on one request, not a missing payload.
 
 The store push by hand, for reference, is:
 

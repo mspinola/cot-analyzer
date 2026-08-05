@@ -24,9 +24,10 @@
 # WHAT REPLACES IT, per payload:
 #   cotdata_store     cotdata/docs/examples/windows/push-to-server.cmd
 #   crowdmon panel    crowdmon/docs/examples/windows/push-panel.cmd
-#   data_cache/, db   regenerated on the server by cotmetrics. If that turns out
-#                     to be wrong, the fix is a Windows-side push modelled on the
-#                     two above, not a revival of this file.
+#   data_cache/, db   rebuilt on the server by cotmetrics, confirmed 2026-08-04.
+#                     CotIndexer writes its own per-instrument parquet under
+#                     COTMETRICS_CACHE and busts it on the upstream schema
+#                     version, so a store push is the only input it needs.
 #
 # The crowdmon damage panel briefly rode here as an optional fourth payload
 # (#14). That was dead code: it was wired into a script that does not run. The
