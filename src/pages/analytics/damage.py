@@ -77,12 +77,13 @@ CROWDMON_DOCS = ("https://github.com/mspinola/crowdmon/blob/main/docs/design/"
 #: three factors, and these four want the same treatment at the producer rather than a
 #: definition typed in here, which is what `tests/test_damage_vocabulary.py` forbids and
 #: what would go stale the first time the formula moved.
-UNDEFINED_TERMS = (
-    ("offside_sigma", "Offside (sigma)", "trigger_<side>_sigma"),
-    ("offside_pct", "Offside (%)", "trigger_<side>_pct"),
-    ("T_days", "T (days)", "dtl_<side>"),
-    ("beta", "beta", "beta"),
-)
+#:
+#: **Emptied 2026-08-05.** crowdmon now publishes `column_definitions`, keyed by panel
+#: column, for all four plus `D` itself, so every measured column on this page carries the
+#: producer's own words. The tuple stays rather than being deleted: it is the mechanism for
+#: naming the NEXT gap, and naming a gap is what got these published. A column added to
+#: `_grid` with nothing to say about it belongs here, not in silence.
+UNDEFINED_TERMS = ()
 
 #: Grid columns that identify the row rather than measure it, so they need no definition.
 IDENTITY_COLUMNS = ("name", "symbol", "asset_class", "market_code")
@@ -196,28 +197,53 @@ def glossary_terms(manifest):
 
     Every `body` is a manifest string rendered verbatim, or `_undefined` where the artifact
     ships the column and no words for it. Nothing here paraphrases the producer.
+
+    Two manifest keys feed it and they are deliberately not one. `factor_questions` means the
+    three factors of `D = C x I x Phi`; `column_definitions` covers everything else the grid
+    measures, keyed by PANEL column rather than by the header this page invented, because the
+    producer has never heard of `T (days)`.
     """
     asked = manifest.get("factor_questions") or {}
+    defined = manifest.get("column_definitions") or {}
     notes = manifest.get("notes") or {}
     bands = manifest.get("damage_bands") or []
     quadrant = manifest.get("quadrant") or {}
     strata = notes.get("band_advice") or {}
     states = notes.get("score_state") or {}
 
+    def _says(column):
+        """The producer's own words for a panel column, or the standing admission."""
+        return defined.get(column) or _undefined()
+
+    # `D` is the one row with two sources: a definition and the band ladder underneath it.
+    # Either may be absent on an older panel, and the admission is printed only when BOTH
+    # are, because a ladder with no prose still says more than nothing does.
+    damage = []
+    if defined.get("damage_<side>_pct"):
+        damage.append(defined["damage_<side>_pct"] + ".")
+    if bands:
+        damage += [" Banded by the producer as " if damage else "Banded by the producer as ",
+                   html.Span(", ".join("{:g}+ {}".format(floor, label)
+                                       for floor, label in bands),
+                             style={"fontStyle": "italic"}), "."]
+    if not damage:
+        damage = [_undefined()]
+
     joined = "; ".join(quadrant[k] for k in sorted(quadrant, reverse=True))
     terms = [
-        ("D", "D pct", "damage_<side>_pct",
-         ["Banded by the producer as ",
-          html.Span(", ".join("{:g}+ {}".format(floor, label) for floor, label in bands),
-                    style={"fontStyle": "italic"}),
-          "." if bands else _undefined()]),
+        ("D", "D pct", "damage_<side>_pct", damage),
         ("cell", "Quadrant", "computed on this page",
          ["Which side of the two dashed lines a market falls on, at ",
           html.B("{:g} sigma".format(manifest.get("close_sigma") or 1.5)),
           " across and the second band floor above. ", joined]),
+        ("offside_sigma", "Offside (sigma)", "trigger_<side>_sigma",
+         _says("trigger_<side>_sigma")),
+        ("offside_pct", "Offside (%)", "trigger_<side>_pct", _says("trigger_<side>_pct")),
         ("C", "C", "crowding_<side>", asked.get("crowding") or _undefined()),
         ("I", "I", "illiquidity_<side>", asked.get("illiquidity") or _undefined()),
         ("Phi", "Phi", "fragility", asked.get("fragility") or _undefined()),
+        ("T_days", "T (days)", "dtl_<side>", _says("dtl_<side>")),
+        ("beta", "beta (shared door)", "beta", _says("beta")),
         ("state", "Why no D", "score_state_<side>",
          "; ".join("{}: {}".format(k, v) for k, v in sorted(states.items()) if v)
          or _undefined()),
@@ -260,7 +286,11 @@ def _glossary(art) -> dbc.Alert:
     is how a page ends up with a long preamble and no definitions.
 
     Where the artifact carries no definition for a term the grid shows, this says so rather
-    than inventing one. That gap is real, and naming it is what gets it published upstream.
+    than inventing one. That gap is real, and naming it is what gets it published upstream:
+    the four terms this block admitted it could not define (offside in sigma and in percent,
+    `T`, and `beta`) are defined by the producer as of 2026-08-05, in `column_definitions`,
+    because they were listed here rather than quietly left blank. `D` gained a definition in
+    the same release, so the ladder it used to be described by now sits under one.
     """
     rows = [_term(label, field, body)
             for _, label, field, body in glossary_terms(art.manifest)]

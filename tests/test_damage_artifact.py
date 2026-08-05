@@ -70,6 +70,11 @@ def _manifest(week="2026-07-28", version=artifact.SUPPORTED_SCHEMA):
         "factor_questions": {"crowding": "how lopsided",
                              "illiquidity": "how long to get out",
                              "fragility": "how much is forceable"},
+        "column_definitions": {"damage_<side>_pct": "how bad a forced exit would be",
+                               "trigger_<side>_sigma": "how far in sigma",
+                               "trigger_<side>_pct": "how far in percent",
+                               "dtl_<side>": "how many days to leave",
+                               "beta": "whose door it shares"},
         "notes": {"score_state": {"not_a_number": "a note the page must print"}},
         "reading_instructions": [],
         "standing": ["a standing caveat", "another one"],
@@ -471,19 +476,48 @@ def test_the_definitions_are_the_producer_s_words_and_not_a_paraphrase(store):
     assert bodies["Phi"] == asked["fragility"]
 
 
-def test_a_term_the_artifact_never_defines_says_so_rather_than_vanishing(store):
-    """Silence would read as self-explanatory, and inventing one here is what is banned."""
+def test_the_four_terms_that_had_no_definition_now_read_the_producer_s(store):
+    """`UNDEFINED_TERMS` was written to be emptied and crowdmon emptied it on 2026-08-05.
+
+    Verbatim, like the factor questions: these are the strings that admitted the page could
+    not say what its own columns were, so a paraphrase typed in here would be the exact
+    thing naming the gap was meant to avoid.
+    """
     import pages.analytics.damage as page
 
+    defined = _manifest()["column_definitions"]
     bodies = {t[0]: t[3] for t in page.glossary_terms(_manifest())}
+    assert bodies["offside_sigma"] == defined["trigger_<side>_sigma"]
+    assert bodies["offside_pct"] == defined["trigger_<side>_pct"]
+    assert bodies["T_days"] == defined["dtl_<side>"]
+    assert bodies["beta"] == defined["beta"]
+    assert defined["damage_<side>_pct"] + "." in bodies["D"]
+
+
+def test_a_term_the_artifact_never_defines_says_so_rather_than_vanishing(store):
+    """Silence would read as self-explanatory, and inventing one here is what is banned.
+
+    `UNDEFINED_TERMS` is empty now, so the degrade path is exercised through a manifest that
+    drops the keys instead. A producer that stops publishing a definition must put the page
+    back to admitting it, not to a blank cell that reads as "nothing to say".
+    """
+    import pages.analytics.damage as page
+
     for field, _, _ in page.UNDEFINED_TERMS:
+        bodies = {t[0]: t[3] for t in page.glossary_terms(_manifest())}
         assert field in bodies and "not defined in the panel" in bodies[field]
 
-    # And a factor whose question the producer stops publishing degrades the same way,
-    # rather than rendering an empty cell that reads as "nothing to say".
-    stripped = dict(_manifest(), factor_questions={})
-    assert "not defined in the panel" in {t[0]: t[3]
-                                     for t in page.glossary_terms(stripped)}["Phi"]
+    stripped = dict(_manifest(), factor_questions={}, column_definitions={})
+    bodies = {t[0]: t[3] for t in page.glossary_terms(stripped)}
+    for field in ("Phi", "offside_sigma", "offside_pct", "T_days", "beta"):
+        assert "not defined in the panel" in bodies[field], field
+
+    # `D` keeps its band ladder when the prose goes, and admits the gap only when both are
+    # absent. A ladder with no definition still says more than nothing does.
+    assert "not defined in the panel" not in str(bodies["D"])
+    bare = dict(stripped, damage_bands=[])
+    assert "not defined in the panel" in str(
+        {t[0]: t[3] for t in page.glossary_terms(bare)}["D"])
 
 
 def test_the_reading_instructions_reach_the_page(store):
