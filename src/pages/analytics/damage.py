@@ -33,7 +33,9 @@ included. See `components/crowdmon_artifact.py` for why that obligation exists.
 3. **Never drop a market silently.** A market with no trigger, or no score, is listed by
    name together with the producer's own note for its state. A blank beside three populated
    columns reads as a low value rather than an absence, which is the exact failure crowdmon
-   added its state columns to fix.
+   added its state columns to fix. The same obligation covers the markets this site filters
+   out of the panel for its own reasons, which is the one kind of absence the producer
+   cannot describe: see `_universe_split`.
 4. **Never present `D` directionally.** It describes the shape of a conditional loss
    distribution, not its location.
 
@@ -47,12 +49,14 @@ from typing import List, Optional
 import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from dash import Input, Output, callback, dcc, html, no_update
 
 import components.crowdmon_artifact as artifact
 import components.plot_colors as plot_colors
+import viz_config
 import viz_constants as vc
 
 dash.register_page(__name__, path="/damage")
@@ -92,6 +96,76 @@ IDENTITY_COLUMNS = ("name", "symbol", "asset_class", "market_code")
 #: bubble. Below it the label moves outside or is dropped rather than shrunk: an unreadable
 #: label is worse than none, because it still costs the ink and the collision.
 MIN_MARKER_FOR_LABEL = 16.0
+
+#: Bubble diameter range in px, `(smallest market, largest market)`. The floor is the
+#: legibility gate itself, so on any panel with more than one market every bubble can hold
+#: its ticker and nothing is anonymous for being small. The top is what a crowded figure
+#: tolerates: 42 markets share this plot, and a bubble much past this starts swallowing its
+#: neighbours' labels rather than reporting its own size. See `_marker_size`.
+MARKER_PX = (MIN_MARKER_FOR_LABEL, 38.0)
+
+#: The three reasons this site does not plot a market the panel carries. All three are facts
+#: about this repo's own instrument config, not about the panel, which is why they are
+#: written here rather than read from the manifest: crowdmon has never heard of this
+#: universe. Each states what actually happened rather than a conclusion drawn from it: a
+#: market with no ticker in the panel is a different case from one whose ticker this site
+#: does not know, and calling both "not configured here" is wrong for the first. Two of the
+#: three markets in that state ARE configured here.
+NO_TICKER = ("The panel carries no ticker for these, so they cannot be matched against "
+             "this site's instrument config at all. Some of them are configured here.")
+UNKNOWN_HERE = ("No instrument configured here carries their ticker, so they appear on no "
+                "other page either. crowdmon scores every market it can reach, which is a "
+                "superset of the universe configured here.")
+NOT_PLOTTED_HERE = ("Matched to an instrument configured here with a role this site never "
+                    "plots, the same rule every other chart here follows.")
+
+
+# ── which markets this site plots ───────────────────────────────────────────
+def _universe_split(week: pd.DataFrame):
+    """Split the panel week into what this site plots and what it does not.
+
+    Returns `(kept, dropped, problem)`. `dropped` carries a `why` column holding one of the
+    three constants above, and `problem` is a sentence when the instrument config could not
+    be read at all, in which case nothing is filtered.
+
+    crowdmon publishes every market it can score, and this site is configured for a
+    universe: on report week 2026-07-28 the panel carries 49 markets against 47 configured
+    instruments, and 42 survive this split. Three of the seven removed are markets nobody
+    here asked about (rough rice, class III milk, the ICE-listed WTI contract), and plotting
+    those puts names on this chart that appear on no other page.
+
+    The join key is the panel's `symbol`, crowdmon's contract-master root, which is the same
+    ticker the config names. A panel row whose symbol is null is reported as its own case
+    rather than folded into "not configured here", because that would be false: the two
+    rows in that state on this week (the MSCI pair, which crowdmon has no contract spec for)
+    are both configured here. An absence of a join key is not evidence about the config.
+
+    Never raises, and an unreadable config filters nothing rather than emptying the page. A
+    missing instrument config is a problem with this repo, and hiding every market behind it
+    would read as a quiet week.
+    """
+    empty = week.iloc[:0].assign(why="")
+    try:
+        plotted = viz_config.plotted_symbols()
+        configured = viz_config.configured_symbols()
+    except Exception as exc:                                            # noqa: BLE001
+        return week, empty, (
+            "The instrument config could not be read ({}), so every market the panel "
+            "carries is shown, including any this site is not configured for.".format(exc))
+
+    # An empty universe is not a statement that this site plots nothing. It is what the
+    # public sample config looks like before `COT_VIZ_CONFIG` points at a real one, and
+    # filtering everything away on that basis would render a blank chart with no error.
+    if not configured:
+        return week, empty, None
+
+    symbol = week["symbol"].fillna("").astype(str)
+    keep = symbol.isin(plotted)
+    dropped = week[~keep].copy()
+    dropped["why"] = [NOT_PLOTTED_HERE if s in configured
+                      else (UNKNOWN_HERE if s else NO_TICKER)
+                      for s in symbol[~keep]]
+    return week[keep].copy(), dropped, None
 
 
 # ── layout ──────────────────────────────────────────────────────────────────
@@ -140,7 +214,7 @@ def _provenance(art) -> dbc.Row:
     counts = art.manifest.get("counts") or {}
     prov = art.manifest.get("provenance") or {}
     bits = ["report week {}".format(art.report_date),
-            "{} markets".format(counts.get("markets", "?")),
+            _market_count(art, counts.get("markets", "?")),
             "crowdmon {}".format(prov.get("crowdmon_version", "?")),
             "schema {}".format(art.manifest.get("schema_version"))]
     if art.built_at:
@@ -155,6 +229,20 @@ def _provenance(art) -> dbc.Row:
     for line in artifact.staleness(art, _site_latest_date()):
         children.append(dbc.Alert(line, color="warning", className="mb-2"))
     return dbc.Row(dbc.Col(children, width=12))
+
+
+def _market_count(art, published) -> str:
+    """The header's market count, saying so when the page is not showing all of them.
+
+    Reads `49 markets, 42 plotted here` once a filter is in play and `49 markets` when it is
+    not. The manifest count is the producer's, and after filtering it is no longer the number
+    of rows on the page. A header stating a count the chart does not have is the same class
+    of error as an unnamed absence: it reads as complete.
+    """
+    kept, dropped, _ = _universe_split(artifact.latest_week(art))
+    if dropped.empty:
+        return "{} markets".format(published)
+    return "{} markets, {} plotted here".format(published, len(kept))
 
 
 def _site_latest_date() -> Optional[str]:
@@ -380,7 +468,7 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
     contradicted = frame[agrees == False]                               # noqa: E712
     placed = frame[agrees != False]                                     # noqa: E712
 
-    oi_max = _panel_open_interest_max(week)
+    oi_range = _panel_open_interest_range(week)
     fig = go.Figure()
     # The two lines ARE the quadrant, so they are drawn to be read rather than to be
     # tasteful, and each carries the number that defines it. Both come from the artifact.
@@ -403,23 +491,35 @@ def _figure(week: pd.DataFrame, manifest, side: str) -> go.Figure:
             fig.add_trace(_trace(
                 part, name="{}  ({})".format(
                     _quadrant_label(manifest, is_close, is_severe), len(part)),
-                color=color, filled=filled, oi_max=oi_max,
+                color=color, filled=filled, oi_range=oi_range,
                 label_all=is_close or is_severe))
 
     if not contradicted.empty:
         # Plotted with an open marker and NO quadrant, mirroring crowdmon's renderer, which
         # suppresses the cell entirely when the observed pool is on the other side.
+        #
+        # A plain `circle` drawn hollow, NOT the `circle-open` symbol. Plotly strokes an
+        # `-open` symbol from `marker.color` and ignores `marker.line`, and `filled=False`
+        # sets `marker.color` transparent, so this trace rendered as nothing at all: 17 of
+        # the 46 markets on the sell side were points with no mark, and the legend swatch
+        # for them was blank too. A market drawn as empty space is the failure this page
+        # spends a whole alert on, arriving through the renderer instead of the data.
         fig.add_trace(_trace(
             contradicted,
             name="pool on the other side, no cell  ({})".format(len(contradicted)),
-            color=CONTRADICTED_COLOR, filled=False, oi_max=oi_max,
-            marker_symbol="circle-open"))
+            color=CONTRADICTED_COLOR, filled=False, oi_range=oi_range))
 
     fig.update_layout(
         template="plotly_dark", height=560,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font={"color": vc.TEXT_COLOR},
-        margin={"l": 60, "r": 20, "t": 30, "b": 60},
+        # The size channel states its own units, because the reading a bubble chart is
+        # assumed to carry is the one this figure does NOT provide. Nothing else on the page
+        # can say it: size has no axis to be labelled and no glossary row, since it is not a
+        # column of the grid.
+        title={"text": _size_caption(oi_range), "x": 0, "xanchor": "left",
+               "font": {"size": 11, "color": vc.TEXT_COLOR}},
+        margin={"l": 60, "r": 20, "t": 46, "b": 60},
         legend={"orientation": "h", "yanchor": "bottom", "y": -0.28, "x": 0},
         # Ticks are PINNED rather than chosen. Left to itself plotly resolves this axis to
         # `dtick "D1"`, which prints only the mantissa of each tick and carries the decade in
@@ -495,39 +595,91 @@ def _cell_style(is_close: bool, is_severe: bool):
     return color, is_close
 
 
-def _panel_open_interest_max(week: pd.DataFrame) -> float:
-    """The one scale every bubble on both charts is drawn against.
+def _panel_open_interest_range(week: pd.DataFrame):
+    """The one scale every bubble on both charts is drawn against, as `(smallest, largest)`.
 
-    Taken over the WHOLE week rather than over the rows a trace happens to hold, so that area
-    is proportional to open interest across the entire figure. Normalising per trace ranks a
-    market against its own quadrant instead, which draws the largest member of every cell at
-    the same size: on 2026-07-28 that put corn (1.74M) and the Nasdaq (0.29M) at an identical
-    30px, so the one channel that looks like size was not reporting size.
+    Taken over the WHOLE week rather than over the rows a trace happens to hold, so a bubble
+    means the same thing everywhere on the figure. Normalising per trace ranks a market
+    against its own quadrant instead, which draws the largest member of every cell at the
+    same size: on 2026-07-28 that put corn (1.74M) and the Nasdaq (0.29M) at an identical top
+    size, so the one channel that looks like size was not reporting size.
 
     Over the week and not merely over the plotted rows, so both sides of the radio share a
     scale and toggling does not resize a market that did not change. A side whose largest
-    market has no trigger therefore tops out below 30px, which is honest: it is the smaller
-    book. On this week the sell side reaches 20.5px against the buy side's 30.0.
+    market has no trigger therefore tops out below the maximum, which is honest: it is the
+    smaller book.
+
+    Both ends are needed because the scale is logarithmic (see `_marker_size`), so the
+    smallest market sets the bottom of the range rather than zero doing it. Non-positive and
+    missing open interest is excluded from the range instead of collapsing it: a single zero
+    would otherwise put the bottom of a log scale at a number no market has.
     """
-    oi = pd.to_numeric(week["open_interest"], errors="coerce").max()
-    return float(oi) if oi > 0 else 1.0
+    oi = pd.to_numeric(week["open_interest"], errors="coerce")
+    oi = oi[oi > 0]
+    if oi.empty:
+        return 1.0, 1.0
+    return float(oi.min()), float(oi.max())
 
 
-def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool, oi_max: float,
-           marker_symbol: str = "circle", label_all: bool = False) -> go.Scatter:
-    oi = pd.to_numeric(part["open_interest"], errors="coerce").fillna(0.0)
-    # Diameter as the square root of open interest, so AREA carries the quantity. That is the
-    # comparison a reader's eye performs whether or not the code intended it.
-    size = 8.0 + 22.0 * (oi / oi_max) ** 0.5
+def _size_caption(oi_range) -> str:
+    """What the bubble diameter means, in the figure, next to the bubbles.
+
+    A log size scale is legible and it is not the default assumption, so leaving it unsaid
+    invites the ratio reading it does not support. Naming both ends is the cheap half: a
+    reader who knows the smallest and largest markets on the panel can calibrate everything
+    between them without trusting an area comparison at all.
+    """
+    lo, hi = oi_range
+    return ("Bubble size: open interest, log scale from {:,.0f} to {:,.0f} contracts. "
+            "Equal steps in width are equal ratios.".format(lo, hi))
+
+
+def _marker_size(open_interest, oi_range) -> pd.Series:
+    """Bubble diameter in px: open interest on a LOG scale, floored at the legibility gate.
+
+    Two things changed together here and each is why the other works.
+
+    **The floor is `MIN_MARKER_FOR_LABEL`, so every bubble on the figure can hold its
+    ticker.** That is what the gate's own comment always said it was for ("it may decide
+    PLACEMENT and nothing else"), and under the old floor of 8px it decided rather more: a
+    market needed 13.2% of the panel's largest open interest to be named at all, which on
+    2026-07-28 meant 819k contracts. Gold at 384k was drawn too small to hold three
+    characters, so the reading went to the hover and the chart said "small" about the one
+    channel a reader takes for size.
+
+    **The map is logarithmic, which is what buys the floor its room.** Open interest spans
+    755x here (lumber 8.2k to the 5-year note 6.19M) with most of the mass near the bottom,
+    so a linear map with the floor raised puts three quarters of the panel within 2px of each
+    other and the size channel stops saying anything. Equal steps in diameter are now equal
+    RATIOS of open interest, and the figure says so above the plot: that reading has to be
+    stated, because it is not the one a bubble chart is assumed to carry.
+
+    What is given up is real and worth naming. The previous map claimed area proportional to
+    open interest, and **it never delivered that anyway**: an additive 8px floor makes area
+    `(8 + 22.sqrt(x))^2`, which spans 14x across a 755x range, so the ratio a reader would
+    have read off it was already wrong by a factor of 50. The order is preserved by both.
+    """
+    lo, hi = oi_range
+    oi = pd.to_numeric(open_interest, errors="coerce")
+    oi = oi.where(oi > 0).fillna(lo).clip(lower=lo, upper=hi)
+    floor, top = MARKER_PX
+    if hi <= lo:
+        return pd.Series(top, index=oi.index, dtype=float)
+    return floor + (top - floor) * (np.log(oi / lo) / np.log(hi / lo))
+
+
+def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool, oi_range,
+           label_all: bool = False) -> go.Scatter:
+    size = _marker_size(part["open_interest"], oi_range)
 
     # The ticker goes INSIDE the bubble where it fits. `MIN_MARKER_FOR_LABEL` is a fact about
     # 8px type in a circle, so it may decide PLACEMENT and nothing else. What it must not
-    # decide is which markets are worth naming: against a panel-wide scale it now means
-    # "small market", and open interest is not why a reader wants a name. Anything with a
-    # claim on attention (either condition met) is named wherever it will fit, and the cell
-    # where neither is met is left to the hover, because 35 overlapping tickers say less than
-    # a dozen. Open interest spans 755x on this week, so a size-only rule named 5 of the 35
-    # markets on the sell side and dropped both members of one populated cell.
+    # decide is which markets are worth naming: under the old linear scale it meant "big
+    # market", and open interest is not why a reader wants a name. Nothing is drawn below the
+    # gate any more, so this decides nothing at all on a real panel and `label_all` has
+    # stopped being the difference between named and anonymous. Both are kept rather than
+    # deleted: they are what a panel whose smallest market cannot be drawn legibly degrades
+    # to, and the degrade path is a moved label rather than a dropped one.
     tickers = part["symbol"].fillna("").astype(str)
     fits = size >= MIN_MARKER_FOR_LABEL
     labels = tickers if label_all else tickers.where(fits, "")
@@ -545,8 +697,13 @@ def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool, oi_max: f
                   "family": "SFMono-Regular, Menlo, monospace"},
         customdata=part[["market_name", "market_code", "crowding_long",
                          "illiquidity_sell", "fragility", "dtl_sell"]].values,
+        # Always `circle`, hollowed by a transparent fill rather than by an `-open`
+        # symbol. There is no symbol knob here on purpose: the only other value anyone
+        # reached for strokes from `marker.color`, which `filled=False` makes transparent,
+        # so it drew nothing. A parameter whose alternative value is invisible is the same
+        # trap as the `rowGroup` flag the grid used to carry.
         marker={"size": size, "color": color if filled else "rgba(0,0,0,0)",
-                "symbol": marker_symbol, "line": {"color": color, "width": 2}},
+                "symbol": "circle", "line": {"color": color, "width": 2}},
         hovertemplate=("<b>%{customdata[0]}</b><br>"
                        "D pct %{y:.3f}<br>offside %{x:.2f} sigma<br>"
                        "C %{customdata[2]:.3f}  I %{customdata[3]:.3f}  "
@@ -554,18 +711,34 @@ def _trace(part: pd.DataFrame, *, name: str, color: str, filled: bool, oi_max: f
                        "T %{customdata[5]:.2f} days<extra></extra>"))
 
 
-def _excluded(week: pd.DataFrame, manifest, side: str) -> dbc.Alert:
-    """Markets absent from the chart, named.
+def _excluded(week: pd.DataFrame, manifest, side: str,
+              dropped: Optional[pd.DataFrame] = None,
+              problem: Optional[str] = None) -> dbc.Alert:
+    """Markets absent from the chart, named, whoever's decision it was.
 
     A market with no trigger and a market with no score are both invisible on a scatter, and
     an invisible market reads as a safe one. Naming them is the same fix crowdmon made when
     it gave every null cell a state column.
+
+    `dropped` is this site's own contribution to that absence: markets the panel scored and
+    this page filtered out. It is the one exclusion the producer's state columns cannot
+    describe, since crowdmon knows nothing about which universe is configured here, so it is
+    named the same way and for the same reason.
     """
     notes = (manifest.get("notes") or {}).get("score_state") or {}
     sigma = pd.to_numeric(week["trigger_{}_sigma".format(side)], errors="coerce")
     d = pd.to_numeric(week["damage_{}_pct".format(side)], errors="coerce")
 
     rows: List = []
+    if problem:
+        rows.append(html.P(problem, className="mb-2", style={"fontSize": "0.85rem"}))
+    if dropped is not None and not dropped.empty:
+        for why, part in dropped.groupby("why"):
+            rows.append(html.P([
+                html.B("{} scored markets are not plotted here: ".format(len(part))),
+                ", ".join(sorted(_short(n) for n in part["market_name"])),
+                ". ", why,
+            ], className="mb-2", style={"fontSize": "0.85rem"}))
     no_trigger = week[sigma.isna() & d.notna()]
     if not no_trigger.empty:
         rows.append(html.P([
@@ -715,10 +888,13 @@ def _render(side):
     art = artifact.load()
     if not art.usable:
         return no_update, no_update
-    week = artifact.latest_week(art)
+    # Filtered ONCE, here, so the chart, the grid and the drill-down cannot disagree about
+    # which markets this page has. `_figure` and `_grid` render whatever frame they are
+    # given and are not the place to decide what belongs on it.
+    week, dropped, problem = _universe_split(artifact.latest_week(art))
     return (html.Div([dcc.Graph(figure=_figure(week, art.manifest, side),
                                 config={"displayModeBar": False}),
-                      _excluded(week, art.manifest, side)]),
+                      _excluded(week, art.manifest, side, dropped, problem)]),
             _grid(week, art.manifest, side))
 
 

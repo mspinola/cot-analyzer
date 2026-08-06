@@ -297,44 +297,74 @@ def _two_bubbles():
     })
 
 
-def test_a_bubble_too_small_to_hold_its_ticker_is_not_labelled(store):
-    """An unreadable label costs ink and a collision and says nothing."""
-    import pages.analytics.damage as page
+def test_no_bubble_is_drawn_too_small_to_hold_its_ticker(store):
+    """The floor IS the legibility gate, so nothing is anonymous for being a small market.
 
-    trace = page._trace(_two_bubbles(), name="n", color="#2aa198", filled=False,
-                        oi_max=1_000_000.0)
-    assert list(trace.text) == ["BIG", ""]
-    assert list(trace.textposition) == ["middle center", "top center"]
-
-
-def test_a_market_with_a_claim_on_attention_is_named_however_small(store):
-    """Size may decide where a label sits; it may not decide who gets one.
-
-    Against a panel-wide scale the pixel gate means "small market", and open interest is not
-    why a reader wants a name. On the 2026-07-28 panel a size-only rule named 5 of the 35
-    plotted sell-side markets and emptied a populated cell.
+    Under the previous linear scale with an 8px floor a market needed 13.2% of the panel's
+    largest open interest to be named at all: 819k contracts on 2026-07-28, which left gold
+    at 384k unlabelled. The gate is a fact about 8px type in a circle and was never meant to
+    decide who is worth naming.
     """
     import pages.analytics.damage as page
 
-    trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
-                        oi_max=1_000_000.0, label_all=True)
+    trace = page._trace(_two_bubbles(), name="n", color="#2aa198", filled=False,
+                        oi_range=(40_000.0, 1_000_000.0))
+    assert min(trace.marker.size) >= page.MIN_MARKER_FOR_LABEL
     assert list(trace.text) == ["BIG", "SML"]
-    # Still moved outside the bubble it does not fit in, rather than shrunk to fit.
-    assert list(trace.textposition) == ["middle center", "top center"]
+    assert list(trace.textposition) == ["middle center", "middle center"]
 
 
-def test_bubble_area_is_open_interest_across_the_whole_figure(store):
+def test_a_market_is_named_whichever_cell_it_is_in(store):
+    """`label_all` used to be the difference between named and anonymous. It is not now.
+
+    Every trace names every market, so the low-attention cell and the contradicted markers
+    read the same as the rest. Nothing is left to the hover.
+    """
+    import pages.analytics.damage as page
+
+    for label_all in (True, False):
+        trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
+                            oi_range=(40_000.0, 1_000_000.0), label_all=label_all)
+        assert list(trace.text) == ["BIG", "SML"], label_all
+
+
+def test_a_bubble_below_the_gate_moves_its_label_out_rather_than_dropping_it(monkeypatch,
+                                                                            store):
+    """The degrade path, which a real panel no longer reaches and which still has to work.
+
+    A floor below the gate is what a future scale change or a one-market panel would look
+    like, and the answer then is a label outside the bubble, never a market with no name.
+    """
+    import pages.analytics.damage as page
+
+    monkeypatch.setattr(page, "MARKER_PX", (8.0, 12.0))
+    trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
+                        oi_range=(40_000.0, 1_000_000.0), label_all=True)
+    assert max(trace.marker.size) < page.MIN_MARKER_FOR_LABEL
+    assert list(trace.text) == ["BIG", "SML"]
+    assert list(trace.textposition) == ["top center", "top center"]
+
+
+def test_bubble_size_is_log_open_interest_across_the_whole_figure(store):
     """Every trace is drawn against one scale, so a bubble means the same thing everywhere.
 
     Normalising per trace ranks a market against its own quadrant, which draws the largest
     member of every cell at the same size whatever its open interest. That is the one channel
     a reader takes for size, so it has to report size.
+
+    The map is logarithmic and the figure says so. What is checked here is that it is the
+    same map for every trace and that it preserves the order: a reader who compares two
+    bubbles gets the right answer about which market is bigger, whatever they conclude about
+    by how much.
     """
+    import math
+
     import pages.analytics.damage as page
 
     art = artifact.load(store)
     week = artifact.latest_week(art)
-    oi_max = page._panel_open_interest_max(week)
+    lo, hi = page._panel_open_interest_range(week)
+    floor, top = page.MARKER_PX
     fig = page._figure(week, art.manifest, "sell")
 
     seen = {}
@@ -345,12 +375,31 @@ def test_bubble_area_is_open_interest_across_the_whole_figure(store):
 
     assert len(seen) > 1
     for code, px in seen.items():
-        assert px == pytest.approx(8.0 + 22.0 * (by_code[code] / oi_max) ** 0.5)
-    # Two markets in DIFFERENT cells, so a per-trace scale would have tied them at 30.
+        expected = floor + (top - floor) * (math.log(by_code[code] / lo) / math.log(hi / lo))
+        assert px == pytest.approx(expected)
+    # Two markets in DIFFERENT cells, so a per-trace scale would have tied them at the top.
     biggest = max(seen, key=lambda c: by_code[c])
     assert max(seen.values()) == seen[biggest], (
         "the largest bubble on the figure must be the largest market on the figure")
     assert sum(1 for px in seen.values() if px == max(seen.values())) == 1
+    assert (sorted(seen, key=lambda c: seen[c])
+            == sorted(seen, key=lambda c: by_code[c])), "the order must survive the map"
+
+
+def test_the_figure_states_what_a_bubble_size_means(store):
+    """Size has no axis and no glossary row, so the only place to say it is the figure.
+
+    A log map is not the reading a bubble chart is assumed to carry, and an unstated one
+    invites the ratio comparison it does not support.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    week = artifact.latest_week(art)
+    caption = page._figure(week, art.manifest, "sell").layout.title.text
+    lo, hi = page._panel_open_interest_range(week)
+    assert "log scale" in caption
+    assert "{:,.0f}".format(hi) in caption and "{:,.0f}".format(lo) in caption
 
 
 def test_every_quadrant_cell_is_told_apart_by_its_marker_alone(store):
@@ -556,24 +605,38 @@ def test_the_glossary_survives_a_manifest_that_carries_none_of_it(store):
 
 
 def test_the_two_sides_share_one_size_scale(store):
-    """Toggling the radio must not resize a market that did not change."""
+    """Toggling the radio must not resize a market that did not change.
+
+    Both ends come from the whole week, not from the rows a side happens to plot. A log
+    scale needs the bottom as much as the top, and a zero or a null must not supply it: it
+    would put the foot of the scale at a number no market has.
+    """
     import pages.analytics.damage as page
 
     art = artifact.load(store)
     week = artifact.latest_week(art)
-    assert (page._panel_open_interest_max(week)
-            == pd.to_numeric(week["open_interest"]).max())
+    oi = pd.to_numeric(week["open_interest"])
+    assert page._panel_open_interest_range(week) == (oi.min(), oi.max())
+
+    zeroed = week.copy()
+    zeroed.loc[zeroed.index[0], "open_interest"] = 0.0
+    assert page._panel_open_interest_range(zeroed)[0] == oi[oi > 0].drop(
+        index=week.index[0]).min()
 
 
-def test_the_severe_cell_is_labelled_and_the_contradicted_one_is_gated(monkeypatch, store):
+def test_every_market_on_the_figure_carries_its_ticker(monkeypatch, store):
+    """Including the contradicted markers, which used to be named only when large.
+
+    They are the cell a reader most needs to identify, since the whole point of the marker
+    is that the quadrant reading does not apply to it.
+    """
     import pages.analytics.damage as page
 
     art = artifact.load(store)
     fig = page._figure(artifact.latest_week(art), art.manifest, "sell")
-    by_name = {t.name: t for t in fig.data}
-    severe = next(t for n, t in by_name.items() if "cell d" in n)
-    assert all(t for t in severe.text), "every market in the acted-on cell must be named"
-    assert next(t for n, t in by_name.items() if "no cell" in n).mode == "markers+text"
+    for trace in fig.data:
+        assert trace.mode == "markers+text"
+        assert all(trace.text), "{} left a market unnamed".format(trace.name)
 
 
 def test_label_colour_contrasts_with_a_filled_bubble_and_matches_an_open_one(store):
@@ -585,7 +648,8 @@ def test_label_colour_contrasts_with_a_filled_bubble_and_matches_an_open_one(sto
     assert page._label_color("#586e75", False, True) == "#586e75"
 
 
-def test_a_label_pushed_outside_a_bubble_stops_using_the_fill_contrast(store):
+def test_a_label_pushed_outside_a_bubble_stops_using_the_fill_contrast(monkeypatch,
+                                                                       store):
     """It has left the marker, so it is read against the page, not against the fill.
 
     With a light fill the fill-contrast colour is near-black, which on this page's dark
@@ -594,6 +658,165 @@ def test_a_label_pushed_outside_a_bubble_stops_using_the_fill_contrast(store):
     import pages.analytics.damage as page
 
     assert page._label_color("#ffe08a", True, False) == "#ffe08a"
+    # Below the gate no bubble holds its label, so both are read against the page. A real
+    # panel does not reach this any more, which is why the floor is pushed down here.
+    monkeypatch.setattr(page, "MARKER_PX", (8.0, 12.0))
     trace = page._trace(_two_bubbles(), name="n", color="#cb4b16", filled=True,
-                        oi_max=1_000_000.0, label_all=True)
-    assert list(trace.textfont.color) == ["#ffffff", "#cb4b16"]
+                        oi_range=(40_000.0, 1_000_000.0), label_all=True)
+    assert list(trace.textfont.color) == ["#cb4b16", "#cb4b16"]
+
+
+# ── this site's own universe ────────────────────────────────────────────────
+#
+# The panel is a superset of the instruments this site is configured for: crowdmon scores
+# every market it can reach. Filtering to the configured universe is this page's own
+# decision, so it is also this page's obligation to say which markets it removed, and the
+# reason it prints has to be true of each one. Two of the three markets the panel gives no
+# ticker for ARE configured here, so "not configured here" would be a wrong answer, not
+# merely a vague one.
+def _universe(monkeypatch, plotted, configured=None):
+    """Pin the configured universe, so these tests do not depend on which config is loaded.
+
+    The committed sample config names six instruments and none of them is in the fixture
+    panel, so an unpinned test would pass by filtering everything away.
+    """
+    import viz_config
+
+    monkeypatch.setattr(viz_config, "plotted_symbols", lambda: frozenset(plotted))
+    monkeypatch.setattr(viz_config, "configured_symbols",
+                        lambda: frozenset(plotted if configured is None else configured))
+
+
+def test_only_configured_instruments_reach_the_chart(monkeypatch, store):
+    """A market on this chart and on no other page is a market a reader cannot follow up."""
+    import pages.analytics.damage as page
+
+    _universe(monkeypatch, {"S0", "S1"})
+    week = artifact.latest_week(artifact.load(store))
+    kept, dropped, problem = page._universe_split(week)
+
+    assert problem is None
+    assert set(kept["market_code"]) == {"001", "002"}
+    assert len(dropped) == 3
+
+
+def test_a_filtered_market_is_named_with_the_reason_that_applies_to_it(monkeypatch, store):
+    """Three different absences, three different sentences, each true of its own rows.
+
+    `heldout` is this site's word, not the producer's: crowdmon has never heard of this
+    universe, which is why these strings live in the page rather than in the manifest.
+    """
+    import pages.analytics.damage as page
+
+    week = artifact.latest_week(artifact.load(store))
+    week.loc[week["market_code"] == "005", "symbol"] = None
+    _universe(monkeypatch, plotted={"S0"}, configured={"S0", "S1", "S4"})
+    kept, dropped, _ = page._universe_split(week)
+
+    why = dict(zip(dropped["market_code"], dropped["why"]))
+    assert why["002"] == page.NOT_PLOTTED_HERE, "configured, with a role this site skips"
+    assert why["003"] == page.UNKNOWN_HERE, "no instrument here carries that ticker"
+    assert why["005"] == page.NO_TICKER, (
+        "the panel gives no ticker for it, which says nothing about the config: on the "
+        "real panel both such markets ARE configured here")
+
+    rendered = str(page._excluded(kept, _manifest(), "sell", dropped))
+    for code, name in (("002", "SOYBEAN MEAL"), ("003", "DJIA"), ("005", "NEW THING")):
+        assert name in rendered, "{} was removed without being named".format(code)
+    for reason in (page.NOT_PLOTTED_HERE, page.UNKNOWN_HERE, page.NO_TICKER):
+        assert reason in rendered
+
+
+def test_a_market_held_out_of_selection_is_held_out_of_this_chart_too(monkeypatch, store):
+    """The role rules are the site's, imported from cotmetrics rather than restated.
+
+    A page that resolves its own list of plottable markets is the new door through which a
+    heldout market becomes plotted, which is exactly what every other page here avoids.
+    """
+    from cotmetrics.CotIndexer import PLOTTED_ROLES
+
+    import viz_config
+
+    monkeypatch.setattr(viz_config, "_data", {
+        "roles": {"default": "deploy"},
+        "AssetClasses": [{"Grains": [{"Name": "a", "Symbol": "S0"},
+                                     {"Name": "b", "Symbol": "S1", "Role": "watch"},
+                                     {"Name": "c", "Symbol": "S2", "Role": "heldout"}]}]})
+    viz_config.instrument_roles.cache_clear()
+    try:
+        assert viz_config.plotted_symbols() == frozenset({"S0", "S1"})
+        assert viz_config.configured_symbols() == frozenset({"S0", "S1", "S2"})
+        assert "heldout" not in PLOTTED_ROLES, "the rule is cotmetrics', not this repo's"
+    finally:
+        viz_config.instrument_roles.cache_clear()
+
+
+def test_an_unconfigured_site_plots_everything_rather_than_nothing(monkeypatch, store):
+    """An empty universe is not a statement that this site plots no markets.
+
+    It is what the public sample config looks like before `COT_VIZ_CONFIG` points at a real
+    one, and filtering on it would render an empty chart with no error on it.
+    """
+    import pages.analytics.damage as page
+
+    _universe(monkeypatch, plotted=set(), configured=set())
+    week = artifact.latest_week(artifact.load(store))
+    kept, dropped, problem = page._universe_split(week)
+    assert len(kept) == 5 and dropped.empty and problem is None
+
+
+def test_an_unreadable_config_shows_every_market_and_says_so(monkeypatch, store):
+    """A config this page cannot read is a problem with this repo, not a quiet week.
+
+    Hiding every market behind it would read as one, and this callback must not raise: an
+    exception here is a broken page rather than a rendered message.
+    """
+    import pages.analytics.damage as page
+    import viz_config
+
+    def _boom():
+        raise ValueError("invalid Role 'deployed'")
+
+    monkeypatch.setattr(viz_config, "plotted_symbols", _boom)
+    week = artifact.latest_week(artifact.load(store))
+    kept, dropped, problem = page._universe_split(week)
+
+    assert len(kept) == 5 and dropped.empty
+    assert "invalid Role" in problem
+    assert problem in str(page._excluded(kept, _manifest(), "sell", dropped, problem))
+
+
+def test_the_header_says_how_many_of_the_panel_s_markets_are_plotted(monkeypatch, store):
+    """The manifest count is the producer's, and after filtering it is not the page's."""
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    _universe(monkeypatch, {"S0", "S1"})
+    assert page._market_count(art, 5) == "5 markets, 2 plotted here"
+    _universe(monkeypatch, {"S0", "S1", "S2", "S3", "S4"})
+    assert page._market_count(art, 5) == "5 markets"
+
+
+def test_no_marker_is_drawn_as_empty_space(store):
+    """A hollow trace must still be stroked, and an `-open` symbol is not how to do it.
+
+    Plotly strokes an `-open` symbol from `marker.color` and ignores `marker.line`, so the
+    contradicted trace, whose fill is transparent by design, rendered as nothing at all: 17
+    of the 46 markets on the 2026-07-28 sell side were plotted as points with no mark, and
+    the legend swatch beside their entry was blank too. Nothing failed, and the count in the
+    legend read as if they were there.
+
+    That is the failure this page spends an entire alert on, an unnamed market reading as a
+    safe one, arriving through the renderer rather than through the data.
+    """
+    import pages.analytics.damage as page
+
+    art = artifact.load(store)
+    fig = page._figure(artifact.latest_week(art), art.manifest, "sell")
+    for trace in fig.data:
+        hollow = trace.marker.color == "rgba(0,0,0,0)"
+        assert not str(trace.marker.symbol).endswith("-open"), (
+            "{} strokes from a transparent marker.color and draws nothing".format(
+                trace.name))
+        assert not hollow or trace.marker.line.width > 0, (
+            "{} has neither a fill nor an outline".format(trace.name))
