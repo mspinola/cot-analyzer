@@ -81,6 +81,16 @@ Two consequences worth knowing before touching that page:
   particular the damage page groups by **crowdmon's** asset classes, which come from
   cotdata's registry and are not `config/params.yaml`'s `AssetClasses`; its column header
   says so.
+- **The rows are this site's universe; the grouping is still crowdmon's.** Those two
+  sentences sit oddly together and both are deliberate. crowdmon scores every market it can
+  reach (49 on report week 2026-07-28) against the 47 instruments `config/params.yaml`
+  names, so the page filters to the configured tickers via `viz_config.plotted_symbols` and
+  drops the rest: a market plotted here and nowhere else on the site is one a reader cannot
+  follow up. That is a selection of published rows, not a metric, and it honours `roles:`
+  the way every other chart does, so a `heldout` market does not become plotted through a
+  new door. What it must never be is quiet: `damage._universe_split` returns the removed
+  rows and the page names each one with the reason that applies to it, which is the only
+  exclusion on that page crowdmon's own state columns cannot describe.
 
 ### A. The Orchestrator (`src/main.py`)
 - Acts as the central traffic controller.
