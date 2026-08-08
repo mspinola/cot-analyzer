@@ -3,6 +3,7 @@ import multiprocessing
 import os
 import signal
 import sys
+import threading
 import time
 
 import cotmetrics.utils as utils
@@ -41,6 +42,44 @@ logging.getLogger('werkzeug').addFilter(SuppressSourceMapErrors())
 log = logging.getLogger('werkzeug')
 log.addFilter(NoDashComponentFilter())
 log.addFilter(SuppressSourceMapErrors())
+
+STORE_POLL_SECONDS = 5 * 60
+
+
+def store_poll_loop():
+    """Notice a new COT week even when nobody has the site open.
+
+    A THREAD, deliberately, where daily_options_update_scheduler below is a
+    multiprocessing.Process. That one only has to fetch options snapshots and write
+    them out, so it does not care which process it runs in. This one mutates the
+    CotIndexer singleton that serves HTTP requests, and a child process would refresh
+    its own forked copy while the web process kept serving the previous week. Same
+    call, wrong address space.
+
+    The navbar callback polls the same way and is the primary trigger, but dcc.Interval
+    is client-side: it only ticks while a browser tab is open. Without this loop the
+    first visitor after a release pays the ~90 second rebuild. With it, an unattended
+    app is current before anyone arrives.
+
+    Every 5 minutes, always, rather than a window around the Friday release. The store
+    is a replica fed by a producer push, so it can advance at times no schedule here
+    predicts (revisions, a backfill, a manual run, a late release). The check itself is
+    one small JSON read, so a window would buy nothing and could only be wrong.
+    """
+    from cotmetrics.indexer import get_indexer
+
+    utils.cot_logger.info(f"Store poller started (every {STORE_POLL_SECONDS}s).")
+    while True:
+        time.sleep(STORE_POLL_SECONDS)
+        try:
+            if get_indexer().refresh_if_stale():
+                utils.cot_logger.info("Store poller: picked up a new COT week.")
+        except Exception as e:
+            # Never let a transient read kill the loop. A poller that dies silently
+            # is worse than no poller, because the navbar still looks like it is
+            # watching. Log and wait for the next tick.
+            utils.cot_logger.error(f"Store poller failed, will retry: {e}")
+
 
 def daily_options_update_scheduler():
     import datetime
@@ -119,6 +158,14 @@ if __name__ == "__main__":
             else:
                 utils.cot_logger.info("[FAST BOOT] Skipping background schedulers.")
                 options_update_process = None
+
+            # Started even under --fast, unlike the options scheduler above. --fast
+            # buys a faster BOOT, and this costs nothing at boot: it sleeps first and
+            # then does one small JSON read every 5 minutes. Skipping it would hand a
+            # --fast run the stale-data bug this exists to close.
+            threading.Thread(
+                target=store_poll_loop, name="store-poller", daemon=True
+            ).start()
 
         from app_cot import app
 
