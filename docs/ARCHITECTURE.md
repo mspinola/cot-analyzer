@@ -45,25 +45,6 @@ The split matters when reading the rest of this document, so as a map:
 A useful rule when deciding where something belongs: `cotmetrics` carries no presentation
 config, and `cot-analyzer` computes no metrics.
 
-### There was once a third source, and the rule it left behind
-
-Between 2026-08-04 and 2026-08-08 this app rendered a **published artifact it did not
-produce**: `crowdmon`'s damage panel, read from `CROWDMON_STORE` as a synced file rather than
-imported. `crowdmon` was deprecated on 2026-08-07 and the `/damage` page was removed the next
-day, taking `src/pages/analytics/damage.py`, `src/components/crowdmon_artifact.py`, their two
-test files and `viz_config`'s role-aware universe API with it. This app has two sources again.
-
-One line from that arrangement is worth keeping, because it decides the next case rather than
-describing the last one. Rendering a column somebody else computed is not computing it:
-
-> **Aggregating a published value by a published group key is presentation. Deriving the
-> value is a metric.**
-
-If another published artifact ever arrives here, the obligation that came with the last one is
-the pattern to copy: the producer's vocabulary (state names, thresholds, caveat prose) travels
-in the artifact's own manifest and is never typed into this repo, comments included, with a
-test that fails if it is. Without that, an artifact is a convention rather than a contract.
-
 ### A. The Orchestrator (`src/main.py`)
 - Acts as the central traffic controller.
 - Spawns the scheduler processes.
