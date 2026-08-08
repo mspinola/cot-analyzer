@@ -118,11 +118,6 @@ navbar = dbc.Navbar(
                             dbc.DropdownMenuItem("Aggregation", href="/aggregation"),
                             dbc.DropdownMenuItem("Disagg / TFF", href="/categories"),
                             dbc.DropdownMenuItem("Table", href="/positioning"),
-                            # Beside Disagg / TFF because those are the two reports the
-                            # damage panel is built from. It reads a published artifact
-                            # rather than anything this app computes; see
-                            # src/components/crowdmon_artifact.py.
-                            dbc.DropdownMenuItem("Crowding damage", href="/damage"),
                         ],
                         nav=True,
                         in_navbar=True,
