@@ -146,11 +146,6 @@ COTDATA_STORE=/root/cotdata_store     # the synced price store, see step 6
 Nothing works without `COTDATA_STORE`. Every entry point resolves instruments through
 it, so a missing or empty store fails at import rather than degrading.
 
-`CROWDMON_STORE` used to be listed here as an optional second store, for the `/damage` page.
-That page was removed on 2026-08-08 when `crowdmon` was deprecated, so the variable is read by
-nothing and can be dropped from any environment file that still sets it. Leaving it set is
-harmless.
-
 **Required for the emailed Signal Matrix report:**
 
 ```bash
@@ -207,20 +202,15 @@ Run these **from the producer**, not the server.
 > over SSH. The script is kept rather than deleted so a reader who finds it here gets a
 > message naming its replacement instead of a dangling reference.
 
-Everything is pushed **from the Windows producer**, by Task Scheduler running scheduler
-copies of two templates. See `cotdata/docs/WINDOWS_SCHEDULING.md` for how they are wired
-and chained behind `errorlevel` guards.
+Everything is pushed **from the Windows producer**, by Task Scheduler running a scheduler
+copy of one template. See `cotdata/docs/WINDOWS_SCHEDULING.md` for how it is wired and
+chained behind `errorlevel` guards.
 
 | payload | pushed by |
 |---|---|
 | the cotdata store (~234M) | `cotdata/docs/examples/windows/push-to-server.cmd` |
 
-The crowdmon damage panel (~35M) was a second payload here until 2026-08-08. Nothing on this
-server reads it now that the `/damage` page is gone, so that push can be unscheduled on the
-Windows box; `crowdmon/docs/examples/windows/push-panel.cmd` still exists and still works if
-it is ever wanted back.
-
-**`data_cache/` and `data/cot_data.db` are not pushed by either, and that is correct.**
+**`data_cache/` and `data/cot_data.db` are not pushed by it, and that is correct.**
 They are cotmetrics runtime state, and PR #12 moved them out of this repo into
 `.local-state/cot-analyzer/`, so the deprecated script could not have shipped them anyway.
 **The server rebuilds the cache itself** — confirmed by the maintainer on 2026-08-04, not

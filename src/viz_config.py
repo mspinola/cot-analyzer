@@ -8,15 +8,6 @@ CotIndexer carries no presentation config.
 Reads from the app's config file (currently config/params.yaml, overridable via
 COT_VIZ_CONFIG). The viz-only keys are `palettes:` and the per-asset `TV_Chart:`
 field; `AssetClasses:` is read only to build the chart-symbol map.
-
-This module also carried a role-aware universe API (`instrument_roles`,
-`plotted_symbols`, `configured_symbols`), which existed solely so the `/damage`
-page could filter crowdmon's wider scored universe down to the markets this site
-plots. That page was removed when crowdmon was deprecated, and the three
-functions went with it rather than being left as dead code with no caller. If a
-future surface needs the same question answered, resolve it from cotmetrics'
-`PLOTTED_ROLES` / `resolve_role` as that API did, rather than restating the role
-rules here: a `heldout` market must not become plottable through a new door.
 """
 import os
 from pathlib import Path

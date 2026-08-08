@@ -27,12 +27,6 @@
 #                     CotIndexer writes its own per-instrument parquet under
 #                     COTMETRICS_CACHE and busts it on the upstream schema
 #                     version, so a store push is the only input it needs.
-#
-# The crowdmon damage panel briefly rode here as an optional fourth payload
-# (#14). That was dead code: it was wired into a script that does not run. The
-# payload is gone from here and lives in crowdmon's own Windows template.
-# It is no longer a payload at all: the /damage page was removed on 2026-08-08
-# and nothing on the server reads that panel now.
 # ============================================================================
 #
 # Original header follows.
@@ -75,10 +69,10 @@ pushed from the Windows box:
   cotdata store   cotdata/docs/examples/windows/push-to-server.cmd
 
 See cotdata/docs/SYNCING.md for the topology and cotdata/docs/WINDOWS_SCHEDULING.md
-for how those are scheduled. Set CROWDMON_ALLOW_LEGACY_PUSH=1 to run this anyway,
+for how that is scheduled. Set ALLOW_LEGACY_PUSH=1 to run this anyway,
 which you almost certainly do not want: it would push a replica over a replica.
 DEPRECATED
-if [ "${CROWDMON_ALLOW_LEGACY_PUSH:-0}" != "1" ]; then
+if [ "${ALLOW_LEGACY_PUSH:-0}" != "1" ]; then
     exit 2
 fi
 
