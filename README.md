@@ -7,9 +7,7 @@ A Dash/Plotly web app for exploring [CFTC](https://www.cftc.gov/MarketReports/Co
 Commitments of Traders positioning. It's the UI layer on top of the
 [`cotmetrics`](https://github.com/mspinola/cotmetrics) metrics library and the
 [`cotdata`](https://github.com/mspinola/cotdata) store; it computes no metrics of its
-own. It also renders one artifact it does not produce, [`crowdmon`](https://github.com/mspinola/crowdmon)'s
-damage panel, read from a file rather than imported (see `docs/ARCHITECTURE.md`). Given the
-CFTC legacy report, it will:
+own. Given the CFTC legacy report, it will:
 
 * generate CSV files with per-symbol data
 * generate RealTest data as an Event List for each symbol
@@ -50,10 +48,6 @@ uv pip install -r requirements.txt   # includes the editable siblings (-e ../cot
   owns the indexer, the COT index and signals, and options data. COT/price data is
   produced by cotdata and read from the shared store. This repo is the Dash
   application on top of it and computes no metrics of its own.
-* **crowdmon** is **not installed**, and cannot be: this app's production host runs Python
-  3.9 against crowdmon's `>=3.10` floor, and cannot produce the Norgate price tiers its
-  chain needs. Its damage panel arrives as a synced file under `CROWDMON_STORE` and is read
-  with pandas. See `docs/ARCHITECTURE.md`, "The third source".
 * **cotdata** (`-e ../cotdata`) is the store beneath that. Prices and COT are read through
   `cotdata.get_prices` / `cotdata.get_cot`, backed by a shared file store.
 

@@ -23,7 +23,6 @@
 #
 # WHAT REPLACES IT, per payload:
 #   cotdata_store     cotdata/docs/examples/windows/push-to-server.cmd
-#   crowdmon panel    crowdmon/docs/examples/windows/push-panel.cmd
 #   data_cache/, db   rebuilt on the server by cotmetrics, confirmed 2026-08-04.
 #                     CotIndexer writes its own per-instrument parquet under
 #                     COTMETRICS_CACHE and busts it on the upstream schema
@@ -32,6 +31,8 @@
 # The crowdmon damage panel briefly rode here as an optional fourth payload
 # (#14). That was dead code: it was wired into a script that does not run. The
 # payload is gone from here and lives in crowdmon's own Windows template.
+# It is no longer a payload at all: the /damage page was removed on 2026-08-08
+# and nothing on the server reads that panel now.
 # ============================================================================
 #
 # Original header follows.
@@ -72,7 +73,6 @@ The Mac is a read-only replica, not a producer. Everything the server needs is
 pushed from the Windows box:
 
   cotdata store   cotdata/docs/examples/windows/push-to-server.cmd
-  crowdmon panel  crowdmon/docs/examples/windows/push-panel.cmd
 
 See cotdata/docs/SYNCING.md for the topology and cotdata/docs/WINDOWS_SCHEDULING.md
 for how those are scheduled. Set CROWDMON_ALLOW_LEGACY_PUSH=1 to run this anyway,

@@ -21,7 +21,6 @@ So the pipeline has two halves:
   ──────────────────────                 ───────────────────────
   Norgate Data Updater                   reads the synced store
   cotdata writes COTDATA_STORE   ─────►  computes indices, serves Dash
-  crowdmon writes the damage panel        renders it, cannot build it (py3.9)
                                          downloads CFTC COT itself (free)
 ```
 
@@ -147,39 +146,10 @@ COTDATA_STORE=/root/cotdata_store     # the synced price store, see step 6
 Nothing works without `COTDATA_STORE`. Every entry point resolves instruments through
 it, so a missing or empty store fails at import rather than degrading.
 
-**Optional, for the `/damage` page only:**
-
-```bash
-CROWDMON_STORE=/root/crowdmon_store   # crowdmon's damage panel, synced by the same script
-```
-
-Unset is fine and is the default state. It defaults to a sibling of the workspace, the same
-place `cotdata_store` sits, so on the layout above nothing needs setting at all. When the
-panel is absent the `/damage` page renders a "not available" card naming what produces it and
-every other page is unaffected; the reader never raises, because `use_pages=True` imports
-every page at startup and an exception there would take down the whole page registry.
-
-**This server cannot build that panel**, for the same reason it cannot build prices, plus one
-more: crowdmon requires Python 3.9's successor (`>=3.10`) and this box runs 3.9.
-
-Any *other* machine with a readable store can build it, though, so the rule is not "crowdmon
-needs Windows". The panel simply has to be built **upstream of whatever ships it**, and today
-that is the Windows/Norgate producer, because the sync originates there. Unlike prices, the
-panel is not vendor data: it is derived output that any machine with the store regenerates
-identically, so if the sync origin moves, the publish moves with it.
-
-On Windows use the portable driver, since `bin/publish_damage.sh` is bash and the launchd
-agent beside it is macOS:
-
-```
-set COTDATA_STORE=...\cotdata_store
-set CROWDMON_STORE=...\crowdmon_store
-.venv\Scripts\python bin\publish_damage.py
-```
-
-**Publish before the sync runs.** Nothing enforces that ordering, and getting it backwards
-ships last week's panel beside this week's prices, which the `/damage` page reports as a
-staleness banner rather than an error.
+`CROWDMON_STORE` used to be listed here as an optional second store, for the `/damage` page.
+That page was removed on 2026-08-08 when `crowdmon` was deprecated, so the variable is read by
+nothing and can be dropped from any environment file that still sets it. Leaving it set is
+harmless.
 
 **Required for the emailed Signal Matrix report:**
 
@@ -244,7 +214,11 @@ and chained behind `errorlevel` guards.
 | payload | pushed by |
 |---|---|
 | the cotdata store (~234M) | `cotdata/docs/examples/windows/push-to-server.cmd` |
-| the crowdmon damage panel (~35M) | `crowdmon/docs/examples/windows/push-panel.cmd` |
+
+The crowdmon damage panel (~35M) was a second payload here until 2026-08-08. Nothing on this
+server reads it now that the `/damage` page is gone, so that push can be unscheduled on the
+Windows box; `crowdmon/docs/examples/windows/push-panel.cmd` still exists and still works if
+it is ever wanted back.
 
 **`data_cache/` and `data/cot_data.db` are not pushed by either, and that is correct.**
 They are cotmetrics runtime state, and PR #12 moved them out of this repo into

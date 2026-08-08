@@ -45,52 +45,24 @@ The split matters when reading the rest of this document, so as a map:
 A useful rule when deciding where something belongs: `cotmetrics` carries no presentation
 config, and `cot-analyzer` computes no metrics.
 
-### The third source: crowdmon's damage panel
+### There was once a third source, and the rule it left behind
 
-Since 2026-08-04 this app also renders a **published artifact it does not produce**:
-[`crowdmon`](https://github.com/mspinola/crowdmon)'s damage panel, `D = C x I x Phi`, read
-from `CROWDMON_STORE` by `src/components/crowdmon_artifact.py` and rendered by
-`src/pages/analytics/damage.py`.
+Between 2026-08-04 and 2026-08-08 this app rendered a **published artifact it did not
+produce**: `crowdmon`'s damage panel, read from `CROWDMON_STORE` as a synced file rather than
+imported. `crowdmon` was deprecated on 2026-08-07 and the `/damage` page was removed the next
+day, taking `src/pages/analytics/damage.py`, `src/components/crowdmon_artifact.py`, their two
+test files and `viz_config`'s role-aware universe API with it. This app has two sources again.
 
-**crowdmon is not an installed dependency, and cannot be.** Its production host requirement
-is the blocker: this server runs Python 3.9 and crowdmon declares `requires-python =
-">=3.10"`. Independently, its chain needs Norgate `unadj` **and** `propadj` prices plus a
-`contract_specs` table, and per `server-side/README.md` this box cannot produce prices
-however it is provisioned. So the panel is built on the machine with that subscription and
-synced here as a file, exactly as `cotdata_store` already is. crowdmon's
-`docs/adr/ADR-0001-crowdmon-publishes-a-panel-rather-than-being-imported.md` is the decision.
-
-The rule above is unchanged and this does not bend it. Rendering a column somebody else
-computed is not computing it. The line that decides the next case is crowdmon's:
+One line from that arrangement is worth keeping, because it decides the next case rather than
+describing the last one. Rendering a column somebody else computed is not computing it:
 
 > **Aggregating a published value by a published group key is presentation. Deriving the
 > value is a metric.**
 
-Two consequences worth knowing before touching that page:
-
-- **No crowdmon vocabulary may be written down in this repo**, comments included. The state
-  names, quadrant labels, severity threshold and caveat prose are all carried in the
-  artifact's manifest, generated from crowdmon's live constants at publish time.
-  `tests/test_damage_vocabulary.py` enforces it. That is the one obligation their ADR places
-  on a consumer, and without it the artifact is a convention rather than a contract.
-- **This app now joins two peer consumers of the same store.** `cotmetrics` computes a
-  unitless positioning index and `crowdmon` computes a fragility-weighted composite; crowdmon
-  is forbidden from importing `cotmetrics` precisely so the two cannot produce one blended
-  answer. They meet here for the first time, on separate pages, and nothing enforces
-  consistency between them because there is no sense in which they should agree. In
-  particular the damage page groups by **crowdmon's** asset classes, which come from
-  cotdata's registry and are not `config/params.yaml`'s `AssetClasses`; its column header
-  says so.
-- **The rows are this site's universe; the grouping is still crowdmon's.** Those two
-  sentences sit oddly together and both are deliberate. crowdmon scores every market it can
-  reach (49 on report week 2026-07-28) against the 47 instruments `config/params.yaml`
-  names, so the page filters to the configured tickers via `viz_config.plotted_symbols` and
-  drops the rest: a market plotted here and nowhere else on the site is one a reader cannot
-  follow up. That is a selection of published rows, not a metric, and it honours `roles:`
-  the way every other chart does, so a `heldout` market does not become plotted through a
-  new door. What it must never be is quiet: `damage._universe_split` returns the removed
-  rows and the page names each one with the reason that applies to it, which is the only
-  exclusion on that page crowdmon's own state columns cannot describe.
+If another published artifact ever arrives here, the obligation that came with the last one is
+the pattern to copy: the producer's vocabulary (state names, thresholds, caveat prose) travels
+in the artifact's own manifest and is never typed into this repo, comments included, with a
+test that fails if it is. Without that, an artifact is a convention rather than a contract.
 
 ### A. The Orchestrator (`src/main.py`)
 - Acts as the central traffic controller.
