@@ -186,6 +186,13 @@ zero. Measuring that properly needs a surrogate preserving the average strength 
 relationship, then asking how often a trajectory reaches a given deviation from it. That is a
 different measurement and it has not been done here.
 
+> **Forward pointer, added the same day.** That measurement was then done, in
+> [`2026-08-07-spearman-deviation-from-baseline.md`](2026-08-07-spearman-deviation-from-baseline.md).
+> It finds the deviation is a one-in-eighty week for a market nominated in advance (p 0.013,
+> stronger than the 0.082 above), but that a constant-relationship world reaches this level
+> somewhere in a 22-year history over 90% of the time, so it carries no regime-change claim.
+> Nothing in the findings above changes; this is a pointer, not an amendment.
+
 ## Disposal
 
 §3 states its own rule: "If the bands are narrow, the indicators are fine as they stand and this

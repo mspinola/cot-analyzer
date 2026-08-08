@@ -339,6 +339,83 @@ def market_band(series: dict, name: str, key: str, w: int,
               f" | real series median {np.median(real):+.3f}")
 
 
+def regime_null(series: dict, name: str, key: str, w: int,
+                rng: np.random.Generator, draws: int = 2000) -> None:
+    """Is a reading a DEVIATION FROM THIS MARKET'S OWN BASELINE, or ordinary wandering?
+
+    The zero-centred nulls above answer "is rho far from zero", which is the wrong
+    question for a regime-shift claim: these series have a strongly signed baseline
+    (NQ commercial sits near -0.42), so the null has to reproduce that baseline and then
+    ask how far the statistic wanders from it when the relationship never changes.
+
+    Construction: paired block bootstrap of the weekly CHANGES (dPrice, dPosition),
+    resampled together in blocks so the contemporaneous relationship and the short-run
+    dynamics both survive, then cumulated back to levels. The relationship is constant
+    by construction, so anything the statistic does here is wandering, not a shift.
+
+    Two probabilities, and they answer different questions:
+      per-week  P(a single week reaches the observed value). The right reference if the
+                market was chosen in advance.
+      per-path  P(a history this long EVER reaches it). The right reference if the
+                market was noticed BECAUSE the reading was extreme, which is the usual
+                way a dashboard reading gets looked at.
+
+    An AR(1)-in-levels null driven by price changes was tried and REJECTED: it produces
+    a rolling statistic centred on zero (mean +0.002) rather than on the observed -0.34,
+    so it cannot be used to judge deviations from a baseline it does not reproduce.
+    """
+    df = series.get(name)
+    if df is None:
+        print(f"  {name}: not in panel", file=sys.stderr)
+        return
+    P = df[PRICE].to_numpy(dtype=float)
+    X = df[POS_COLS[key]].to_numpy(dtype=float)
+    ok = np.isfinite(P) & np.isfinite(X)
+    P, X = P[ok], X[ok]
+
+    def roll(p, x):
+        got = rank_windows(p, w), rank_windows(x, w)
+        if got[0] is None or got[1] is None:
+            return np.array([])
+        (Ra, ka, oa), (Rb, kb, ob) = got
+        ia, ib = np.flatnonzero(ka)[oa], np.flatnonzero(kb)[ob]
+        c = np.intersect1d(ia, ib)
+        return rho(Ra[np.isin(ia, c)], Rb[np.isin(ib, c)])
+
+    real = roll(P, X)
+    cur = real[-1]
+    print(f"\n=== {name}, column {key}, W={w}: deviation-from-baseline null ===")
+    print(f"  real rolling statistic: mean {real.mean():+.3f} sd {real.std():.3f} "
+          f"latest {cur:+.3f}")
+
+    # Model-free: distinct EPISODES reaching the level, not weeks. §1 of the cotmetrics
+    # doc is explicit that a week count is not a sample size here.
+    for thr in (0.3, 0.5, abs(cur)):
+        hot = real >= thr
+        eps = int((hot & ~np.r_[False, hot[:-1]]).sum())
+        print(f"  history reached >= {thr:+.3f} in {eps} distinct episodes "
+              f"({int(hot.sum())} weeks of {real.size})")
+
+    dP, dX = np.diff(P), np.diff(X)
+    n = len(dP)
+    print(f"  {'L':>4} {'null mean':>10} {'sd':>6} {'P(week)':>9} {'P(path)':>9} {'thr p<.05':>10}")
+    for L in (13, 26, 52, 104):
+        nb = int(np.ceil(n / L))
+        marg, mx = [], []
+        for _ in range(draws):
+            st = rng.integers(0, n - L, size=nb)
+            idx = np.concatenate([np.arange(s, s + L) for s in st])[:n]
+            p = np.r_[P[0], P[0] + np.cumsum(dP[idx])]
+            x = np.r_[X[0], X[0] + np.cumsum(dX[idx])]
+            r = roll(p, x)
+            marg.append(r)
+            mx.append(r.max())
+        marg, mx = np.concatenate(marg), np.array(mx)
+        print(f"  {L:>4} {marg.mean():>+10.3f} {marg.std():>6.3f} "
+              f"{float((marg >= cur).mean()):>9.4f} {float((mx >= cur).mean()):>9.4f} "
+              f"{np.quantile(mx, .95):>+10.3f}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None, help="write the full result table as JSON")
@@ -349,6 +426,8 @@ def main() -> int:
                     help="also print this market's own band, e.g. 'Nasdaq'")
     ap.add_argument("--market-window", type=int, default=28,
                     help="window for --market (NQ's configured Custom lookback is 28)")
+    ap.add_argument("--regime-null", action="store_true",
+                    help="with --market, also run the deviation-from-baseline null")
     args = ap.parse_args()
 
     print("loading panel...", file=sys.stderr)
@@ -393,6 +472,9 @@ def main() -> int:
     if args.market:
         market_band(series, args.market, "comm", args.market_window,
                     np.random.default_rng(args.seed))
+        if args.regime_null:
+            regime_null(series, args.market, "comm", args.market_window,
+                        np.random.default_rng(args.seed))
 
     if args.out:
         with open(args.out, "w") as fh:
