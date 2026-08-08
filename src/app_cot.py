@@ -4,6 +4,7 @@ import dash
 import dash_bootstrap_components as dbc
 import requests
 from cotmetrics.database import cotDatabase
+from cotmetrics.indexer import get_indexer
 from dash import Dash, Input, Output, State, dcc, html
 from flask import request
 from flask_compress import Compress
@@ -200,7 +201,24 @@ def update_theme(theme_value):
     Input("navbar_update_interval", "n_intervals")
 )
 def update_graphs_date(n):
-    """Callback to update the db last update string in the NavBar."""
+    """Refresh the index if the store advanced, then show the CFTC release date.
+
+    This is the app's data poller as well as its badge. The two jobs belong on one
+    callback because they read the same signal: cotdata rewrites status.json once,
+    atomically, at the end of a producer run, and both the badge below and
+    refresh_if_stale key on its cot_legacy newest_data.
+
+    They used to disagree, and visibly. The badge has always read status.json
+    uncached, so it moved the moment a new week landed, while the only staleness
+    check in the indexer sat inside get_symbols_data's lru_cache and therefore never
+    ran on a warm board. On 2026-08-07 that gap was 4h40m of a navbar reading
+    2026-08-04 above pages reading 2026-07-28.
+
+    dcc.Interval is client-side, so this fires on every page load and then every 5
+    minutes for as long as a tab stays open. With no tab open nothing polls, and the
+    first load after a release pays the ~2 minute rebuild.
+    """
+    get_indexer().refresh_if_stale()
     return f"CFTC Data Release: {cotDatabase.latest_update_timestamp()}"
 
 
