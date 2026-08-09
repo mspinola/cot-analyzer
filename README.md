@@ -73,6 +73,26 @@ They must be **different** directories. Each store's producer rewrites its own
 `manifest.json` read-modify-write, so one shared manifest silently loses entries. They may
 sit under a common synced parent.
 
+Both have to be **populated**, and the app now checks at boot. If `MARKETDATA_STORE` holds
+no bars for any configured instrument it refuses to start, naming the fix, rather than
+booting into a site whose price charts are all blank:
+
+```
+ERROR - MARKETDATA_STORE holds no bars for any of the 45 configured instruments,
+        so no price chart on this site can render.
+```
+
+Bars cannot be fetched on macOS or Linux (Norgate's updater is Windows only), so either
+sync `bars/futures/` from the producer, or, if that box still has them under
+`$COTDATA_STORE/prices/` from before ADR-0007, import them:
+
+```bash
+python ../marketdata/scripts/import_from_cotdata.py --verify
+```
+
+A partial or stale store warns and boots. `COT_ANALYZER_ALLOW_MISSING_PRICES=1` downgrades
+the refusal for a deliberately COT-only run.
+
 ## Run
 
 ```bash
