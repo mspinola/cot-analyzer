@@ -140,11 +140,22 @@ chmod 600 /root/trading_workspace/cot-analyzer/.env
 **Required:**
 
 ```bash
-COTDATA_STORE=/root/cotdata_store     # the synced price store, see step 6
+COTDATA_STORE=/root/cotdata_store        # synced CFTC positioning store, see step 6
+MARKETDATA_STORE=/root/marketdata_store  # synced daily-bar store, see step 6
 ```
 
 Nothing works without `COTDATA_STORE`. Every entry point resolves instruments through
 it, so a missing or empty store fails at import rather than degrading.
+
+**`MARKETDATA_STORE` is required too, and it is new.** ADR-0007 makes `cotdata` CFTC
+positioning only and moves every bar to `marketdata`, so the price reads behind the
+indexer, the signal rejection scores and the options max-pain snapshot now resolve
+against a second store. It fails the same way the first one does — by name, at the
+point of read — rather than serving an empty frame that reads as "no data for this
+instrument".
+
+Both are **synced**, not produced here. This box cannot produce bars at all:
+`norgatedata` drives a locally installed Norgate Data Updater and NDU is Windows-only.
 
 **Required for the emailed Signal Matrix report:**
 
@@ -215,8 +226,11 @@ They are cotmetrics runtime state, and PR #12 moved them out of this repo into
 `.local-state/cot-analyzer/`, so the deprecated script could not have shipped them anyway.
 **The server rebuilds the cache itself** — confirmed by the maintainer on 2026-08-04, not
 inferred from the push having been broken. `CotIndexer` writes per-instrument parquet under
-`COTMETRICS_CACHE` on first use and busts it on the upstream `cotdata.schema_version()` plus
-`METRICS_CACHE_VERSION`, so a store push is the only input it needs.
+`COTMETRICS_CACHE` on first use and busts it on BOTH upstream store versions
+(`cotdata.schema_version()` and `marketdata.schema_version()`) plus
+`METRICS_CACHE_VERSION`, so a store push is the only input it needs. Both are watched
+because the case that guard was written for — reconstructed volume being promoted — was
+a *price* schema bump, and prices now live in the second store.
 
 The first sync after a release is therefore slower than steady state, because the cache is
 cold. That is a latency cost on one request, not a missing payload.
@@ -226,7 +240,14 @@ The store push by hand, for reference, is:
 ```bash
 rsync -avz --no-o --no-g --progress --exclude='.DS_Store' \
       /path/to/cotdata_store/ USER@HOST:/root/cotdata_store/
+
+rsync -avz --no-o --no-g --progress --exclude='.DS_Store' \
+      /path/to/marketdata_store/ USER@HOST:/root/marketdata_store/
 ```
+
+Two stores, two pushes, and they must stay **separate roots**. Each package keeps its
+own `manifest.json` at its root and does a read-modify-write on it, so merging the two
+into one directory would have the producers dropping each other's entries.
 
 `data/` is a third gitignored directory, and most of it does **not** need to travel:
 
@@ -405,6 +426,11 @@ slated for removal... Refrain from using this package or pin to Setuptools<81."*
 
 **Store errors, or every instrument empty.** `COTDATA_STORE` is unset, points somewhere
 wrong, or the store was never synced. It is read at import.
+
+**`MARKETDATA_STORE is not set`, or price reads fail while COT works.** The second store
+is missing. Positioning and prices come from different packages since ADR-0007, so one
+can be healthy while the other is absent — and this is the shape that failure takes.
+Set it and sync `marketdata_store` the same way as the first.
 
 **Charts render but prices are missing or stale.** Expected if the producer has not run.
 The server cannot fetch prices; see the top of this file.

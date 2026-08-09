@@ -30,6 +30,15 @@ jobs:
         repository: mspinola/cotdata
         path: cotdata
 
+    - name: Check out marketdata (daily bars — resolves `-e ../marketdata`)
+      # ADR-0007 moved bars out of cotdata, and marketdata is not on PyPI, so this
+      # sibling checkout is the only thing that resolves the dependency cotmetrics
+      # now imports.
+      uses: actions/checkout@v4
+      with:
+        repository: mspinola/marketdata
+        path: marketdata
+
     - name: Check out cotmetrics (metrics/data layer — resolves `-e ../cotmetrics`)
       uses: actions/checkout@v4
       with:
@@ -48,7 +57,7 @@ jobs:
         python -m pip install -r requirements.txt
 
     - name: Verify internal dependency floors
-      # cotdata / cotmetrics are installed editable from ../ at whatever HEAD was
+      # cotdata / marketdata / cotmetrics are installed editable from ../ at whatever HEAD was
       # checked out, so pip never enforces the version floors in pyproject.toml.
       # This asserts the installed siblings actually satisfy those declared floors.
       working-directory: cot-analyzer
@@ -62,9 +71,12 @@ jobs:
       working-directory: cot-analyzer
       env:
         PYTHONPATH: src
-        # Dummy store so cotdata's COTDATA_STORE guard doesn't error at import.
+        # Dummy stores so each package's store guard doesn't error at import.
+        # Two of them since ADR-0007: positioning and bars are separate roots, and
+        # neither package defaults a missing root to somewhere plausible.
         COTDATA_STORE: /tmp/cotdata_store
+        MARKETDATA_STORE: /tmp/marketdata_store
         COTMETRICS_CACHE: /tmp/cotmetrics_cache
       run: |
-        mkdir -p /tmp/cotdata_store /tmp/cotmetrics_cache
+        mkdir -p /tmp/cotdata_store /tmp/marketdata_store /tmp/cotmetrics_cache
         pytest tests/
