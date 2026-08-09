@@ -30,8 +30,10 @@ The system is decoupled into logical modules, ensuring data engineering pipeline
 ### The repo boundary: cot-analyzer and cotmetrics
 
 The data and metrics layer lives in a **separate package, `cotmetrics`**, installed as an
-editable sibling (`requirements.txt` carries `-e ../cotmetrics[options]`, which
-in turn depends on `-e ../cotdata`). This repo holds the Dash application and nothing else.
+editable sibling (`requirements.txt` carries `-e ../cotmetrics[options]`, which in turn
+depends on `-e ../cotdata` for CFTC positioning and, since ADR-0007 moved bars out of
+cotdata, on `-e ../marketdata` for daily prices). This repo holds the Dash application and
+nothing else.
 
 The split matters when reading the rest of this document, so as a map:
 
@@ -76,9 +78,13 @@ the notification rather than the modelling.
   with generic alias columns (`comms_idx`, `comms_zscore`, `willco`, `oi_zscore` and so on)
   already resolved for the requested lookback and basis. Every alias moves together, so a
   caller can never pair a normalized index with a raw z-score inside one condition set.
-- Caches are busted by two counters: the upstream `cotdata` schema version, and
+- Caches are busted by three counters, kept as separate keys in the cache marker rather
+  than collapsed: the `cotdata` schema version, the `marketdata` schema version, and
   `cotmetrics.constants.METRICS_CACHE_VERSION` for value-only changes in our own indicator
-  logic, which the per-symbol column-presence guards cannot see.
+  logic, which the per-symbol column-presence guards cannot see. Both stores are watched
+  because the case the guard was written for, reconstructed volume promoted to default, is
+  a **price** schema bump, and prices live in `marketdata` since ADR-0007. A cache written
+  before that split carries no marketdata key, reads as 0, and rebuilds once.
 
 ### E. The User Interface (`src/app_cot.py` & `src/pages/`)
 - A multi-page Single Page Application (SPA) built on Plotly Dash.

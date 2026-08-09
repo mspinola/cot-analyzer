@@ -5,9 +5,10 @@
 
 A Dash/Plotly web app for exploring [CFTC](https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm)
 Commitments of Traders positioning. It's the UI layer on top of the
-[`cotmetrics`](https://github.com/mspinola/cotmetrics) metrics library and the
-[`cotdata`](https://github.com/mspinola/cotdata) store; it computes no metrics of its
-own. Given the CFTC legacy report, it will:
+[`cotmetrics`](https://github.com/mspinola/cotmetrics) metrics library, which reads
+positioning from the [`cotdata`](https://github.com/mspinola/cotdata) store and daily bars
+from the [`marketdata`](https://github.com/mspinola/marketdata) store; it computes no
+metrics of its own. Given the CFTC legacy report, it will:
 
 * generate CSV files with per-symbol data
 * generate RealTest data as an Event List for each symbol
@@ -19,9 +20,9 @@ own. Given the CFTC legacy report, it will:
 ![Example Positioning Table](./docs/cot-positioning-table.png)
 
 > **This is a source application, not a PyPI package.** Clone it and run it. It expects
-> the `cotdata` and `cotmetrics` siblings checked out alongside it (`../cotdata`,
-> `../cotmetrics`) — `requirements.txt` installs them editable — and a populated
-> `COTDATA_STORE`. See Setup below.
+> three siblings checked out alongside it (`../cotdata`, `../marketdata`, `../cotmetrics`),
+> which `requirements.txt` installs editable, and **two** populated stores,
+> `COTDATA_STORE` and `MARKETDATA_STORE`. See Setup below.
 
 ## COT Data
 
@@ -34,29 +35,43 @@ Check out the sibling repos alongside this one first, so the editable installs i
 
 ```bash
 git clone https://github.com/mspinola/cotdata
+git clone https://github.com/mspinola/marketdata
 git clone https://github.com/mspinola/cotmetrics
 git clone https://github.com/mspinola/cot-analyzer
 cd cot-analyzer
 uv venv
 source .venv/bin/activate
-uv pip install -r requirements.txt   # includes the editable siblings (-e ../cotdata, -e ../cotmetrics)
+uv pip install -r requirements.txt   # editable siblings: -e ../cotdata, -e ../marketdata, -e ../cotmetrics
 ```
 
-`requirements.txt` pulls in two local sibling packages, both editable:
+`requirements.txt` pulls in three local sibling packages, all editable:
 
 * **cotmetrics** (`-e ../cotmetrics[options]`) is the data and metrics layer. It
-  owns the indexer, the COT index and signals, and options data. COT/price data is
-  produced by cotdata and read from the shared store. This repo is the Dash
+  owns the indexer, the COT index and signals, and options data. This repo is the Dash
   application on top of it and computes no metrics of its own.
-* **cotdata** (`-e ../cotdata`) is the store beneath that. Prices and COT are read through
-  `cotdata.get_prices` / `cotdata.get_cot`, backed by a shared file store.
+* **cotdata** (`-e ../cotdata`) is CFTC positioning, read through `cotdata.get_cot`.
+* **marketdata** (`-e ../marketdata`) is daily bars, read through `marketdata.get_bars`.
+  ADR-0007 moved prices out of cotdata, so this is a separate package **and** a separate
+  store. The distribution name on PyPI is `crucible-marketdata` (plain `marketdata` there
+  is an unrelated abandoned project); the import is still `marketdata`.
 
-Point `COTDATA_STORE` at that store. Put it in `.env` at the repo root (gitignored) so both
-the launcher and the systemd unit pick it up:
+Skipping the `marketdata` clone does not fail at install time. It fails at import, because
+`cotmetrics/__init__.py` re-exports `signals`, which imports `marketdata` at module level:
+
+```
+ModuleNotFoundError: No module named 'marketdata'
+```
+
+Point `COTDATA_STORE` and `MARKETDATA_STORE` at the two stores. Put both in `.env` at the
+repo root (gitignored) so the launcher and the systemd unit pick them up:
 
 ```bash
-echo 'COTDATA_STORE=~/code/cotdata_store' >> .env
+printf 'COTDATA_STORE=~/code/cotdata_store\nMARKETDATA_STORE=~/code/marketdata_store\n' >> .env
 ```
+
+They must be **different** directories. Each store's producer rewrites its own
+`manifest.json` read-modify-write, so one shared manifest silently loses entries. They may
+sit under a common synced parent.
 
 ## Run
 
@@ -70,9 +85,9 @@ Use the launcher rather than `python src/main.py` directly. It changes to the re
 `data_cache/`, points `COTMETRICS_PARAMS` and `COT_VIZ_CONFIG` at the sibling
 `../cotmetrics-config/params.yaml` when that private config repo is checked out alongside
 (otherwise the metrics and viz layers fall back to the packaged sample and warn), sources
-`.env`, and fails loudly if `COTDATA_STORE` is unset rather than surfacing later as
-confusing empty data. You can still run `python src/main.py` directly if you export those
-variables yourself.
+`.env`, and fails loudly if `COTDATA_STORE` or `MARKETDATA_STORE` is unset (or if they are
+set to the same path) rather than surfacing later as confusing empty data. You can still
+run `python src/main.py` directly if you export those variables yourself.
 
 ## Configuration
 
@@ -98,6 +113,9 @@ login
 sudo apt install git pip
 pip install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone git@github.com:mspinola/cotdata.git
+git clone git@github.com:mspinola/marketdata.git
+git clone git@github.com:mspinola/cotmetrics.git
 git clone git@github.com:mspinola/cot-analyzer.git
 
 cd cot-analyzer
@@ -119,8 +137,9 @@ all: do the heavy data work on the producer machine and sync the binaries over S
 rsync -avz --no-o --no-g --progress ./data_cache/ user@your-server-ip:/path/to/server/cot-analyzer/data_cache/
 ```
 
-The server also needs `COTDATA_STORE` synced. Most of `./data` does **not** need to
-travel, since the CFTC archives in it are downloaded and the CSV exports are generated.
+The server also needs both stores synced, `COTDATA_STORE` and `MARKETDATA_STORE`. Most of
+`./data` does **not** need to travel, since the CFTC archives in it are downloaded and the
+CSV exports are generated.
 
 **See [server-side/README.md](server-side/README.md)** for the full setup: which repos
 the server needs, the complete environment variable list, exactly what to sync, and the
