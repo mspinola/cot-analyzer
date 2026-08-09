@@ -104,7 +104,8 @@ databento-plus-Yahoo deployment.
 
 ## The read path today
 
-Measured 2026-08-08 against the working tree and both live stores.
+Measured 2026-08-08 against the working tree and both live stores, updated 2026-08-09 when
+the bars landed and the boot guard shipped. Each claim below carries its own date.
 
 **The consumers have moved. The bytes have not.** ADR-0007 is shipping as separate steps and
 these two are out of step with each other:
@@ -132,8 +133,22 @@ blank. Both failure modes below therefore look like a UI regression rather than 
   `run-local.sh` checks it upfront for this reason.
 - `MARKETDATA_STORE` set and populated with `bars/equities/` only: no error anywhere.
 
-Until the futures bars are imported into the marketdata store, a local checkout renders
-positioning without prices. Confirm before trusting a chart:
+**Both are now caught at boot rather than on a chart.** `main.py::check_price_store` asks
+`marketdata.coverage_gaps` about the configured universe before the indexer is built, and
+refuses to start when nothing at all is present. See "Refusing early", below.
+
+**The bars themselves landed on 2026-08-09**, through marketdata's
+`scripts/import_from_cotdata.py`: 49 symbols, 98 series, every cell verified identical to
+the cotdata copy. So the local store now serves prices. The gap this section describes is
+closed, and the section is kept because the *shape* of the failure is what the guard was
+built against, and because the underlying split has not gone away:
+
+**The bars now exist in BOTH stores, and nothing reconciles them.** cotdata's Windows
+producer keeps writing `prices/`, and marketdata's copy only moves when the import is
+re-run. Until step 2 lands, every producer run leaves this store one week behind, which
+the boot guard reports as `stale` rather than as an error.
+
+Confirm before trusting a chart:
 
 ```bash
 python -c "import marketdata; print(len(marketdata.get_bars('GC','backadj')))"
@@ -173,3 +188,34 @@ The dotted edge is the fix for the leaks above: `marketdata.provenance(symbol)` 
 source, date span, row count and `covers(start)` from the manifest without opening a
 parquet, so the dashboard can show what backs a chart and a startup check can refuse a
 lookback the store cannot support.
+
+## Refusing early
+
+**Half of that dotted edge is built.** The startup check shipped on 2026-08-09 in
+marketdata `coverage_gaps` / `require_coverage` and cot-analyzer's
+`main.py::check_price_store`. The UI badge has not: nothing on the site yet says which
+vendor and which date span back a chart, so the history-depth leak above is still silent
+*within* a rendered chart even though it is now loud at boot.
+
+```
+check_price_store()   ->   marketdata.coverage_gaps(universe, stale_after_days=7)
+                           absent | empty | short | stale, one per STORED TIER
+```
+
+| what the store looks like | what happens |
+|---|---|
+| every configured instrument served | one INFO line and the app boots |
+| **nothing at all** | every gap logged, then `sys.exit(1)` |
+| a subset absent, short or stale | gaps logged, warning, app boots |
+
+The asymmetry is deliberate. Nothing at all is a deployment error and no chart on the site
+can work, which is precisely the condition that went unnoticed for days. A subset is a data
+gap, and taking the positioning half of the site down for it would be the worse trade.
+`COT_ANALYZER_ALLOW_MISSING_PRICES=1` downgrades the refusal for a deliberately COT-only
+deployment.
+
+`get_bars` itself was deliberately NOT changed. `_missing` in `bars.py` returns an empty
+frame for a symbol absent everywhere on purpose, because the store is registry-free and a
+caller probing for a one-off symbol should get an honest empty answer rather than an
+exception. The loudness belongs to the deployment, which has already committed to a
+universe, not to the read.

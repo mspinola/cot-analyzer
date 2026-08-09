@@ -2,6 +2,12 @@
 
 This document defines the data architecture for the COT Analyzer system. It details the conceptual, logical, and physical data models, explains data flow and integration throughout the system, and establishes data governance and security measures.
 
+> **Scope note, 2026-08-09.** This document describes the COT side, which is stable, and it
+> is the older of the two data documents here. For how bars actually reach the app, read
+> [data-path.md](data-path.md) instead: it is verified against the source and the live
+> stores rather than written from the design, and it carries the ADR-0007 split that this
+> document predates. Where the two disagree about prices, data-path.md is right.
+
 ## 1. The Three Data Models
 
 ### 1.1 Conceptual Data Model
@@ -16,7 +22,7 @@ The conceptual data model defines the high-level business entities within the CO
 **Relationships**:
 - A *Financial Instrument* has many *COT Reports* over time.
 - A *Financial Instrument* has daily *Market Data* and *Options Data*.
-- *COT Reports* and *Market Data* are consumed by external systems (like `pardo_quant_framework`) for quantitative analysis and Machine Learning.
+- *COT Reports* and *Market Data* are consumed by external systems (the `npf` sibling, formerly named `pardo_quant_framework`) for quantitative analysis and Machine Learning.
 
 ### 1.2 Logical Data Model
 The logical model details the attributes of each entity and how they link together logically, independent of the underlying storage format.
@@ -68,9 +74,10 @@ The system uses an **ETL (Extract, Transform, Load)** methodology for batch inge
 
 ### 2.1 Integration & Source Systems
 Data is ingested from multiple external providers:
-1.  **CFTC Servers**: Primary source of truth for weekly positioning data, delivered via zipped Excel files.
-2.  **Databento API**: High-frequency source of truth for daily OHLC and CME Open Interest.
-3.  **Yahoo Finance (`yfinance`)**: Fallback data provider, heavily utilized for ICE Soft commodities.
+1.  **CFTC Servers**: Primary source of truth for weekly positioning data, delivered via zipped Excel files. Reaches the app through `cotdata`.
+2.  **Norgate Data**: the live source for daily futures OHLC and Open Interest, reaching the app through `marketdata` since ADR-0007. The producer is **Windows only** (it drives a locally installed Norgate Data Updater), so no other box can fetch bars at all; every other deployment reads a synced store.
+3.  **Yahoo Finance (`yfinance`)**: the live source for the equity/ETF domain in `marketdata`, and the ETF proxies a few instruments are priced off.
+4.  **Databento API**: **dormant**, not a live source. The provider still exists at `cotdata/providers/databento.py` and ADR-0007 step 2 would move it, but that work is unowned and nothing reads it today. Earlier revisions of this document called it the source of truth for daily OHLC, which was true when written and has not been for some time.
 
 ### 2.2 Data Pipeline (ETL)
 The ETL pipeline (`01_etl_downloader.py`) orchestrates data movement via the `CotJobScheduler`:
@@ -79,8 +86,8 @@ The ETL pipeline (`01_etl_downloader.py`) orchestrates data movement via the `Co
 - **Transform**: The `CotTransformer` reads the raw Excel files, standardizes date formats, drops irrelevant columns, and merges multiple years into a unified Pandas DataFrame.
 - **Load**: The `CotLoader` compresses the transformed DataFrame using Snappy and persists it as `data/raw_cot_data.parquet`.
 
-### 2.3 Downstream Consumption (pardo_quant_framework)
-- **Machine Learning & Walk-Forward Analysis**: The `cot-analyzer` no longer handles ML training or execution. Instead, the adjacent `pardo_quant_framework` directly consumes the Parquet files (`data_cache/{Symbol}.parquet` and `data_cache/ml/{Symbol}_daily.parquet`) to perform rigorous Walk-Forward Analysis, XGBoost model training, and performance evaluation.
+### 2.3 Downstream Consumption (npf)
+- **Machine Learning & Walk-Forward Analysis**: The `cot-analyzer` no longer handles ML training or execution. Instead, the adjacent `npf` sibling (renamed from `pardo_quant_framework`) directly consumes the Parquet files (`data_cache/{Symbol}.parquet` and `data_cache/ml/{Symbol}_daily.parquet`) to perform Walk-Forward Analysis, model training, and performance evaluation. Note that the naming matters beyond cosmetics: the systematized results are Positioning Fade (PF) / NPF, and "CMR" refers only to the original discretionary thesis.
 
 ### 2.4 Consumption Layer
 - **Singleton Indexer (`CotIndexer.py`)**: A centralized data access layer that lazy-loads Parquet caches into memory upon the first UI request.
@@ -93,7 +100,7 @@ The ETL pipeline (`01_etl_downloader.py`) orchestrates data movement via the `Co
 flowchart TD
     subgraph Sources
         CFTC[CFTC Zips]
-        DBento[Databento API]
+        NG[Norgate via marketdata]
         YF[Yahoo Finance]
     end
 
@@ -121,7 +128,7 @@ flowchart TD
 
     CFTC --> Ext
     SQLite <--> Ext
-    DBento --> Indexer
+    NG --> Indexer
     YF --> Indexer
     Load --> Parquet
     Parquet --> Indexer
@@ -140,7 +147,7 @@ flowchart TD
 ### 3.2 Data Quality & Validation
 - **Idempotency**: The extractor validates HTTP `Last-Modified` timestamps before downloading to prevent duplicate or partial data pulls.
 - **Schema Enforcement**: Pandas enforces strict data typing during the Transformation phase before writing to Parquet.
-- **Fallback Mechanisms**: If the primary price provider (Databento) fails or is missing symbols (e.g., ICE Softs), the system gracefully degrades to Yahoo Finance.
+- **Fallback Mechanisms**: Vendor resolution is per symbol and per deployment rather than one answer for the whole store, and a series is never blended across vendors (ADR-0006). What a missing symbol does depends on the caller: `marketdata.get_bars` returns an empty frame when nothing holds it and raises when another vendor does, while `marketdata.coverage_gaps` is the check a deployment runs at boot to turn that silence into a refusal.
 
 ### 3.3 Role-Based Access Control (RBAC) & Security
 - **Local Application Access**: Since the application is currently designed for single-tenant local or dedicated server deployment, strict intra-app RBAC is not enforced at the database level.
@@ -150,7 +157,7 @@ flowchart TD
 ### 3.4 Data Lineage
 - **Raw to Unified**: `xls_data/` -> `CotTransformer` -> `data/raw_cot_data.parquet`.
 - **Unified to Cached**: `raw_cot_data.parquet` + `config/params.yaml` -> `CotIndexer` -> `data_cache/{Symbol}.parquet`.
-- **Downstream Export**: `data_cache/{Symbol}.parquet` and daily price parquets are consumed by `pardo_quant_framework`.
+- **Downstream Export**: `data_cache/{Symbol}.parquet` and daily price parquets are consumed by `npf`.
 This clear lineage ensures transparency; any errant metric on the frontend can be traced back through the Cache to the Raw unified file, and ultimately to the CFTC source zip.
 
 ### 3.5 Compliance & Retention
