@@ -1,8 +1,11 @@
 import os
 import subprocess
+import sys
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 
+import cotmetrics
 import cotmetrics.utils as utils
 import dash
 import dash_bootstrap_components as dbc
@@ -132,10 +135,21 @@ def toggle_admin_visibility(auth_data):
     prevent_initial_call=True
 )
 def validate_login(n_clicks, password):
-    # Use an environment variable: os.getenv('COT_ADMIN_PASSWORD')
     SECRET = os.getenv('COT_ADMIN_PASSWORD')
     if not SECRET:
-        return dash.no_update, dbc.Alert("Admin login is not configured", color="danger")
+        # Name the variable and its home. The old text was just "Admin login is not
+        # configured", which is true and useless: it does not distinguish a missing
+        # setting from a wrong password, and it does not say where the setting goes.
+        # The trap it hides is that COT_ADMIN_PASSWORD has lived only in ~/.zshrc and
+        # ~/.bash_profile, so the app inherits it when launched from an interactive
+        # shell and silently does not otherwise (launchd, an editor, a preview
+        # harness). run-local.sh sources .env with `set -a` and the deployed unit
+        # loads the same file via EnvironmentFile, so .env is the one home that works
+        # in every launch context. server-side/README.md already documents it there.
+        return dash.no_update, dbc.Alert(
+            "Admin login is not configured: COT_ADMIN_PASSWORD is not set in this "
+            "process. Add it to cot-analyzer/.env (gitignored) and restart the app.",
+            color="danger")
     if password and password == SECRET:
         return "AUTHORIZED", ""
     return dash.no_update, dbc.Alert("Incorrect Password", color="danger")
@@ -171,6 +185,35 @@ def trigger_manual_poll(n_clicks):
     return f"Manual poll executed at {current_time}. Check server logs for results."
 
 
+def _weekly_email_script():
+    """Locate cotmetrics' generate-weekly-report-email.py, or None if it is not there.
+
+    The report generator lives in cotmetrics, not here: it imports
+    cotmetrics.reports.get_matrix_data/generate_matrix_html, and it moved there with
+    the rest of the metrics layer when that repo was split out. What did not move was
+    this page, which went on invoking `bash scripts/generate-weekly-report-email.sh`
+    relative to cot-analyzer's own working directory. That path has pointed at nothing
+    ever since, and the button has been failing with a bare "No such file or directory"
+    on a path no one would think to look for in a sibling repo.
+
+    Resolved from the installed package rather than a relative path so it follows the
+    editable install instead of the caller's cwd. scripts/ sits beside src/, so the
+    repo root is two levels up from the package directory. A wheel install has no
+    scripts/ at all, hence the existence check and the None.
+
+    The .sh wrapper is deliberately skipped. Despite the comment that used to sit here
+    claiming it "contains the email credentials", it holds none: it is one line,
+    `.venv/bin/python scripts/generate-weekly-report-email.py "$@"`, whose only effect
+    is to require a cotmetrics-local venv that does not exist on this machine and to
+    re-break the cwd assumption. Credentials come from the environment, which a
+    subprocess inherits. Running the .py directly with our own interpreter drops both
+    problems, and our interpreter is the right one: cotmetrics is installed here.
+    """
+    root = Path(cotmetrics.__file__).resolve().parents[2]
+    script = root / "scripts" / "generate-weekly-report-email.py"
+    return script if script.is_file() else None
+
+
 @callback(
     Output("admin-send-email-output", "children"),
     Input("admin-send-email-btn", "n_clicks"),
@@ -180,22 +223,58 @@ def trigger_send_email(n_clicks):
     if not n_clicks:
         return ""
 
+    current_time = datetime.now().strftime("%H:%M:%S")
+    script = _weekly_email_script()
+    if script is None:
+        msg = ("Cannot find generate-weekly-report-email.py in the cotmetrics checkout. "
+               "It ships in that repo's scripts/, which only exists in a source checkout, "
+               "so this needs cotmetrics installed editable from a sibling clone.")
+        utils.cot_logger.error(msg)
+        return f"{msg} ({current_time})"
+
     try:
-        utils.cot_logger.info("Admin initiated manual email send.")
-        # Run the bash script that contains the email credentials and triggers the python script
+        utils.cot_logger.info(f"Admin initiated manual email send -> {script}")
         result = subprocess.run(
-            ['bash', 'scripts/generate-weekly-report-email.sh'],
-            capture_output=True, text=True
+            [sys.executable, str(script)],
+            capture_output=True, text=True, timeout=120,
         )
-        current_time = datetime.now().strftime("%H:%M:%S")
-        if result.returncode == 0:
-            return f"Email sent successfully at {current_time}."
-        else:
-            utils.cot_logger.error(f"Email script failed: {result.stderr}")
-            return f"Error sending email at {current_time}. Check logs."
+    except subprocess.TimeoutExpired:
+        utils.cot_logger.error("Email script timed out after 120s (SMTP connect hanging?).")
+        return f"Email script timed out at {current_time}. Check logs."
     except Exception as e:
         utils.cot_logger.error(f"Email script failed to execute: {e}")
         return f"Script execution failed: {e}"
+
+    if result.returncode == 0:
+        return f"Email sent successfully at {current_time}."
+
+    utils.cot_logger.error(f"Email script failed (exit {result.returncode}): "
+                           f"{result.stderr or result.stdout}")
+    return f"Error sending email at {current_time}: {_failure_line(result)}"
+
+
+def _failure_line(result):
+    """The one line of a failed run worth putting on screen.
+
+    "Check logs" was the old answer and it is a bad one: the most likely failure here
+    is a missing EMAIL_USER / RECEIVER_EMAIL_USER / EMAIL_PASSWORD, which the operator
+    standing at the button can fix in seconds if only they are told. The script names
+    the missing variables, so show that instead of hiding it in a file.
+
+    Prefer the first line mentioning an error. The credential guard leads with
+    "Error: Missing required environment variables (...)" on stdout and then a
+    follow-up hint, so last-line would return the hint and drop the diagnosis. A
+    traceback goes the other way, and this still lands on its final "SomeError: ..."
+    line, since nothing above it matches.
+    """
+    text = (result.stderr or result.stdout or "").strip()
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return f"exit {result.returncode}"
+    for line in lines:
+        if "error" in line.lower():
+            return line
+    return lines[-1]
 
 
 @callback(

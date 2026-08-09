@@ -68,7 +68,11 @@ def store_poll_loop():
     """
     from cotmetrics.indexer import get_indexer
 
-    utils.cot_logger.info(f"Store poller started (every {STORE_POLL_SECONDS}s).")
+    # The pid is here because which process this lands in is the whole correctness
+    # question, and it is invisible otherwise. Under --debug there are two, and only
+    # the one serving requests is any use.
+    utils.cot_logger.info(
+        f"Store poller started in pid {os.getpid()} (every {STORE_POLL_SECONDS}s).")
     while True:
         time.sleep(STORE_POLL_SECONDS)
         try:
@@ -159,10 +163,26 @@ if __name__ == "__main__":
                 utils.cot_logger.info("[FAST BOOT] Skipping background schedulers.")
                 options_update_process = None
 
-            # Started even under --fast, unlike the options scheduler above. --fast
-            # buys a faster BOOT, and this costs nothing at boot: it sleeps first and
-            # then does one small JSON read every 5 minutes. Skipping it would hand a
-            # --fast run the stale-data bug this exists to close.
+        # Deliberately OUTSIDE the `not is_reloader` block above, and gated on a
+        # different question. That block asks "am I the process that owns startup
+        # work?", which is right for the options fetch and the scheduler: they write
+        # to disk, so duplicating them is waste. The poller asks something else, and
+        # gets the opposite answer under --debug: it mutates the CotIndexer singleton
+        # that answers HTTP, so it has to run wherever that singleton lives.
+        #
+        # Without the reloader there is one process and it serves. With it (--debug)
+        # there are two, and the roles invert: the parent has no WERKZEUG_RUN_MAIN and
+        # only supervises, while the CHILD carries the flag and does the serving. So
+        # `not is_reloader` puts the poller in the parent, refreshing an index nobody
+        # reads, and leaves the serving child without one. That is the same
+        # wrong-address-space mistake as running it in the options subprocess.
+        #
+        # Started even under --fast, unlike the scheduler. --fast buys a faster BOOT,
+        # and this costs nothing at boot: it sleeps first, then does one small JSON
+        # read every 5 minutes. Skipping it would hand a --fast run the stale-data bug
+        # this exists to close.
+        serves_requests = is_reloader or not dash_debug
+        if serves_requests:
             threading.Thread(
                 target=store_poll_loop, name="store-poller", daemon=True
             ).start()
