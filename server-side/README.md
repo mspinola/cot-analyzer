@@ -158,9 +158,21 @@ it, so a missing or empty store fails at import rather than degrading.
 **`MARKETDATA_STORE` is required too, and it is new.** ADR-0007 makes `cotdata` CFTC
 positioning only and moves every bar to `marketdata`, so the price reads behind the
 indexer, the signal rejection scores and the options max-pain snapshot now resolve
-against a second store. It fails the same way the first one does — by name, at the
-point of read — rather than serving an empty frame that reads as "no data for this
-instrument".
+against a second store.
+
+**It does not fail the same way the first one does, and this paragraph used to say it
+did.** Measured 2026-08-08: `MARKETDATA_STORE` *unset* raises by name, but a store that
+is set and simply holds no `bars/futures/` serves an **empty frame with no error at
+all**. That is the documented read semantics of `marketdata.get_bars` rather than a
+bug, and it is exactly the shape a server lands in after syncing a store whose futures
+half never arrived. Symptom: positioning renders, every price chart is blank, nothing in
+the log says why.
+
+`main.py` now checks this at boot, before the indexer is built, and refuses to start
+when no configured instrument has bars (`COT_ANALYZER_ALLOW_MISSING_PRICES=1` downgrades
+that to a warning for a deliberately COT-only run). A partial or stale store warns and
+carries on. So the loud failure this paragraph promised is now real, but it comes from
+the boot guard, not from the read.
 
 Both are **synced**, not produced here. This box cannot produce bars at all:
 `norgatedata` drives a locally installed Norgate Data Updater and NDU is Windows-only.
@@ -444,8 +456,22 @@ is missing. Positioning and prices come from different packages since ADR-0007, 
 can be healthy while the other is absent — and this is the shape that failure takes.
 Set it and sync `marketdata_store` the same way as the first.
 
+**The unit refuses to start, logging "MARKETDATA_STORE holds no bars for any of the N
+configured instruments".** The boot guard. The store exists but its futures half is
+empty, which is what a sync that carried only `bars/equities/` looks like. Sync
+`bars/futures/` from the producer, or run marketdata's
+`scripts/import_from_cotdata.py` if that box still has the bars under
+`$COTDATA_STORE/prices/`. For a deliberately COT-only deployment, set
+`COT_ANALYZER_ALLOW_MISSING_PRICES=1` and it warns instead.
+
+**Boot logs "price store gap: SYM tier: stale/short/absent" but the unit starts.** A
+partial gap, by design: positioning is unaffected and most charts still draw, so the
+guard says so and carries on rather than taking the site down. The named symbols are the
+ones whose charts will be blank or short.
+
 **Charts render but prices are missing or stale.** Expected if the producer has not run.
-The server cannot fetch prices; see the top of this file.
+The server cannot fetch prices; see the top of this file. Since the boot guard landed
+this should announce itself in the log at startup rather than being noticed on a chart.
 
 **The data layer and the UI disagree about instruments or lookbacks.** `COTMETRICS_PARAMS`
 is not reaching the process, so the two layers are reading different `params.yaml` files.

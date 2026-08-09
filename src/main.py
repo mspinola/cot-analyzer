@@ -121,6 +121,139 @@ def daily_options_update_scheduler():
 
         time.sleep(sleep_seconds)
 
+
+#: How old the newest bar may be before the price store is called stale. Seven days
+#: covers a weekend plus a holiday. There is no store-side default for this on
+#: purpose: bars only move on trading days, so the number is the deployment's to
+#: choose and marketdata refuses to guess it.
+PRICE_STALE_AFTER_DAYS = 7
+
+
+def check_price_store():
+    """Refuse to boot into a dashboard that cannot draw a price.
+
+    THE FAILURE THIS EXISTS FOR IS SILENCE, NOT AN ERROR. ADR-0007 moved bars to
+    `marketdata` and step 4 repointed cotmetrics at it while the bars themselves
+    were still in cotdata's store. Nothing raised. The app booted, bound its port,
+    rendered every positioning page off the other store, and drew blank price
+    charts, because a futures read against a store with no `bars/futures/` returns
+    an empty frame rather than raising. It looked like a UI regression and went
+    unnoticed for days.
+
+    Reads the manifest only, so it costs one small JSON read and opens no parquet.
+
+    The policy, and the two halves are deliberately different:
+
+    * **Nothing at all** is a deployment error, not a data gap. The store was never
+      filled or `MARKETDATA_STORE` points somewhere wrong, no chart on the site can
+      work, and booting anyway is what hid the problem last time. So it refuses.
+    * **Some series missing, short or stale** is a data gap. Most of the site still
+      works and a human has to decide whether it matters, so it warns and carries
+      on rather than taking the positioning half down with it.
+
+    Set `COT_ANALYZER_ALLOW_MISSING_PRICES=1` to downgrade the refusal to a warning,
+    for a deliberately COT-only deployment.
+    """
+    import cotmetrics.config as cm_config
+    import yaml
+
+    try:
+        import marketdata
+    except ImportError as e:
+        utils.cot_logger.error(f"marketdata is not importable, so no price can be "
+                               f"read: {e}")
+        return
+
+    # The siblings are EDITABLE installs, so the version on disk is whatever HEAD
+    # that checkout is sitting at rather than anything a pin can promise. Skip
+    # rather than crash on a checkout predating the guard: a missing check is a
+    # worse outcome than no check, but an unbootable app is worse than both.
+    if not hasattr(marketdata, "coverage_gaps"):
+        utils.cot_logger.warning(
+            "price-store check skipped: this marketdata checkout has no "
+            "coverage_gaps(). Pull the sibling to enable the boot guard.")
+        return
+
+    # params.yaml is read directly rather than through CotIndexer.instruments,
+    # because the point of this check is to run BEFORE the singleton is built: the
+    # indexer is the expensive thing whose caches we do not want to rebuild against
+    # a store that cannot serve them.
+    try:
+        with open(cm_config.params_path()) as f:
+            params = yaml.safe_load(f)
+        universe = [item["Symbol"]
+                    for category in params.get("AssetClasses", [])
+                    for _k, items in category.items()
+                    for item in items]
+    except Exception as e:
+        utils.cot_logger.warning(f"price-store check skipped, cannot read the "
+                                 f"instrument universe: {e}")
+        return
+
+    # Only the symbols marketdata carries as futures. The universe also holds a few
+    # priced off ETF proxies (MME, MFS), which have no Norgate continuous series and
+    # are absent from that registry on purpose, so checking them would report a gap
+    # that is not one.
+    known = {s.internal for s in marketdata.all_symbols()
+             if marketdata.domain_for(s.internal) == "futures"}
+    wanted = sorted(set(universe) & known)
+    if not wanted:
+        utils.cot_logger.warning("price-store check skipped: no configured "
+                                 "instrument is in marketdata's futures registry.")
+        return
+
+    gaps = marketdata.coverage_gaps(wanted,
+                                    stale_after_days=PRICE_STALE_AFTER_DAYS)
+    verdict, message = price_store_verdict(
+        wanted, gaps,
+        allow_missing=bool(os.environ.get("COT_ANALYZER_ALLOW_MISSING_PRICES")))
+
+    if verdict == "ok":
+        utils.cot_logger.info(message)
+        return
+    for g in gaps[:10]:
+        utils.cot_logger.warning(f"  price store gap: {g}")
+    if len(gaps) > 10:
+        utils.cot_logger.warning(f"  ...and {len(gaps) - 10} more")
+    if verdict == "refuse":
+        utils.cot_logger.error(message)
+        sys.exit(1)
+    utils.cot_logger.warning(message)
+
+
+def price_store_verdict(wanted, gaps, *, allow_missing=False):
+    """The policy half of `check_price_store`, split out so it can be tested
+    without a store: ``(verdict, message)`` for ``'ok' | 'warn' | 'refuse'``.
+
+    The line between warn and refuse is whether ANY price can render. Every
+    stored series missing means the store was never filled or `MARKETDATA_STORE`
+    points somewhere wrong, which is a deployment error and the exact condition
+    that hid last time. A subset missing, short or stale is a data gap: most of
+    the site still works, so taking the positioning half down with it would be a
+    worse trade than saying so loudly and carrying on.
+
+    "Every series" is counted against the stored tiers rather than the symbols,
+    because futures store two per symbol and a store holding only `backadj` is
+    half-filled rather than empty.
+    """
+    if not gaps:
+        return "ok", (f"price store OK: {len(wanted)} instruments, every stored tier "
+                      f"present and no older than {PRICE_STALE_AFTER_DAYS} days.")
+    absent = [g for g in gaps if g.reason in ("absent", "empty")]
+    nothing_at_all = len(absent) == len(gaps) and len(absent) >= 2 * len(wanted)
+    if nothing_at_all and not allow_missing:
+        return "refuse", (
+            f"MARKETDATA_STORE holds no bars for any of the {len(wanted)} configured "
+            f"instruments, so no price chart on this site can render. This is what a "
+            f"store that was never filled, or a wrong MARKETDATA_STORE, looks like. "
+            f"Fill it (marketdata-update --bars --domain futures on the producer, or "
+            f"marketdata's scripts/import_from_cotdata.py), or set "
+            f"COT_ANALYZER_ALLOW_MISSING_PRICES=1 for a deliberately COT-only run.")
+    return "warn", (
+        f"price store has {len(gaps)} gap(s) across {len(wanted)} instruments. "
+        f"Positioning is unaffected; the affected price charts will be blank or short.")
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="COT Analyzer")
@@ -136,6 +269,12 @@ if __name__ == "__main__":
     # Check if we are in the Werkzeug reloader child process
     is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
 
+    # Before anything expensive, and in the parent only so it is said once. Under
+    # --debug the parent supervises and the child serves, so refusing here stops
+    # the run before a child is spawned at all.
+    if not is_reloader:
+        check_price_store()
+
     enable_server = True
     if not enable_server:
         utils.cot_logger.warning(
@@ -148,7 +287,7 @@ if __name__ == "__main__":
         if not is_reloader:
             if not getattr(args, 'fast', False):
                 # Guarantee daily price and options cache validation on boot to prevent UI blocking
-                utils.cot_logger.info("Eagerly validating options cache on boot (prices come from the cotdata store)...")
+                utils.cot_logger.info("Eagerly validating options cache on boot (prices come from the marketdata store)...")
                 from cotmetrics.indexer import boot_options_update
                 boot_options_update()
             else:
