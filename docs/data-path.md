@@ -4,9 +4,12 @@ cot-analyzer never talks to a data vendor. It never even calls the price API dir
 Every number on the dashboard arrives through two layers of indirection, and the store
 is the boundary where vendor identity stops mattering.
 
-Verified 2026-07-26 by reading the source, not the docs.
+Verified 2026-07-26 by reading the source, not the docs. **Re-verified 2026-08-08, and the
+read path changed**: ADR-0007 step 4 landed in `cotmetrics` (commit `1290ec0`), so bars now
+arrive through `marketdata.get_bars` and `cotdata.get_prices` is no longer called from
+`cotmetrics/src` at all. See "The read path today" below before trusting the older diagram.
 
-## Current path
+## Current path (superseded 2026-08-08, kept for the vendor argument)
 
 ```mermaid
 flowchart TD
@@ -98,6 +101,43 @@ reconstructed volume on one store and front-month volume on the other, same call
 **Coverage gaps shift the vendor.** Markets off CME Globex (ICE softs, lumber, MSCI) are
 not on databento at all and fall back to Yahoo, so a databento deployment is really a
 databento-plus-Yahoo deployment.
+
+## The read path today
+
+Measured 2026-08-08 against the working tree and both live stores.
+
+**The consumers have moved. The bytes have not.** ADR-0007 is shipping as separate steps and
+these two are out of step with each other:
+
+| | state |
+|---|---|
+| step 4, repoint consumers | **done**. `cotmetrics` reads `marketdata.get_bars(symbol, "backadj")` at `CotIndexer.py:752`, `signals.py:1030`, `options_data.py:366`. `grep get_prices cotmetrics/src` returns nothing |
+| step 2, move the producer code and the bars | **on ice**. `providers/databento.py` has no owner |
+
+So the read now points at `$MARKETDATA_STORE/bars/futures/`, while 99 price parquets still
+sit in `$COTDATA_STORE/prices/` where the producer keeps writing them.
+
+**This fails silently, which is the part to remember.** A futures read against a store with
+no `bars/futures/` does not raise. It returns an empty frame:
+
+```python
+marketdata.get_bars("GC", "backadj")   # -> 0 rows, no error
+```
+
+The app still boots, binds :5001, and renders every COT page, because positioning comes from
+the other store and is unaffected. Only price overlays and the price-dependent signals go
+blank. Both failure modes below therefore look like a UI regression rather than a data one:
+
+- `MARKETDATA_STORE` unset: raises, but late, on the first bar read rather than at startup.
+  `run-local.sh` checks it upfront for this reason.
+- `MARKETDATA_STORE` set and populated with `bars/equities/` only: no error anywhere.
+
+Until the futures bars are imported into the marketdata store, a local checkout renders
+positioning without prices. Confirm before trusting a chart:
+
+```bash
+python -c "import marketdata; print(len(marketdata.get_bars('GC','backadj')))"
+```
 
 ## Target path after ADR-0007
 

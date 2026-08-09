@@ -51,6 +51,26 @@ if [ -z "$COTDATA_STORE" ]; then
     exit 1
 fi
 
+# Same check for the second store. ADR-0007 moved bars out of cotdata, so since
+# cotmetrics repointed at marketdata.get_bars a price read needs MARKETDATA_STORE and
+# raises without it. That failure is quiet in the worst way: the import succeeds, the
+# app binds its port, every COT page renders, and only the first chart wanting bars
+# dies. Check it here so a run that cannot serve prices says so before it starts.
+# It is a SEPARATE root, never COTDATA_STORE: both producers write manifest.json with
+# a read-modify-write, so pointing them at one directory loses entries.
+if [ -z "$MARKETDATA_STORE" ]; then
+    echo "run-local.sh: MARKETDATA_STORE is not set." >&2
+    echo "  Add it to $REPO/.env (gitignored), e.g." >&2
+    echo "    MARKETDATA_STORE=/path/to/marketdata_store" >&2
+    echo "  or export it before running. It must NOT be COTDATA_STORE." >&2
+    exit 1
+elif [ "$MARKETDATA_STORE" = "$COTDATA_STORE" ]; then
+    echo "run-local.sh: MARKETDATA_STORE and COTDATA_STORE are the same path." >&2
+    echo "  They are two stores. Sharing one manifest.json loses entries, because" >&2
+    echo "  each producer rewrites it read-modify-write. Point them at separate dirs." >&2
+    exit 1
+fi
+
 # CIT PY research notes (dated .md/.txt the /citpy page links) are produced by a separate
 # tool and only read here. They used to default to $COTDATA_STORE/citpy, which was wrong
 # twice over: the store is a producer/consumer artifact that a sync mirrors, so a --delete
