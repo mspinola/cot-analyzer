@@ -76,6 +76,7 @@ cd /root/trading_workspace
 git clone git@github.com:mspinola/cot-analyzer.git
 git clone git@github.com:mspinola/cotmetrics.git
 git clone git@github.com:mspinola/cotdata.git
+git clone git@github.com:mspinola/marketdata.git   # bars; ADR-0007 split them from cotdata
 git clone git@github.com:mspinola/npf.git          # optional, research only
 ```
 
@@ -85,9 +86,15 @@ elsewhere.
 
 ## 4. Virtualenv
 
-One venv for the three serving repos, owned by `cot-analyzer`, with the siblings
-installed editable so a `git pull` in either takes effect without reinstalling. (`npf`,
-if cloned, gets its own on Python 3.11 and is not part of this.)
+One venv for the four serving repos, owned by `cot-analyzer`, with the siblings
+installed editable so a `git pull` in any of them takes effect without reinstalling.
+(`npf`, if cloned, gets its own on Python 3.11 and is not part of this.)
+
+`marketdata` is the fourth as of ADR-0007, which moved daily bars out of `cotdata`.
+It is **not on PyPI**, so unlike the others it can only be resolved from this clone —
+`requirements.txt` carries `-e ../marketdata`, and a missing checkout fails the install
+with `Distribution not found at: file:///root/trading_workspace/marketdata` rather than
+anything that names the real cause.
 
 ```bash
 cd /root/trading_workspace/cot-analyzer
@@ -104,6 +111,7 @@ pip install 'setuptools<81'
 pip install -r requirements.txt
 pip install -e ../cotmetrics
 pip install -e ../cotdata
+pip install -e ../marketdata
 ```
 
 Check it survived, since a later install can pull it forward again:
@@ -334,6 +342,7 @@ Code moves by git; data moves by rsync.
 ```bash
 ssh USER@HOST '
   cd /root/trading_workspace/cotdata      && git pull &&
+  cd /root/trading_workspace/marketdata   && git pull &&
   cd /root/trading_workspace/cotmetrics   && git pull &&
   cd /root/trading_workspace/cot-analyzer && git pull
 '
@@ -344,11 +353,14 @@ ssh USER@HOST 'systemctl restart cot-analyzer && systemctl status cot-analyzer'
 > server rebuilds it. The `data_cache` push that used to sit in this block went with
 > `push_data_cache_to_server.sh`, per §6.
 
-Editable installs mean a `git pull` in `cotmetrics` or `cotdata` needs no reinstall, but
-it **does** need the restart, because the running process already imported them.
+Editable installs mean a `git pull` in any sibling needs no reinstall, but it **does**
+need the restart, because the running process already imported them.
 
-Pull all three or none. `cot-analyzer` and `cotmetrics` are released together, and a
+Pull all four or none. `cot-analyzer` and `cotmetrics` are released together, and a
 version skew shows up as an `AttributeError` at request time rather than at startup.
+`marketdata` joined the set with ADR-0007 and skews the same way: `cotmetrics` calls
+`marketdata.get_bars` and `marketdata.schema_version`, so a stale checkout there is a
+price failure inside a healthy-looking COT deployment.
 
 `restart.sh` in this directory is the restart on its own.
 
