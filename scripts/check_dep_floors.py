@@ -31,6 +31,7 @@ from packaging.utils import canonicalize_name
 # rather than a package index, so only these need the extra check.
 INTERNAL = {
     "cotdata",
+    "marketdata",
     "cotmetrics",
     "crucible",
     "crucible-stack",
