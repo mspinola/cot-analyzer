@@ -37,7 +37,6 @@ def get_citpy_files_grouped():
                 if files_for_date:
                     grouped_files[date_folder] = files_for_date
 
-    print(f"DEBUG CITPY GROUPED FILES: {grouped_files}")
     return grouped_files
 
 
