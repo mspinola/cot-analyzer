@@ -65,8 +65,19 @@ def store_poll_loop():
     is a replica fed by a producer push, so it can advance at times no schedule here
     predicts (revisions, a backfill, a manual run, a late release). The check itself is
     one small JSON read, so a window would buy nothing and could only be wrong.
+
+    It is also where the weekly email fires from, for the same reason it is where the
+    refresh fires from: this box does not download COT, so noticing the store moved is
+    the only "new week" event that happens locally. See weekly_email_trigger, which is
+    opt-in and keeps its own ledger. The send is attempted on every tick rather than
+    only when refresh_if_stale returns True, because a browser tab's navbar poll can
+    win that race and consume the True, and an email that depends on who happened to
+    poll first is an email that goes missing on a busy Friday.
     """
+    from cotmetrics.database import cotDatabase
     from cotmetrics.indexer import get_indexer
+
+    import weekly_email_trigger
 
     # The pid is here because which process this lands in is the whole correctness
     # question, and it is invisible otherwise. Under --debug there are two, and only
@@ -78,6 +89,14 @@ def store_poll_loop():
         try:
             if get_indexer().refresh_if_stale():
                 utils.cot_logger.info("Store poller: picked up a new COT week.")
+
+            # After the refresh, never before: refresh_if_stale blocks until the index
+            # matches the store, so by here the matrix the email builds is the new
+            # week's rather than a mix.
+            outcome = weekly_email_trigger.maybe_send(
+                cotDatabase.latest_update_timestamp())
+            if outcome in ("sent", "failed"):
+                utils.cot_logger.info(f"Store poller: weekly email {outcome}.")
         except Exception as e:
             # Never let a transient read kill the loop. A poller that dies silently
             # is worse than no poller, because the navbar still looks like it is

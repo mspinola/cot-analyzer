@@ -261,11 +261,11 @@ def _failure_line(result):
     standing at the button can fix in seconds if only they are told. The script names
     the missing variables, so show that instead of hiding it in a file.
 
-    Prefer the first line mentioning an error. The credential guard leads with
-    "Error: Missing required environment variables (...)" on stdout and then a
-    follow-up hint, so last-line would return the hint and drop the diagnosis. A
-    traceback goes the other way, and this still lands on its final "SomeError: ..."
-    line, since nothing above it matches.
+    Prefer the first line mentioning an error, then fall back to the last line. Both
+    routes land on the diagnosis today: the script reports a bad configuration as a
+    single "[!] Not configured: missing EMAIL_USER, ..." line, which the fallback
+    returns intact. The first-line rule is what catches a traceback, whose final
+    "SomeError: ..." line is the only one worth showing.
     """
     text = (result.stderr or result.stdout or "").strip()
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
