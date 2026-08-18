@@ -28,6 +28,25 @@ import viz_constants as vc
 
 dash.register_page(__name__, path="/heatmap")
 
+
+def snapshot_caption(report_date):
+    """The line under the title, for whichever week the grid is actually showing.
+
+    Built from the SELECTED date rather than the newest one. It used to read
+    get_available_dates()[0] unconditionally, which made it a claim about the store
+    instead of about the table beneath it, and the two come apart both ways: pick an
+    older week from the Target Date control and the caption still announced the newest,
+    while a tab open across a Friday release kept announcing the week the page had
+    loaded with. Same sentence, wrong in opposite directions.
+    """
+    if not report_date:
+        return ("All data on this page reflects the official Commitments of Traders "
+                "reporting snapshot as of Tuesday market close (Unknown Date).")
+    pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
+    return (f"All data on this page reflects the official Commitments of Traders "
+            f"reporting snapshot as of Tuesday market close ({pretty}).")
+
+
 def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
@@ -36,9 +55,10 @@ def layout(**kwargs):
             dbc.Row([
                 dbc.Col([
                     html.P(
-                        f"All data on this page reflects the official "
-                        f"Commitments of Traders reporting snapshot as of Tuesday market close "
-                        f"({datetime.strptime(get_indexer().get_available_dates()[0], '%Y-%m-%d').strftime('%B %d, %Y') if get_indexer().get_available_dates() else 'Unknown Date'}).",
+                        id='heatmap_snapshot_caption',
+                        children=snapshot_caption(
+                            get_indexer().get_available_dates()[0]
+                            if get_indexer().get_available_dates() else None),
                         style={
                             'textAlign': 'center',
                             'color': vc.TEXT_COLOR,
@@ -131,6 +151,60 @@ def layout(**kwargs):
             ], justify='center')
         ], fluid=True),
     ])
+
+
+def next_date_selection(dates, current_options, current_value):
+    """`(options, value)` for the Target Date control when the store may have moved.
+
+    layout() resolves the date list once, at page load, so before this a tab left open
+    across a Friday release could not reach the new week at all: it was absent from the
+    dropdown, and the grid renders strictly from the selection. The navbar badge above
+    it updated on its own five-minute interval, so the page contradicted its own header
+    for as long as the tab stayed open. Observed 2026-08-14, when the 2026-08-11 week
+    landed at 15:34.
+
+    Following the new week is conditional, and that is the whole subtlety. Sitting on
+    the newest week is the default nobody chose, so it tracks. Having picked an older
+    one is a decision, and yanking a reader off the week they are reading because the
+    CFTC published is worse than leaving them there with the new one now offered. The
+    test is whether the current selection WAS the newest, which the old options list
+    answers without anything having to be remembered server-side.
+
+    Kept apart from the callback because the interesting half is this arithmetic, and a
+    Dash callback cannot be called directly to check it.
+    """
+    if not dates:
+        return no_update, no_update
+
+    options = [{'label': d, 'value': d} for d in dates]
+    if options == current_options:
+        return no_update, no_update
+
+    previous = [o['value'] for o in (current_options or [])]
+    was_on_newest = not previous or current_value == previous[0]
+    value = dates[0] if (was_on_newest or current_value not in dates) else current_value
+    return options, value
+
+
+@callback(
+    Output('heatmap_date_selector', 'options'),
+    Output('heatmap_date_selector', 'value'),
+    Input('cot_release_store', 'data'),
+    State('heatmap_date_selector', 'options'),
+    State('heatmap_date_selector', 'value'),
+)
+def follow_the_store(_release, current_options, current_value):
+    """Re-offer the available weeks when the server takes a new one."""
+    return next_date_selection(get_indexer().get_available_dates(),
+                               current_options, current_value)
+
+
+@callback(
+    Output('heatmap_snapshot_caption', 'children'),
+    Input('heatmap_date_selector', 'value'),
+)
+def update_snapshot_caption(target_date):
+    return snapshot_caption(target_date)
 
 
 @callback(

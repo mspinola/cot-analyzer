@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 import requests
 from cotmetrics.database import cotDatabase
 from cotmetrics.indexer import get_indexer
-from dash import Dash, Input, Output, State, dcc, html
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from flask import request
 from flask_compress import Compress
 
@@ -162,6 +162,14 @@ app.layout = html.Div(
                 dcc.Store(id='global_lookback_store', storage_type='session', data='Custom'),
                 dcc.Store(id='global_model_store', storage_type='session', data=models.DEFAULT_MODEL.key),
                 dcc.Store(id='theme_store', storage_type='local', data='solarized_dark'),
+                # The COT week the server currently serves, republished by the navbar
+                # poller below whenever it changes. Pages whose contents are pinned to
+                # a report date subscribe to this so an ALREADY-OPEN tab converges
+                # instead of sitting on the previous week under a badge that has moved
+                # on. Deliberately NOT persisted: it describes the server's state right
+                # now, and a value restored from sessionStorage would be a claim about
+                # a previous one.
+                dcc.Store(id='cot_release_store'),
                 dcc.Location(id='url', refresh=False),
                 navbar,
                 dash.page_container
@@ -193,9 +201,12 @@ def update_theme(theme_value):
 
 @app.callback(
     Output("navbar_timestamp_text", "children"),
-    Input("navbar_update_interval", "n_intervals")
+    Output("cot_release_store", "data"),
+    Input("navbar_update_interval", "n_intervals"),
+    State("navbar_timestamp_text", "children"),
+    State("cot_release_store", "data"),
 )
-def update_graphs_date(n):
+def update_graphs_date(n, current_text, current_release):
     """Refresh the index if the store advanced, then show the CFTC release date.
 
     This is the app's data poller as well as its badge. The two jobs belong on one
@@ -212,9 +223,28 @@ def update_graphs_date(n):
     dcc.Interval is client-side, so this fires on every page load and then every 5
     minutes for as long as a tab stays open. With no tab open nothing polls, and the
     first load after a release pays the ~2 minute rebuild.
+
+    It also republishes the week into cot_release_store, which is what lets a page
+    already on screen notice. The badge alone was the narrower half of the same bug it
+    was built to fix: it moved the moment a week landed while the page under it kept
+    rendering the previous one, and on a tab nobody reloaded, that disagreement was
+    permanent rather than a two minute window.
+
+    The store is written only when the week CHANGES, so the five-minute tick does not
+    wake every subscriber for nothing. A read that fails leaves both outputs alone:
+    latest_update_timestamp returns None mid-sync (replication is not atomic), and
+    replacing a real date with "unavailable" on a tab that was showing one would make
+    the badge flicker on exactly the day it matters most.
     """
     get_indexer().refresh_if_stale()
-    return f"CFTC Data Release: {cotDatabase.latest_update_timestamp()}"
+
+    release = cotDatabase.latest_update_timestamp()
+    if release is None:
+        return (no_update if current_text else "CFTC Data Release: unavailable",
+                no_update)
+
+    return (f"CFTC Data Release: {release}",
+            no_update if release == current_release else release)
 
 
 
