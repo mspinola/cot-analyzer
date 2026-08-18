@@ -183,7 +183,23 @@ Both are **synced**, not produced here. This box cannot produce bars at all:
 EMAIL_USER=your-dedicated-account@gmail.com
 RECEIVER_EMAIL_USER=your-destination-account@gmail.com
 EMAIL_PASSWORD=your-16-character-app-password
+COT_WEEKLY_EMAIL=1          # send automatically when the COT week advances
 ```
+
+Those three credentials are enough for the Admin page's **Send Email** button, which
+sends on demand. `COT_WEEKLY_EMAIL` is what makes it automatic, and it is **off unless
+set** because this same code runs on development machines that must not mail anyone.
+
+The trigger lives in the store poller (`src/weekly_email_trigger.py`), for the same
+reason the index refresh does: this box never downloads COT, so `status.json` advancing
+is the only local event that means a new week exists. It sends once per COT week and
+records which week in `~/.local/share/cotmetrics/weekly_email.json`
+(`COT_WEEKLY_EMAIL_STATE` overrides the path). That ledger is why a restart, a second
+worker, or a browser tab winning the refresh race cannot produce a second copy.
+
+**The first tick after enabling it seeds the ledger and sends nothing.** That is
+deliberate, so switching the flag on does not itself look like a release. The next COT
+week is the first one mailed. Use the Admin button if you want one immediately.
 
 **Optional:**
 
