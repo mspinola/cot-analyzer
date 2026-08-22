@@ -231,7 +231,11 @@ def composition_line(agg, unit, leg, part_frames=None, when=None):
     divisor, suffix = exposure_traces.unit_scale(agg.frame[unit])
 
     bits = []
-    parts = part_frames or {}
+    # Only where the leg IS the sum of those two. The figure draws companions under
+    # every leg, but Large and Small are the rest of the report beneath Commercials, not
+    # what Commercials is made of, and calling them its halves would describe an
+    # arithmetic that does not exist.
+    parts = (part_frames or {}) if leg in exposure_traces.LEG_PARTS else {}
     if len(parts) == 2:
         # Named in the order they are drawn, and only when they disagree is the sentence
         # worth its length. When they agree, saying so is still worth a clause: it tells
@@ -300,10 +304,14 @@ def how_to_read(unit):
         ("What it is made of",
          "A sum says nothing about whether every market agreed or one market carried "
          "it, so the bars below break the latest week apart and the line under the "
-         "headline scores it. Faded bars point against the total. When the leg is "
-         "Speculators the chart also draws its two halves, Large and Small, because "
-         "they sit on opposite sides 59% of weeks and the total can point somewhere "
-         "neither of them does."),
+         "headline scores it. Faded bars point against the total."),
+        ("The third panel",
+         "The other two Legacy groups, whichever one you are looking at. The three sum "
+         "to zero every week, so no group moves without another moving against it, but "
+         "no single one determines another either: Large and Small sit on opposite "
+         "sides 59% of weeks. They get their own panel because they are often an order "
+         "of magnitude away from the subject, and because the band above belongs to the "
+         "subject alone."),
         ("What it does NOT tell you",
          "This is a description, not a signal. Positioning can sit at an extreme for "
          "months, and this page runs no gate: the Strip and the setup pages do that. "
@@ -348,10 +356,15 @@ def caption(frame, unit, leg, when=None):
 def layout(**kwargs):
     return html.Div([
         # `local`, like the Strip's folds: whether the explanation is wanted is a
-        # standing preference, not a fact about this visit. It starts OPEN here where
-        # the Strip's start shut, because a board of markets explains its own shape and
-        # a twenty-year dollar series does not.
-        dcc.Store(id='exposure_help_open', storage_type='local', data=True),
+        # standing preference, not a fact about this visit.
+        #
+        # Starts SHUT, like the Strip's. It started open on the argument that a dollar
+        # aggregate does not explain its own shape, which was true of the page before
+        # the headline and the composition line existed. Those two now say the short
+        # version in three lines, so the block is reference rather than orientation, and
+        # 150px of reference above the chart is the cost of explaining something to a
+        # reader who has already understood it.
+        dcc.Store(id='exposure_help_open', storage_type='local', data=False),
         # NOT persisted, unlike the folds. Which week you are reading is a fact about
         # this visit, and a page that reopened weeks later still describing a 2015 week
         # under a headline saying CROWDED would be lying by default.
@@ -439,7 +452,7 @@ def layout(**kwargs):
 
             dbc.Button(id='exposure_help_toggle', size="sm", color="secondary",
                        outline=True, className="py-0 mb-2"),
-            dbc.Collapse(id='exposure_help_collapse', is_open=True, className="mb-2",
+            dbc.Collapse(id='exposure_help_collapse', is_open=False, className="mb-2",
                          children=html.Div(id='exposure_help')),
 
             html.Div(id='exposure_membership',
@@ -598,11 +611,11 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index) if not agg.frame.empty else None
 
-    # The halves, when the drawn leg is a sum of two others. Computed over the same
-    # member list rather than the same date index, so a leg whose completeness differs
-    # is reindexed onto the total in build_figure rather than silently shifted here.
+    # The other Legacy legs, for the companion panel. Computed over the same member
+    # list rather than the same date index, so a leg whose completeness differs is
+    # reindexed onto the subject in build_figure rather than silently shifted here.
     part_frames = {}
-    for part_leg in exposure_traces.LEG_PARTS.get(leg, ()):
+    for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(names, leg=part_leg)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
@@ -703,7 +716,7 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, palette_n
         return (no_update,) * 10
 
     part_frames = {}
-    for part_leg in exposure_traces.LEG_PARTS.get(leg, ()):
+    for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(names, leg=part_leg)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
@@ -737,7 +750,8 @@ def crosshair_shapes(existing, when):
     shapes = [dict(shape) for shape in (existing or [])
               if not (shape.get("yref") == "paper" and shape.get("type") == "line")]
     if when is not None:
-        shapes.append({"type": "line", "xref": "x2", "yref": "paper",
+        shapes.append({"type": "line",
+                       "xref": exposure_traces.CROSSHAIR_XREF, "yref": "paper",
                        "x0": str(when), "x1": str(when), "y0": 0, "y1": 1,
                        "line": CROSSHAIR})
     return shapes

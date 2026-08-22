@@ -88,28 +88,53 @@ BAND_ALPHA = 0.16
 FILL_ALPHA = 0.30
 ZERO_LINE_ALPHA = 0.55
 
-PANEL_HEIGHTS = (0.34, 0.66)
-FIGURE_PX = 620
+#: Price, subject, companions. The subject keeps the largest share because it is the
+#: only panel with a band and a percentile behind it; the other two are read for shape
+#: and for sign, which needs less room than reading a level against an envelope.
+PANEL_HEIGHTS = (0.26, 0.46, 0.28)
+FIGURE_PX = 700
 
 
-#: When the drawn leg is a SUM of other legs, the parts worth drawing under it.
+#: The OTHER Legacy legs, drawn in their own panel beneath the one that is the subject.
 #:
-#: Only Speculators has an entry, and the reason the mirror pair does NOT is measured:
-#: `Comm_net + Spec_net` is 0.000000 across all 45 priceable markets and every week in
-#: the store, because the Legacy legs sum to zero by construction. Drawing Commercials
-#: beside Speculators would be one series and its reflection, and worse than redundant:
-#: two lines converging and diverging across a zero axis look like a relationship, so a
-#: reader would spend real attention decoding an accounting identity.
+#: The distinction this map exists to hold, because it is easy to get backwards.
+#: Commercials against the SPECULATOR TOTAL is an accounting identity: measured across
+#: all 45 priceable markets and every week in the store, `Comm_net + Spec_net` is
+#: 0.000000. Drawing those two is one series and its reflection.
 #:
-#: Large against Small is the split that carries information. They sit on OPPOSITE sides
-#: 59% of weeks (61% over the last five years, correlation -0.26), and the sign of their
-#: total disagrees with Large 30% of the time and with Small 29%. So about a third of
-#: the time the aggregate points somewhere neither of its two halves does, and the page
-#: was calling that "crowded" without saying which half meant it.
+#: Commercials against Large and Small SEPARATELY is not. Three series with one linear
+#: constraint means any two determine the third, and it means no ONE of them determines
+#: another: you cannot recover Large from Commercials. So each line is individually
+#: informative, and the constraint that ties them is only visible when all three are on
+#: the page. That is the conventional COT presentation and it is conventional for a
+#: reason.
+#:
+#: Hence: the companion panel never draws the subject's own mirror, and always draws the
+#: legs the subject does not contain. Large and Small are the pair worth separating on
+#: their own account, sitting on opposite sides 59% of weeks with a level correlation of
+#: -0.26.
+COMPANION_LEGS = {
+    exposure.LEG_COMM: (exposure.LEG_LARGE, exposure.LEG_SMALL),
+    exposure.LEG_SPEC: (exposure.LEG_LARGE, exposure.LEG_SMALL),
+    exposure.LEG_LARGE: (exposure.LEG_COMM, exposure.LEG_SMALL),
+    exposure.LEG_SMALL: (exposure.LEG_COMM, exposure.LEG_LARGE),
+}
+
+#: The legs a leg is literally the SUM of, which is a different relation from
+#: COMPANION_LEGS above and must not be collapsed into it.
+#:
+#: Every leg has companions; only Speculators has parts. Large and Small are drawn
+#: beneath Commercials because they are the rest of the report, not because they are
+#: what Commercials is made of, and a sentence calling them its "halves" would be
+#: describing an arithmetic that does not exist. This map is what the composition line
+#: reads; COMPANION_LEGS is what the figure reads.
 LEG_PARTS = {exposure.LEG_SPEC: (exposure.LEG_LARGE, exposure.LEG_SMALL)}
 
-#: The parts are drawn thinner and unfilled. They are context for the total, not rivals
-#: to it: the total is what the percentile, the band and the headline all describe.
+#: The axis the crosshair is bound to: the bottom panel's, whichever that is. Named here
+#: rather than spelled "x3" at the call site so adding a panel cannot leave the page
+#: drawing a crosshair against an axis that has moved.
+CROSSHAIR_XREF = "x3"
+
 PART_WIDTH = 1.0
 PART_ALPHA = 0.75
 
@@ -156,7 +181,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     matching `composite_price_index`. Both may be empty, and an empty figure with its
     axes intact beats an exception in a callback.
     """
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04,
                         row_heights=list(PANEL_HEIGHTS))
 
     if frame is None or frame.empty:
@@ -212,7 +237,19 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                        + "<extra></extra>")),
         row=2, col=1)
 
-    # ── the parts, over the total so a crossing is visible, under nothing else ──
+    fig.add_hline(y=0, row=2, col=1, line=dict(
+        color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
+
+    # ── the other legs, in their own panel ───────────────────────────────────
+    #
+    # Their own panel rather than overlaid on the subject, which is where they used to
+    # sit. Two reasons, and the second is the one that decided it. They are often an
+    # order of magnitude apart from the subject and from each other, so sharing its
+    # axis squashed them into a flat line against the bottom of the band. And the
+    # subject's panel carries a band and a percentile that describe the subject ALONE,
+    # so a companion crossing that band read as a statement about it that nothing on the
+    # page had made.
+    drew_companion = False
     for part_leg, part in (parts or {}).items():
         if part is None or part.empty:
             continue
@@ -226,10 +263,12 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                       width=PART_WIDTH),
             hovertemplate=("%{y:,.1f}" + suffix + " USD<extra>"
                            + exposure.LEG_LABELS[part_leg] + "</extra>")),
-            row=2, col=1)
+            row=3, col=1)
+        drew_companion = True
 
-    fig.add_hline(y=0, row=2, col=1, line=dict(
-        color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
+    if drew_companion:
+        fig.add_hline(y=0, row=3, col=1, line=dict(
+            color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
 
     title = " ".join(p for p in [set_label, "-", UNIT_LABELS[unit]] if p).strip(" -")
     fig.update_layout(
@@ -244,10 +283,14 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     )
     fig.update_xaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
     fig.update_yaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
+    usd = f"USD {suffix}" if suffix else "USD"
     fig.update_yaxes(title_text="Index (=100 at start)", row=1, col=1,
                      title_font=dict(size=10))
-    fig.update_yaxes(title_text=f"USD {suffix}" if suffix else "USD", row=2, col=1,
-                     title_font=dict(size=10))
+    fig.update_yaxes(title_text=usd, row=2, col=1, title_font=dict(size=10))
+    # Same units and the same divisor as the panel above, deliberately, so a companion
+    # can be read against the subject by eye. Only the AXIS RANGE differs, which is the
+    # whole reason the panel is separate.
+    fig.update_yaxes(title_text=usd, row=3, col=1, title_font=dict(size=10))
     return fig
 
 

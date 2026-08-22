@@ -232,9 +232,9 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 5
+    assert len(titles) == 6
     joined = " ".join(titles).lower()
-    for topic in ("number", "band", "panels", "made of", "not"):
+    for topic in ("number", "band", "panels", "made of", "third panel", "not"):
         assert topic in joined
 
 
@@ -352,6 +352,14 @@ def test_the_explanation_covers_what_the_total_is_made_of():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "one market carried it" in body
     assert "opposite sides 59%" in body
+
+
+def test_the_explanation_says_why_the_other_legs_are_a_separate_panel():
+    """The three sum to zero, so no group moves without another moving against it, and
+    no single one determines another either."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "sum to zero" in body
+    assert "own panel" in body
 
 
 # ── picking a week off the chart ──────────────────────────────────────────────
@@ -474,3 +482,15 @@ def test_the_headline_uses_it():
     text, _ = headline(ranked(43.0), et.UNIT_RISK, LEG_SPEC)
     assert "43rd percentile" in text
     assert "43th" not in text
+
+
+def test_only_a_leg_that_IS_a_sum_gets_the_halves_sentence():
+    """The figure draws companions beneath every leg, but Large and Small are the rest
+    of the report beneath Commercials, not what Commercials is made of. Calling them its
+    halves would describe an arithmetic that does not exist."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL
+    a = with_members({"S&P 500": 4e8})
+    parts = {LEG_LARGE: pd.Series([-1.5e8] * 3, index=a.frame.index),
+             LEG_SMALL: pd.Series([6.6e8] * 3, index=a.frame.index)}
+    assert "halves" in composition_line(a, et.UNIT_RISK, LEG_SPEC, parts)
+    assert "halves" not in composition_line(a, et.UNIT_RISK, LEG_COMM, parts)

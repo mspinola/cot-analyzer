@@ -199,11 +199,32 @@ def test_consecutive_weeks_are_never_broken():
 
 # ── the leg split ─────────────────────────────────────────────────────────────
 
-def test_only_the_summed_leg_has_parts_to_draw():
-    """Comm_net + Spec_net is 0.000000 across all 45 priceable markets and every week in
-    the store, because the Legacy legs sum to zero by construction. Drawing Commercials
-    beside Speculators would be one series and its reflection, and two lines converging
-    and diverging across a zero axis look like a relationship rather than an identity."""
+def test_a_legs_companions_are_never_its_own_mirror():
+    """The distinction the whole companion panel rests on, and it is easy to get
+    backwards. Commercials against the SPECULATOR TOTAL is an accounting identity:
+    `Comm_net + Spec_net` is 0.000000 across all 45 priceable markets and every week in
+    the store. Commercials against Large and Small SEPARATELY is not, because no one of
+    the three determines another."""
+    from cotmetrics.exposure import LEG_COMM, LEG_SPEC
+    assert LEG_SPEC not in et.COMPANION_LEGS[LEG_COMM]
+    assert LEG_COMM not in et.COMPANION_LEGS[LEG_SPEC]
+
+
+def test_every_leg_has_companions_and_none_of_them_is_itself():
+    """Whatever the subject, the panel beneath it is everyone else, so the zero-sum
+    constraint tying the three Legacy categories is visible on the page."""
+    from cotmetrics.exposure import LEG_COLUMNS
+    for leg in LEG_COLUMNS:
+        companions = et.COMPANION_LEGS[leg]
+        assert len(companions) == 2
+        assert leg not in companions
+
+
+def test_only_speculators_is_the_SUM_of_its_companions():
+    """A different relation from COMPANION_LEGS, and it must not collapse into it. Large
+    and Small are drawn beneath Commercials because they are the rest of the report, not
+    because they are what Commercials is made of, and a sentence calling them its halves
+    would describe an arithmetic that does not exist."""
     from cotmetrics.exposure import LEG_COMM, LEG_LARGE, LEG_SMALL, LEG_SPEC
     assert set(et.LEG_PARTS) == {LEG_SPEC}
     assert et.LEG_PARTS[LEG_SPEC] == (LEG_LARGE, LEG_SMALL)
@@ -211,7 +232,44 @@ def test_only_the_summed_leg_has_parts_to_draw():
         assert leg not in et.LEG_PARTS
 
 
-def test_the_parts_are_drawn_in_their_own_leg_colours_under_the_total():
+def test_the_companions_get_their_own_panel_under_the_subject():
+    """They are often an order of magnitude apart from the subject and from each other,
+    so sharing its axis squashed them flat against the bottom of the band. And the
+    subject's band and percentile describe the subject ALONE, so a companion crossing
+    that band read as a statement about it that nothing on the page had made."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL, LEG_SPEC
+    df = frame([1e9, 2e9])
+    parts = {LEG_LARGE: pd.Series([-3e8, -4e8], index=df.index),
+             LEG_SMALL: pd.Series([1.3e9, 2.4e9], index=df.index)}
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Spec", leg=LEG_SPEC, parts=parts)
+    axes = {t.name: (t.yaxis or "y") for t in fig.data}
+    assert axes["Spec"] == "y2"
+    assert axes["Large Speculators"] == "y3"
+    assert axes["Small Traders"] == "y3"
+
+
+def test_the_companion_panel_gets_its_own_zero_line():
+    """It is read for sign as much as for level, and its range is its own."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SPEC
+    df = frame([1e9, 2e9])
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Spec", leg=LEG_SPEC,
+                          parts={LEG_LARGE: pd.Series([-3e8, -4e8], index=df.index)})
+    zero_refs = {s.yref for s in fig.layout.shapes if getattr(s, "y0", None) == 0}
+    assert "y2" in zero_refs
+    assert "y3" in zero_refs
+
+
+def test_the_crosshair_axis_names_the_bottom_panel():
+    """Spelled here rather than at the call site so adding a panel cannot leave the page
+    drawing a crosshair against an axis that has moved."""
+    assert et.CROSSHAIR_XREF == "x3"
+
+
+def test_the_companions_stay_thinner_and_unfilled_even_with_a_panel_of_their_own():
+    """Still context: the subject is what the percentile, the band and the headline all
+    describe."""
     from cotmetrics.exposure import LEG_LARGE, LEG_SMALL, LEG_SPEC
     df = frame([1e9, 2e9])
     parts = {LEG_LARGE: pd.Series([-3e8, -4e8], index=df.index),
@@ -219,9 +277,6 @@ def test_the_parts_are_drawn_in_their_own_leg_colours_under_the_total():
     fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
                           palette=PALETTE, leg_label="Spec", leg=LEG_SPEC, parts=parts)
     drawn = {t.name: t for t in fig.data}
-    assert "Large Speculators" in drawn
-    assert "Small Traders" in drawn
-    # Thinner and unfilled: they are context for the total, not rivals to it.
     for name in ("Large Speculators", "Small Traders"):
         assert drawn[name].fill is None
         assert drawn[name].line.width < drawn["Spec"].line.width
