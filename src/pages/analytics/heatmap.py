@@ -1,6 +1,5 @@
 import urllib.parse
 from datetime import datetime
-from typing import NamedTuple
 
 import cotmetrics.constants as const
 import cotmetrics.models as models
@@ -22,9 +21,10 @@ from dash import (
     no_update,
 )
 
-import components.plot_helpers as helpers
 import viz_config
 import viz_constants as vc
+from app_utils import next_date_selection
+from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
 dash.register_page(__name__, path="/heatmap")
 
@@ -153,39 +153,6 @@ def layout(**kwargs):
     ])
 
 
-def next_date_selection(dates, current_options, current_value):
-    """`(options, value)` for the Target Date control when the store may have moved.
-
-    layout() resolves the date list once, at page load, so before this a tab left open
-    across a Friday release could not reach the new week at all: it was absent from the
-    dropdown, and the grid renders strictly from the selection. The navbar badge above
-    it updated on its own five-minute interval, so the page contradicted its own header
-    for as long as the tab stayed open. Observed 2026-08-14, when the 2026-08-11 week
-    landed at 15:34.
-
-    Following the new week is conditional, and that is the whole subtlety. Sitting on
-    the newest week is the default nobody chose, so it tracks. Having picked an older
-    one is a decision, and yanking a reader off the week they are reading because the
-    CFTC published is worse than leaving them there with the new one now offered. The
-    test is whether the current selection WAS the newest, which the old options list
-    answers without anything having to be remembered server-side.
-
-    Kept apart from the callback because the interesting half is this arithmetic, and a
-    Dash callback cannot be called directly to check it.
-    """
-    if not dates:
-        return no_update, no_update
-
-    options = [{'label': d, 'value': d} for d in dates]
-    if options == current_options:
-        return no_update, no_update
-
-    previous = [o['value'] for o in (current_options or [])]
-    was_on_newest = not previous or current_value == previous[0]
-    value = dates[0] if (was_on_newest or current_value not in dates) else current_value
-    return options, value
-
-
 @callback(
     Output('heatmap_date_selector', 'options'),
     Output('heatmap_date_selector', 'value'),
@@ -233,35 +200,9 @@ def update_local_lookback(value, current_local_val):
 
 
 
-# Neutral dimmed text colour for a cell with nothing to say.
-DIM_TEXT = "rgba(255, 255, 255, 0.35)"
-
-
-class GridColors(NamedTuple):
-    """The colour set the style builders draw from.
-
-    Passed in rather than closed over so the style rules can be built, and tested,
-    without rendering a page or reaching a data store.
-    """
-    bull: str
-    bear: str
-    bull_near: str
-    bear_near: str
-    dim: str = DIM_TEXT
-
-
-def grid_colors(color_palette):
-    """Resolve a palette into the grid's colour set."""
-    bull = color_palette[3]
-    bear = color_palette[0]
-    if bear.lower() in ("#f87171", "#dc322f", "#ff453a", "#e70307", "#ff007f"):
-        bear = "#FF4D4D"
-    return GridColors(
-        bull=bull,
-        bear=bear,
-        bull_near=helpers.hex_to_rgba(bull, vc.INDEX_RAMP_ALPHA_APPROACH),
-        bear_near=helpers.hex_to_rgba(bear, vc.INDEX_RAMP_ALPHA_APPROACH),
-    )
+# The verdict colour set moved to components.plot_colors when the Crowding Strip
+# started drawing the same bull/bear/near states. Re-imported under the old names so
+# this page, and the tests that reach it through this module, keep reading.
 
 
 # The two index families get different extreme bands. Normalizing by open interest
