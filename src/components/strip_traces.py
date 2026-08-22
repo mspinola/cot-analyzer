@@ -29,10 +29,10 @@ Spec marker appears on the NPF strip.
 **Colour comes from the ROW's setup state, not from each value's own level.** Same rule
 the Heatmap's index cells follow, and for the same reason: a positioning index only
 means something in the company of the other legs. A market whose Commercials sit at 97
-with a spec leg blocking it draws small and faded, in the Commercial series colour,
-deep inside the bullish band. That looks wrong until you know the rule, which is why it
-is written here: the lollipop's POSITION is the level and its COLOUR is the verdict,
-and the two disagreeing is the interesting case rather than a defect.
+with a spec leg blocking it draws small, faint and neutral-grey deep inside the bullish
+band. That looks wrong until you know the rule, which is why it is written here: the
+lollipop's POSITION is the level and its COLOUR is the verdict, and the two disagreeing
+is the interesting case rather than a defect.
 
 Everything in here is a pure function over a `get_matrix_data` frame plus a colour set,
 so the layout is testable without a store, a palette file or a browser.
@@ -111,15 +111,21 @@ STEM_ALPHA = 0.55
 STEM_WIDTH = 0.14      # in row units; ~3px at ROW_PX
 HEAD_SIZE = 9
 
-# Quiet rows are background material, and they need to LOOK like it, because their
-# colour alone cannot say so. The palette's Commercial slot is #F87171-family red and
-# `grid_colors` builds the bear verdicts from the same family (#FF4D4D full, the same
-# at 0.5 for near) — at full strength the three tiers were a line-up of nearly
-# identical reds. So the quiet tier drops below both verdict tiers on the two channels
-# colour does not own: a smaller head, and a fade deeper than the near tier's 0.5.
-# Full setup > near > quiet, in size and intensity, whatever the hues.
-QUIET_ALPHA = 0.45
-QUIET_STEM_ALPHA = 0.22
+# Quiet rows are background material: the app's own neutral, `colors.dim` (DIM_TEXT's
+# 0.35 white), on a smaller head with a fainter stem.
+#
+# This colour has been around the loop. Grey bar slabs read as disabled, so the quiet
+# tier took the Commercial series red — and that put forty neutral rows in the bear
+# verdict's own hue family (#F87171 beside #FF4D4D), where no amount of fading made
+# "no verdict" and "bear setup" strangers. Green and red belong to the VERDICTS, the
+# same vocabulary as the gate bands behind them, so neutral goes back to the word the
+# Heatmap already uses for it: dim. "Disabled" was the slabs' failure, not the
+# colour's — a 5px dot at 0.35 is texture — and whose series it is needs no colour to
+# say, because every lollipop on this chart is Commercials and the legend and caption
+# both say so. viz_constants already orders these alphas (near's 0.5 above dim's
+# 0.35) so "approaching" never looks quieter than "neutral"; the smaller head keeps
+# the ordering where intensity alone is hard to judge.
+QUIET_STEM = "rgba(255, 255, 255, 0.16)"
 QUIET_HEAD_SIZE = 5
 
 # Gate state on a tick is opacity, not colour, because colour is now carrying which leg
@@ -405,19 +411,14 @@ def _verdict_colour(row, colors):
 
 
 def _mark_colour(row, colors, palette):
-    """Colour for a market's lollipop head.
+    """Colour for a market's lollipop head: the verdict, or the app's neutral dim.
 
-    A row with a verdict takes the verdict colour, full strength. A row without one
-    takes the app's COMMERCIAL colour rather than a neutral grey — the mark is
-    Commercial positioning whatever the gate thinks of it, and grey read as disabled
-    rather than as quiet — but FADED, below even the near tier's 0.5: the Commercial
-    red and the bear reds are one family, and at full strength a quiet row was a bear
-    setup to a squint. See the QUIET_ALPHA comment.
+    Green and red are the model's words — bull setup and bear setup, the same pair the
+    gate bands speak — so a row the model has nothing to say about must not borrow
+    either. See the QUIET_STEM comment for the two colours this tier wore first and
+    why each failed.
     """
-    verdict = _verdict_colour(row, colors)
-    if verdict:
-        return verdict
-    return hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
+    return _verdict_colour(row, colors) or colors.dim
 
 
 def _stem_colour(row, colors, palette):
@@ -425,7 +426,7 @@ def _stem_colour(row, colors, palette):
     verdict = _verdict_colour(row, colors)
     if verdict:
         return _fill(verdict)
-    return hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_STEM_ALPHA)
+    return QUIET_STEM
 
 
 def _fill(colour, alpha=STEM_ALPHA):
@@ -513,17 +514,15 @@ def legend_items(model, colors, palette):
     quiet row is not colourless: it is the Commercial series colour, and a reader has
     to be told that red-ish head does not mean bearish.
     """
-    # The comm-coloured keys are faded exactly as the marks they stand for are: a
-    # full-strength "No setup" swatch would promise a red the plot never draws, and
-    # promise it in the bear family.
-    faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
+    # The neutral keys are as dim as the marks they stand for: a full-strength
+    # "No setup" swatch would promise a colour the plot never draws.
     return [
         ("Lollipop: Commercial index",
          [("Bull setup", colors.bull, GLYPH_MARK),
           ("Bear setup", colors.bear, GLYPH_MARK),
           ("Near", colors.bull_near, GLYPH_MARK),
-          ("No setup", faint_comm, GLYPH_MARK),
-          (f"{const.MOMENTUM_PERIOD}w ago", faint_comm, GLYPH_CIRCLE)]),
+          ("No setup", colors.dim, GLYPH_MARK),
+          (f"{const.MOMENTUM_PERIOD}w ago", colors.dim, GLYPH_CIRCLE)]),
         ("Ticks: the legs this gate also reads",
          [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
           for leg in model.spec_legs if leg in LEG_LABELS]),
@@ -606,9 +605,8 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
             showlegend=False,
         ))
         # The head: the value itself, carrying the hover. One shape for every row, so
-        # a quiet row reads as the same object rather than as a special case — but on
-        # the quiet tier it is smaller as well as fainter, because its colour is the
-        # bear verdicts' own family and needs the other channels to not read as one.
+        # a quiet row reads as the same object rather than as a special case — smaller
+        # and fainter on the quiet tier, so the verdicts outrank it at a glance.
         heads = [_mark_colour(r, colors, palette) for _, r in markets]
         fig.add_trace(go.Scatter(
             x=[r.comm for _, r in markets],
@@ -634,14 +632,13 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
         # marker.color; marker.line is a second stroke around that. Setting only the
         # line left marker.color unset, so Plotly fell back to the template colorway
         # and drew these in its third default colour, a teal green, while the legend
-        # key beside them was the red this actually sets. Nothing errors when a colour
-        # is omitted, it just quietly becomes the theme's.
-        faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
+        # key beside them was the colour this actually sets. Nothing errors when a
+        # colour is omitted, it just quietly becomes the theme's.
         fig.add_trace(go.Scatter(
             x=[v for _, v in prior], y=[i for i, _ in prior],
             mode="markers",
-            marker=dict(symbol="circle-open", size=6, color=faint_comm,
-                        line=dict(width=1.2, color=faint_comm)),
+            marker=dict(symbol="circle-open", size=6, color=colors.dim,
+                        line=dict(width=1.2, color=colors.dim)),
             hoverinfo="skip", showlegend=False,
         ))
 
