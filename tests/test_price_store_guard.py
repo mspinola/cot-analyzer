@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from main import price_store_verdict
+from main import price_store_verdict, wanted_price_symbols
 
 
 @dataclass(frozen=True)
@@ -75,3 +75,48 @@ def test_stale_and_short_never_refuse(reason):
     syms = ["ES", "GC"]
     gaps = [FakeGap(s, t, reason) for s in syms for t in ("backadj", "unadj")]
     assert price_store_verdict(syms, gaps)[0] == "warn"
+
+
+# --- wanted_price_symbols: which symbols the guard actually asks about ---------
+#
+# The regression these pin is a SILENT under-check, not a crash: filtering the
+# universe to the futures domain dropped MME and MFS, and once their ETF proxies
+# were seeded on 2026-08-20 that meant two markets with a real series stopped
+# being covered by the boot guard at all.
+
+PROXIES = {"MFS": "EFA", "MME": "EEM"}
+
+
+def test_a_proxied_market_is_checked_under_its_etf():
+    """MME/MFS have no futures series, so the ETF is the only thing to check."""
+    known = {"ES", "GC", "EEM", "EFA"}
+    wanted = wanted_price_symbols(["ES", "GC", "MME", "MFS"], known,
+                                  proxies=PROXIES)
+    assert wanted == ["EEM", "EFA", "ES", "GC"]
+    # The un-proxied names must not survive: nothing in the store answers to them.
+    assert "MME" not in wanted and "MFS" not in wanted
+
+
+def test_an_unproxied_market_keeps_its_own_symbol():
+    assert wanted_price_symbols(["ES"], {"ES"}, proxies=PROXIES) == ["ES"]
+
+
+def test_symbols_the_registry_does_not_know_are_dropped():
+    """A configured market marketdata has never heard of is not a store gap."""
+    assert wanted_price_symbols(["ES", "NOPE"], {"ES"}, proxies=PROXIES) == ["ES"]
+
+
+def test_a_proxy_absent_from_the_registry_is_dropped_not_reported():
+    """Degrades to the pre-2026-08-20 behaviour rather than inventing a gap."""
+    assert wanted_price_symbols(["ES", "MME"], {"ES"}, proxies=PROXIES) == ["ES"]
+
+
+def test_no_proxy_map_degrades_to_the_identity():
+    """A cotmetrics checkout predating PRICE_PROXIES under-covers, never crashes."""
+    known = {"ES", "EEM", "EFA"}
+    assert wanted_price_symbols(["ES", "MME"], known) == ["ES"]
+
+
+def test_two_markets_sharing_a_proxy_are_asked_for_once():
+    wanted = wanted_price_symbols(["MME", "MME"], {"EEM"}, proxies=PROXIES)
+    assert wanted == ["EEM"]

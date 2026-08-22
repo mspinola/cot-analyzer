@@ -148,6 +148,35 @@ def daily_options_update_scheduler():
 PRICE_STALE_AFTER_DAYS = 7
 
 
+def wanted_price_symbols(universe, known, *, proxies=None):
+    """The store symbols a configured universe needs, ETF proxies resolved.
+
+    Pure, so it can be pinned without a store, for the same reason
+    `price_store_verdict` is: the I/O is uninteresting and the mapping is not.
+
+    A market whose PRICE comes from an ETF has to be checked under the ETF's
+    symbol. MME and MFS are ICE MSCI futures that Norgate carries no continuous
+    series for, so they are absent from marketdata's futures registry and priced
+    off EEM and EFA in the equities half (`cotmetrics.market_data.PRICE_PROXIES`).
+
+    This used to filter the universe to the futures domain, which dropped those two
+    on the stated grounds that checking them would report a gap that was not one.
+    That was right while the proxies did not exist in the store and WRONG from
+    2026-08-20, when they were seeded: from then on the two markets had a real,
+    checkable series and the boot guard silently stopped covering them. The
+    proxies then disappeared once already, deleted from a replica by a `robocopy
+    /MIR` from a producer that did not have them, and this check said nothing while
+    both markets rendered empty price columns. Silence is the failure this guard
+    exists for, so resolve rather than skip.
+
+    `proxies` is injected rather than imported so a cotmetrics checkout predating
+    PRICE_PROXIES degrades to the identity mapping (under-covering by two) instead
+    of breaking the boot.
+    """
+    proxies = proxies or {}
+    return sorted({proxies.get(s, s) for s in universe} & set(known))
+
+
 def check_price_store():
     """Refuse to boot into a dashboard that cannot draw a price.
 
@@ -174,6 +203,7 @@ def check_price_store():
     for a deliberately COT-only deployment.
     """
     import cotmetrics.config as cm_config
+    import cotmetrics.market_data as cm_market_data
     import yaml
 
     try:
@@ -209,16 +239,13 @@ def check_price_store():
                                  f"instrument universe: {e}")
         return
 
-    # Only the symbols marketdata carries as futures. The universe also holds a few
-    # priced off ETF proxies (MME, MFS), which have no Norgate continuous series and
-    # are absent from that registry on purpose, so checking them would report a gap
-    # that is not one.
-    known = {s.internal for s in marketdata.all_symbols()
-             if marketdata.domain_for(s.internal) == "futures"}
-    wanted = sorted(set(universe) & known)
+    known = {s.internal for s in marketdata.all_symbols()}
+    wanted = wanted_price_symbols(universe, known,
+                                  proxies=getattr(cm_market_data,
+                                                  "PRICE_PROXIES", {}))
     if not wanted:
         utils.cot_logger.warning("price-store check skipped: no configured "
-                                 "instrument is in marketdata's futures registry.")
+                                 "instrument is in marketdata's registry.")
         return
 
     gaps = marketdata.coverage_gaps(wanted,
