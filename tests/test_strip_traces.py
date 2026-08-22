@@ -589,3 +589,40 @@ def test_every_other_market_row_is_banded_to_group_its_marks():
               if sh.type == "rect" and sh.xref == "paper"}
     labels = {i: r.label for i, r in enumerate(rows) if r.kind == "market"}
     assert {labels[i] for i in banded} == {"B", "E"}
+
+
+def test_the_prior_mark_is_the_commercial_colour_the_legend_promises():
+    """It was drawn in the template's third default colour, a teal green, against a red
+    key. An OPEN symbol takes its outline from marker.color, and only marker.line.color
+    was set, so marker.color fell through to the colorway."""
+    df = frame(matrix_row("Gold", "Metals", 70, 50, 50, move=12))
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    drawn, key = [t for t in fig.data
+                  if t.type == "scatter" and t.marker.symbol == "circle-open"
+                  and not t.showlegend], \
+                 [t for t in fig.data
+                  if t.type == "scatter" and t.marker.symbol == "circle-open"
+                  and t.showlegend]
+    assert drawn and key
+    assert drawn[0].marker.color.startswith("rgba(248, 113, 113")   # PALETTE[0]
+    assert key[0].marker.color == PALETTE[0]
+
+
+def test_no_drawn_mark_falls_through_to_the_template_colourway():
+    """The general form of the bug above: an unset colour is not an error, it is the
+    theme's colour, and it only shows up by disagreeing with something else."""
+    df = frame(
+        matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL, move=8),
+        matrix_row("Gold", "Metals", 55, 50, 50, move=-3),
+    )
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    for mark in (st.MARK_DOT, st.MARK_BAR):
+        fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=mark)
+        for trace in fig.data:
+            # Legend keys are proxies, and the empty trace that exists only to make
+            # Plotly draw the top axis has nothing to colour.
+            if trace.showlegend or not [v for v in (trace.x or []) if v is not None]:
+                continue
+            assert trace.marker.color is not None, (
+                f"{trace.type}/{trace.marker.symbol} takes its colour from the theme")

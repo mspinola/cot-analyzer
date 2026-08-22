@@ -634,13 +634,18 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
     # move that is usually a few points wide.
     prior = [(i, r.prior) for i, r in markets if r.prior is not None]
     if prior:
+        # `color`, not just `line.color`. An OPEN symbol draws its outline from
+        # marker.color; marker.line is a second stroke around that. Setting only the
+        # line left marker.color unset, so Plotly fell back to the template colorway
+        # and drew these in its third default colour, a teal green, while the legend
+        # key beside them was the red this actually sets. Nothing errors when a colour
+        # is omitted, it just quietly becomes the theme's.
+        faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], 0.45)
         fig.add_trace(go.Scatter(
             x=[v for _, v in prior], y=[i for i, _ in prior],
             mode="markers",
-            marker=dict(symbol="circle-open", size=6,
-                        line=dict(width=1.2,
-                                  color=hex_to_rgba(
-                                      palette[LEG_PALETTE_SLOT["comm"]], 0.45))),
+            marker=dict(symbol="circle-open", size=6, color=faint_comm,
+                        line=dict(width=1.2, color=faint_comm)),
             hoverinfo="skip", showlegend=False,
         ))
 
@@ -653,12 +658,15 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
                   for lg, value, gate in r.legs if lg == leg and value is not None]
         if not points:
             continue
+        colours = [c for _, _, c in points]
+        # Both, for the reason the prior mark documents: a `line-*` symbol happens to
+        # draw from marker.line, so leaving marker.color unset looked fine here and was
+        # one symbol change away from silently becoming a template colour.
         fig.add_trace(go.Scatter(
             x=[v for _, v, _ in points], y=[i for i, _, _ in points],
             mode="markers",
-            marker=dict(symbol="line-ns", size=9,
-                        line=dict(width=1.6,
-                                  color=[c for _, _, c in points])),
+            marker=dict(symbol="line-ns", size=9, color=colours,
+                        line=dict(width=1.6, color=colours)),
             hoverinfo="skip",
             showlegend=False,
         ))

@@ -611,6 +611,21 @@ height, and without `responsive` it kept whatever width it was first drawn at. R
 the browser left the chart at its old width until a reload, which is worth fixing rather
 than noting, because narrowing the window is the first thing a reader does to this page.
 
+### An unset colour is the theme's colour
+
+The six-weeks-ago circles drew teal green against a red key that said the same thing.
+Cause: an OPEN Plotly symbol takes its outline from `marker.color`, while `marker.line` is
+a second stroke around that, and only the line colour had been set. `marker.color` was
+therefore `None`, which is not an error, it is the template colourway, whose third entry
+is `#00cc96`. The legend proxy set `marker.color` and so was correct, which is the only
+reason the disagreement was visible at all.
+
+The general test written for it immediately found a second instance: the speculator leg
+ticks set only `marker.line.color` too. Those render correctly, because a `line-*` symbol
+happens to draw from `marker.line`, so that one was one symbol change away from silently
+becoming a template colour. Every drawn trace now names its colour, and a test asserts it
+for both marks rather than pinning the one case that was noticed.
+
 Still not built, in the order the list above gives them: the window min/max/current
 tooltip, time-in-state, the horizon ladder, and the dollar-notional aggregate. The
 percentile tick argued for in the whiskers section needs a percentile rank that
