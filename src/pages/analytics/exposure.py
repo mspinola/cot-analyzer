@@ -39,9 +39,14 @@ LEG_OPTIONS = [{"label": exposure.LEG_LABELS[k], "value": k}
                          exposure.LEG_LARGE, exposure.LEG_SMALL)]
 
 UNIT_OPTIONS = [
-    {"label": "USD risk", "value": exposure_traces.UNIT_RISK},
-    {"label": "USD notional", "value": exposure_traces.UNIT_NOTIONAL},
+    {"label": "Risk", "value": exposure_traces.UNIT_RISK},
+    {"label": "Notional", "value": exposure_traces.UNIT_NOTIONAL},
 ]
+
+#: One style for all four control labels, because four copies of the same dict is four
+#: chances for one of them to drift a font size and make the row look ragged.
+CONTROL_LABEL = {**vc.label_style, "fontSize": "0.8rem",
+                 "textTransform": "uppercase", "marginBottom": "2px"}
 
 
 def _class_options():
@@ -353,53 +358,57 @@ def layout(**kwargs):
         dcc.Store(id='exposure_selected_week'),
         dbc.Container([
             dbc.Card(dbc.CardBody([
+                # One row, four controls. It was two rows of two, which cost a strip of
+                # vertical space on a page whose whole subject is a tall chart, and gave
+                # the two multi-selects half the width each when neither needs it: they
+                # show a count once more than a couple of items are chosen, so a wider
+                # box buys nothing after the second chip.
                 dbc.Row([
                     dbc.Col([
-                        html.Label("Asset Classes", style={**vc.label_style,
-                                                           "fontSize": "0.8rem",
-                                                           "textTransform": "uppercase"}),
+                        html.Label("Asset Classes", style=CONTROL_LABEL),
                         dcc.Dropdown(id='exposure_class_selector', multi=True,
                                      persistence='session',
                                      options=_class_options(), value=["Equities"],
                                      className="cot-dropdown"),
-                    ], xs=12, md=5, className="px-md-2"),
+                    ], xs=12, md=3, className="px-md-2"),
 
                     dbc.Col([
                         # Per-market, because the constraining member is usually not a
                         # whole class. The live case: NKD retired from the COT in March
                         # 2026 and its class did not, so a class-level control cannot
                         # recover the five months the other equity markets still have.
-                        html.Label("Markets", style={**vc.label_style,
-                                                     "fontSize": "0.8rem",
-                                                     "textTransform": "uppercase"}),
+                        #
+                        # The widest of the four because it is the only one whose value
+                        # a reader needs to READ rather than recognise: it is the list
+                        # the total is a claim about.
+                        html.Label("Markets", style=CONTROL_LABEL),
                         dcc.Dropdown(id='exposure_member_selector', multi=True,
                                      options=[], value=[], placeholder="all",
                                      className="cot-dropdown"),
-                    ], xs=12, md=5, className="px-md-2 mt-2 mt-md-0"),
-                ], align="center"),
+                    ], xs=12, md=4, className="px-md-2 mt-2 mt-md-0"),
 
-                dbc.Row([
                     dbc.Col([
-                        html.Label("Leg", style={**vc.label_style, "fontSize": "0.8rem",
-                                                 "textTransform": "uppercase"}),
+                        html.Label("Leg", style=CONTROL_LABEL),
                         dbc.Select(id='exposure_leg_selector', options=LEG_OPTIONS,
                                    value=exposure.LEG_SPEC, size="sm",
                                    className="bg-dark text-white border-secondary"),
-                    ], xs=6, md=4, className="px-md-2 mt-2 mt-md-0"),
+                    ], xs=7, md=3, className="px-md-2 mt-2 mt-md-0"),
 
                     dbc.Col([
-                        html.Label("Unit", style={**vc.label_style,
-                                                  "fontSize": "0.8rem",
-                                                  "textTransform": "uppercase"}),
+                        # "Risk" and "Notional", not the full "USD risk" and "USD
+                        # notional" they were. The axis, the caption and the how-to-read
+                        # block all carry the units, and the two short words are what
+                        # let this sit in two columns instead of three.
+                        html.Label("Unit", style=CONTROL_LABEL),
                         dbc.RadioItems(id='exposure_unit_selector',
                                        persistence='session',
                                        options=UNIT_OPTIONS,
                                        value=exposure_traces.UNIT_RISK, inline=True,
                                        style={"color": vc.BRIGHTER_TEXT_COLOR,
                                               "fontSize": "0.85rem"}),
-                    ], xs=6, md=3, className="px-md-2 mt-2 mt-md-0"),
-                ], align="center", className="mt-2"),
-            ]), className="mb-2 shadow-sm",
+                    ], xs=5, md=2, className="px-md-2 mt-2 mt-md-0"),
+                ], align="center"),
+            ], className="py-2"), className="mb-2 shadow-sm",
                 style={"backgroundColor": "rgba(30, 30, 30, 0.6)",
                        "border": "1px solid rgba(255, 255, 255, 0.1)",
                        "borderRadius": "8px"}),
