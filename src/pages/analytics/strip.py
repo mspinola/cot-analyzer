@@ -63,9 +63,9 @@ def caption(report_date, lookback, model, skipped, hidden=0):
     legs = [strip_traces.LEG_LABELS[leg] for leg in model.spec_legs
             if leg in strip_traces.LEG_LABELS]
     if legs:
-        tick_note = (f"Ticks are the other legs this gate reads ({', '.join(legs)}), "
-                     f"and one brightens where it is through its own extreme opposite "
-                     f"Commercials. ")
+        tick_note = (f"Ticks are the other legs this gate reads ({', '.join(legs)}); "
+                     f"they light with their row, and the hover says whether one is "
+                     f"through its own gate. ")
     else:
         tick_note = ""
     dropped = ""

@@ -128,10 +128,19 @@ HEAD_SIZE = 9
 QUIET_STEM = "rgba(255, 255, 255, 0.16)"
 QUIET_HEAD_SIZE = 5
 
-# Gate state on a tick is opacity, not colour, because colour is now carrying which leg
-# it is. One channel per variable.
-TICK_ALPHA_GATE = 1.0
-TICK_ALPHA_IDLE = 0.4
+# A tick's opacity is its ROW's tier, the same rule every other mark on the row
+# follows: full strength where the model has a verdict, knocked back where it does
+# not. Colour still carries which leg it is — one channel per variable.
+#
+# Opacity used to carry the leg's own gate state instead (bright when through its
+# extreme opposite Commercials), and that spent the channel on something the axis
+# already says: a gating leg is BY DEFINITION a leg sitting at its own extreme, which
+# is exactly where its tick is drawn. Position carries it; the hover names it. Meanwhile
+# idle ticks at 0.4 had sunk to the background tier where the quiet lollipops live,
+# and the legs are DATA — where the other side of the trade sits — not chrome. Rows
+# worth inspecting now light whole: verdict, name, and every leg on them.
+TICK_ALPHA_LIT = 1.0
+TICK_ALPHA_QUIET = 0.55
 
 # Same two words the Active Setups strip uses, so one vocabulary across the app.
 STATE_LABELS = {
@@ -439,16 +448,16 @@ def _fill(colour, alpha=STEM_ALPHA):
     return hex_to_rgba(colour, alpha) if str(colour).startswith("#") else colour
 
 
-def _leg_colour(leg, gate, palette):
-    """A tick's colour: the app's colour for that leg, faded unless it is gating.
+def _leg_colour(leg, lit, palette):
+    """A tick's colour: the app's colour for that leg, faded on quiet rows.
 
     A glyph per leg was the alternative, and the row height is the argument against it.
-    At 21px a tick's whole job is to say WHERE on the axis the leg sits, and a diamond
+    At 22px a tick's whole job is to say WHERE on the axis the leg sits, and a diamond
     or a star is several units wide at that scale, so the shape that carries identity
     would blur the position that carries the measurement. Colour is free here, and it is
     the convention every other panel already uses.
     """
-    alpha = TICK_ALPHA_GATE if gate else TICK_ALPHA_IDLE
+    alpha = TICK_ALPHA_LIT if lit else TICK_ALPHA_QUIET
     return hex_to_rgba(palette[LEG_PALETTE_SLOT[leg]], alpha)
 
 
@@ -644,11 +653,13 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
 
     # One trace per speculator leg the model gates on, so the legend names them and a
     # reader can switch one off. Drawn as a tick rather than a dot: it marks a position
-    # on the same axis as the bar, and a dot would read as a second measure.
+    # on the same axis as the bar, and a dot would read as a second measure. Lit when
+    # the ROW is (see TICK_ALPHA_LIT); the per-leg gate flag stays on the hover.
     for leg in model.spec_legs:
-        points = [(i, value, _leg_colour(leg, gate, palette))
+        points = [(i, value,
+                   _leg_colour(leg, r.state != const.SETUP_NONE, palette))
                   for i, r in markets
-                  for lg, value, gate in r.legs if lg == leg and value is not None]
+                  for lg, value, _ in r.legs if lg == leg and value is not None]
         if not points:
             continue
         colours = [c for _, _, c in points]

@@ -282,22 +282,43 @@ def test_an_empty_board_still_draws():
     assert fig.layout.height == st.figure_height([])
 
 
-def test_a_tick_takes_its_leg_colour_and_says_gating_with_opacity():
-    """Colour is which leg, opacity is whether it is gating: one channel per variable.
+def test_a_tick_takes_its_leg_colour_and_its_rows_tier_as_opacity():
+    """Colour is which leg, opacity is the ROW's tier: one channel per variable.
 
     The leg colours are the app's, by palette slot, so blue is Large Specs on this page
     exactly as it is on every stacked panel. An earlier version coloured a gating tick
     by the row's direction, which spent colour on something the bar beside it already
-    says and left the two legs indistinguishable from each other.
+    says and left the two legs indistinguishable from each other. Opacity then carried
+    the leg's own gate state for a while, which spent IT on something the axis already
+    says — a gating leg sits at its own extreme, which is where its tick is drawn — so
+    it now follows the row like every other mark: verdict rows light whole.
     """
     large = st._leg_colour(models.LEG_LARGE, True, PALETTE)
     small = st._leg_colour(models.LEG_SMALL, True, PALETTE)
     assert large != small
     assert large.startswith("rgba(96, 165, 250")     # PALETTE[1], Large Specs
     assert small.startswith("rgba(251, 191, 36")     # PALETTE[2], Small Specs
-    idle = st._leg_colour(models.LEG_LARGE, False, PALETTE)
-    assert idle.startswith("rgba(96, 165, 250")      # same leg, same colour
-    assert idle != large                             # fainter, because it is not gating
+    quiet = st._leg_colour(models.LEG_LARGE, False, PALETTE)
+    assert quiet.startswith("rgba(96, 165, 250")     # same leg, same colour
+    assert quiet != large                            # fainter, on a row with no verdict
+
+
+def test_ticks_light_with_their_row_not_with_their_own_gate():
+    """Copper is a bull setup with Large Specs at 40 — nowhere near ITS gate — and its
+    tick still draws lit, because the row is worth inspecting whole. Gold's leg sits at
+    an extreme, and draws quiet, because its row is quiet."""
+    df = frame(
+        matrix_row("Copper", "Metals", 98, 40, 2, state_cls=const.SETUP_BULL),
+        matrix_row("Gold", "Metals", 55, 2, 50),
+    )
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    large = next(t for t in fig.data
+                 if t.type == "scatter" and t.marker.symbol == "line-ns"
+                 and list(t.x) == [40, 2])
+    assert list(large.marker.color) == [
+        st._leg_colour(models.LEG_LARGE, True, PALETTE),
+        st._leg_colour(models.LEG_LARGE, False, PALETTE)]
 
 
 def test_stem_fills_are_knocked_back_but_the_head_beside_them_is_not():
