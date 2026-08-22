@@ -49,11 +49,37 @@ CONTROL_LABEL = {**vc.label_style, "fontSize": "0.8rem",
                  "textTransform": "uppercase", "marginBottom": "2px"}
 
 
+#: The markets a class starts with, by SYMBOL, where "every market in the class" is the
+#: wrong opening set. Anything not listed here starts whole.
+#:
+#: Equities is the case that needed it, and the reasons are measured rather than
+#: preferred. The class holds eight markets and three of them cost the aggregate
+#: something before a reader has touched a control: MFS and MME are ICE MSCI futures
+#: priced off ETFs with no contract multiplier, so they are dropped every time; NKD's
+#: COT history ends 2026-03-03, so a whole-class total stops there while the rest runs
+#: to the current week. Measured across the three candidate sets:
+#:
+#:     ES NQ YM RTY        1247 weeks, 2002-08-13 to 2026-08-18, nothing dropped
+#:     + EMD               1239 weeks, 2002-11-05 to 2026-08-18, nothing dropped
+#:     whole class         1109 weeks, 2002-11-05 to 2026-03-03, two dropped
+#:
+#: So the four majors are not a narrower view of the same thing, they are the only one
+#: of the three that reaches the present with every member priced. EMD is left out on a
+#: weaker argument than the others, that "US equity index positioning" is a crowd anyone
+#: would recognise and mid-caps are a different question, and it is one click away.
+#:
+#: Keyed by symbol, not display name, because a name is a label and a symbol is what the
+#: store and the specs table agree on.
+DEFAULT_MEMBERS = {
+    "Equities": ("ES", "NQ", "YM", "RTY"),
+}
+
+
 def _class_options():
     return [{"label": c, "value": c} for c in get_indexer().get_asset_classes()]
 
 
-def membership(agg, names):
+def membership(agg, names, available=None):
     """Who is in the total, who is not, and what the completeness rule cost.
 
     An aggregate is a claim about a set, so the set is part of the reading. This is the
@@ -64,6 +90,15 @@ def membership(agg, names):
     included = len(agg.coverage)
     bits = [html.Span(f"{included} of {len(names)} markets summed",
                       style={"color": vc.BRIGHTER_TEXT_COLOR})]
+
+    # A default that silently narrows the class is the same failure as a filter that
+    # silently drops rows, and it is worse for being on by default: a reader who never
+    # touches Markets has no reason to suspect the total is not the class. Named, not
+    # counted, so they can see whether the one they came for is among them.
+    left_out = sorted(set(available or ()) - set(names))
+    if left_out:
+        bits.append(html.Span(
+            " · not included: " + ", ".join(left_out) + " (add from Markets)"))
 
     if agg.dropped:
         # Named, not counted. "2 markets dropped" tells a reader that something is
@@ -487,21 +522,42 @@ def layout(**kwargs):
     Input('exposure_class_selector', 'value'),
 )
 def member_options(asset_classes):
-    """Every market in the chosen classes, all selected.
+    """Every market in the chosen classes, with the ones a total should start from
+    selected.
 
     Selected rather than left blank so the control reads as the membership of the total
-    rather than as a filter over it. Removing one is then a visible subtraction from a
-    stated set, which is the only edit this page wants to make easy.
+    rather than as a filter over it. Adding or removing one is then a visible edit to a
+    stated set, which is the only change this page wants to make easy.
+
+    The starting set is usually the whole class and deliberately is not for Equities.
+    See DEFAULT_MEMBERS for the measurements. Whenever it is narrower, the membership
+    line above the figure says so by name, because a default that quietly drops markets
+    is the same failure as a filter that quietly drops them.
     """
     names = _names_in(asset_classes)
-    return [{"label": n, "value": n} for n in names], names
+    return [{"label": n, "value": n} for n in names], _default_names(asset_classes)
 
 
 def _names_in(asset_classes):
+    """Every market in these classes."""
     if not asset_classes:
         return []
     return sorted(i.name for i in get_indexer().instruments.values()
                   if i.asset_class in asset_classes)
+
+
+def _default_names(asset_classes):
+    """The markets these classes start with, which is all of them unless said otherwise."""
+    if not asset_classes:
+        return []
+    out = []
+    for instrument in get_indexer().instruments.values():
+        if instrument.asset_class not in asset_classes:
+            continue
+        preset = DEFAULT_MEMBERS.get(instrument.asset_class)
+        if preset is None or instrument.symbol in preset:
+            out.append(instrument.name)
+    return sorted(out)
 
 
 def describe_week(agg, part_frames, unit, leg, palette, when=None):
@@ -630,7 +686,8 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     # is how a page ends up describing a week it never drew.
     return (figure, said["bars"], said["bar_label"], said["composition"],
             said["headline"], said["head_style"], help_block,
-            membership(agg, names), said["caption"], None, "",
+            membership(agg, names, _names_in(asset_classes)),
+            said["caption"], None, "",
             {"display": "none"})
 
 

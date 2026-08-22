@@ -494,3 +494,32 @@ def test_only_a_leg_that_IS_a_sum_gets_the_halves_sentence():
              LEG_SMALL: pd.Series([6.6e8] * 3, index=a.frame.index)}
     assert "halves" in composition_line(a, et.UNIT_RISK, LEG_SPEC, parts)
     assert "halves" not in composition_line(a, et.UNIT_RISK, LEG_COMM, parts)
+
+
+# ── the starting set ──────────────────────────────────────────────────────────
+
+def test_a_default_that_narrows_a_class_names_what_it_left_out():
+    """A default that silently narrows is the same failure as a filter that silently
+    drops rows, and worse for being on by default: a reader who never touches Markets
+    has no reason to suspect the total is not the class."""
+    line = text_of(membership(
+        agg(), ["S&P 500", "Nasdaq"],
+        available=["S&P 500", "Nasdaq", "Nikkei 225", "S&P MidCap 400"]))
+    assert "not included" in line
+    assert "Nikkei 225" in line
+    assert "S&P MidCap 400" in line
+    assert "add from Markets" in line
+
+
+def test_a_whole_class_claims_nothing_about_exclusions():
+    line = text_of(membership(agg(), ["A", "B"], available=["A", "B"]))
+    assert "not included" not in line
+
+
+def test_the_exclusions_are_named_rather_than_counted():
+    """So a reader can see whether the one they came for is among them. "1 market not
+    included" would tell them something is missing without telling them what."""
+    line = text_of(membership(agg(), ["A"], available=["A", "Nikkei 225"]))
+    assert "not included: Nikkei 225" in line
+    assert "1 not included" not in line
+    assert "1 market(s) not included" not in line
