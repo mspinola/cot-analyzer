@@ -455,8 +455,8 @@ def test_a_column_with_no_break_keeps_one_unbroken_band():
 def test_the_heading_row_carries_its_own_bar_and_its_name_is_centred():
     """The heading sits ON the row rather than out in the margin, where it was stacked
     left-aligned directly above the market labels and differed from them only in
-    weight. Its bar is the only thing painted on that row, and it outweighs the
-    alternating row band without reaching the gate zones."""
+    weight. Its bar is the only thing painted on that row, and it stays under the gate
+    zones, which are the only shading on this figure that means anything."""
     df = frame(matrix_row("Gold", "Metals", 40, 50, 50),
                matrix_row("Cocoa", "Softs", 30, 50, 50))
     rows, _ = st.build_rows(df, models.RAW_PF)
@@ -467,7 +467,7 @@ def test_the_heading_row_carries_its_own_bar_and_its_name_is_centred():
             if sh.type == "rect" and sh.xref == "paper"
             and sh.opacity == st.HEADER_BAND_ALPHA]
     assert [sh.y0 + 0.5 for sh in bars] == headers
-    assert st.ROW_BAND_ALPHA < st.HEADER_BAND_ALPHA < 0.09
+    assert st.HEADER_BAND_ALPHA < 0.09
 
     named = [a for a in fig.layout.annotations if "METALS" in a.text]
     assert len(named) == 1
@@ -675,10 +675,12 @@ def test_a_market_with_no_move_simply_has_no_prior_mark():
                 and t.marker.symbol == "circle-open"]
 
 
-def test_every_other_market_row_is_banded_to_group_its_marks():
-    """A row carries four marks on ROW_PX pixels and nothing tied them together. The
-    phase resets under each class header, so the first market in a class always looks
-    the same."""
+def test_market_rows_are_ruled_between_but_never_around_a_block():
+    """A row carries four marks on ROW_PX pixels and nothing tied them together. This
+    was an alternating band, which gave an eleven-row class a ladder the eye resolved
+    before the data; a rule treats every row alike. It goes BETWEEN rows only: under the
+    last market of a class it would close the block off just above the gap that already
+    separates it, and above the first it would double the heading bar's bottom edge."""
     df = frame(
         matrix_row("A", "Metals", 90, 50, 50),
         matrix_row("B", "Metals", 80, 50, 50),
@@ -687,12 +689,18 @@ def test_every_other_market_row_is_banded_to_group_its_marks():
         matrix_row("E", "Softs", 50, 50, 50),
     )
     rows, _ = st.build_rows(df, models.RAW_PF)
+    kinds = [r.kind for r in rows]
+    assert kinds == ["class", "market", "market", "market",
+                     "spacer", "class", "market", "market"]
     fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    banded = {sh.y0 + 0.5 for sh in fig.layout.shapes
-              if sh.type == "rect" and sh.xref == "paper"
-              and sh.opacity == st.ROW_BAND_ALPHA}
-    labels = {i: r.label for i, r in enumerate(rows) if r.kind == "market"}
-    assert {labels[i] for i in banded} == {"B", "E"}
+
+    rules = sorted(sh.y0 for sh in fig.layout.shapes
+                   if sh.type == "line" and sh.xref == "paper")
+    # A/B and B/C inside Metals, D/E inside Softs. Nothing under C or E, nothing above
+    # A or D, and nothing on the spacer.
+    assert rules == [1.5, 2.5, 6.5]
+    assert not [sh for sh in fig.layout.shapes
+                if sh.type == "rect" and sh.opacity == st.ROW_RULE_ALPHA]
 
 
 def test_the_prior_mark_is_the_neutral_colour_the_legend_promises():
