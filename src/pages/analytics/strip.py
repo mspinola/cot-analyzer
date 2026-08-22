@@ -28,7 +28,7 @@ import dash
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import Input, Output, State, callback, clientside_callback, dcc, html, no_update
 
 import app_utils
 import components.strip_traces as strip_traces
@@ -40,6 +40,55 @@ dash.register_page(__name__, path='/strip')
 
 SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
+
+# Where this page starts: the navbar's bottom edge plus the app container's top
+# padding, measured in the browser at the page's own top offset.
+#
+# The ONE number left in the page's vertical layout, where the `calc(100vh - 290px)` it
+# replaces needed four (chrome, card, legend, caption). The difference that matters is
+# not the count: nothing ON this page can change this one, so adding a row or folding
+# the controls cannot silently invalidate it, which is exactly what the old constant
+# could not survive. It moves only if the app's navbar changes, and it is measured
+# rather than guessed: `document.getElementById('strip_export_container')`, walk up to
+# the div carrying this calc, read `getBoundingClientRect().top`.
+NAVBAR_PX = 96
+
+# The word for each filter value, in one place because two things need it now: the
+# radio that sets it and the summary line that reports it while the controls are
+# folded away. Written twice they would drift, and the summary is exactly the thing
+# nobody would check.
+ORDER_LABELS = {SORT_BY_INDEX: "Crowding", SORT_ALPHA: "A-Z"}
+SHOW_LABELS = {strip_traces.SHOW_ALL: "All",
+               strip_traces.SHOW_SETUPS: "Setups",
+               strip_traces.SHOW_SETUPS_NEAR: "+ Near"}
+SIDE_LABELS = {strip_traces.SIDE_BOTH: "Both",
+               strip_traces.SIDE_BULL: "Bullish",
+               strip_traces.SIDE_BEAR: "Bearish"}
+
+
+def _options(labels):
+    return [{"label": text, "value": value} for value, text in labels.items()]
+
+
+def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
+                     n_classes, n_all):
+    """One line saying what the folded controls are set to.
+
+    Folding the card hides seven controls, and a board drawn on a filter you cannot see
+    is the same failure the caption already guards against: a partial view that looks
+    like a full one. This is the caption's job for the controls rather than for the
+    data, so it names every filter that can hide a row, and says how many classes are
+    on out of how many rather than listing them, because nine names do not fit and the
+    fraction is what tells you something is off.
+    """
+    bits = [target_date or "latest", vc.MODEL_LABELS.get(model.key, model.key)]
+    bits.append(f"{lookback}-week" if lookback in ("26", "52") else "Custom lookback")
+    bits.append(ORDER_LABELS.get(sort_by, sort_by))
+    bits.append(SHOW_LABELS.get(show, show))
+    bits.append(SIDE_LABELS.get(side, side))
+    bits.append(f"{n_classes}/{n_all} classes")
+    bits.append(f"{columns} column" + ("s" if int(columns or 1) != 1 else ""))
+    return " · ".join(str(b) for b in bits)
 
 
 def caption(report_date, lookback, model, skipped, hidden=0):
@@ -113,12 +162,58 @@ def legend(model, colors, palette):
 
 def layout(**kwargs):
     # Built per request, not at import, so importing this page needs no store.
-    return html.Div([
-        dbc.Container([
+    #
+    # One flex column at viewport height, with the board as the only part that
+    # scrolls. This replaces a `calc(100vh - 290px)` on the board, a number that had to
+    # be re-measured every time anything above it changed height, and which the
+    # collapsing control card would have broken outright: the card is ~150px open and
+    # ~40px shut, so one constant cannot be right in both states. `flex: 1` asks for
+    # "whatever is left" instead, which is the same answer without the arithmetic.
+    return html.Div(
+        style={"display": "flex", "flexDirection": "column",
+               "height": f"calc(100vh - {NAVBAR_PX}px)"},
+        children=[
+        # `local`, not `session`: folding the controls is a standing preference about
+        # how this page should look, not a fact about this visit. The filters below use
+        # session persistence because the opposite is true of them, a filter restored
+        # weeks later is a board that lies about what it is showing.
+        dcc.Store(id='strip_controls_open', storage_type='local', data=True),
+        dbc.Container(style={"display": "flex", "flexDirection": "column",
+                             "flex": "1 1 auto", "minHeight": 0},
+                      children=[
             dbc.Row([
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
+                            # The always-visible line: the fold toggle, a summary of
+                            # what the controls currently say, and the export. Nothing
+                            # here is a filter, so nothing here is worth hiding.
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Button(id='strip_controls_toggle', size="sm",
+                                               color="secondary", outline=True,
+                                               className="py-0"),
+                                    xs="auto"),
+                                dbc.Col(
+                                    html.Div(id='strip_controls_summary',
+                                             style={"color": vc.TEXT_COLOR,
+                                                    "fontSize": "0.8rem"}),
+                                    xs=True, className="text-truncate"),
+                                dbc.Col([
+                                    dbc.Button("📸 Export PNG",
+                                               id="strip_download_img_btn",
+                                               style={"color": vc.TEXT_COLOR},
+                                               size="sm"),
+                                    dbc.Tooltip(
+                                        "The whole board as one image, including rows "
+                                        "below the fold, with the caption and legend.",
+                                        target="strip_download_img_btn",
+                                        placement="bottom"),
+                                ], xs="auto"),
+                            ], align="center", className="g-2"),
+
+                            dbc.Collapse(id='strip_controls_collapse', is_open=True,
+                                         className="mt-2", children=[
                             dbc.Row([
                                 dbc.Col([
                                     html.Label("Target Date", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
@@ -166,8 +261,7 @@ def layout(**kwargs):
                                     dbc.RadioItems(
                                         persistence='session',
                                         id='strip_sort_selector',
-                                        options=[{"label": "Crowding", "value": SORT_BY_INDEX},
-                                                 {"label": "A-Z", "value": SORT_ALPHA}],
+                                        options=_options(ORDER_LABELS),
                                         value=SORT_BY_INDEX,
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
@@ -179,11 +273,7 @@ def layout(**kwargs):
                                     dbc.RadioItems(
                                         persistence='session',
                                         id='strip_show_selector',
-                                        options=[
-                                            {"label": "All", "value": strip_traces.SHOW_ALL},
-                                            {"label": "Setups", "value": strip_traces.SHOW_SETUPS},
-                                            {"label": "+ Near", "value": strip_traces.SHOW_SETUPS_NEAR},
-                                        ],
+                                        options=_options(SHOW_LABELS),
                                         value=strip_traces.SHOW_ALL,
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
@@ -208,11 +298,7 @@ def layout(**kwargs):
                                     dbc.RadioItems(
                                         persistence='session',
                                         id='strip_side_selector',
-                                        options=[
-                                            {"label": "Both", "value": strip_traces.SIDE_BOTH},
-                                            {"label": "Bullish", "value": strip_traces.SIDE_BULL},
-                                            {"label": "Bearish", "value": strip_traces.SIDE_BEAR},
-                                        ],
+                                        options=_options(SIDE_LABELS),
                                         value=strip_traces.SIDE_BOTH,
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
@@ -230,10 +316,12 @@ def layout(**kwargs):
                                         switch=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"}
                                     ),
-                                ], xs=12, md=12, className="px-md-2 mt-2"),
+                                ], xs=12, md=True, className="px-md-2 mt-2"),
+
                             ], align="center")
+                            ]),
                         ]),
-                        className="mb-3 shadow-sm",
+                        className="mb-2 shadow-sm",
                         style={
                             "backgroundColor": "rgba(30, 30, 30, 0.6)",
                             "border": "1px solid rgba(255, 255, 255, 0.1)",
@@ -242,39 +330,55 @@ def layout(**kwargs):
                         }
                     )
                 ], width=12)
-            ], style={'position': 'sticky', 'top': '10px', 'zIndex': 1000}),
-
-            dbc.Row([
-                dbc.Col([
-                    html.Div(id='strip_legend',
-                             style={'display': 'flex', 'flexWrap': 'wrap',
-                                    'alignItems': 'baseline', 'fontSize': '0.8rem',
-                                    'marginBottom': '2px'})
-                ], width=12)
+            # No `position: sticky` any more. It was there because the page scrolled
+            # under a card that had to stay put; in a flex column at viewport height the
+            # page does not scroll at all, so the card is fixed by construction.
             ]),
 
-            dbc.Row([
-                dbc.Col([
-                    html.P(id='strip_caption',
-                           style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                  'fontStyle': 'italic', 'marginBottom': '4px'})
-                ], width=12)
-            ]),
+            # Everything the PNG export captures lives inside this div: the legend,
+            # the caption and the board. The export button does NOT, since a button in
+            # the picture is the one thing on it that cannot be acted on.
+            html.Div(id='strip_export_container',
+                     style={"display": "flex", "flexDirection": "column",
+                            "flex": "1 1 auto", "minHeight": 0},
+                     children=[
+                dbc.Row([
+                    dbc.Col([
+                        html.Div(id='strip_legend',
+                                 style={'display': 'flex', 'flexWrap': 'wrap',
+                                        'alignItems': 'baseline', 'fontSize': '0.8rem',
+                                        'marginBottom': '2px'})
+                    ], xs=12, md=True),
+                ], align="center"),
 
-            dbc.Row([
+                dbc.Row([
+                    dbc.Col([
+                        html.P(id='strip_caption',
+                               style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                      'fontStyle': 'italic', 'marginBottom': '4px'})
+                    ], width=12)
+                ]),
+
                 dcc.Loading(
-                    id="loading-strip",
-                    type="dot",
-                    # The strip scrolls inside its own box rather than scrolling the
-                    # page. The control card above is sticky, so a page that scrolled
-                    # would slide rows underneath it and hide them. The offset covers
-                    # the controls, the legend line and the caption.
-                    children=html.Div(id='strip_display_container',
-                                      style={"height": "calc(100vh - 290px)",
-                                             "overflowY": "auto", "width": "100%"}),
-                    color=vc.BRIGHTER_TEXT_COLOR
+                        id="loading-strip",
+                        type="dot",
+                        # The spinner's own wrapper is a link in the flex chain, so it
+                        # gets the same treatment. Miss it and the box below reverts to
+                        # its content height and the page scrolls.
+                        parent_style={"display": "flex", "flexDirection": "column",
+                                      "flex": "1 1 auto", "minHeight": 0},
+                        # The strip scrolls inside its own box rather than scrolling the
+                        # page, so the controls, the legend and the caption stay put
+                        # while the board moves under them. `minHeight: 0` is what makes
+                        # that work: a flex item defaults to min-height:auto, which means
+                        # "at least my content", so without it the box grows to the full
+                        # board and the whole page scrolls instead.
+                        children=html.Div(id='strip_display_container',
+                                          style={"flex": "1 1 auto", "minHeight": 0,
+                                                 "overflowY": "auto", "width": "100%"}),
+                        color=vc.BRIGHTER_TEXT_COLOR
                 )
-            ], justify='center')
+            ])
         ], fluid=True),
     ])
 
@@ -350,6 +454,7 @@ def follow_global_lookback(value, current_local_val):
     Output('strip_display_container', 'children'),
     Output('strip_caption', 'children'),
     Output('strip_legend', 'children'),
+    Output('strip_controls_summary', 'children'),
     [Input('strip_class_selector', 'value'),
      Input('global_lookback_store', 'data'),
      Input('global_model_store', 'data'),
@@ -364,16 +469,22 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
                  palette_name, target_date):
     empty = html.P("Select an asset class to draw the strip.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
+    all_classes = get_indexer().get_asset_classes()
     if not asset_classes:
-        return empty, "", []
+        return empty, "", [], f"No asset class selected · 0/{len(all_classes)} classes"
     if not lookback:
         lookback = "Custom"
 
     model = models.resolve(model_key)
+    summary = controls_summary(target_date, model, lookback, sort_by,
+                               show or strip_traces.SHOW_ALL,
+                               side or strip_traces.SIDE_BOTH,
+                               columns, len(asset_classes), len(all_classes))
     df = get_matrix_data(asset_classes, lookback, target_date)
     if df.empty:
-        return html.P("No data available.",
-                      style={'textAlign': 'center', 'color': vc.TEXT_COLOR}), "", []
+        return (html.P("No data available.",
+                       style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
+                "", [], summary)
 
     rows, skipped = strip_traces.build_rows(
         df, model, sort_by_index=(sort_by != SORT_ALPHA),
@@ -416,4 +527,52 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         ], className="g-0", align="start"),
         caption(report_date, lookback, model, skipped, hidden),
         legend(model, colors, palette),
+        summary,
     )
+
+
+@callback(
+    Output('strip_controls_open', 'data'),
+    Input('strip_controls_toggle', 'n_clicks'),
+    State('strip_controls_open', 'data'),
+    prevent_initial_call=True,
+)
+def toggle_controls(_n, is_open):
+    return not is_open
+
+
+@callback(
+    Output('strip_controls_collapse', 'is_open'),
+    Output('strip_controls_toggle', 'children'),
+    Output('strip_controls_summary', 'style'),
+    Input('strip_controls_open', 'data'),
+)
+def apply_controls_fold(is_open):
+    """Open or shut, and the two bits of chrome that have to agree with it.
+
+    The summary is hidden while the controls are open rather than always drawn: with
+    the radios on screen it says what they already say, and a line that repeats the
+    thing above it is the kind of clutter this fold exists to remove.
+    """
+    label = "▾ Filters" if is_open else "▸ Filters"
+    style = {"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
+             "display": "none" if is_open else "block"}
+    return bool(is_open), label, style
+
+
+# The PNG export. Clientside for the reason OI Alignment's is: the figure, the caption
+# and the legend are all already in the browser, so shipping them to the server to be
+# re-rendered would be a round trip to redraw what is on screen.
+#
+# The model and the date ride along as State only to name the file. A strip PNG loses
+# every control that produced it the moment it leaves the page, and the caption inside
+# the image carries the date and window in prose, so the filename is the version a
+# reader sees in a folder listing.
+clientside_callback(
+    "window.dash_clientside.clientside.export_strip_image",
+    Output('strip_download_img_btn', 'n_clicks'),
+    Input('strip_download_img_btn', 'n_clicks'),
+    State('strip_model_selector', 'value'),
+    State('strip_date_selector', 'value'),
+    prevent_initial_call=True
+)
