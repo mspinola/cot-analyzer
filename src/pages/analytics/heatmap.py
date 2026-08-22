@@ -282,16 +282,24 @@ def setup_styles_for(state_col, role, high_val, low_val, colors,
 
 
 # ── Speculator dollar risk ────────────────────────────────────────────────────
-# Two columns joined onto the matrix from cotmetrics.exposure, which is where the
-# arithmetic lives (this app computes no metrics of its own). Every other number on
-# this grid normalizes a market against itself; dollar risk is the one that is
-# comparable ACROSS markets, so beside 42 unitless indices it answers the question
-# none of them can: is this market's speculator position large in absolute terms.
+# One column joined onto the matrix from cotmetrics.exposure, which is where the
+# arithmetic lives (this app computes no metrics of its own): speculator dollar risk
+# as an expanding percentile of the market's own history.
+#
+# The DOLLAR LEVEL is deliberately not a column, only the cell's hover tooltip. It
+# shipped as one and was removed the same week: a reader meets "$262M" with no idea
+# what Gasoline typically carries, so the level answers nothing at a glance, and it
+# drifts upward with price whatever positioning does (cotmetrics.exposure's own
+# docstring: the most recent swings will always look the largest). The percentile is
+# the module's answer to exactly that, so the grid shows the answer and keeps the
+# input on hover. Cross-market dollar comparison is the /exposure page's job, where
+# the levels come with the composition and coverage a total needs.
 #
 # Display thresholds for the percentile column, not a strategy gate. Both tails light
 # the same way because both mean "at an extreme of this market's own history": the
-# direction is carried by the $ Risk sign next door, and colouring the extreme
-# bull/bear would render a verdict no model on this page renders.
+# percentile ranks the SIGNED position, so high is a long extreme and low a short
+# one, and colouring either tail bull/bear would render a verdict no model on this
+# page renders.
 RISK_RANK_HIGH = 95
 RISK_RANK_LOW = 5
 
@@ -331,6 +339,10 @@ def attach_spec_risk(df, newest_date):
 
     Row-by-row on the row's OWN date rather than the page's target date: with no
     target selected each market shows its latest week, and those can differ.
+
+    Both columns ride the rowData but only the percentile is a grid column: "Spec
+    Risk" exists for the percentile cell's tooltipValueGetter, which reads it off
+    params.data. Dropping it here would blank the tooltip, not raise.
     """
     risks, ranks = [], []
     for asset, date in zip(df["Asset"], df["Date"]):
@@ -519,32 +531,30 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
             ]
         },
         {
-            # The one group in absolute units, from cotmetrics.exposure. d3's SI suffix
-            # for 1e9 is G, which nobody reads as dollars, hence the replace.
             "headerName": "Exposure · Speculators",
             "children": [
                 {
-                    "field": "Spec Risk",
-                    "headerName": "$ Risk",
+                    "field": "Risk %ile",
                     "minWidth": 100,
                     "headerTooltip": (
                         f"Net {exposure.LEG_LABELS[exposure.LEG_SPEC]} position in USD "
-                        f"daily risk: contracts x point value x price x "
-                        f"{exposure.DEFAULT_VOL_WINDOW}-day daily vol. The one column "
-                        f"comparable across markets: positive is net long"),
-                    "valueFormatter": {"function": "params.value != null ? d3.format('$.3s')(params.value).replace('G','B') : '–'"},
-                    "cellStyle": {"color": DIM_TEXT},
-                },
-                {
-                    "field": "Risk %ile",
-                    "minWidth": 95,
-                    "headerTooltip": (
-                        f"That dollar risk as an expanding percentile of this market's "
-                        f"own history, so a past date reads what was knowable then: "
-                        f"100 is the most net-long speculators have ever been, 0 the "
-                        f"most net-short. Lit at >= {RISK_RANK_HIGH} or "
-                        f"<= {RISK_RANK_LOW}. Blank until two years of priced history"),
+                        f"daily risk (contracts x point value x price x "
+                        f"{exposure.DEFAULT_VOL_WINDOW}-day vol), as an expanding "
+                        f"percentile of this market's own history, so a past date "
+                        f"reads what was knowable then: 100 is the most net-long "
+                        f"speculators have ever been, 0 the most net-short. Lit at "
+                        f">= {RISK_RANK_HIGH} or <= {RISK_RANK_LOW}. Hover a cell for "
+                        f"the dollar figure. Blank until two years of priced history"),
                     "valueFormatter": {"function": "params.value != null ? d3.format('.0f')(params.value) : '–'"},
+                    # The dollar level behind the percentile, on hover rather than in a
+                    # column (see the module comment above). d3's SI suffix for 1e9 is
+                    # G, which nobody reads as dollars, hence the replace; the sign is
+                    # spelled out because a bare minus is easy to miss in a tooltip.
+                    "tooltipValueGetter": {"function": (
+                        "params.data['Spec Risk'] != null ? "
+                        "d3.format('$.3s')(Math.abs(params.data['Spec Risk'])).replace('G','B')"
+                        " + (params.data['Spec Risk'] < 0 ? ' net short' : ' net long')"
+                        " + ' in daily risk' : null")},
                     "cellStyle": {"styleConditions": risk_rank_styles},
                     "headerClass": "group-border-right",
                     "cellClass": "group-border-right",
