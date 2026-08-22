@@ -777,3 +777,51 @@ against the total faded rather than recoloured; and a composition sentence under
 headline naming the disagreement, the dominant market and the agreement score. A
 market-by-market history panel was considered and rejected: five lines over 24 years is
 unreadable, and the question is about the week the reader is looking at.
+
+
+## After the ninth review: one market is a reading, not a degenerate set
+
+The page called itself a set view, in the module docstring ("deliberately a SET view
+rather than a market view"), in the sentence above the chart ("a whole group of
+markets"), and in every line that said "this set's own history". The argument behind it
+was that a single market's dollar exposure is the positioning index wearing bigger
+numbers, so converting units only earns its keep on a total.
+
+**That argument is false, and the size of the error is the point.** Take the same
+52-week range index this app already uses, and run it on net contracts and on dollar
+risk for the same market and leg (Large Speculators, 44 markets, all history in the
+store):
+
+| | median | worst |
+|---|---|---|
+| correlation, index on contracts vs on dollar risk | **0.920** | 0.713 (Gasoline), 0.750 (Gold), 0.754 (Crude) |
+| 95th-percentile gap between the two readings | **28 index points** | 52 (Natural Gas) |
+| weeks where they disagree on top-or-bottom quintile | **17%** | 33% (Gasoline) |
+
+So on about one week in six the two disagree about whether the market is at an extreme
+at all, and on the markets a reader is most likely to care about (Gold, Crude, Natural
+Gas, Gasoline, the metals) they disagree more than that.
+
+**Almost all of the gap is volatility, not price.** The same comparison against NOTIONAL
+alone correlates **0.984** at the median. Notional is contracts times a slowly-moving
+price, so it is close to a monotone transform of the contract count over a 52-week
+window; risk multiplies by sigma, which moves on its own schedule and is the term the
+positioning index cannot carry. That is a fact about a single market, and it is exactly
+what a page in risk units can say that no normalized index can.
+
+There is a second single-market reading the range index deliberately discards: absolute
+scale through time. A rolling range index is renormalized every week, so it cannot say
+that this is the largest dollar bet the crowd has ever held here. The expanding
+percentile on this page can, and does.
+
+What changed, all copy and no arithmetic: the lede offers a market or a set; the
+headline, the caption, the contributors label and the figure title say "market" and name
+it when one market is selected; the membership line reads "Gold on its own" rather than
+"1 of 1 markets summed"; the composition sentence drops the concentration clauses, which
+for one market can only report 100% of itself and 1 of 1 markets agreeing, while keeping
+the Large-against-Small split, which is a real disagreement inside one market's number;
+and the explanation gained an entry carrying the measurement above.
+
+The noun comes from `len(agg.coverage)`, not from the length of the Markets selection: a
+two-name selection where one market dropped for want of a contract multiplier IS a
+single market, and the sentences should say so.

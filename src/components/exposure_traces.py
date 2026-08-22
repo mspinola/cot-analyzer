@@ -1,4 +1,4 @@
-"""The Aggregate Exposure figure: a set's dollar positioning against its own price.
+"""The Exposure figure: dollar positioning against the same selection's own price.
 
 Pure figure logic, so every rule here is testable without a store or a running app.
 `cotmetrics.exposure` computes the numbers; this decides how they are drawn.
@@ -200,8 +200,8 @@ def unit_scale(values):
 def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
                  leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL,
-                 numeraire=None):
-    """Two panels: the set's own price composite, and its dollar positioning.
+                 numeraire=None, single=False):
+    """Two panels: the selection's own price, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
     matching `composite_price_index`. Both may be empty, and an empty figure with its
@@ -214,7 +214,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         fig.update_layout(height=FIGURE_PX, paper_bgcolor=background,
                           plot_bgcolor=background,
                           annotations=[dict(
-                              text="No week has a value for every market in this set.",
+                              text="No week has a value for every market selected.",
                               showarrow=False, xref="paper", yref="paper",
                               x=0.5, y=0.5, font=dict(color=vc.TEXT_COLOR))])
         return fig
@@ -233,9 +233,14 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         fig.add_trace(go.Scatter(
             x=composite.index,
             y=break_gaps(composite.index, composite.to_numpy()),
-            name="Set composite",
+            # An equal-weight composite of one market is that market's price, and a
+            # legend calling it a composite sends a reader looking for a construction
+            # that is not there.
+            name="Market price" if single else "Set composite",
             mode="lines", line=dict(color=palette[3], width=1.4),
-            hovertemplate="%{x|%b %d, %Y}<br>Composite %{y:.1f}<extra></extra>"),
+            hovertemplate="%{x|%b %d, %Y}<br>"
+                          + ("Price" if single else "Composite")
+                          + " %{y:.1f}<extra></extra>"),
             row=1, col=1)
 
     # ── the extremes, under the level so the level stays readable ────────────

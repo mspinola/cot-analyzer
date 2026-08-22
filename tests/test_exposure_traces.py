@@ -67,7 +67,7 @@ def test_an_empty_total_says_why_rather_than_drawing_an_empty_box():
     explanation reads as a broken page rather than as an answer."""
     fig = build(pd.DataFrame())
     text = " ".join(a.text for a in fig.layout.annotations)
-    assert "every market in this set" in text
+    assert "every market selected" in text
     assert fig.layout.height == et.FIGURE_PX
 
 
@@ -449,3 +449,25 @@ def test_the_price_axis_names_the_numeraire_it_is_indexed_in():
                            numeraire=NUMERAIRE_GOLD)
     assert "oz gold" in gold.layout.yaxis.title.text
     assert "USD" in build(frame([1e9, 2e9]), series([100, 120])).layout.yaxis.title.text
+
+
+# ── one market ────────────────────────────────────────────────────────────────
+
+def test_the_price_trace_is_not_called_a_composite_for_one_market():
+    """An equal-weight composite of one market is that market's price, and the legend
+    saying "composite" sends a reader looking for a construction that is not there."""
+    df = frame([1e9, 2e9, 3e9])
+    price = pd.Series([100.0, 101.0, 102.0], index=df.index)
+    fig = et.build_figure(df, price, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Speculators", set_label="Gold",
+                          single=True)
+    names = [t.name for t in fig.data]
+    assert "Market price" in names
+    assert "Set composite" not in names
+
+
+def test_the_price_trace_is_still_a_composite_for_a_total():
+    df = frame([1e9, 2e9, 3e9])
+    price = pd.Series([100.0, 101.0, 102.0], index=df.index)
+    fig = build(df, price)
+    assert "Set composite" in [t.name for t in fig.data]
