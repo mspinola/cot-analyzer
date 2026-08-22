@@ -6,8 +6,11 @@ computes nothing of its own. What it changes is the scan cost. A grid is read co
 column; a strip is read at a glance, which is the only thing it is for.
 
 The figure work lives in `components.strip_traces`, which is pure over the frame, so
-the layout can be tested without a store. This module is the controls, the caption and
-the wiring.
+the layout can be tested without a store. This module is the controls, the caption, the
+legend and the wiring. The legend renders here as HTML rather than inside a figure:
+drawn in the first figure it cost that column ~40px of top margin the other column did
+not pay (Plotly grows the margin to fit a legend it cannot lay out in the space
+predicted for it), so the two boards started at different heights.
 
 The caption is load-bearing rather than decorative. It carries the report date, which
 the printed reports this was modelled on leave off entirely, and it says which window
@@ -39,8 +42,7 @@ SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
 
 
-def caption(report_date, lookback, model, skipped, hidden=0,
-            mark=strip_traces.MARK_DOT):
+def caption(report_date, lookback, model, skipped, hidden=0):
     """The two lines under the controls.
 
     Everything here is a fact the picture cannot carry on its own, and the list grew by
@@ -58,13 +60,12 @@ def caption(report_date, lookback, model, skipped, hidden=0,
     else:
         window = ("each market's own tuned lookback, so the windows differ between "
                   "rows")
-    mark_word = "bar" if mark == strip_traces.MARK_BAR else "diamond"
     legs = [strip_traces.LEG_LABELS[leg] for leg in model.spec_legs
             if leg in strip_traces.LEG_LABELS]
     if legs:
-        tick_note = (f"Ticks are the other legs this gate reads ({', '.join(legs)}), "
-                     f"and one brightens where it is through its own extreme opposite "
-                     f"Commercials. ")
+        tick_note = (f"Ticks are the other legs this gate reads ({', '.join(legs)}); "
+                     f"they light with their row, and the hover says whether one is "
+                     f"through its own gate. ")
     else:
         tick_note = ""
     dropped = ""
@@ -75,12 +76,39 @@ def caption(report_date, lookback, model, skipped, hidden=0,
                    f"shown: {', '.join(sorted(skipped))}.")
     return (
         f"Positioning as of Tuesday {pretty}, gated on {model.title}, measured over "
-        f"{window}. The {mark_word} is the COMMERCIAL positioning index, 0-100; hover "
-        f"any row for the exact figures. "
+        f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the stem "
+        f"hangs from neutral (50), so length is distance from neutral; hover any head "
+        f"for the exact figures. "
         f"{tick_note}"
         f"Its colour is the model's verdict on the whole row, not on its own value, so "
-        f"a dim {mark_word} deep in a band is a market at an extreme with another leg "
-        f"blocking it.{dropped}")
+        f"a small faded lollipop deep in a band is a market at an extreme with another "
+        f"leg blocking it.{dropped}")
+
+
+def legend(model, colors, palette):
+    """The figure key, rendered as one line of page chrome above both columns.
+
+    `strip_traces.legend_items` says what the entries are; this only turns them into
+    coloured text. Glyphs stand in for the plot symbols: the disc is the lollipop head,
+    the vertical bar is the line-ns tick, the ring is the hollow prior-position circle.
+    """
+    glyphs = {
+        strip_traces.GLYPH_MARK: "●",
+        strip_traces.GLYPH_TICK: "│",
+        strip_traces.GLYPH_CIRCLE: "○",
+    }
+    groups = []
+    for title, entries in strip_traces.legend_items(model, colors, palette):
+        bits = [html.Span(f"{title}:",
+                          style={"color": vc.TEXT_COLOR, "marginRight": "0.6rem"})]
+        for label, colour, glyph in entries:
+            bits.append(html.Span(
+                [html.Span(glyphs[glyph],
+                           style={"color": colour, "marginRight": "0.25rem"}), label],
+                style={"color": vc.BRIGHTER_TEXT_COLOR, "marginRight": "0.9rem",
+                       "whiteSpace": "nowrap"}))
+        groups.append(html.Span(bits, style={"marginRight": "1.2rem"}))
+    return groups
 
 
 def layout(**kwargs):
@@ -163,19 +191,6 @@ def layout(**kwargs):
                                 ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
-                                    html.Label("Mark", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.RadioItems(
-                                        persistence='session',
-                                        id='strip_mark_selector',
-                                        options=[{"label": "Dot", "value": strip_traces.MARK_DOT},
-                                                 {"label": "Bar", "value": strip_traces.MARK_BAR}],
-                                        value=strip_traces.MARK_DOT,
-                                        inline=True,
-                                        style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
-                                    )
-                                ], xs=6, md=1, className="mb-3 mb-md-0 px-md-2"),
-
-                                dbc.Col([
                                     html.Label("Columns", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
                                     dbc.RadioItems(
                                         persistence='session',
@@ -231,6 +246,15 @@ def layout(**kwargs):
 
             dbc.Row([
                 dbc.Col([
+                    html.Div(id='strip_legend',
+                             style={'display': 'flex', 'flexWrap': 'wrap',
+                                    'alignItems': 'baseline', 'fontSize': '0.8rem',
+                                    'marginBottom': '2px'})
+                ], width=12)
+            ]),
+
+            dbc.Row([
+                dbc.Col([
                     html.P(id='strip_caption',
                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                   'fontStyle': 'italic', 'marginBottom': '4px'})
@@ -243,9 +267,10 @@ def layout(**kwargs):
                     type="dot",
                     # The strip scrolls inside its own box rather than scrolling the
                     # page. The control card above is sticky, so a page that scrolled
-                    # would slide rows underneath it and hide them.
+                    # would slide rows underneath it and hide them. The offset covers
+                    # the controls, the legend line and the caption.
                     children=html.Div(id='strip_display_container',
-                                      style={"height": "calc(100vh - 262px)",
+                                      style={"height": "calc(100vh - 290px)",
                                              "overflowY": "auto", "width": "100%"}),
                     color=vc.BRIGHTER_TEXT_COLOR
                 )
@@ -324,6 +349,7 @@ def follow_global_lookback(value, current_local_val):
 @callback(
     Output('strip_display_container', 'children'),
     Output('strip_caption', 'children'),
+    Output('strip_legend', 'children'),
     [Input('strip_class_selector', 'value'),
      Input('global_lookback_store', 'data'),
      Input('global_model_store', 'data'),
@@ -331,16 +357,15 @@ def follow_global_lookback(value, current_local_val):
      Input('strip_show_selector', 'value'),
      Input('strip_side_selector', 'value'),
      Input('strip_columns_selector', 'value'),
-     Input('strip_mark_selector', 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('strip_date_selector', 'value')]
 )
 def render_strip(asset_classes, lookback, model_key, sort_by, show, side, columns,
-                 mark, palette_name, target_date):
+                 palette_name, target_date):
     empty = html.P("Select an asset class to draw the strip.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     if not asset_classes:
-        return empty, ""
+        return empty, "", []
     if not lookback:
         lookback = "Custom"
 
@@ -348,7 +373,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
     df = get_matrix_data(asset_classes, lookback, target_date)
     if df.empty:
         return html.P("No data available.",
-                      style={'textAlign': 'center', 'color': vc.TEXT_COLOR}), ""
+                      style={'textAlign': 'center', 'color': vc.TEXT_COLOR}), "", []
 
     rows, skipped = strip_traces.build_rows(
         df, model, sort_by_index=(sort_by != SORT_ALPHA),
@@ -360,13 +385,9 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
     hidden = max(0, len(df) - drawn - len(skipped))
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
-    # The legend is drawn once, on the first column. Repeating it beside every column
-    # would spend a row of vertical space per column saying the same thing.
     chunks = strip_traces.split_columns(rows, int(columns or 1))
-    figures = [strip_traces.build_figure(chunk, model, colors, palette,
-                                         show_legend=(i == 0),
-                                         mark=mark or strip_traces.MARK_DOT)
-               for i, chunk in enumerate(chunks)]
+    figures = [strip_traces.build_figure(chunk, model, colors, palette)
+               for chunk in chunks]
 
     report_date = target_date or df.iloc[0]["Date"]
     return (
@@ -387,7 +408,12 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
                                      "margin": "0 auto"}),
                     xs=12, md=(12 // len(figures)))
             for f in figures
-        ], className="g-0"),
-        caption(report_date, lookback, model, skipped, hidden,
-                mark=mark or strip_traces.MARK_DOT),
+        # align="start", because Bootstrap's default is to stretch every column to the
+        # row's height. The columns hold different row counts, so the shorter figure
+        # was stretched to the taller one's height and `responsive` re-drew it to fit:
+        # its rows landed on a ~23px pitch beside the other column's 19px, two visibly
+        # different densities on one board.
+        ], className="g-0", align="start"),
+        caption(report_date, lookback, model, skipped, hidden),
+        legend(model, colors, palette),
     )
