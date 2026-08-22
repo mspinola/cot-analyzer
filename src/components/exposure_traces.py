@@ -22,6 +22,8 @@ reproduced, and each fix is a rule below rather than a preference:
   which is what the number IS, and the page's caption states the gap. That matters more
   here than in a static PDF because these charts sit next to setup gates.
 """
+import math
+
 import cotmetrics.exposure as exposure
 import pandas as pd
 import plotly.graph_objects as go
@@ -83,6 +85,29 @@ LEG_PALETTE_SLOT = {
 #: an exchange migration splitting a CFTC code. A step line drawn straight across one
 #: says the level held for five months, which is a claim the data does not make.
 MAX_JOIN_DAYS = 14
+
+#: What the middle and bottom panels plot.
+#:
+#: SCALE_RANK exists because SCALE_LEVEL cannot be fixed by an axis. The exposure series
+#: is signed and crosses zero, so a log axis is not merely unhelpful there, it is
+#: undefined. And the breadth it would be asked to fix is real rather than cosmetic:
+#: on Metals since 1989 the median absolute weekly figure grew 48x in risk and 55x in
+#: notional between the 1990s and the 2020s, because dollar figures carry the price
+#: level. No monotone rescaling of a signed series makes 1991 and 2026 legible together.
+#:
+#: The percentile does, by being stationary by construction. It is the same expanding
+#: rank the headline already quotes, so the two cannot disagree.
+SCALE_LEVEL = "level"
+SCALE_RANK = "rank"
+
+SCALE_LABELS = {SCALE_LEVEL: "Level", SCALE_RANK: "%ile"}
+
+#: Below this high-to-low ratio the price panel stays linear. A log axis earns its
+#: keep by making equal PERCENTAGE moves equal distances, which only shows up over a
+#: wide range; under 3x the two look alike and log only costs the reader a familiar
+#: axis. Metals runs 15.2x since 1989 and is the case this exists for; Currencies runs
+#: 1.4x and is the case it protects.
+LOG_RATIO_MIN = 3.0
 
 BAND_ALPHA = 0.16
 FILL_ALPHA = 0.30
@@ -174,7 +199,7 @@ def unit_scale(values):
 
 def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
-                 leg=exposure.LEG_SPEC, parts=None):
+                 leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL):
     """Two panels: the set's own price composite, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
@@ -193,8 +218,10 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                               x=0.5, y=0.5, font=dict(color=vc.TEXT_COLOR))])
         return fig
 
-    values = frame[unit]
-    divisor, suffix = unit_scale(values)
+    ranked = scale == SCALE_RANK
+    rank_column = UNIT_RANK_COLUMN[unit]
+    values = frame[rank_column] if ranked else frame[unit]
+    divisor, suffix = (1.0, "") if ranked else unit_scale(values)
     scaled = values / divisor
     leg_colour = palette[LEG_PALETTE_SLOT.get(leg, 0)]
 
@@ -209,8 +236,16 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             row=1, col=1)
 
     # ── the extremes, under the level so the level stays readable ────────────
-    low = exposure.expanding_quantile(values, BAND_LOW, MIN_RANK_PERIODS) / divisor
-    high = exposure.expanding_quantile(values, BAND_HIGH, MIN_RANK_PERIODS) / divisor
+    # On the percentile scale the band IS flat, at the two percentiles it is made of,
+    # which is the point: the line moves in and out of a fixed range instead of the
+    # range chasing the line. Computing the expanding quantile of a rank series would
+    # give almost the same two lines the long way round, and wobbling ones at that.
+    if ranked:
+        flat = pd.Series(BAND_LOW * 100, index=frame.index)
+        low, high = flat, pd.Series(BAND_HIGH * 100, index=frame.index)
+    else:
+        low = exposure.expanding_quantile(values, BAND_LOW, MIN_RANK_PERIODS) / divisor
+        high = exposure.expanding_quantile(values, BAND_HIGH, MIN_RANK_PERIODS) / divisor
     fig.add_trace(go.Scatter(
         x=frame.index, y=high.to_numpy(), name=f"{int(BAND_HIGH * 100)}th pct",
         mode="lines", line_shape="hv", line=dict(width=0), showlegend=False,
@@ -230,14 +265,27 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         x=frame.index, y=break_gaps(frame.index, scaled.to_numpy()),
         name=leg_label or "Net exposure",
         mode="lines", line_shape="hv", line=dict(color=leg_colour, width=1.4),
-        fill="tozeroy", fillcolor=hex_to_rgba(leg_colour, FILL_ALPHA),
-        customdata=frame[UNIT_RANK_COLUMN[unit]].to_numpy(),
-        hovertemplate=("%{x|%b %d, %Y}<br>%{y:,.1f}" + suffix
-                       + " USD<br>%{customdata:.0f}th percentile of its own history"
-                       + "<extra></extra>")),
+        # No fill on the percentile scale. Filling to zero there would shade the
+        # distance to the BOTTOM of the distribution, and zero is a floor rather than
+        # the neutral the fill means on a signed series.
+        fill=None if ranked else "tozeroy",
+        fillcolor=None if ranked else hex_to_rgba(leg_colour, FILL_ALPHA),
+        # Each scale's hover carries the OTHER quantity, so neither view hides what the
+        # other one is for: the level cannot answer "is this a lot" on its own, and the
+        # percentile cannot say how much money that is.
+        customdata=(frame[unit] / unit_scale(frame[unit])[0]).to_numpy() if ranked
+        else frame[rank_column].to_numpy(),
+        hovertemplate=(
+            "%{x|%b %d, %Y}<br>%{y:,.0f}th percentile<br>%{customdata:,.1f}"
+            + unit_scale(frame[unit])[1] + " USD<extra></extra>" if ranked else
+            "%{x|%b %d, %Y}<br>%{y:,.1f}" + suffix
+            + " USD<br>%{customdata:.0f}th percentile of its own history<extra></extra>"
+        )),
         row=2, col=1)
 
-    fig.add_hline(y=0, row=2, col=1, line=dict(
+    # Zero is neutral on a signed series and the floor of the distribution on a rank,
+    # so the line that marks it is drawn at 50 there instead: the median week.
+    fig.add_hline(y=50 if ranked else 0, row=2, col=1, line=dict(
         color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
 
     # ── the other legs, in their own panel ───────────────────────────────────
@@ -254,6 +302,12 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         if part is None or part.empty:
             continue
         aligned = part.reindex(frame.index)
+        # Each companion ranked against ITS OWN history, not the subject's. They are
+        # different quantities on different scales, which is why they have their own
+        # panel; ranking them against the subject would put them back on its axis by
+        # another route.
+        if ranked:
+            aligned = exposure.expanding_pct_rank(aligned, MIN_RANK_PERIODS)
         fig.add_trace(go.Scatter(
             x=frame.index,
             y=break_gaps(frame.index, (aligned / divisor).to_numpy()),
@@ -261,13 +315,14 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             line=dict(color=hex_to_rgba(palette[LEG_PALETTE_SLOT[part_leg]],
                                         PART_ALPHA),
                       width=PART_WIDTH),
-            hovertemplate=("%{y:,.1f}" + suffix + " USD<extra>"
+            hovertemplate=(("%{y:,.0f}th percentile<extra>" if ranked
+                            else "%{y:,.1f}" + suffix + " USD<extra>")
                            + exposure.LEG_LABELS[part_leg] + "</extra>")),
             row=3, col=1)
         drew_companion = True
 
     if drew_companion:
-        fig.add_hline(y=0, row=3, col=1, line=dict(
+        fig.add_hline(y=50 if ranked else 0, row=3, col=1, line=dict(
             color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
 
     title = " ".join(p for p in [set_label, "-", UNIT_LABELS[unit]] if p).strip(" -")
@@ -283,9 +338,21 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     )
     fig.update_xaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
     fig.update_yaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
-    usd = f"USD {suffix}" if suffix else "USD"
+    usd = "Percentile" if ranked else (f"USD {suffix}" if suffix else "USD")
+    price_axis = price_axis_type(composite)
+    # Plotly's default on a log axis puts a tick at every digit, which in a panel this
+    # short (26% of the figure, about 180px) renders as a column of stacked single
+    # digits. Three a decade is enough to read a 15x range and few enough to label in
+    # full. See log_ticks for why the labels are spelled out rather than left to `D2`.
+    ticks = log_ticks(composite) if price_axis == "log" else None
     fig.update_yaxes(title_text="Index (=100 at start)", row=1, col=1,
-                     title_font=dict(size=10))
+                     title_font=dict(size=10), type=price_axis,
+                     tickmode="array" if ticks else None,
+                     tickvals=ticks,
+                     ticktext=[f"{v:,.0f}" for v in ticks] if ticks else None)
+    if ranked:
+        fig.update_yaxes(range=[0, 100], row=2, col=1)
+        fig.update_yaxes(range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text=usd, row=2, col=1, title_font=dict(size=10))
     # Same units and the same divisor as the panel above, deliberately, so a companion
     # can be read against the subject by eye. Only the AXIS RANGE differs, which is the
@@ -355,3 +422,49 @@ def build_contributions_figure(values, *, unit=UNIT_NOTIONAL, palette,
                      title_font=dict(size=10))
     fig.update_yaxes(showgrid=False, zeroline=False, automargin=True)
     return fig
+
+
+def price_axis_type(composite):
+    """"log" or "linear" for the price panel, decided by the series rather than set.
+
+    Log ONLY where the composite is strictly positive. It is an equal-weight mean of
+    ratio-rebased unadjusted prices, and unadjusted prices are not guaranteed positive:
+    WTI settled at -37.63 on 2020-04-20. No class composite goes non-positive in the
+    store today, because that one day is averaged against three other energy markets,
+    but a narrower Energies selection could. Plotly drops non-positive points from a log
+    axis SILENTLY, so the guard is the difference between a linear chart and a chart
+    with a hole nothing announces.
+    """
+    if composite is None or composite.empty:
+        return "linear"
+    low, high = float(composite.min()), float(composite.max())
+    if low <= 0:
+        return "linear"
+    return "log" if high / low >= LOG_RATIO_MIN else "linear"
+
+
+def log_ticks(composite):
+    """Tick values at 1, 2 and 5 per decade across the series' range, or None.
+
+    Plotly's own `dtick="D2"` puts the ticks in the right places and labels the minor
+    ones with a bare mantissa, so a 200 renders as "2" directly under a "100". On a
+    panel whose y values are index levels that is not a shorthand, it is a wrong number.
+    Explicit values and explicit text cost eight lines and remove the ambiguity.
+
+    Returns None where fewer than three ticks land inside the range, which is a range
+    too narrow to be on a log axis at all; the caller falls back to Plotly's default.
+    """
+    if composite is None or composite.empty:
+        return None
+    low, high = float(composite.min()), float(composite.max())
+    if low <= 0 or high <= low:
+        return None
+    values = []
+    exponent = math.floor(math.log10(low))
+    while 10 ** exponent <= high:
+        for mantissa in (1, 2, 5):
+            value = mantissa * 10 ** exponent
+            if low <= value <= high:
+                values.append(value)
+        exponent += 1
+    return values if len(values) >= 3 else None

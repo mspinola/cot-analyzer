@@ -34,9 +34,25 @@ from components.plot_colors import grid_colors
 
 dash.register_page(__name__, path='/exposure')
 
-LEG_OPTIONS = [{"label": exposure.LEG_LABELS[k], "value": k}
+#: Short labels for the CONTROL only. The prose keeps `exposure.LEG_LABELS`, where
+#: "Speculators (Large + Small)" is worth its length because a reader meeting the total
+#: for the first time needs to know what is in it. In a 180px select it is three words
+#: of ellipsis, and the composition line under the headline names the two halves anyway.
+LEG_SHORT = {
+    exposure.LEG_SPEC: "Speculators",
+    exposure.LEG_COMM: "Commercials",
+    exposure.LEG_LARGE: "Large Specs",
+    exposure.LEG_SMALL: "Small Traders",
+}
+
+LEG_OPTIONS = [{"label": LEG_SHORT[k], "value": k}
                for k in (exposure.LEG_SPEC, exposure.LEG_COMM,
                          exposure.LEG_LARGE, exposure.LEG_SMALL)]
+
+SCALE_OPTIONS = [
+    {"label": exposure_traces.SCALE_LABELS[k], "value": k}
+    for k in (exposure_traces.SCALE_LEVEL, exposure_traces.SCALE_RANK)
+]
 
 UNIT_OPTIONS = [
     {"label": "Risk", "value": exposure_traces.UNIT_RISK},
@@ -340,6 +356,13 @@ def how_to_read(unit):
          "A sum says nothing about whether every market agreed or one market carried "
          "it, so the bars below break the latest week apart and the line under the "
          "headline scores it. Faded bars point against the total."),
+        ("The Scale switch",
+         "Level plots the dollars; %ile plots where each week sat in the history up to "
+         "itself, 0 to 100. On a long set the level view is dominated by recent years "
+         "whatever the positioning did, because dollar figures carry the price level: "
+         "on Metals since 1989 the typical weekly figure grew about 48 times between "
+         "the 1990s and the 2020s. %ile puts every year on the same footing. The band "
+         "goes flat at 10 and 90 there, and the hover still tells you the dollars."),
         ("The third panel",
          "The other two Legacy groups, whichever one you are looking at. The three sum "
          "to zero every week, so no group moves without another moving against it, but "
@@ -433,14 +456,14 @@ def layout(**kwargs):
                         dcc.Dropdown(id='exposure_member_selector', multi=True,
                                      options=[], value=[], placeholder="all",
                                      className="cot-dropdown"),
-                    ], xs=12, md=4, className="px-md-2 mt-2 mt-md-0"),
+                    ], xs=12, md=3, className="px-md-2 mt-2 mt-md-0"),
 
                     dbc.Col([
                         html.Label("Leg", style=CONTROL_LABEL),
                         dbc.Select(id='exposure_leg_selector', options=LEG_OPTIONS,
                                    value=exposure.LEG_SPEC, size="sm",
                                    className="bg-dark text-white border-secondary"),
-                    ], xs=7, md=3, className="px-md-2 mt-2 mt-md-0"),
+                    ], xs=7, md=2, className="px-md-2 mt-2 mt-md-0"),
 
                     dbc.Col([
                         # "Risk" and "Notional", not the full "USD risk" and "USD
@@ -455,6 +478,20 @@ def layout(**kwargs):
                                        style={"color": vc.BRIGHTER_TEXT_COLOR,
                                               "fontSize": "0.85rem"}),
                     ], xs=5, md=2, className="px-md-2 mt-2 mt-md-0"),
+
+                    dbc.Col([
+                        # Level or percentile. Not a log toggle, which is what a broad
+                        # axis usually asks for and which cannot apply here: the
+                        # exposure series is signed and crosses zero, so a log axis is
+                        # undefined on it. See exposure_traces.SCALE_RANK.
+                        html.Label("Scale", style=CONTROL_LABEL),
+                        dbc.RadioItems(id='exposure_scale_selector',
+                                       persistence='session',
+                                       options=SCALE_OPTIONS,
+                                       value=exposure_traces.SCALE_LEVEL, inline=True,
+                                       style={"color": vc.BRIGHTER_TEXT_COLOR,
+                                              "fontSize": "0.85rem"}),
+                    ], xs=7, md=2, className="px-md-2 mt-2 mt-md-0"),
                 ], align="center"),
             ], className="py-2"), className="mb-2 shadow-sm",
                 style={"backgroundColor": "rgba(30, 30, 30, 0.6)",
@@ -642,13 +679,15 @@ def apply_help_fold(is_open):
     Input('exposure_member_selector', 'value'),
     Input('exposure_leg_selector', 'value'),
     Input('exposure_unit_selector', 'value'),
+    Input('exposure_scale_selector', 'value'),
     Input('session_palette_theme_asset_store', 'data'),
 )
-def render_exposure(asset_classes, members, leg, unit, palette_name):
+def render_exposure(asset_classes, members, leg, unit, scale, palette_name):
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
+    scale = scale or exposure_traces.SCALE_LEVEL
 
     help_block = help_children(unit)
     if not asset_classes:
@@ -678,7 +717,7 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
-        leg=leg, parts=part_frames)
+        leg=leg, parts=part_frames, scale=scale)
 
     said = describe_week(agg, part_frames, unit, leg, palette)
     # A control change resets the selection: the clicked week belonged to the set that

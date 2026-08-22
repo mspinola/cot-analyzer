@@ -232,9 +232,10 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 6
+    assert len(titles) == 7
     joined = " ".join(titles).lower()
-    for topic in ("number", "band", "panels", "made of", "third panel", "not"):
+    for topic in ("number", "band", "panels", "made of", "scale switch",
+                  "third panel", "not"):
         assert topic in joined
 
 
@@ -523,3 +524,12 @@ def test_the_exclusions_are_named_rather_than_counted():
     assert "not included: Nikkei 225" in line
     assert "1 not included" not in line
     assert "1 market(s) not included" not in line
+
+
+def test_the_explanation_says_why_the_percentile_scale_exists():
+    """A broad axis usually asks for a log toggle, and a log axis is undefined on a
+    signed series. The percentile is the thing that actually makes 1991 and 2026
+    legible together."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "48 times" in body
+    assert "same footing" in body

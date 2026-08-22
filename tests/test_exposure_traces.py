@@ -332,3 +332,138 @@ def test_no_contributors_draws_an_empty_frame_rather_than_raising():
     fig = et.build_contributions_figure(None, unit=et.UNIT_RISK, palette=PALETTE)
     assert len(fig.data) == 0
     assert fig.layout.height == et.CONTRIB_MIN_PX
+
+
+# ── the price axis ────────────────────────────────────────────────────────────
+
+def series(values, start="2026-01-06"):
+    return pd.Series([float(v) for v in values],
+                     index=pd.date_range(start, periods=len(values), freq="W-TUE"))
+
+
+def test_a_wide_price_range_gets_a_log_axis():
+    """Log earns its keep by making equal PERCENTAGE moves equal distances, which only
+    shows up over a wide range. Metals runs 15.2x since 1989 and is the case this exists
+    for."""
+    assert et.price_axis_type(series([100, 1500])) == "log"
+
+
+def test_a_narrow_price_range_stays_linear():
+    """Under 3x the two look alike and log only costs the reader a familiar axis.
+    Currencies runs 1.4x and is the case this protects."""
+    assert et.price_axis_type(series([100, 140])) == "linear"
+
+
+def test_a_composite_that_touches_zero_stays_linear():
+    """The composite is a mean of ratio-rebased UNADJUSTED prices, and those are not
+    guaranteed positive: WTI settled at -37.63 on 2020-04-20. Plotly drops non-positive
+    points from a log axis SILENTLY, so this guard is the difference between a linear
+    chart and a chart with a hole nothing announces."""
+    assert et.price_axis_type(series([100, -20, 500])) == "linear"
+    assert et.price_axis_type(series([0, 100, 500])) == "linear"
+
+
+def test_no_composite_at_all_is_linear_rather_than_an_error():
+    assert et.price_axis_type(None) == "linear"
+    assert et.price_axis_type(pd.Series(dtype=float)) == "linear"
+
+
+# ── the percentile scale ──────────────────────────────────────────────────────
+
+def test_the_exposure_panel_cannot_be_logged_so_it_is_ranked_instead():
+    """The series is signed and crosses zero, so a log axis is not merely unhelpful
+    there, it is undefined. And the breadth is real: on Metals the median absolute
+    weekly figure grew 48x in risk between the 1990s and the 2020s, because dollar
+    figures carry the price level. The percentile is stationary by construction."""
+    df = frame([1e9, -2e9, 3e9], ranks=[10.0, 50.0, 97.0])
+    fig = build(df)
+    assert fig.layout.yaxis2.type in (None, "linear")
+
+    ranked = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                             palette=PALETTE, leg_label="Spec", scale=et.SCALE_RANK)
+    subject = next(t for t in ranked.data if t.name == "Spec")
+    assert list(subject.y) == [10.0, 50.0, 97.0]
+    assert tuple(ranked.layout.yaxis2.range) == (0, 100)
+
+
+def test_the_ranked_panel_drops_the_fill():
+    """Filling to zero there would shade the distance to the BOTTOM of the
+    distribution, and zero is a floor rather than the neutral the fill means on a
+    signed series."""
+    ranked = et.build_figure(frame([1e9, 2e9]), None, unit=et.UNIT_NOTIONAL,
+                             colors=COLORS, palette=PALETTE, leg_label="Spec",
+                             scale=et.SCALE_RANK)
+    assert next(t for t in ranked.data if t.name == "Spec").fill is None
+    assert next(t for t in build(frame([1e9, 2e9])).data
+                if t.name == "Speculators").fill == "tozeroy"
+
+
+def test_the_ranked_panels_mark_the_median_week_not_zero():
+    """Zero is neutral on a signed series and the floor of the distribution on a rank."""
+    ranked = et.build_figure(frame([1e9, 2e9]), None, unit=et.UNIT_NOTIONAL,
+                             colors=COLORS, palette=PALETTE, leg_label="Spec",
+                             scale=et.SCALE_RANK)
+    assert any(getattr(sh, "y0", None) == 50 for sh in ranked.layout.shapes)
+    assert not any(getattr(sh, "y0", None) == 0 and sh.yref == "y2"
+                   for sh in ranked.layout.shapes)
+
+
+def test_the_band_is_flat_on_the_percentile_scale():
+    """It IS flat, at the two percentiles it is made of, which is the point: the line
+    moves in and out of a fixed range instead of the range chasing the line."""
+    ranked = et.build_figure(frame([1e9] * 6, ranks=[5.0, 50.0, 95.0] * 2), None,
+                             unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+                             leg_label="Spec", scale=et.SCALE_RANK)
+    band = next(t for t in ranked.data if t.name == "Usual range")
+    assert set(band.y) == {et.BAND_LOW * 100}
+
+
+def test_both_scales_are_offered_with_a_label_each():
+    assert set(et.SCALE_LABELS) == {et.SCALE_LEVEL, et.SCALE_RANK}
+
+
+def test_the_percentile_hover_still_says_how_much_money_that_was():
+    """Each scale's hover carries the OTHER quantity, so neither view hides what the
+    other one is for: the level cannot answer "is this a lot" on its own, and the
+    percentile cannot say how much money that is."""
+    ranked = et.build_figure(frame([1e9, 2e9], ranks=[10.0, 97.0]), None,
+                             unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+                             leg_label="Spec", scale=et.SCALE_RANK)
+    subject = next(t for t in ranked.data if t.name == "Spec")
+    assert "percentile" in subject.hovertemplate
+    assert "USD" in subject.hovertemplate
+    assert list(subject.y) == [10.0, 97.0]
+
+
+def test_a_log_price_axis_labels_its_ticks_in_full():
+    """Plotly's `D2` labels a minor tick with a bare mantissa, so a 200 renders as "2"
+    directly under a "100". On a panel of index levels that is not a shorthand, it is a
+    wrong number."""
+    fig = et.build_figure(frame([1e9, 2e9]), series([100, 1500]),
+                          unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+                          leg_label="Spec")
+    assert fig.layout.yaxis.type == "log"
+    assert fig.layout.yaxis.tickmode == "array"
+    assert "1,000" in fig.layout.yaxis.ticktext
+    assert "200" in fig.layout.yaxis.ticktext
+    assert "2" not in fig.layout.yaxis.ticktext
+
+
+def test_the_log_ticks_are_one_two_and_five_a_decade_inside_the_range():
+    assert et.log_ticks(series([100, 1500])) == [100, 200, 500, 1000]
+    assert et.log_ticks(series([74.9, 1135.7])) == [100, 200, 500, 1000]
+
+
+def test_a_range_too_narrow_for_three_ticks_falls_back_to_plotlys_default():
+    """A range that narrow has no business on a log axis anyway."""
+    assert et.log_ticks(series([100, 150])) is None
+    assert et.log_ticks(series([100, -5])) is None
+    assert et.log_ticks(None) is None
+
+
+def test_a_linear_price_axis_takes_no_tick_array():
+    fig = et.build_figure(frame([1e9, 2e9]), series([100, 120]),
+                          unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+                          leg_label="Spec")
+    assert fig.layout.yaxis.type == "linear"
+    assert fig.layout.yaxis.tickvals is None
