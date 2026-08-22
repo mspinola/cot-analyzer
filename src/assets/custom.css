@@ -1111,6 +1111,13 @@ body {
 
 
 
+/* Numbers in the matrix line up digit-for-digit. Inter is proportional by default,
+   so a 1 is narrower than a 4 and right-aligned figures still wobble; tabular figures
+   give every digit one width. Cells only: headers are words. */
+.ag-theme-quartz-dark .ag-cell {
+    font-variant-numeric: tabular-nums;
+}
+
 /* --- AG Grid Matrix Group Borders --- */
 .group-border-right {
     border-right: 2px solid var(--border-color) !important;
