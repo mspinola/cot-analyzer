@@ -26,6 +26,143 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             return window.dash_clientside.no_update;
         },
+        /**
+         * The Crowding Strip as one PNG: caption, legend and every column.
+         *
+         * Same shape as export_oi_alignment_image below and different in three ways,
+         * each forced by what this page is.
+         *
+         * One, the strip lives in a fixed-height box that scrolls (the control card is
+         * sticky, so the page itself must not scroll). A screenshot of that box is the
+         * visible rows only, which is the opposite of what this page is for. The clone
+         * gets height:auto and overflow:visible, so the export is the WHOLE board even
+         * when the reader can only see a third of it.
+         *
+         * Two, there can be one column or two, so the plots are collected rather than
+         * named. Each is snapshotted at its own on-screen size: the figure's height is
+         * ROW_PX times its row count, so stretching it the way the OI export does would
+         * change the row pitch, which is the one dimension on this figure that has to
+         * stay constant between the two columns.
+         *
+         * Three, the caption and the legend are page chrome here rather than part of a
+         * figure, and both carry things the picture cannot: the report date, which
+         * window each row was measured over, and what the marks mean. An export without
+         * them is a board of coloured dots with no date on it, so they are inside the
+         * cloned container rather than added back afterwards.
+         */
+        export_strip_image: function(n_clicks, model_key, target_date) {
+            if (!n_clicks) { return window.dash_clientside.no_update; }
+            if (typeof html2canvas === 'undefined' || typeof Plotly === 'undefined') {
+                console.error("html2canvas or Plotly is not loaded.");
+                return window.dash_clientside.no_update;
+            }
+            var container = document.getElementById("strip_export_container");
+            if (!container) {
+                console.error("Could not find the strip export container.");
+                return window.dash_clientside.no_update;
+            }
+
+            var plots = Array.prototype.slice.call(
+                container.querySelectorAll('.js-plotly-plot'));
+            if (!plots.length) { return window.dash_clientside.no_update; }
+
+            // scale 2 for a crisp raster; the <img> is sized back down to the on-screen
+            // width below, so the extra pixels land as resolution rather than as size.
+            var shots = plots.map(function(node) {
+                var box = node.getBoundingClientRect();
+                return Plotly.toImage(node, {
+                    format: 'png',
+                    width: Math.round(box.width) || 900,
+                    height: Math.round(box.height) || 800,
+                    scale: 2
+                }).then(function(dataUrl) {
+                    return {url: dataUrl, width: Math.round(box.width) || 900};
+                });
+            });
+
+            Promise.all(shots).then(function(images) {
+                var clone = container.cloneNode(true);
+                clone.style.position = 'absolute';
+                clone.style.left = '-9999px';
+                clone.style.top = '-9999px';
+                clone.style.width = container.clientWidth + 'px';
+                clone.style.backgroundColor = '#1a1a1a';
+                clone.style.padding = '20px';
+
+                // Every scroll box in the clone opens up, so the export carries rows
+                // the reader would have had to scroll to.
+                Array.prototype.forEach.call(
+                    clone.querySelectorAll('*'), function(node) {
+                        if (node.style && (node.style.overflowY || node.style.overflow)) {
+                            node.style.overflow = 'visible';
+                            node.style.overflowY = 'visible';
+                            node.style.height = 'auto';
+                            node.style.maxHeight = 'none';
+                        }
+                    });
+
+                // Swap each live plot for its snapshot, in the same order and in place,
+                // so the column layout the page chose is the layout the PNG gets.
+                var clonePlots = Array.prototype.slice.call(
+                    clone.querySelectorAll('.js-plotly-plot'));
+                var pending = [];
+                clonePlots.forEach(function(node, i) {
+                    if (!images[i]) { return; }
+                    var img = document.createElement('img');
+                    img.style.width = images[i].width + 'px';
+                    img.style.maxWidth = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    pending.push(new Promise(function(resolve) {
+                        img.onload = resolve;
+                        img.onerror = resolve;
+                    }));
+                    img.src = images[i].url;
+                    node.parentNode.replaceChild(img, node);
+                });
+
+                var themeContainer = document.getElementById("theme-container")
+                    || document.body;
+                themeContainer.appendChild(clone);
+
+                // html2canvas measures rather than waits, so a decoded image is a
+                // precondition, not a nicety: an <img> still loading paints as nothing.
+                Promise.all(pending).then(function() {
+                    setTimeout(function() {
+                        html2canvas(clone, {
+                            backgroundColor: "#1a1a1a",
+                            scale: 2,
+                            useCORS: true,
+                            logging: false
+                        }).then(function(canvas) {
+                            themeContainer.removeChild(clone);
+                            var stamp = target_date;
+                            if (!stamp) {
+                                var today = new Date();
+                                stamp = today.getFullYear() + '-'
+                                    + String(today.getMonth() + 1).padStart(2, '0') + '-'
+                                    + String(today.getDate()).padStart(2, '0');
+                            }
+                            var model = (model_key || 'model')
+                                .replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                            var link = document.createElement('a');
+                            link.download = 'cot_strip_' + model + '_' + stamp + '.png';
+                            link.href = canvas.toDataURL("image/png");
+                            link.click();
+                        }).catch(function(err) {
+                            console.error("html2canvas failed on the strip clone: ", err);
+                            if (clone.parentNode === themeContainer) {
+                                themeContainer.removeChild(clone);
+                            }
+                        });
+                    }, 150);
+                });
+            }).catch(function(err) {
+                console.error("Plotly toImage failed on the strip", err);
+            });
+
+            return window.dash_clientside.no_update;
+        },
         export_oi_alignment_image: function(n_clicks, asset_name) {
             if (n_clicks) {
                 if (typeof html2canvas === 'undefined') {
