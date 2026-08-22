@@ -242,10 +242,10 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 8
+    assert len(titles) == 9
     joined = " ".join(titles).lower()
     for topic in ("number", "band", "panels", "made of", "gold switch",
-                  "scale switch", "third panel", "not"):
+                  "gold is and is not", "scale switch", "third panel", "not"):
         assert topic in joined
 
 
@@ -703,11 +703,23 @@ def test_the_aggregate_tuple_is_built_by_keyword_in_these_tests():
     assert inspect.signature(AggregateExposure).parameters["numeraire"].default == "usd"
 
 
-def test_the_explanation_gives_both_gold_caveats():
-    """Gold is an asset with its own trend rather than a ruler, and gold measured in
-    gold is circular. Both are measured, and a view that offered the numeraire without
-    saying either would be handing over a deflator as if it were a fact."""
+def test_the_explanation_refuses_to_call_gold_an_inflation_adjustment():
+    """The difference is not academic. From January 1980 to August 1999 gold fell 63%
+    while US consumer prices rose 2.3 times, losing about 84% in real terms over
+    nineteen years: over that window it would have ADDED a trend rather than removed
+    one. A page that called it inflation-adjusted would be teaching the wrong reading."""
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
-    assert "not a ruler" in body
+    assert "not an inflation adjustment" in body
+    assert "84%" in body
+    assert "ADDED a trend" in body
+
+
+def test_the_explanation_credits_the_idea_it_borrows():
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "WillVal" in body
+
+
+def test_the_explanation_keeps_the_circularity_caveat():
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "self-referential" in body
     assert "98th percentile" in body

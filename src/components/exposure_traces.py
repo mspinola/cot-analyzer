@@ -356,7 +356,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # digits. Three a decade is enough to read a 15x range and few enough to label in
     # full. See log_ticks for why the labels are spelled out rather than left to `D2`.
     ticks = log_ticks(composite) if price_axis == "log" else None
-    fig.update_yaxes(title_text="Index (=100 at start)", row=1, col=1,
+    fig.update_yaxes(title_text=f"Index in {base} (=100)", row=1, col=1,
                      title_font=dict(size=10), type=price_axis,
                      tickmode="array" if ticks else None,
                      tickvals=ticks,

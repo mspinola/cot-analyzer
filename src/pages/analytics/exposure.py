@@ -397,16 +397,22 @@ def how_to_read(unit):
          "small part of the total and still be at the most extreme reading it has ever "
          "had."),
         ("The Gold switch",
-         "Divides every figure by the gold price, so the series is in troy ounces "
-         "instead of dollars. It removes most of the drift a long dollar history "
-         "carries: on Equities the typical weekly figure grew 4.2 times since 2002 in "
-         "USD and 1.3 times in gold. It can change the reading, not just the axis, and "
-         "on the current week it does: US equity speculators sit at the 98th percentile "
-         "of their own history in dollars and the 67th in ounces. Two caveats. Gold is "
-         "an asset with its own trend, not a ruler, though the two series disagree on "
-         "the direction of a weekly change under 4% of weeks. And gold measured in gold "
-         "is just its contract count, so a Metals total in ounces carries one "
-         "self-referential market."),
+         "Prices everything in troy ounces instead of dollars, both panels, which is "
+         "Larry Williams' WillVal applied to a whole complex: an asset measured against "
+         "hard money rather than against a currency. Since 2002 the US equity composite "
+         "is up 13.9 times in dollars and 1.0 times in gold. It changes the reading and "
+         "not just the axis: on the current week those speculators sit at the 98th "
+         "percentile of their own history in dollars and the 67th in ounces."),
+        ("What gold is and is not",
+         "It is a hard-money benchmark, not an inflation adjustment, and the difference "
+         "is not academic. From January 1980 to August 1999 gold fell 63% while US "
+         "consumer prices rose 2.3 times, so it lost about 84% in real terms over "
+         "nineteen years: over that window it would have ADDED a trend rather than "
+         "removed one. It has run 6.6% a year since 1978 at 19% volatility, so read it "
+         "as a second asset the first is being compared against. The two series "
+         "disagree on the direction of a weekly change under 4% of weeks. And gold "
+         "measured in gold is just its contract count, so a Metals total in ounces "
+         "carries one self-referential market."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -882,7 +888,8 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
     names = list(members) if members else _names_in(asset_classes)
     agg = exposure.aggregate_exposure(names, leg=leg, numeraire=numeraire)
     composite = exposure.composite_price_index(
-        list(agg.coverage), dates=agg.frame.index) if not agg.frame.empty else None
+        list(agg.coverage), dates=agg.frame.index,
+        numeraire=numeraire) if not agg.frame.empty else None
 
     # The other Legacy legs, for the companion panel. Computed over the same member
     # list rather than the same date index, so a leg whose completeness differs is

@@ -438,3 +438,14 @@ def test_the_title_names_the_numeraire_the_axis_is_in():
 
     usd = build(frame([1e9, 2e9]))
     assert "USD" in usd.layout.title.text
+
+
+def test_the_price_axis_names_the_numeraire_it_is_indexed_in():
+    """It said "Index (=100 at start)" over a gold-denominated composite, which is the
+    reference/subject mismatch this view exists to avoid, one panel up."""
+    from cotmetrics.exposure import NUMERAIRE_GOLD
+    gold = et.build_figure(frame([1e6, 2e6]), series([100, 90]), unit=et.UNIT_RISK,
+                           colors=COLORS, palette=PALETTE, leg_label="Spec",
+                           numeraire=NUMERAIRE_GOLD)
+    assert "oz gold" in gold.layout.yaxis.title.text
+    assert "USD" in build(frame([1e9, 2e9]), series([100, 120])).layout.yaxis.title.text
