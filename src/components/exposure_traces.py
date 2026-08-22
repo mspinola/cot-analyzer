@@ -199,7 +199,8 @@ def unit_scale(values):
 
 def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
-                 leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL):
+                 leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL,
+                 numeraire=None):
     """Two panels: the set's own price composite, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
@@ -219,6 +220,8 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         return fig
 
     ranked = scale == SCALE_RANK
+    # What the money is denominated in, needed by the hovers as well as the axis.
+    base = "oz gold" if numeraire == exposure.NUMERAIRE_GOLD else "USD"
     rank_column = UNIT_RANK_COLUMN[unit]
     values = frame[rank_column] if ranked else frame[unit]
     divisor, suffix = (1.0, "") if ranked else unit_scale(values)
@@ -277,9 +280,10 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         else frame[rank_column].to_numpy(),
         hovertemplate=(
             "%{x|%b %d, %Y}<br>%{y:,.0f}th percentile<br>%{customdata:,.1f}"
-            + unit_scale(frame[unit])[1] + " USD<extra></extra>" if ranked else
+            + unit_scale(frame[unit])[1] + f" {base}<extra></extra>" if ranked else
             "%{x|%b %d, %Y}<br>%{y:,.1f}" + suffix
-            + " USD<br>%{customdata:.0f}th percentile of its own history<extra></extra>"
+            + f" {base}<br>" + "%{customdata:.0f}th percentile of its own history"
+            + "<extra></extra>"
         )),
         row=2, col=1)
 
@@ -316,7 +320,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                                         PART_ALPHA),
                       width=PART_WIDTH),
             hovertemplate=(("%{y:,.0f}th percentile<extra>" if ranked
-                            else "%{y:,.1f}" + suffix + " USD<extra>")
+                            else "%{y:,.1f}" + suffix + f" {base}<extra>")
                            + exposure.LEG_LABELS[part_leg] + "</extra>")),
             row=3, col=1)
         drew_companion = True
@@ -325,7 +329,11 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         fig.add_hline(y=50 if ranked else 0, row=3, col=1, line=dict(
             color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
 
-    title = " ".join(p for p in [set_label, "-", UNIT_LABELS[unit]] if p).strip(" -")
+    # The numeraire belongs in the title, not just on the axis. It was reading
+    # "Equities - USD daily risk" over a chart whose y axis said "oz gold (k)".
+    measure = (UNIT_LABELS[unit].replace("USD ", "") + " in oz gold"
+               if numeraire == exposure.NUMERAIRE_GOLD else UNIT_LABELS[unit])
+    title = " ".join(p for p in [set_label, "-", measure] if p).strip(" -")
     fig.update_layout(
         height=FIGURE_PX, paper_bgcolor=background, plot_bgcolor=background,
         margin=dict(l=64, r=16, t=28, b=36),
@@ -338,7 +346,10 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     )
     fig.update_xaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
     fig.update_yaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False)
-    usd = "Percentile" if ranked else (f"USD {suffix}" if suffix else "USD")
+    # Parenthesised, because the two numeraires want opposite word orders otherwise:
+    # "USD m" is the established form and "m USD" is not, while "k oz gold" is right and
+    # "oz gold k" is not. "USD (m)" and "oz gold (k)" are both fine and are one rule.
+    usd = "Percentile" if ranked else (f"{base} ({suffix})" if suffix else base)
     price_axis = price_axis_type(composite)
     # Plotly's default on a log axis puts a tick at every digit, which in a panel this
     # short (26% of the figure, about 180px) renders as a column of stacked single

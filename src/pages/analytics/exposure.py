@@ -168,6 +168,38 @@ def ordinal(n):
     return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }".replace(" ", "")
 
 
+def money(value, suffix, numeraire=None):
+    """A magnitude with its unit attached, in whichever numeraire is on.
+
+    One function because five places print one of these and a page that said "$" on a
+    chart labelled "oz gold" would be wrong in the one way this feature can be wrong.
+    Sign is left to the caller: every one of them says "net long" or "net short" in
+    words beside it, and a minus sign as well would be the same fact twice.
+    """
+    magnitude = f"{abs(value):,.1f}{suffix}"
+    if numeraire == exposure.NUMERAIRE_GOLD:
+        return f"{magnitude} oz"
+    return f"${magnitude}"
+
+
+def unit_name(unit, numeraire=None):
+    """The unit in PROSE: "USD daily risk", or "daily risk, in troy ounces of gold"."""
+    label = exposure_traces.UNIT_LABELS[unit]
+    if numeraire == exposure.NUMERAIRE_GOLD:
+        return label.replace("USD ", "") + ", in troy ounces of gold"
+    return label
+
+
+def column_name(unit, suffix, numeraire=None):
+    """The same unit as a COLUMN HEADER, which has about twenty characters rather than a
+    sentence. "Daily risk (k oz)", not "daily risk, in troy ounces of gold (k)"."""
+    label = exposure_traces.UNIT_LABELS[unit]
+    if numeraire == exposure.NUMERAIRE_GOLD:
+        stem = label.replace("USD ", "").capitalize()
+        return f"{stem} ({suffix} oz)".replace("( ", "(")
+    return f"{label} ({suffix})" if suffix else label
+
+
 def snap_week(frame, when):
     """The frame's own week nearest to `when`, or None for the latest.
 
@@ -194,7 +226,7 @@ def week_row(frame, when=None):
     return frame.loc[stamp] if stamp is not None else frame.iloc[-1]
 
 
-def headline(frame, unit, leg, when=None):
+def headline(frame, unit, leg, when=None, numeraire=None):
     """The one-line answer, before any of the machinery that produced it.
 
     A reader arriving at a twenty-year chart of dollars has to do two conversions before
@@ -226,14 +258,14 @@ def headline(frame, unit, leg, when=None):
     divisor, suffix = exposure_traces.unit_scale(frame[unit])
     value = row[unit] / divisor
     side = "long" if value >= 0 else "short"
-    money = f"${abs(value):,.1f}{suffix}"
+    amount = money(value, suffix, numeraire)
     who = exposure.LEG_LABELS[leg]
 
     if rank != rank:
-        return (f"{who} are net {side} {money}. Not enough history yet to say whether "
+        return (f"{who} are net {side} {amount}. Not enough history yet to say whether "
                 f"that is unusual."), vc.TEXT_COLOR
     if rank >= CROWDED_HIGH:
-        return (f"CROWDED {side.upper()}. {who} are net {side} {money}, higher than "
+        return (f"CROWDED {side.upper()}. {who} are net {side} {amount}, higher than "
                 f"{rank:.0f}% of the weeks in this set's own history.",
                 vc.BRIGHTER_TEXT_COLOR)
     if rank <= CROWDED_LOW:
@@ -241,10 +273,10 @@ def headline(frame, unit, leg, when=None):
         # long, for this set. Saying "crowded short" only when the level is actually
         # negative keeps the word honest.
         word = "CROWDED SHORT" if value < 0 else "UNUSUALLY LIGHT"
-        return (f"{word}. {who} are net {side} {money}, lower than "
+        return (f"{word}. {who} are net {side} {amount}, lower than "
                 f"{100 - rank:.0f}% of the weeks in this set's own history.",
                 vc.BRIGHTER_TEXT_COLOR)
-    return (f"Within the usual range. {who} are net {side} {money}, around the "
+    return (f"Within the usual range. {who} are net {side} {amount}, around the "
             f"{ordinal(rank)} percentile of this set's own history."), vc.TEXT_COLOR
 
 
@@ -258,7 +290,8 @@ AGREEMENT_SPLIT = 0.80
 DOMINANT_SHARE = 0.50
 
 
-def composition_line(agg, unit, leg, part_frames=None, when=None):
+def composition_line(agg, unit, leg, part_frames=None, when=None,
+                     numeraire=None):
     """What the headline is actually made of, in one sentence under it.
 
     Two facts, both invisible in a sum and both measured rather than suspected.
@@ -306,11 +339,13 @@ def composition_line(agg, unit, leg, part_frames=None, when=None):
                 short_side = (b_name, b) if a >= 0 else (a_name, a)
                 bits.append(
                     f"The two halves disagree: {long_side[0]} long "
-                    f"${abs(long_side[1]):,.1f}{suffix} against {short_side[0]} short "
-                    f"${abs(short_side[1]):,.1f}{suffix}")
+                    f"{money(long_side[1], suffix, numeraire)} against "
+                    f"{short_side[0]} short "
+                    f"{money(short_side[1], suffix, numeraire)}")
             else:
-                bits.append(f"Both halves agree ({a_name} ${a:,.1f}{suffix}, "
-                            f"{b_name} ${b:,.1f}{suffix})")
+                bits.append(f"Both halves agree ({a_name} "
+                            f"{money(a, suffix, numeraire)}, {b_name} "
+                            f"{money(b, suffix, numeraire)})")
 
     gross = float(sum(abs(v) for v in shares))
     score = exposure.agreement(shares)
@@ -361,6 +396,17 @@ def how_to_read(unit):
          "market against ITS own history, which the bar cannot show: a market can be a "
          "small part of the total and still be at the most extreme reading it has ever "
          "had."),
+        ("The Gold switch",
+         "Divides every figure by the gold price, so the series is in troy ounces "
+         "instead of dollars. It removes most of the drift a long dollar history "
+         "carries: on Equities the typical weekly figure grew 4.2 times since 2002 in "
+         "USD and 1.3 times in gold. It can change the reading, not just the axis, and "
+         "on the current week it does: US equity speculators sit at the 98th percentile "
+         "of their own history in dollars and the 67th in ounces. Two caveats. Gold is "
+         "an asset with its own trend, not a ruler, though the two series disagree on "
+         "the direction of a weekly change under 4% of weeks. And gold measured in gold "
+         "is just its contract count, so a Metals total in ounces carries one "
+         "self-referential market."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -390,7 +436,7 @@ TABLE_HEADER_PX = 34
 TABLE_MAX_ROWS = 12
 
 
-def contribution_columns(unit, palette, leg, table):
+def contribution_columns(unit, palette, leg, table, numeraire=None):
     """The table's columns: both units, the percentile of the drawn one, and the bar.
 
     Both units on every row whichever one is drawn, because they are not substitutes:
@@ -415,8 +461,7 @@ def contribution_columns(unit, palette, leg, table):
         divisor, suffix = exposure_traces.unit_scale(table[column]) if len(table) \
             else (1.0, "")
         return {
-            "headerName": f"{exposure_traces.UNIT_LABELS[column]}"
-                          + (f" ({suffix})" if suffix else ""),
+            "headerName": column_name(column, suffix, numeraire),
             "field": column,
             "type": "numericColumn",
             "valueFormatter": {
@@ -446,7 +491,7 @@ def contribution_columns(unit, palette, leg, table):
     ]
 
 
-def contribution_grid(table, unit, palette, leg):
+def contribution_grid(table, unit, palette, leg, numeraire=None):
     """The composition of one week, as a table rather than a chart.
 
     It replaced a horizontal bar figure, which drew the one column a chart is better at
@@ -475,7 +520,7 @@ def contribution_grid(table, unit, palette, leg):
     return dag.AgGrid(
         id='exposure_contributions',
         rowData=rows,
-        columnDefs=contribution_columns(unit, palette, leg, table),
+        columnDefs=contribution_columns(unit, palette, leg, table, numeraire),
         className="ag-theme-quartz-dark",
         style={"height": f"{height}px", "width": "100%", "fontSize": "12px"},
         defaultColDef={"sortable": True, "resizable": True, "suppressMenu": True},
@@ -485,7 +530,7 @@ def contribution_grid(table, unit, palette, leg):
     )
 
 
-def caption(frame, unit, leg, when=None):
+def caption(frame, unit, leg, when=None, numeraire=None):
     """The reading, in words, including the one fact the chart cannot show.
 
     The publication lag is the sentence that matters. The series is plotted at its
@@ -506,8 +551,8 @@ def caption(frame, unit, leg, when=None):
     rank_text = (f"the {ordinal(rank)} percentile of its own history"
                  if rank == rank else "no percentile yet, under two years of history")
     return (
-        f"{exposure.LEG_LABELS[leg]} are {side} ${abs(value):,.1f}{suffix} "
-        f"({exposure_traces.UNIT_LABELS[unit]}) as of {row.name:%B %d, %Y}, "
+        f"{exposure.LEG_LABELS[leg]} are {side} {money(value, suffix, numeraire)} "
+        f"({unit_name(unit, numeraire)}) as of {row.name:%B %d, %Y}, "
         f"which is {rank_text}. {exposure_traces.UNIT_NOTES[unit]} "
         f"The shaded band is the 10th to 90th percentile of the history up to each "
         f"week, so it carries no look-ahead and neither does the percentile. "
@@ -563,7 +608,7 @@ def layout(**kwargs):
                         dcc.Dropdown(id='exposure_member_selector', multi=True,
                                      options=[], value=[], placeholder="all",
                                      className="cot-dropdown"),
-                    ], xs=12, md=3, className="px-md-2 mt-2 mt-md-0"),
+                    ], xs=12, md=2, className="px-md-2 mt-2 mt-md-0"),
 
                     dbc.Col([
                         html.Label("Leg", style=CONTROL_LABEL),
@@ -587,18 +632,40 @@ def layout(**kwargs):
                     ], xs=5, md=2, className="px-md-2 mt-2 mt-md-0"),
 
                     dbc.Col([
-                        # Level or percentile. Not a log toggle, which is what a broad
-                        # axis usually asks for and which cannot apply here: the
-                        # exposure series is signed and crosses zero, so a log axis is
-                        # undefined on it. See exposure_traces.SCALE_RANK.
+                        # Two controls in one column because they are orthogonal and
+                        # both are small. Scale is what the axis plots; Gold is what the
+                        # dollars are measured against, and the interesting combination
+                        # is BOTH: the percentile of the gold-denominated series is a
+                        # different number from the percentile of the dollar one. On the
+                        # same week, US equity speculators read 98 in USD and 67 in
+                        # ounces of gold.
+                        #
+                        # Scale is not a log toggle, which is what a broad axis usually
+                        # asks for and which cannot apply here: the exposure series is
+                        # signed and crosses zero, so log is undefined on it.
                         html.Label("Scale", style=CONTROL_LABEL),
-                        dbc.RadioItems(id='exposure_scale_selector',
-                                       persistence='session',
-                                       options=SCALE_OPTIONS,
-                                       value=exposure_traces.SCALE_LEVEL, inline=True,
+                        html.Div([
+                            dbc.RadioItems(id='exposure_scale_selector',
+                                           persistence='session',
+                                           options=SCALE_OPTIONS,
+                                           value=exposure_traces.SCALE_LEVEL,
+                                           inline=True, className="me-3",
+                                           style={"color": vc.BRIGHTER_TEXT_COLOR,
+                                                  "fontSize": "0.85rem"}),
+                            dbc.Switch(id='exposure_gold_toggle', label="Gold",
+                                       persistence='session', value=False,
+                                       className="mb-0",
                                        style={"color": vc.BRIGHTER_TEXT_COLOR,
                                               "fontSize": "0.85rem"}),
-                    ], xs=7, md=2, className="px-md-2 mt-2 mt-md-0"),
+                        ], className="d-flex align-items-center"),
+                        dbc.Tooltip(
+                            "Divide by the gold price, so the series is in troy ounces "
+                            "rather than dollars. Dollar figures carry the price level; "
+                            "gold removes most of that drift (Equities 4.2x to 1.3x "
+                            "since 2002). Gold is an asset, not a ruler, and gold "
+                            "itself in gold terms is just its contract count.",
+                            target='exposure_gold_toggle', placement="bottom"),
+                    ], xs=12, md=3, className="px-md-2 mt-2 mt-md-0"),
                 ], align="center"),
             ], className="py-2"), className="mb-2 shadow-sm",
                 style={"backgroundColor": "rgba(30, 30, 30, 0.6)",
@@ -704,6 +771,7 @@ def _default_names(asset_classes):
 
 
 def describe_week(agg, part_frames, unit, leg, palette, when=None):
+    numeraire = getattr(agg, "numeraire", None)
     """Everything the page says about ONE week, in one place.
 
     Both entry points come through here: the full render, which describes the latest
@@ -717,19 +785,21 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None):
 
     table = exposure.contribution_table(agg.members, when=stamp,
                                         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
-    bars = contribution_grid(table, unit, palette, leg)
+    bars = contribution_grid(table, unit, palette, leg, numeraire)
     label = (f"What made it, week of {shown:%B %d, %Y}. "
              f"Percentiles are each market against its own history."
              if len(table) else "")
 
-    head_text, head_colour = headline(agg.frame, unit, leg, when=stamp)
+    head_text, head_colour = headline(agg.frame, unit, leg, when=stamp,
+                                      numeraire=numeraire)
     return dict(
         bars=bars,
         bar_label=label,
-        composition=composition_line(agg, unit, leg, part_frames, when=stamp),
+        composition=composition_line(agg, unit, leg, part_frames, when=stamp,
+                                     numeraire=numeraire),
         headline=head_text,
         head_style={**HEAD_STYLE, "color": head_colour},
-        caption=caption(agg.frame, unit, leg, when=stamp),
+        caption=caption(agg.frame, unit, leg, when=stamp, numeraire=numeraire),
         shown=shown,
     )
 
@@ -787,14 +857,16 @@ def apply_help_fold(is_open):
     Input('exposure_leg_selector', 'value'),
     Input('exposure_unit_selector', 'value'),
     Input('exposure_scale_selector', 'value'),
+    Input('exposure_gold_toggle', 'value'),
     Input('session_palette_theme_asset_store', 'data'),
 )
-def render_exposure(asset_classes, members, leg, unit, scale, palette_name):
+def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_name):
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
     scale = scale or exposure_traces.SCALE_LEVEL
+    numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
     help_block = help_children(unit)
     if not asset_classes:
@@ -808,7 +880,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, palette_name):
     # An empty member list is the moment between a class change and the callback that
     # repopulates it, not a request for an empty total.
     names = list(members) if members else _names_in(asset_classes)
-    agg = exposure.aggregate_exposure(names, leg=leg)
+    agg = exposure.aggregate_exposure(names, leg=leg, numeraire=numeraire)
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index) if not agg.frame.empty else None
 
@@ -817,13 +889,13 @@ def render_exposure(asset_classes, members, leg, unit, scale, palette_name):
     # reindexed onto the subject in build_figure rather than silently shifted here.
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
-        part = exposure.aggregate_exposure(names, leg=part_leg)
+        part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
-        leg=leg, parts=part_frames, scale=scale)
+        leg=leg, parts=part_frames, scale=scale, numeraire=numeraire)
 
     said = describe_week(agg, part_frames, unit, leg, palette)
     # A control change resets the selection: the clicked week belonged to the set that
@@ -872,12 +944,14 @@ CROSSHAIR = {"color": "rgba(255,255,255,0.5)", "width": 1, "dash": "dot"}
     State('exposure_member_selector', 'value'),
     State('exposure_leg_selector', 'value'),
     State('exposure_unit_selector', 'value'),
+    State('exposure_scale_selector', 'value'),
+    State('exposure_gold_toggle', 'value'),
     State('session_palette_theme_asset_store', 'data'),
     State('exposure_chart', 'figure'),
     prevent_initial_call=True,
 )
-def select_week(click_data, _reset, asset_classes, members, leg, unit, palette_name,
-                current_fig):
+def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in_gold,
+                palette_name, current_fig):
     """Move the whole reading to the week under the cursor, same gesture as OI Alignment.
 
     Everything above the chart describes one week, and until now that week was always
@@ -912,14 +986,15 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, palette_n
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
     names = list(members) if members else _names_in(asset_classes)
+    numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
-    agg = exposure.aggregate_exposure(names, leg=leg)
+    agg = exposure.aggregate_exposure(names, leg=leg, numeraire=numeraire)
     if agg.frame.empty:
         return (no_update,) * 10
 
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
-        part = exposure.aggregate_exposure(names, leg=part_leg)
+        part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
     said = describe_week(agg, part_frames, unit, leg, palette, when=when)

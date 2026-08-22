@@ -22,6 +22,7 @@ COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
 from pages.analytics.exposure import (  # noqa: E402
     LEDE,
     caption,
+    column_name,
     composition_line,
     contribution_columns,
     contribution_grid,
@@ -29,9 +30,11 @@ from pages.analytics.exposure import (  # noqa: E402
     headline,
     how_to_read,
     membership,
+    money,
     ordinal,
     rewind_notice,
     snap_week,
+    unit_name,
     week_row,
 )
 
@@ -46,10 +49,14 @@ def agg(dropped=None, coverage=None, bounded_by=None, weeks_lost=0, rows=3):
         "notional_pct_rank": [97.0] * rows,
         "risk_pct_rank": [97.0] * rows,
     }, index=idx)
-    return AggregateExposure(frame, dropped or {},
-                             coverage or {"A": (idx[0], idx[-1]),
-                                          "B": (idx[0], idx[-1])},
-                             bounded_by or {}, weeks_lost)
+    # Keyword, not positional. AggregateExposure gained a `numeraire` field ahead of
+    # `members`, and the positional form here bound the members dict to it silently:
+    # every composition test went green-to-empty at once, which is the only reason it
+    # was noticed.
+    return AggregateExposure(frame=frame, dropped=dropped or {},
+                             coverage=coverage or {"A": (idx[0], idx[-1]),
+                                                   "B": (idx[0], idx[-1])},
+                             bounded_by=bounded_by or {}, weeks_lost=weeks_lost)
 
 
 def text_of(children):
@@ -235,10 +242,10 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 7
+    assert len(titles) == 8
     joined = " ".join(titles).lower()
-    for topic in ("number", "band", "panels", "made of", "scale switch",
-                  "third panel", "not"):
+    for topic in ("number", "band", "panels", "made of", "gold switch",
+                  "scale switch", "third panel", "not"):
         assert topic in joined
 
 
@@ -275,7 +282,8 @@ def with_members(per_market, unit="risk_usd", rows=3):
                for name, value in per_market.items()}
     frame = base.frame.copy()
     frame[unit] = sum(per_market.values())
-    return AggregateExposure(frame, {}, base.coverage, {}, 0, members)
+    return AggregateExposure(frame=frame, dropped={}, coverage=base.coverage,
+                             bounded_by={}, weeks_lost=0, members=members)
 
 
 def test_the_two_halves_are_named_when_they_disagree():
@@ -348,7 +356,8 @@ def test_the_composition_line_counts_agreement_against_the_totals_direction():
 
 
 def test_an_empty_total_has_no_composition_to_report():
-    empty = AggregateExposure(pd.DataFrame(), {}, {}, {}, 0, {})
+    empty = AggregateExposure(frame=pd.DataFrame(), dropped={}, coverage={},
+                              bounded_by={}, weeks_lost=0, members={})
     assert composition_line(empty, et.UNIT_RISK, LEG_SPEC, {}) == ""
 
 
@@ -638,3 +647,67 @@ def test_the_grid_carries_plain_floats_not_numpy_scalars():
     assert json.dumps(grid.rowData)
     assert all(isinstance(v, (str, float, type(None)))
                for row in grid.rowData for v in row.values())
+
+
+# ── the gold numeraire ────────────────────────────────────────────────────────
+
+def test_amounts_carry_ounces_rather_than_a_dollar_sign_in_gold():
+    """A page that said "$" on a chart labelled "oz gold" would be wrong in the one way
+    this feature can be wrong."""
+    from cotmetrics.exposure import NUMERAIRE_GOLD, NUMERAIRE_USD
+    assert money(370.8, "m", NUMERAIRE_USD) == "$370.8m"
+    assert money(370.8, "m", NUMERAIRE_GOLD) == "370.8m oz"
+    assert money(-370.8, "m", NUMERAIRE_GOLD) == "370.8m oz"
+
+
+def test_the_sign_is_left_to_the_words_beside_it():
+    """Every caller says "net long" or "net short" in words, and a minus sign as well
+    would be the same fact twice."""
+    from cotmetrics.exposure import NUMERAIRE_USD
+    assert "-" not in money(-1.0, "m", NUMERAIRE_USD)
+
+
+def test_the_headline_reports_ounces_when_the_page_is_in_gold():
+    from cotmetrics.exposure import NUMERAIRE_GOLD
+    text, _ = headline(ranked(72.0, value=1.087e5), et.UNIT_RISK, LEG_SPEC,
+                       numeraire=NUMERAIRE_GOLD)
+    assert "oz" in text
+    assert "$" not in text
+
+
+def test_a_column_header_is_shorter_than_the_prose_form():
+    """A header has about twenty characters rather than a sentence."""
+    from cotmetrics.exposure import NUMERAIRE_GOLD
+    assert column_name(et.UNIT_RISK, "k", NUMERAIRE_GOLD) == "Daily risk (k oz)"
+    assert "troy ounces" in unit_name(et.UNIT_RISK, NUMERAIRE_GOLD)
+    assert column_name(et.UNIT_RISK, "m") == "USD daily risk (m)"
+
+
+def test_the_caption_names_the_numeraire_it_is_speaking_in():
+    from cotmetrics.exposure import NUMERAIRE_GOLD
+    text = caption(agg().frame, et.UNIT_RISK, LEG_SPEC, numeraire=NUMERAIRE_GOLD)
+    assert "troy ounces of gold" in text
+
+
+def test_the_aggregate_tuple_is_built_by_keyword_in_these_tests():
+    """A positional build here bound the members dict to `numeraire` when that field was
+    added ahead of it, and every composition test went empty at once. The tuple is a
+    public return shape, so a field can be added again."""
+    import inspect
+    fields = AggregateExposure._fields
+    assert fields.index("numeraire") < fields.index("members")
+    built = AggregateExposure(frame=pd.DataFrame(), dropped={}, coverage={},
+                              bounded_by={}, weeks_lost=0, members={"A": None})
+    assert built.members == {"A": None}
+    assert built.numeraire == "usd"
+    assert inspect.signature(AggregateExposure).parameters["numeraire"].default == "usd"
+
+
+def test_the_explanation_gives_both_gold_caveats():
+    """Gold is an asset with its own trend rather than a ruler, and gold measured in
+    gold is circular. Both are measured, and a view that offered the numeraire without
+    saying either would be handing over a deflator as if it were a fact."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "not a ruler" in body
+    assert "self-referential" in body
+    assert "98th percentile" in body

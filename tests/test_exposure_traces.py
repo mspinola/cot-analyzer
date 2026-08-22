@@ -423,3 +423,18 @@ def test_a_linear_price_axis_takes_no_tick_array():
                           leg_label="Spec")
     assert fig.layout.yaxis.type == "linear"
     assert fig.layout.yaxis.tickvals is None
+
+
+def test_the_title_names_the_numeraire_the_axis_is_in():
+    """It read "Equities - USD daily risk" over a chart whose y axis said "oz gold
+    (k)"."""
+    from cotmetrics.exposure import NUMERAIRE_GOLD
+    gold = et.build_figure(frame([1e6, 2e6]), None, unit=et.UNIT_RISK, colors=COLORS,
+                           palette=PALETTE, leg_label="Spec", set_label="Equities",
+                           numeraire=NUMERAIRE_GOLD)
+    assert "oz gold" in gold.layout.title.text
+    assert "USD" not in gold.layout.title.text
+    assert "oz gold" in gold.layout.yaxis2.title.text
+
+    usd = build(frame([1e9, 2e9]))
+    assert "USD" in usd.layout.title.text
