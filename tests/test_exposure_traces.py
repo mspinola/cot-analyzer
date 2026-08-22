@@ -5,9 +5,10 @@ this view honest is arithmetic and lives in `cotmetrics.exposure`, and what is l
 is the handful of drawing decisions that would silently mislead if they drifted.
 """
 import pandas as pd
+from cotmetrics.exposure import LEG_SPEC
 
 import components.exposure_traces as et
-from components.plot_colors import GridColors
+from components.plot_colors import GridColors, hex_to_rgba
 
 PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#A78BFA"]
 COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
@@ -67,7 +68,7 @@ def test_an_empty_total_says_why_rather_than_drawing_an_empty_box():
     explanation reads as a broken page rather than as an answer."""
     fig = build(pd.DataFrame())
     text = " ".join(a.text for a in fig.layout.annotations)
-    assert "every market in this set" in text
+    assert "every market selected" in text
     assert fig.layout.height == et.FIGURE_PX
 
 
@@ -449,3 +450,55 @@ def test_the_price_axis_names_the_numeraire_it_is_indexed_in():
                            numeraire=NUMERAIRE_GOLD)
     assert "oz gold" in gold.layout.yaxis.title.text
     assert "USD" in build(frame([1e9, 2e9]), series([100, 120])).layout.yaxis.title.text
+
+
+# ── one market ────────────────────────────────────────────────────────────────
+
+def test_the_price_trace_is_not_called_a_composite_for_one_market():
+    """An equal-weight composite of one market is that market's price, and the legend
+    saying "composite" sends a reader looking for a construction that is not there."""
+    df = frame([1e9, 2e9, 3e9])
+    price = pd.Series([100.0, 101.0, 102.0], index=df.index)
+    fig = et.build_figure(df, price, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Speculators", set_label="Gold",
+                          single=True)
+    names = [t.name for t in fig.data]
+    assert "Market price" in names
+    assert "Set composite" not in names
+
+
+def test_the_price_trace_is_still_a_composite_for_a_total():
+    df = frame([1e9, 2e9, 3e9])
+    price = pd.Series([100.0, 101.0, 102.0], index=df.index)
+    fig = build(df, price)
+    assert "Set composite" in [t.name for t in fig.data]
+
+
+def test_the_other_lens_is_drawn_only_on_the_percentile_scale():
+    """Contracts and dollars share no axis, so on the level scale a second line would be
+    a second y-axis inviting a reader to measure the space between two units that have
+    no common size."""
+    df = frame([1e9, 2e9, 3e9])
+    ranks = pd.Series([20.0, 40.0, 60.0], index=df.index)
+    level = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                            palette=PALETTE, leg_label="Specs", set_label="Gold",
+                            single=True, contracts=ranks)
+    assert "Contracts %ile" not in [t.name for t in level.data]
+    ranked = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                             palette=PALETTE, leg_label="Specs", set_label="Gold",
+                             single=True, contracts=ranks, scale=et.SCALE_RANK)
+    assert "Contracts %ile" in [t.name for t in ranked.data]
+
+
+def test_the_gap_between_the_lenses_is_shaded_rather_than_left_to_the_eye():
+    """Both series are weekly over twenty years, so two lines of the same shape in one
+    small panel are a thicket. The fill makes the gap the object."""
+    df = frame([1e9, 2e9, 3e9])
+    ranks = pd.Series([20.0, 40.0, 60.0], index=df.index)
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, contracts=ranks, scale=et.SCALE_RANK)
+    # The wedge carries the LEG's colour, where the usual-range band beneath it is
+    # neutral: it is a fact about this leg's two lenses, not about the distribution.
+    wedge = hex_to_rgba(PALETTE[et.LEG_PALETTE_SLOT[LEG_SPEC]], et.LENS_FILL_ALPHA)
+    assert [t.fillcolor for t in fig.data].count(wedge) == 1

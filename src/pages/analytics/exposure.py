@@ -9,9 +9,15 @@ This page adds. `cotmetrics.exposure` converts contracts into USD notional and t
 USD daily risk, which is the only rung that is both summable and comparable, and this
 page draws the total against the set's own composite price.
 
-It is deliberately a SET view rather than a market view. A single market's dollar
-exposure is the positioning index wearing bigger numbers; the reason to convert units at
-all is to make a total mean something.
+It reads ONE market as readily as forty. Summing is what dollars unlock, not what they
+are for, and the tempting claim that a single market's dollars are just its positioning
+index wearing bigger numbers is measurably false. Put the same 52-week range index on
+net contracts and on dollar risk and the two correlate 0.92 at the median market, 0.75
+on Gold, 0.71 on Gasoline, and they disagree about whether the week sits in the top or
+bottom fifth on about one week in six. Nearly all of that gap is the volatility term:
+notional alone tracks contracts at 0.98. So one name in Markets is a first-class
+reading, and every sentence on this page says "market" or "set" according to what is
+actually selected.
 
 Three things this page says in words because the picture cannot carry them, and all
 three are failures of the printed reference it was built from:
@@ -105,8 +111,11 @@ def membership(agg, names, available=None):
     to revise it on the strength of a footnote.
     """
     included = len(agg.coverage)
-    bits = [html.Span(f"{included} of {len(names)} markets summed",
-                      style={"color": vc.BRIGHTER_TEXT_COLOR})]
+    # "1 of 1 markets summed" is arithmetic about a sum with one term. The reader who
+    # picked one name knows how many there are; what they want confirmed is WHICH.
+    lede = (f"{names[0]} on its own" if included == 1 and len(names) == 1
+            else f"{included} of {len(names)} markets summed")
+    bits = [html.Span(lede, style={"color": vc.BRIGHTER_TEXT_COLOR})]
 
     # A default that silently narrows the class is the same failure as a filter that
     # silently drops rows, and it is worse for being on by default: a reader who never
@@ -152,8 +161,20 @@ CROWDED_LOW = 10
 HEAD_STYLE = {"fontSize": "1.05rem", "fontWeight": 600, "marginBottom": "2px"}
 
 LEDE = (
-    "How much money one group of traders has committed to a whole group of markets, "
-    "and whether that is a lot by this group's own standards.")
+    "How much money one group of traders has committed to a market, or to a whole set "
+    "of them, and whether that is a lot by its own standards.")
+
+
+def subject_noun(single, possessive=False):
+    """"this market" or "this set", from what is actually being summed.
+
+    The page reads one name as readily as forty, so the sentences that say "its own
+    history" have to agree with the Markets control above them. "This set's own
+    history" printed over a single market reads as boilerplate, and a reader who
+    catches one sentence not looking at the screen discounts the rest of them too.
+    """
+    noun = "this market" if single else "this set"
+    return noun + "'s" if possessive else noun
 
 
 def ordinal(n):
@@ -226,7 +247,7 @@ def week_row(frame, when=None):
     return frame.loc[stamp] if stamp is not None else frame.iloc[-1]
 
 
-def headline(frame, unit, leg, when=None, numeraire=None):
+def headline(frame, unit, leg, when=None, numeraire=None, single=False):
     """The one-line answer, before any of the machinery that produced it.
 
     A reader arriving at a twenty-year chart of dollars has to do two conversions before
@@ -266,18 +287,49 @@ def headline(frame, unit, leg, when=None, numeraire=None):
                 f"that is unusual."), vc.TEXT_COLOR
     if rank >= CROWDED_HIGH:
         return (f"CROWDED {side.upper()}. {who} are net {side} {amount}, higher than "
-                f"{rank:.0f}% of the weeks in this set's own history.",
+                f"{rank:.0f}% of the weeks in "
+                f"{subject_noun(single, possessive=True)} own history.",
                 vc.BRIGHTER_TEXT_COLOR)
     if rank <= CROWDED_LOW:
         # A low percentile on a signed series is the crowd at its most short, or least
-        # long, for this set. Saying "crowded short" only when the level is actually
-        # negative keeps the word honest.
+        # long, for this selection. Saying "crowded short" only when the level is
+        # actually negative keeps the word honest.
         word = "CROWDED SHORT" if value < 0 else "UNUSUALLY LIGHT"
         return (f"{word}. {who} are net {side} {amount}, lower than "
-                f"{100 - rank:.0f}% of the weeks in this set's own history.",
+                f"{100 - rank:.0f}% of the weeks in "
+                f"{subject_noun(single, possessive=True)} own history.",
                 vc.BRIGHTER_TEXT_COLOR)
     return (f"Within the usual range. {who} are net {side} {amount}, around the "
-            f"{ordinal(rank)} percentile of this set's own history."), vc.TEXT_COLOR
+            f"{ordinal(rank)} percentile of "
+            f"{subject_noun(single, possessive=True)} own history."), vc.TEXT_COLOR
+
+
+#: A gap this wide between the two lenses is worth a sentence. Below it they are the
+#: same reading twice and saying so every week is noise.
+LENS_SPLIT = 20
+
+
+def contracts_rank(agg):
+    """The same expanding percentile the page ranks dollars with, run on the raw
+    contract count. `None` for anything but a single market.
+
+    Read off the MEMBER frame, never off the aggregate. The aggregate used to carry a
+    summed `net_contracts` that added ES contracts to corn contracts, which is not a
+    quantity and is exactly what converting to dollars exists to avoid; cotmetrics #21
+    removed the column for that reason. Reading the member is what stays right either
+    way, and is the only thing that could ever have been right here.
+
+    Numeraire-free by construction, which is worth knowing when the Gold switch is on.
+    The divisor is applied to the value columns only, because contracts are contracts
+    whatever you price them in, so this line does not move when the dollars do.
+    """
+    if len(agg.members) != 1:
+        return None
+    frame = next(iter(agg.members.values()))
+    if "net_contracts" not in frame:
+        return None
+    return exposure.expanding_pct_rank(frame["net_contracts"],
+                                       exposure_traces.MIN_RANK_PERIODS)
 
 
 #: Below this, a total is a residual between markets doing different things rather than
@@ -288,6 +340,47 @@ AGREEMENT_SPLIT = 0.80
 #: A member holding this share of the gross total is the total, whatever the other names
 #: on the list say.
 DOMINANT_SHARE = 0.50
+
+
+def lens_line(agg, unit, when=None, ranks=None):
+    """What the raw contract count says about the same week, when it disagrees.
+
+    The reason this is worth a line rather than a footnote: on the week it was written
+    Large Specs in Silver sat at the 45th percentile on contracts and the 98th on
+    dollar risk, and 12 of the 43 priceable markets disagreed about whether the leg was
+    at a 90/10 extreme at all. The gap is not a second opinion about positioning, it is
+    positioning multiplied by price and volatility, so a reader who only ever sees the
+    dollars can mistake a volatility event for the crowd piling in.
+
+    Silent when the two agree, which is most weeks: pooled across 43 markets the median
+    gap is 5.4 percentile points. A sentence printed every week is a sentence nobody
+    reads on the week it matters.
+    """
+    if ranks is None or ranks.empty or agg.frame.empty:
+        return ""
+    when = snap_week(agg.frame, when)
+    row = week_row(agg.frame, when)
+    if row is None or row.name not in ranks.index:
+        return ""
+    contracts, dollars = ranks[row.name], row[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    if contracts != contracts or dollars != dollars:
+        return ""
+
+    def extreme(v):
+        return v >= CROWDED_HIGH or v <= CROWDED_LOW
+
+    disagree = extreme(contracts) != extreme(dollars)
+    if not disagree and abs(dollars - contracts) < LENS_SPLIT:
+        return ""
+    lens = (f"Contracts put the same week at the {ordinal(contracts)} percentile "
+            f"against the {ordinal(dollars)} for the dollars")
+    if not disagree:
+        return lens + "."
+    if extreme(dollars):
+        return (lens + ", so the extreme is price and volatility acting on the "
+                "position rather than more contracts.")
+    return (lens + ", so the contract count reads more extreme than the money at "
+            "stake does.")
 
 
 def composition_line(agg, unit, leg, part_frames=None, when=None,
@@ -347,20 +440,28 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
                             f"{money(a, suffix, numeraire)}, {b_name} "
                             f"{money(b, suffix, numeraire)})")
 
-    gross = float(sum(abs(v) for v in shares))
-    score = exposure.agreement(shares)
-    top_name = shares.index[0]
-    top_share = abs(shares.iloc[0]) / gross if gross else float("nan")
-    same_way = sum(1 for v in shares if (v >= 0) == (shares.sum() >= 0))
-    if top_share == top_share and top_share >= DOMINANT_SHARE:
-        bits.append(f"{top_name} alone is {top_share:.0%} of it")
-    else:
-        bits.append(f"{top_name} is the largest single market at {top_share:.0%}")
-    if score == score:
-        qualifier = (" so the total is a residual rather than a crowd"
-                     if score < AGREEMENT_SPLIT else "")
-        bits.append(f"{same_way} of {len(shares)} markets point the same way "
-                    f"(agreement {score:.2f}){qualifier}")
+    # Concentration is a fact about a SET. With one market selected it can only say
+    # that market is 100% of itself and that 1 of 1 markets point the same way, which
+    # is true, uninformative, and reads as a page not looking at its own controls. The
+    # leg split above stays, because Large against Small is a real disagreement inside
+    # one market's number.
+    if len(shares) > 1:
+        gross = float(sum(abs(v) for v in shares))
+        score = exposure.agreement(shares)
+        top_name = shares.index[0]
+        top_share = abs(shares.iloc[0]) / gross if gross else float("nan")
+        same_way = sum(1 for v in shares if (v >= 0) == (shares.sum() >= 0))
+        if top_share == top_share and top_share >= DOMINANT_SHARE:
+            bits.append(f"{top_name} alone is {top_share:.0%} of it")
+        else:
+            bits.append(f"{top_name} is the largest single market at {top_share:.0%}")
+        if score == score:
+            qualifier = (" so the total is a residual rather than a crowd"
+                         if score < AGREEMENT_SPLIT else "")
+            bits.append(f"{same_way} of {len(shares)} markets point the same way "
+                        f"(agreement {score:.2f}){qualifier}")
+    if not bits:
+        return ""
     return ". ".join(bits) + "."
 
 
@@ -369,22 +470,32 @@ def how_to_read(unit):
 
     Written as "what you learn" rather than "what it is". A legend saying "expanding
     10th to 90th percentile" is accurate and answers a question nobody asked; what a
-    reader wants is that the band is where this set normally sits, so a line outside it
-    is the crowd doing something it does not usually do.
+    reader wants is that the band is where the line normally sits, so a value outside
+    it is the crowd doing something it does not usually do.
     """
     return [
         ("The number itself",
-         "Contracts converted to dollars, so markets that cannot otherwise be compared "
-         "can be added into one total. Here that is "
+         "Contracts converted to dollars, which makes one market comparable with its "
+         "own past at a different price level and makes markets sharing no units "
+         "addable into one total. Here that is "
          + exposure_traces.UNIT_NOTES[unit]),
+        ("One market or a whole set",
+         "Markets takes one name as readily as forty, and one name is a real reading "
+         "rather than a degenerate case. Dollar risk is not the positioning index "
+         "wearing bigger numbers: run the same 52-week range index on net contracts "
+         "and on dollar risk and they correlate 0.92 at the median market, 0.75 on "
+         "Gold and 0.71 on Gasoline, and they disagree about whether the week sits in "
+         "the top or bottom fifth on about one week in six. Nearly all of that is the "
+         "volatility term, since notional alone tracks contracts at 0.98. Summing is "
+         "what dollars make possible, not what they are for."),
         ("Where it sits in the band",
-         "The shaded band is where this set normally sits, the middle 80% of its own "
+         "The shaded band is where this line normally sits, the middle 80% of its own "
          "history up to that week. A line outside it is the crowd doing something it "
          "does not usually do. The band widens over the years because dollar figures "
          "grow with the price level, which is exactly why the level alone cannot tell "
          "you whether today is a lot."),
         ("The two panels together",
-         "The top panel is the same markets' own price. Exposure climbing with price "
+         "The top panel is the price of the same selection. Exposure climbing with price "
          "is the crowd adding to a move; exposure falling while price climbs is the "
          "crowd being sold to. Those read very differently and neither is visible in "
          "one panel alone."),
@@ -395,7 +506,9 @@ def how_to_read(unit):
          "against the total points the other way and is faded. The %ile column is each "
          "market against ITS own history, which the bar cannot show: a market can be a "
          "small part of the total and still be at the most extreme reading it has ever "
-         "had."),
+         "had. With one market selected there is nothing to break apart, so the table "
+         "is one row and the concentration score is dropped rather than printed as a "
+         "meaningless 100%."),
         ("The Gold switch",
          "Prices everything in troy ounces instead of dollars, both panels, which is "
          "Larry Williams' WillVal applied to a whole complex: an asset measured against "
@@ -412,6 +525,19 @@ def how_to_read(unit):
          "direction, and it is the whole point over years. Gold measured in gold is "
          "just its contract count, so a Metals total in ounces carries one "
          "self-referential market."),
+        ("The dotted line, on one market",
+         "The same leg's raw contract count on the same percentile, drawn under the "
+         "dollars on the %ile scale. Where the two part, the money at stake moved and "
+         "the position did not: dollar risk is contracts times price times volatility, "
+         "so a quiet position in a market that has become expensive or violent reads as "
+         "an extreme in dollars and as nothing at all in contracts. It is not a second "
+         "opinion, and it is not a volatility chart either: the gap correlates only "
+         "0.30 with the market's own dollar volatility and flips sign across markets, "
+         "because volatility acts on a position that has a side. Most weeks the two "
+         "agree, median gap 5.4 percentile points, and the sentence under the headline "
+         "appears only when they do not. The shading between the two lines is the gap "
+         "itself; at full range the panel shows the envelope of it, so drag across the "
+         "chart to open up one episode."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -474,7 +600,7 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
             "width": 120,
         }
 
-    return [
+    columns = [
         {"headerName": "Market", "field": "market", "flex": 1, "minWidth": 130},
         money(unit),
         money(other),
@@ -482,6 +608,12 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
          "valueFormatter": {"function": "params.value == null ? '' : "
                                         "d3.format('.0f')(params.value)"},
          "headerTooltip": "Where this market's own history puts this week, 0 to 100"},
+    ]
+    # The bar is a SHARE, so one row draws it full width whatever the number is and
+    # encodes nothing. Dropped for the same reason the concentration sentence is.
+    if len(table) < 2:
+        return columns
+    return columns + [
         {"headerName": "Contribution", "field": unit, "colId": "bar",
          "cellRenderer": "ContributionBarRenderer",
          "cellRendererParams": {
@@ -535,7 +667,7 @@ def contribution_grid(table, unit, palette, leg, numeraire=None):
     )
 
 
-def caption(frame, unit, leg, when=None, numeraire=None):
+def caption(frame, unit, leg, when=None, numeraire=None, single=False):
     """The reading, in words, including the one fact the chart cannot show.
 
     The publication lag is the sentence that matters. The series is plotted at its
@@ -563,8 +695,11 @@ def caption(frame, unit, leg, when=None, numeraire=None):
         f"week, so it carries no look-ahead and neither does the percentile. "
         f"Positioning is as-of Tuesday and published the following Friday: it is "
         f"plotted at the Tuesday it describes, which is three days before anyone could "
-        f"have acted on it. The top panel is an equal-weight composite of the same "
-        f"markets, rebased to 100, and not any index you can trade."
+        f"have acted on it. " + (
+            "The top panel is that market's own price, rebased to 100."
+            if single else
+            "The top panel is an equal-weight composite of the same markets, rebased "
+            "to 100, and not any index you can trade.")
     )
 
 
@@ -775,7 +910,7 @@ def _default_names(asset_classes):
     return sorted(out)
 
 
-def describe_week(agg, part_frames, unit, leg, palette, when=None):
+def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None):
     numeraire = getattr(agg, "numeraire", None)
     """Everything the page says about ONE week, in one place.
 
@@ -791,20 +926,34 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None):
     table = exposure.contribution_table(agg.members, when=stamp,
                                         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     bars = contribution_grid(table, unit, palette, leg, numeraire)
-    label = (f"What made it, week of {shown:%B %d, %Y}. "
-             f"Percentiles are each market against its own history."
-             if len(table) else "")
+    label = ("" if not len(table) else
+             f"Week of {shown:%B %d, %Y}, against this market's own history."
+             if len(table) == 1 else
+             f"What made it, week of {shown:%B %d, %Y}. "
+             f"Percentiles are each market against its own history.")
 
+    # One source for the noun the copy uses, from what was actually summed rather than
+    # from what was asked for: a two-name selection where one dropped for want of a
+    # multiplier IS a single market, and the sentences should say so.
+    single = len(agg.coverage) == 1
     head_text, head_colour = headline(agg.frame, unit, leg, when=stamp,
-                                      numeraire=numeraire)
+                                      numeraire=numeraire, single=single)
     return dict(
         bars=bars,
         bar_label=label,
-        composition=composition_line(agg, unit, leg, part_frames, when=stamp,
-                                     numeraire=numeraire),
+        # Two sentences, not one, and never both: a set gets what its total is made
+        # of, a single market gets what its other lens says. `contracts_rank` returns
+        # None for a set, so the second is empty exactly where the first is not.
+        composition=" ".join(part for part in (
+            composition_line(agg, unit, leg, part_frames, when=stamp,
+                             numeraire=numeraire),
+            lens_line(agg, unit, when=stamp,
+                      ranks=contracts_rank(agg) if ranks is None else ranks),
+        ) if part),
         headline=head_text,
         head_style={**HEAD_STYLE, "color": head_colour},
-        caption=caption(agg.frame, unit, leg, when=stamp, numeraire=numeraire),
+        caption=caption(agg.frame, unit, leg, when=stamp, numeraire=numeraire,
+                        single=single),
         shown=shown,
     )
 
@@ -898,12 +1047,18 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
         part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
+    ranks = contracts_rank(agg)
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
-        leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
-        leg=leg, parts=part_frames, scale=scale, numeraire=numeraire)
+        leg_label=exposure.LEG_LABELS[leg],
+        # One market: name IT. "Metals - Speculators, daily risk" over a chart holding
+        # Gold alone labels a set the reader did not ask for.
+        set_label=(names[0] if len(agg.coverage) == 1 and len(names) == 1
+                   else ", ".join(asset_classes)),
+        leg=leg, parts=part_frames, scale=scale, numeraire=numeraire,
+        single=len(agg.coverage) == 1, contracts=ranks)
 
-    said = describe_week(agg, part_frames, unit, leg, palette)
+    said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks)
     # A control change resets the selection: the clicked week belonged to the set that
     # was on screen when it was clicked, and silently carrying it onto a different set
     # is how a page ends up describing a week it never drew.
@@ -917,8 +1072,8 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
 def help_children(unit):
     """`how_to_read` as markup: a definition list, not a paragraph.
 
-    Four labelled points a reader can scan and stop at the one they wanted, where the
-    same words as prose are a wall nobody reads and the fold below it is what a wall
+    Labelled points a reader can scan and stop at the one they wanted, where the same
+    words as prose are a wall nobody reads and the fold below it is what a wall
     earns."""
     return [html.Div([
         html.Span(f"{title}. ", style={"color": vc.BRIGHTER_TEXT_COLOR,

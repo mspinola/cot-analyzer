@@ -24,11 +24,13 @@ from pages.analytics.exposure import (  # noqa: E402
     caption,
     column_name,
     composition_line,
+    contracts_rank,
     contribution_columns,
     contribution_grid,
     crosshair_shapes,
     headline,
     how_to_read,
+    lens_line,
     membership,
     money,
     ordinal,
@@ -242,10 +244,10 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 9
+    assert len(titles) == 11
     joined = " ".join(titles).lower()
-    for topic in ("number", "band", "panels", "made of", "gold switch",
-                  "gold is here", "scale switch", "third panel", "not"):
+    for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
+                  "gold is here", "dotted line", "scale switch", "third panel", "not"):
         assert topic in joined
 
 
@@ -624,6 +626,8 @@ def test_the_bar_column_is_not_sortable():
     the table by a number the reader can already sort on, from a header that looks like
     it means something else."""
     table = table_of(A={"risk_usd": 1.0, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0},
+                     B={"risk_usd": 2.0, "notional_usd": 2.0,
                         "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
     bar = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, table)
                if c.get("colId") == "bar")
@@ -723,3 +727,180 @@ def test_the_explanation_keeps_the_circularity_caveat():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "self-referential" in body
     assert "98th percentile" in body
+
+
+# ── one market is a reading, not a degenerate set ─────────────────────────────
+
+def test_the_lede_offers_one_market_as_well_as_a_set():
+    """The page reads one name as readily as forty, and the sentence above the chart
+    used to promise "a whole group of markets", which is a description of the default
+    selection rather than of the page."""
+    assert "a market" in LEDE
+    assert "set" in LEDE
+
+
+def test_the_headline_says_market_when_one_market_is_selected():
+    text, _ = headline(ranked(97.0), et.UNIT_RISK, LEG_SPEC, single=True)
+    assert "this market's own history" in text
+    assert "this set" not in text
+
+
+def test_the_headline_still_says_set_for_a_total():
+    text, _ = headline(ranked(97.0), et.UNIT_RISK, LEG_SPEC)
+    assert "this set's own history" in text
+
+
+def test_the_light_and_ordinary_headlines_agree_with_the_selection():
+    """Three sentences print the noun and only one of them was on the path the first
+    fix took, so all three are pinned."""
+    light, _ = headline(ranked(3.0, value=1e7), et.UNIT_RISK, LEG_SPEC, single=True)
+    usual, _ = headline(ranked(52.0), et.UNIT_RISK, LEG_SPEC, single=True)
+    for text in (light, usual):
+        assert "this market's own history" in text
+        assert "this set" not in text
+
+
+def test_the_caption_calls_the_price_panel_what_it_is_for_one_market():
+    """An equal-weight composite of one market is that market's price, and saying
+    "composite" over it invites a reader to look for a construction that is not there."""
+    line = caption(ranked(50.0), et.UNIT_RISK, LEG_SPEC, single=True)
+    assert "that market's own price" in line
+    assert "composite" not in line
+
+
+def test_the_caption_keeps_the_composite_sentence_for_a_total():
+    line = caption(ranked(50.0), et.UNIT_RISK, LEG_SPEC)
+    assert "equal-weight composite" in line
+
+
+def test_a_single_market_is_named_rather_than_counted():
+    """"1 of 1 markets summed" is arithmetic about a sum with one term."""
+    one = AggregateExposure(frame=agg().frame, dropped={},
+                            coverage={"Gold": (None, None)},
+                            bounded_by={}, weeks_lost=0)
+    line = text_of(membership(one, ["Gold"]))
+    assert "Gold on its own" in line
+    assert "1 of 1" not in line
+
+
+def test_the_composition_line_drops_concentration_for_one_market():
+    """A market is 100% of itself and 1 of 1 markets point the same way. Both are true,
+    neither is worth a line, and printing them reads as a page not looking at its own
+    controls."""
+    line = composition_line(with_members({"Gold": 4e8}), et.UNIT_RISK, LEG_COMM)
+    assert line == ""
+
+
+def test_the_leg_split_survives_a_single_market():
+    """Large against Small is a real disagreement inside one market's number, unlike
+    concentration, so the clause that reports it is not dropped with the rest."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL
+    one = with_members({"Gold": 4e8})
+    parts = {LEG_LARGE: pd.Series([-1.5e8] * 3, index=one.frame.index),
+             LEG_SMALL: pd.Series([5.5e8] * 3, index=one.frame.index)}
+    line = composition_line(one, et.UNIT_RISK, LEG_SPEC, parts)
+    assert "two halves disagree" in line
+    assert "largest single market" not in line
+    assert "agreement" not in line
+
+
+def test_the_explanation_says_dollars_are_not_the_index_with_bigger_numbers():
+    """The claim this page was built on and then measured: the same 52-week range index
+    on contracts and on dollar risk correlates 0.92 at the median market and disagrees
+    about the extreme weeks about one week in six, so a single market carries meaning
+    the positioning index does not."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "0.92" in body
+    assert "one week in six" in body
+    assert "volatility term" in body
+
+
+def test_the_contribution_bar_is_dropped_for_a_single_row():
+    """The bar is a share of the total, so one market draws it full width whatever the
+    number is. It encodes nothing there, for the same reason the concentration sentence
+    does not."""
+    one = pd.DataFrame({"market": ["Gold"], "risk_usd": [4e8],
+                        "notional_usd": [2e10], "risk_pct_rank": [97.0],
+                        "notional_pct_rank": [95.0]})
+    ids = [c.get("colId") or c["field"]
+           for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, one)]
+    assert "bar" not in ids
+    assert "risk_pct_rank" in ids
+
+
+def test_the_contribution_bar_survives_a_real_set():
+    two = pd.DataFrame({"market": ["Gold", "Silver"], "risk_usd": [4e8, -1e8],
+                        "notional_usd": [2e10, -5e9], "risk_pct_rank": [97.0, 12.0],
+                        "notional_pct_rank": [95.0, 15.0]})
+    ids = [c.get("colId") or c["field"]
+           for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, two)]
+    assert "bar" in ids
+
+
+# ── the other lens ────────────────────────────────────────────────────────────
+
+def lensed(contracts, dollars, unit="risk_usd"):
+    """A single-market aggregate whose contract percentile and dollar percentile are
+    whatever the test needs them to be."""
+    base = agg()
+    idx = base.frame.index
+    frame = base.frame.copy()
+    frame["risk_pct_rank"] = dollars
+    frame["notional_pct_rank"] = dollars
+    one = AggregateExposure(frame=frame, dropped={},
+                            coverage={"Silver": (idx[0], idx[-1])},
+                            bounded_by={}, weeks_lost=0,
+                            members={"Silver": base.frame})
+    return one, pd.Series([contracts] * len(idx), index=idx)
+
+
+def test_the_lens_line_is_silent_when_the_two_lenses_agree():
+    """Pooled across 43 markets the median gap is 5.4 percentile points. A sentence
+    printed every week is a sentence nobody reads on the week it matters."""
+    one, ranks = lensed(52.0, 57.0)
+    assert lens_line(one, et.UNIT_RISK, ranks=ranks) == ""
+
+
+def test_the_lens_line_speaks_when_the_dollars_are_extreme_and_the_contracts_are_not():
+    """The live case it was built from: Large Specs in Silver at the 45th percentile on
+    contracts and the 98th on dollar risk, in the same week."""
+    one, ranks = lensed(45.0, 98.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "45th percentile" in line
+    assert "98th" in line
+    assert "price and volatility" in line
+
+
+def test_the_lens_line_speaks_the_other_way_round_too():
+    one, ranks = lensed(96.0, 60.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "more extreme than the money at stake" in line
+
+
+def test_a_wide_gap_is_reported_even_without_an_extreme():
+    one, ranks = lensed(30.0, 62.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "30th percentile" in line
+    assert "62nd" in line
+    assert line.endswith("for the dollars.")
+
+
+def test_the_lens_is_read_off_the_member_not_the_summed_contract_count():
+    """The aggregate's own net_contracts adds ES contracts to corn contracts, which is
+    the sum converting to dollars exists to avoid. A set gets no lens at all."""
+    assert contracts_rank(with_members({"Gold": 4e8, "Silver": 1e8})) is None
+
+
+def test_a_single_market_gets_a_lens_from_its_own_contract_count():
+    idx = agg().frame.index
+    member = pd.DataFrame({"net_contracts": range(len(idx))}, index=idx)
+    one = AggregateExposure(frame=agg().frame, dropped={},
+                            coverage={"Gold": (idx[0], idx[-1])},
+                            bounded_by={}, weeks_lost=0, members={"Gold": member})
+    assert contracts_rank(one) is not None
+
+
+def test_the_explanation_says_what_the_dotted_line_is_and_is_not():
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "0.30" in body
+    assert "flips sign" in body
