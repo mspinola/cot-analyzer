@@ -21,6 +21,7 @@ three are failures of the printed reference it was built from:
 - that positioning is as-of Tuesday and published the following Friday
 """
 import dash
+import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pandas as pd
 from cotmetrics import exposure
@@ -30,7 +31,7 @@ from dash import Input, Output, Patch, State, callback, dcc, html, no_update
 import components.exposure_traces as exposure_traces
 import viz_config
 import viz_constants as vc
-from components.plot_colors import grid_colors
+from components.plot_colors import grid_colors, hex_to_rgba
 
 dash.register_page(__name__, path='/exposure')
 
@@ -354,8 +355,12 @@ def how_to_read(unit):
          "one panel alone."),
         ("What it is made of",
          "A sum says nothing about whether every market agreed or one market carried "
-         "it, so the bars below break the latest week apart and the line under the "
-         "headline scores it. Faded bars point against the total."),
+         "it, so the table below breaks the week apart and the line under the headline "
+         "scores it. The Contribution bar runs from the centre, so a market leaning "
+         "against the total points the other way and is faded. The %ile column is each "
+         "market against ITS own history, which the bar cannot show: a market can be a "
+         "small part of the total and still be at the most extreme reading it has ever "
+         "had."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -376,6 +381,108 @@ def how_to_read(unit):
          "The figures are as-of Tuesday and published the following Friday, so no week "
          "on this chart was knowable when its price printed."),
     ]
+
+
+#: One row per market, so a set fits without scrolling and a long one still shows the
+#: markets that matter, which are the ones at the top.
+TABLE_ROW_PX = 30
+TABLE_HEADER_PX = 34
+TABLE_MAX_ROWS = 12
+
+
+def contribution_columns(unit, palette, leg, table):
+    """The table's columns: both units, the percentile of the drawn one, and the bar.
+
+    Both units on every row whichever one is drawn, because they are not substitutes:
+    on the Energies complex their percentiles correlate 0.802 with a median gap of 9.6
+    percentile points and a worst gap of 69. A reader should be able to see the number
+    the page is not currently showing without changing a control.
+
+    The percentile is each market's own, against ITS history, not the total's. That is
+    the column the bar cannot carry: a market can be a small part of the total and be at
+    the most extreme reading it has ever had, and those are different facts.
+    """
+    other = (exposure_traces.UNIT_NOTIONAL if unit == exposure_traces.UNIT_RISK
+             else exposure_traces.UNIT_RISK)
+    rank = exposure.rank_column(unit)
+    base = palette[exposure_traces.LEG_PALETTE_SLOT.get(leg, 0)]
+
+    values = [v for v in table[unit]] if unit in table.columns else []
+    max_abs = max((abs(v) for v in values if v == v), default=0.0)
+    total_sign = 1 if sum(v for v in values if v == v) >= 0 else -1
+
+    def money(column):
+        divisor, suffix = exposure_traces.unit_scale(table[column]) if len(table) \
+            else (1.0, "")
+        return {
+            "headerName": f"{exposure_traces.UNIT_LABELS[column]}"
+                          + (f" ({suffix})" if suffix else ""),
+            "field": column,
+            "type": "numericColumn",
+            "valueFormatter": {
+                "function": f"d3.format(',.1f')(params.value / {divisor})"},
+            "width": 120,
+        }
+
+    return [
+        {"headerName": "Market", "field": "market", "flex": 1, "minWidth": 130},
+        money(unit),
+        money(other),
+        {"headerName": "%ile", "field": rank, "type": "numericColumn", "width": 80,
+         "valueFormatter": {"function": "params.value == null ? '' : "
+                                        "d3.format('.0f')(params.value)"},
+         "headerTooltip": "Where this market's own history puts this week, 0 to 100"},
+        {"headerName": "Contribution", "field": unit, "colId": "bar",
+         "cellRenderer": "ContributionBarRenderer",
+         "cellRendererParams": {
+             "maxAbs": max_abs,
+             "totalSign": total_sign,
+             "withColor": hex_to_rgba(base, exposure_traces.WITH_ALPHA),
+             "againstColor": hex_to_rgba(base, exposure_traces.AGAINST_ALPHA),
+         },
+         "sortable": False, "flex": 1, "minWidth": 140,
+         "headerTooltip": "Each market's share of the total, from the centre. "
+                          "Faded bars point against it."},
+    ]
+
+
+def contribution_grid(table, unit, palette, leg):
+    """The composition of one week, as a table rather than a chart.
+
+    It replaced a horizontal bar figure, which drew the one column a chart is better at
+    and could carry nothing else. The three columns beside the bar are the reason: the
+    dollar figure a reader would otherwise have to estimate off an axis, the same figure
+    in the unit they are not looking at, and each market's own percentile, which no
+    contribution chart can show because it is not a share of anything.
+    """
+    if table is None or table.empty:
+        return dag.AgGrid(id='exposure_contributions', rowData=[], columnDefs=[],
+                          className="ag-theme-quartz-dark",
+                          style={"height": "0px", "display": "none"})
+    # Sorted by the unit being DRAWN, not by the table's own lead column. The table is
+    # ordered by whichever unit comes first in cotmetrics; here the reader is looking at
+    # one of them, and the market driving the number on screen should be the top row.
+    if unit in table.columns:
+        table = table.reindex(table[unit].abs().sort_values(ascending=False).index)
+    # Plain floats, not numpy scalars: rowData is serialised to the browser, and a numpy
+    # type that happens to survive today is a dependency on the encoder rather than a
+    # decision.
+    rows = [{"market": str(name),
+             **{c: (None if row[c] != row[c] else float(row[c]))
+                for c in table.columns}}
+            for name, row in table.iterrows()]
+    height = TABLE_HEADER_PX + TABLE_ROW_PX * min(len(rows), TABLE_MAX_ROWS)
+    return dag.AgGrid(
+        id='exposure_contributions',
+        rowData=rows,
+        columnDefs=contribution_columns(unit, palette, leg, table),
+        className="ag-theme-quartz-dark",
+        style={"height": f"{height}px", "width": "100%", "fontSize": "12px"},
+        defaultColDef={"sortable": True, "resizable": True, "suppressMenu": True},
+        dashGridOptions={"rowHeight": TABLE_ROW_PX, "headerHeight": TABLE_HEADER_PX,
+                         "suppressCellFocus": True, "tooltipShowDelay": 400},
+        dangerously_allow_code=True,
+    )
 
 
 def caption(frame, unit, leg, when=None):
@@ -543,8 +650,7 @@ def layout(**kwargs):
             html.Div(id='exposure_contrib_label',
                      style={"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
                             "marginTop": "4px"}),
-            dcc.Graph(id='exposure_contributions',
-                      config={"displayModeBar": False, "responsive": True}),
+            html.Div(id='exposure_contributions_slot'),
 
             html.P(id='exposure_caption',
                    style={"color": vc.TEXT_COLOR, "fontSize": "0.85rem",
@@ -609,11 +715,12 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None):
     shown = stamp if stamp is not None else (
         agg.frame.index[-1] if not agg.frame.empty else None)
 
-    shares = exposure.contributions(agg.members, unit, when=stamp)
-    bars = exposure_traces.build_contributions_figure(
-        shares, unit=unit, palette=palette, leg=leg)
+    table = exposure.contribution_table(agg.members, when=stamp,
+                                        min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
+    bars = contribution_grid(table, unit, palette, leg)
     label = (f"What made it, week of {shown:%B %d, %Y}. "
-             f"Faded bars point against the total." if len(shares) else "")
+             f"Percentiles are each market against its own history."
+             if len(table) else "")
 
     head_text, head_colour = headline(agg.frame, unit, leg, when=stamp)
     return dict(
@@ -664,7 +771,7 @@ def apply_help_fold(is_open):
 
 @callback(
     Output('exposure_chart', 'figure'),
-    Output('exposure_contributions', 'figure'),
+    Output('exposure_contributions_slot', 'children'),
     Output('exposure_contrib_label', 'children'),
     Output('exposure_composition', 'children'),
     Output('exposure_headline', 'children'),
@@ -693,8 +800,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, palette_name):
     if not asset_classes:
         empty = exposure_traces.build_figure(None, None, unit=unit, colors=colors,
                                              palette=palette)
-        no_bars = exposure_traces.build_contributions_figure(
-            None, unit=unit, palette=palette, leg=leg)
+        no_bars = contribution_grid(None, unit, palette, leg)
         return (empty, no_bars, "", "", "",
                 {**HEAD_STYLE, "color": vc.TEXT_COLOR}, help_block,
                 "Select an asset class.", "", None, "", {"display": "none"})
@@ -750,7 +856,7 @@ CROSSHAIR = {"color": "rgba(255,255,255,0.5)", "width": 1, "dash": "dot"}
 
 
 @callback(
-    Output('exposure_contributions', 'figure', allow_duplicate=True),
+    Output('exposure_contributions_slot', 'children', allow_duplicate=True),
     Output('exposure_contrib_label', 'children', allow_duplicate=True),
     Output('exposure_composition', 'children', allow_duplicate=True),
     Output('exposure_headline', 'children', allow_duplicate=True),

@@ -6,6 +6,7 @@ truncating the series, and the publication lag that a chart of weekly positionin
 against a daily price cannot show.
 """
 import dash
+import numpy as np
 import pandas as pd
 from cotmetrics.exposure import LEG_COMM, LEG_SPEC, AggregateExposure
 
@@ -22,6 +23,8 @@ from pages.analytics.exposure import (  # noqa: E402
     LEDE,
     caption,
     composition_line,
+    contribution_columns,
+    contribution_grid,
     crosshair_shapes,
     headline,
     how_to_read,
@@ -355,6 +358,14 @@ def test_the_explanation_covers_what_the_total_is_made_of():
     assert "opposite sides 59%" in body
 
 
+def test_the_explanation_says_what_the_percentile_column_adds():
+    """A market can be a small part of the total and still be at the most extreme
+    reading it has ever had, and no contribution bar can show that."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "own history" in body
+    assert "small part of the total" in body
+
+
 def test_the_explanation_says_why_the_other_legs_are_a_separate_panel():
     """The three sum to zero, so no group moves without another moving against it, and
     no single one determines another either."""
@@ -533,3 +544,97 @@ def test_the_explanation_says_why_the_percentile_scale_exists():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "48 times" in body
     assert "same footing" in body
+
+
+# ── the contribution table ────────────────────────────────────────────────────
+
+def table_of(**per_market):
+    return pd.DataFrame(per_market).T
+
+
+PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#A78BFA"]
+
+
+def test_the_table_shows_both_units_whichever_one_is_drawn():
+    """They are not substitutes: on Energies their percentiles correlate 0.802 with a
+    worst gap of 69 points. A reader should be able to see the number the page is not
+    currently drawing without changing a control."""
+    table = table_of(**{"S&P 500": {"risk_usd": 3.7e8, "notional_usd": 4.4e10,
+                                    "risk_pct_rank": 95.0,
+                                    "notional_pct_rank": 97.0}})
+    headers = [c["headerName"] for c
+               in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, table)]
+    assert any("risk" in h.lower() for h in headers)
+    assert any("notional" in h.lower() for h in headers)
+
+
+def test_the_drawn_unit_is_the_first_money_column():
+    table = table_of(**{"A": {"risk_usd": 1.0, "notional_usd": 2.0,
+                              "risk_pct_rank": 50.0, "notional_pct_rank": 50.0}})
+    for unit in (et.UNIT_RISK, et.UNIT_NOTIONAL):
+        headers = [c["headerName"] for c
+                   in contribution_columns(unit, PALETTE, LEG_SPEC, table)]
+        assert et.UNIT_LABELS[unit] in headers[1]
+
+
+def test_the_percentile_column_follows_the_drawn_unit():
+    """Each market against ITS own history, and of the unit on screen."""
+    table = table_of(**{"A": {"risk_usd": 1.0, "notional_usd": 2.0,
+                              "risk_pct_rank": 11.0, "notional_pct_rank": 88.0}})
+    for unit in (et.UNIT_RISK, et.UNIT_NOTIONAL):
+        rank = next(c for c in contribution_columns(unit, PALETTE, LEG_SPEC, table)
+                    if c["headerName"] == "%ile")
+        assert rank["field"] == unit.replace("_usd", "") + "_pct_rank"
+
+
+def test_the_bar_is_scaled_to_the_largest_contribution_in_the_table():
+    """One scale for every row, or the bars say nothing about relative size."""
+    table = table_of(A={"risk_usd": 1.0e8, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0},
+                     B={"risk_usd": -4.0e8, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    bar = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, table)
+               if c.get("colId") == "bar")
+    assert bar["cellRendererParams"]["maxAbs"] == 4.0e8
+
+
+def test_against_is_judged_by_the_totals_sign_not_by_being_negative():
+    """On a net-short total the negative markets are the ones AGREEING, so the renderer
+    is told the sign of the total rather than left to assume."""
+    short = table_of(A={"risk_usd": -4.0e8, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0},
+                     B={"risk_usd": 1.0e8, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    bar = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, short)
+               if c.get("colId") == "bar")
+    assert bar["cellRendererParams"]["totalSign"] == -1
+
+
+def test_the_bar_column_is_not_sortable():
+    """It is the same field as the money column beside it, so sorting on it would sort
+    the table by a number the reader can already sort on, from a header that looks like
+    it means something else."""
+    table = table_of(A={"risk_usd": 1.0, "notional_usd": 1.0,
+                        "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    bar = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, table)
+               if c.get("colId") == "bar")
+    assert bar["sortable"] is False
+
+
+def test_an_empty_table_renders_a_hidden_grid_rather_than_a_gap():
+    grid = contribution_grid(pd.DataFrame(), et.UNIT_RISK, PALETTE, LEG_SPEC)
+    assert grid.rowData == []
+    assert grid.style["display"] == "none"
+
+
+def test_the_grid_carries_plain_floats_not_numpy_scalars():
+    """rowData is serialised to the browser, and a numpy type that happens to survive
+    today is a dependency on the encoder rather than a decision."""
+    import json
+    table = table_of(A={"risk_usd": np.float64(1.5), "notional_usd": np.float64(2.5),
+                        "risk_pct_rank": np.float64(50.0),
+                        "notional_pct_rank": np.float64(50.0)})
+    grid = contribution_grid(table, et.UNIT_RISK, PALETTE, LEG_SPEC)
+    assert json.dumps(grid.rowData)
+    assert all(isinstance(v, (str, float, type(None)))
+               for row in grid.rowData for v in row.values())

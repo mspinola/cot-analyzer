@@ -361,67 +361,13 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     return fig
 
 
-#: Height per contributor row, plus the chrome. A set is 4 to 9 markets, so this figure
-#: is small by construction and sizing it from the row count keeps the bars a constant
-#: thickness rather than fatter for a small set.
-CONTRIB_ROW_PX = 26
-CONTRIB_CHROME_PX = 46
-CONTRIB_MIN_PX = 120
-
-#: A contributor pointing the other way from the total. It is drawn in the same colour
-#: at lower opacity rather than in a second hue, because "opposite" is one variable and
-#: the palette slot is already spending itself on which leg this is.
+#: A contributor pointing the other way from the total. Kept here rather than in the
+#: page because it is a drawing rule and the page's table renderer reads it: the same
+#: pair of alphas now colours the in-cell contribution bar that replaced the horizontal
+#: bar figure this module used to build. Opposite is one variable, and the hue is
+#: already spending itself on which leg this is.
 AGAINST_ALPHA = 0.30
 WITH_ALPHA = 0.85
-
-
-def build_contributions_figure(values, *, unit=UNIT_NOTIONAL, palette,
-                               leg=exposure.LEG_SPEC,
-                               background=vc.BACKGROUND_COLOR):
-    """One week of the total, broken into the markets that made it.
-
-    A sum says nothing about whether five markets agreed or one market carried it, and
-    on the real equity complex one market is 59.5% of the gross speculator total while
-    another leans the other way. This is the panel that says so.
-
-    Horizontal bars rather than a stacked area over time. The question is about the week
-    the reader is looking at, a stack of signed values is ambiguous in every plotting
-    library, and five market histories over 24 years is unreadable whatever the shape.
-    """
-    fig = go.Figure()
-    if values is None or len(values) == 0:
-        fig.update_layout(height=CONTRIB_MIN_PX, paper_bgcolor=background,
-                          plot_bgcolor=background,
-                          xaxis=dict(visible=False), yaxis=dict(visible=False))
-        return fig
-
-    divisor, suffix = unit_scale(values)
-    total = float(sum(v for v in values if v == v))
-    base = palette[LEG_PALETTE_SLOT.get(leg, 0)]
-    # Smallest first, because a horizontal bar axis counts upward from the bottom and
-    # the reader should meet the largest contributor at the top.
-    ordered = list(values.items())[::-1]
-    names = [n for n, _ in ordered]
-    scaled = [v / divisor for _, v in ordered]
-    colours = [hex_to_rgba(base, WITH_ALPHA if (v >= 0) == (total >= 0)
-                           else AGAINST_ALPHA)
-               for _, v in ordered]
-
-    fig.add_trace(go.Bar(
-        x=scaled, y=names, orientation="h", marker=dict(color=colours),
-        hovertemplate="%{y}<br>%{x:,.1f}" + suffix + " USD<extra></extra>"))
-    fig.add_vline(x=0, line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR,
-                                                   ZERO_LINE_ALPHA), width=1))
-    fig.update_layout(
-        height=max(CONTRIB_MIN_PX, len(values) * CONTRIB_ROW_PX + CONTRIB_CHROME_PX),
-        paper_bgcolor=background, plot_bgcolor=background, showlegend=False,
-        margin=dict(l=140, r=16, t=6, b=28),
-        font=dict(color=vc.TEXT_COLOR, size=11), bargap=0.35)
-    fig.update_xaxes(showgrid=True, gridcolor=vc.GRID_COLOR, zeroline=False,
-                     title_text=f"USD {suffix}" if suffix else "USD",
-                     title_font=dict(size=10))
-    fig.update_yaxes(showgrid=False, zeroline=False, automargin=True)
-    return fig
 
 
 def price_axis_type(composite):

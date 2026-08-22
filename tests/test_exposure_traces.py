@@ -290,50 +290,6 @@ def test_a_part_with_no_data_is_skipped_rather_than_drawn_flat():
     assert "Large Speculators" not in [t.name for t in fig.data]
 
 
-# ── the contributors ──────────────────────────────────────────────────────────
-
-def test_the_largest_contributor_is_drawn_at_the_top():
-    """A horizontal bar axis counts upward from the bottom, so the order has to be
-    reversed or the reader meets the smallest market first."""
-    values = pd.Series({"S&P 500": 3.71e8, "Nasdaq": 1.16e8, "Russell": -5.7e7})
-    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
-    assert list(fig.data[0].y)[-1] == "S&P 500"
-    assert list(fig.data[0].y)[0] == "Russell"
-
-
-def test_a_contributor_pointing_against_the_total_is_faded_not_recoloured():
-    """"Opposite" is one variable, and the palette slot is already spending itself on
-    which leg this is."""
-    values = pd.Series({"S&P 500": 3.71e8, "Russell": -5.7e7})
-    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
-    colours = dict(zip(fig.data[0].y, fig.data[0].marker.color))
-    assert str(et.AGAINST_ALPHA) in colours["Russell"]
-    assert str(et.WITH_ALPHA) in colours["S&P 500"]
-
-
-def test_against_is_judged_by_the_totals_sign_not_by_being_negative():
-    """On a net-short total the negative markets are the ones AGREEING."""
-    values = pd.Series({"A": -3.0e8, "B": 5.0e7})
-    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
-    colours = dict(zip(fig.data[0].y, fig.data[0].marker.color))
-    assert str(et.WITH_ALPHA) in colours["A"]
-    assert str(et.AGAINST_ALPHA) in colours["B"]
-
-
-def test_the_bar_figure_grows_with_the_number_of_markets():
-    small = et.build_contributions_figure(pd.Series({"A": 1.0e8, "B": 2.0e8}),
-                                          unit=et.UNIT_RISK, palette=PALETTE)
-    big = et.build_contributions_figure(
-        pd.Series({c: 1.0e8 for c in "ABCDEFGHI"}), unit=et.UNIT_RISK, palette=PALETTE)
-    assert big.layout.height > small.layout.height
-
-
-def test_no_contributors_draws_an_empty_frame_rather_than_raising():
-    fig = et.build_contributions_figure(None, unit=et.UNIT_RISK, palette=PALETTE)
-    assert len(fig.data) == 0
-    assert fig.layout.height == et.CONTRIB_MIN_PX
-
-
 # ── the price axis ────────────────────────────────────────────────────────────
 
 def series(values, start="2026-01-06"):

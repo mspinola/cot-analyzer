@@ -626,3 +626,65 @@ dagcomponentfuncs.DataBarRenderer = function(props) {
         ]
     );
 };
+/**
+ * A contribution bar that diverges from the CENTRE of the cell.
+ *
+ * DataBarRenderer above anchors its bar on the left and colours it by sign, which is
+ * right for a momentum column where every row is asking "how much". This column asks
+ * something else: each row is a market's share of a signed total, so the reader wants
+ * to see at a glance which markets carry the total and which lean against it. A
+ * left-anchored bar shows a dissenting market as a short bar, the same shape as a small
+ * agreeing one; a centred bar shows it pointing the other way, which is what it is
+ * doing.
+ *
+ * Colour follows the leg, not the sign, because the leg is already the page's colour
+ * and the sign is already carried by the direction the bar points. A market pointing
+ * against the total is faded rather than recoloured, matching the figure this replaced:
+ * "opposite" is one variable and the hue is already spending itself on which leg this
+ * is.
+ *
+ * Params, from cellRendererParams: `maxAbs` (the largest absolute contribution in the
+ * table, so every row is drawn to one scale), `totalSign` (+1 or -1, which decides what
+ * "against" means, since on a net-short total the negative markets are the ones
+ * agreeing), and `withColor` / `againstColor`.
+ */
+dagcomponentfuncs.ContributionBarRenderer = function(props) {
+    if (props.value === null || props.value === undefined || isNaN(props.value)) {
+        return React.createElement('span', null, "");
+    }
+    var val = parseFloat(props.value);
+    var maxAbs = parseFloat(props.maxAbs) || 0;
+    if (!(maxAbs > 0)) { maxAbs = Math.abs(val) || 1; }
+
+    var totalSign = (parseFloat(props.totalSign) || 1) >= 0 ? 1 : -1;
+    var agrees = (val >= 0 ? 1 : -1) === totalSign;
+    var color = agrees ? (props.withColor || 'rgba(96,165,250,0.85)')
+                       : (props.againstColor || 'rgba(96,165,250,0.30)');
+
+    // Half the cell per side, so a bar at maxAbs reaches the edge and no further.
+    var half = Math.min(Math.abs(val) / maxAbs, 1) * 50;
+    var positive = val >= 0;
+
+    return React.createElement('div', {
+        style: {position: 'relative', width: '100%', height: '100%'}
+    }, [
+        // The centre line, drawn under the bar. Without it a lone short bar gives the
+        // reader nothing to judge its direction against.
+        React.createElement('div', {
+            key: 'axis',
+            style: {position: 'absolute', left: '50%', top: '3px', bottom: '3px',
+                    width: '1px', backgroundColor: 'rgba(255,255,255,0.25)'}
+        }),
+        React.createElement('div', {
+            key: 'bar',
+            style: {
+                position: 'absolute',
+                top: '5px', bottom: '5px',
+                left: positive ? '50%' : (50 - half) + '%',
+                width: half + '%',
+                backgroundColor: color,
+                borderRadius: '1px'
+            }
+        })
+    ]);
+};
