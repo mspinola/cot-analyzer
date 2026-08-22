@@ -22,9 +22,10 @@ three are failures of the printed reference it was built from:
 """
 import dash
 import dash_bootstrap_components as dbc
+import pandas as pd
 from cotmetrics import exposure
 from cotmetrics.indexer import get_indexer
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, Patch, State, callback, dcc, html, no_update
 
 import components.exposure_traces as exposure_traces
 import viz_config
@@ -89,12 +90,54 @@ def membership(agg, names):
 CROWDED_HIGH = 90
 CROWDED_LOW = 10
 
+#: The headline's typography, in one place because the full render and the click path
+#: both write it and a style that drifted between them would flicker on every click.
+HEAD_STYLE = {"fontSize": "1.05rem", "fontWeight": 600, "marginBottom": "2px"}
+
 LEDE = (
     "How much money one group of traders has committed to a whole group of markets, "
     "and whether that is a lot by this group's own standards.")
 
 
-def headline(frame, unit, leg):
+def ordinal(n):
+    """43rd, not 43th. English, so the teens are the exception rather than the rule.
+
+    Worth a function because two different lines print a percentile and a page that
+    writes "43th" in bold above a chart reads as unfinished whatever the chart does.
+    """
+    n = int(round(n))
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }".replace(" ", "")
+
+
+def snap_week(frame, when):
+    """The frame's own week nearest to `when`, or None for the latest.
+
+    A click reports the x of the point under the cursor, which is already a real week on
+    every trace here. It is snapped anyway because hover is unified across four traces
+    and a band edge can report a neighbouring stamp, and because a stale selection has
+    to survive the controls changing: click a 2015 week, switch to Metals, and the
+    nearest Metals week is a better answer than an exception.
+    """
+    if frame is None or frame.empty or when is None:
+        return None
+    stamps = pd.DatetimeIndex(frame.index)
+    target = pd.to_datetime(when)
+    if getattr(target, "tzinfo", None) is not None:
+        target = target.tz_localize(None)
+    return stamps[abs(stamps - target).argmin()]
+
+
+def week_row(frame, when=None):
+    """One week of the total: the selected one, or the last."""
+    if frame is None or frame.empty:
+        return None
+    stamp = snap_week(frame, when)
+    return frame.loc[stamp] if stamp is not None else frame.iloc[-1]
+
+
+def headline(frame, unit, leg, when=None):
     """The one-line answer, before any of the machinery that produced it.
 
     A reader arriving at a twenty-year chart of dollars has to do two conversions before
@@ -116,10 +159,15 @@ def headline(frame, unit, leg):
     """
     if frame is None or frame.empty:
         return "", vc.TEXT_COLOR
-    latest = frame.iloc[-1]
-    rank = latest[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    row = week_row(frame, when)
+    if row is None:
+        return "", vc.TEXT_COLOR
+    rank = row[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    # Scaled against the WHOLE series, not the selected week, so the unit does not
+    # change when a reader clicks from a big week to a small one. A number that grew
+    # three orders of magnitude because you clicked left is not a comparison.
     divisor, suffix = exposure_traces.unit_scale(frame[unit])
-    value = latest[unit] / divisor
+    value = row[unit] / divisor
     side = "long" if value >= 0 else "short"
     money = f"${abs(value):,.1f}{suffix}"
     who = exposure.LEG_LABELS[leg]
@@ -140,7 +188,7 @@ def headline(frame, unit, leg):
                 f"{100 - rank:.0f}% of the weeks in this set's own history.",
                 vc.BRIGHTER_TEXT_COLOR)
     return (f"Within the usual range. {who} are net {side} {money}, around the "
-            f"{rank:.0f}th percentile of this set's own history."), vc.TEXT_COLOR
+            f"{ordinal(rank)} percentile of this set's own history."), vc.TEXT_COLOR
 
 
 #: Below this, a total is a residual between markets doing different things rather than
@@ -153,7 +201,7 @@ AGREEMENT_SPLIT = 0.80
 DOMINANT_SHARE = 0.50
 
 
-def composition_line(agg, unit, leg, part_frames=None):
+def composition_line(agg, unit, leg, part_frames=None, when=None):
     """What the headline is actually made of, in one sentence under it.
 
     Two facts, both invisible in a sum and both measured rather than suspected.
@@ -170,8 +218,9 @@ def composition_line(agg, unit, leg, part_frames=None):
     """
     if agg is None or agg.frame.empty:
         return ""
+    when = snap_week(agg.frame, when)
     column = exposure_traces.UNIT_RANK_COLUMN[unit].replace("_pct_rank", "_usd")
-    shares = exposure.contributions(agg.members, column)
+    shares = exposure.contributions(agg.members, column, when=when)
     if shares.empty:
         return ""
     divisor, suffix = exposure_traces.unit_scale(agg.frame[unit])
@@ -186,7 +235,8 @@ def composition_line(agg, unit, leg, part_frames=None):
         for part_leg, frame in parts.items():
             if frame is None or frame.empty:
                 continue
-            value = frame.iloc[-1] / divisor
+            value = (frame.loc[when] if when in frame.index
+                     else frame.iloc[-1]) / divisor
             told.append((exposure.LEG_LABELS[part_leg], value))
         if len(told) == 2:
             (a_name, a), (b_name, b) = told
@@ -257,7 +307,7 @@ def how_to_read(unit):
     ]
 
 
-def caption(frame, unit, leg):
+def caption(frame, unit, leg, when=None):
     """The reading, in words, including the one fact the chart cannot show.
 
     The publication lag is the sentence that matters. The series is plotted at its
@@ -268,16 +318,18 @@ def caption(frame, unit, leg):
     """
     if frame is None or frame.empty:
         return ""
-    latest = frame.iloc[-1]
-    rank = latest[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    row = week_row(frame, when)
+    if row is None:
+        return ""
+    rank = row[exposure_traces.UNIT_RANK_COLUMN[unit]]
     divisor, suffix = exposure_traces.unit_scale(frame[unit])
-    value = latest[unit] / divisor
+    value = row[unit] / divisor
     side = "net long" if value >= 0 else "net short"
-    rank_text = (f"the {rank:.0f}th percentile of its own history"
+    rank_text = (f"the {ordinal(rank)} percentile of its own history"
                  if rank == rank else "no percentile yet, under two years of history")
     return (
         f"{exposure.LEG_LABELS[leg]} are {side} ${abs(value):,.1f}{suffix} "
-        f"({exposure_traces.UNIT_LABELS[unit]}) as of {frame.index[-1]:%B %d, %Y}, "
+        f"({exposure_traces.UNIT_LABELS[unit]}) as of {row.name:%B %d, %Y}, "
         f"which is {rank_text}. {exposure_traces.UNIT_NOTES[unit]} "
         f"The shaded band is the 10th to 90th percentile of the history up to each "
         f"week, so it carries no look-ahead and neither does the percentile. "
@@ -295,6 +347,10 @@ def layout(**kwargs):
         # the Strip's start shut, because a board of markets explains its own shape and
         # a twenty-year dollar series does not.
         dcc.Store(id='exposure_help_open', storage_type='local', data=True),
+        # NOT persisted, unlike the folds. Which week you are reading is a fact about
+        # this visit, and a page that reopened weeks later still describing a 2015 week
+        # under a headline saying CROWDED would be lying by default.
+        dcc.Store(id='exposure_selected_week'),
         dbc.Container([
             dbc.Card(dbc.CardBody([
                 dbc.Row([
@@ -355,6 +411,17 @@ def layout(**kwargs):
             html.Div(id='exposure_headline',
                      style={"fontSize": "1.05rem", "fontWeight": 600,
                             "marginBottom": "2px"}),
+            # The row hides as a unit while the latest week is showing. A permanent
+            # "Back to latest" is a control that does nothing on the state it is most
+            # often seen in, and the notice beside it is the thing that makes the button
+            # make sense.
+            html.Div([
+                html.Span(id='exposure_rewind', className="me-2"),
+                dbc.Button("Back to latest", id='exposure_reset', size="sm",
+                           color="secondary", outline=True, className="py-0"),
+            ], id='exposure_rewind_row', className="mb-1",
+                style={"display": "none"}),
+
             html.Div(id='exposure_composition',
                      style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem",
                             "marginBottom": "4px"}),
@@ -370,7 +437,11 @@ def layout(**kwargs):
                      style={"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
                             "marginBottom": "6px"}),
 
+            # `clickmode="event"`, not the default `event+select`: a click here moves
+            # the reading to a week, and Plotly's box-select highlight would imply a
+            # range selection the page does not offer.
             dcc.Loading(dcc.Graph(id='exposure_chart',
+                                  clickData=None,
                                   config={"displayModeBar": False,
                                           "responsive": True}),
                         type="default", color=vc.TEXT_COLOR),
@@ -411,6 +482,51 @@ def _names_in(asset_classes):
                   if i.asset_class in asset_classes)
 
 
+def describe_week(agg, part_frames, unit, leg, palette, when=None):
+    """Everything the page says about ONE week, in one place.
+
+    Both entry points come through here: the full render, which describes the latest
+    week, and a click, which describes the one under the cursor. Written once because
+    the alternative is two code paths that agree until one of them is edited, and the
+    thing they would disagree about is what the numbers on screen mean.
+    """
+    stamp = snap_week(agg.frame, when)
+    shown = stamp if stamp is not None else (
+        agg.frame.index[-1] if not agg.frame.empty else None)
+
+    shares = exposure.contributions(agg.members, unit, when=stamp)
+    bars = exposure_traces.build_contributions_figure(
+        shares, unit=unit, palette=palette, leg=leg)
+    label = (f"What made it, week of {shown:%B %d, %Y}. "
+             f"Faded bars point against the total." if len(shares) else "")
+
+    head_text, head_colour = headline(agg.frame, unit, leg, when=stamp)
+    return dict(
+        bars=bars,
+        bar_label=label,
+        composition=composition_line(agg, unit, leg, part_frames, when=stamp),
+        headline=head_text,
+        head_style={**HEAD_STYLE, "color": head_colour},
+        caption=caption(agg.frame, unit, leg, when=stamp),
+        shown=shown,
+    )
+
+
+def rewind_notice(shown, latest):
+    """Shown only while a past week is selected, because a page describing 2015 under a
+    headline with no date is a page that lies quietly.
+
+    Every figure on this page describes one week, and only the crosshair says which. The
+    percentile is the one number that survives the move honestly on its own: it is
+    expanding, so a past week is ranked against the history up to THAT week, which is
+    what a reader looking at 2015 wants and not what a full-sample rank would give them.
+    """
+    if shown is None or latest is None or shown == latest:
+        return "", {"display": "none"}
+    return (f"Showing the week of {shown:%B %d, %Y}, not the latest.",
+            {"display": "block"})
+
+
 @callback(
     Output('exposure_help_open', 'data'),
     Input('exposure_help_toggle', 'n_clicks'),
@@ -441,6 +557,9 @@ def apply_help_fold(is_open):
     Output('exposure_help', 'children'),
     Output('exposure_membership', 'children'),
     Output('exposure_caption', 'children'),
+    Output('exposure_selected_week', 'data'),
+    Output('exposure_rewind', 'children'),
+    Output('exposure_rewind_row', 'style'),
     Input('exposure_class_selector', 'value'),
     Input('exposure_member_selector', 'value'),
     Input('exposure_leg_selector', 'value'),
@@ -454,15 +573,14 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     unit = unit or exposure_traces.UNIT_RISK
 
     help_block = help_children(unit)
-    head_style = {"fontSize": "1.05rem", "fontWeight": 600, "marginBottom": "2px"}
     if not asset_classes:
         empty = exposure_traces.build_figure(None, None, unit=unit, colors=colors,
                                              palette=palette)
         no_bars = exposure_traces.build_contributions_figure(
             None, unit=unit, palette=palette, leg=leg)
         return (empty, no_bars, "", "", "",
-                {**head_style, "color": vc.TEXT_COLOR}, help_block,
-                "Select an asset class.", "")
+                {**HEAD_STYLE, "color": vc.TEXT_COLOR}, help_block,
+                "Select an asset class.", "", None, "", {"display": "none"})
 
     # An empty member list is the moment between a class change and the callback that
     # repopulates it, not a request for an empty total.
@@ -484,17 +602,14 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
         leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
         leg=leg, parts=part_frames)
 
-    shares = exposure.contributions(agg.members, unit)
-    bars = exposure_traces.build_contributions_figure(
-        shares, unit=unit, palette=palette, leg=leg)
-    bar_label = (f"What made it, week of {agg.frame.index[-1]:%B %d, %Y}. "
-                 f"Faded bars point against the total."
-                 if len(shares) else "")
-    head_text, head_colour = headline(agg.frame, unit, leg)
-    return (figure, bars, bar_label,
-            composition_line(agg, unit, leg, part_frames),
-            head_text, {**head_style, "color": head_colour}, help_block,
-            membership(agg, names), caption(agg.frame, unit, leg))
+    said = describe_week(agg, part_frames, unit, leg, palette)
+    # A control change resets the selection: the clicked week belonged to the set that
+    # was on screen when it was clicked, and silently carrying it onto a different set
+    # is how a page ends up describing a week it never drew.
+    return (figure, said["bars"], said["bar_label"], said["composition"],
+            said["headline"], said["head_style"], help_block,
+            membership(agg, names), said["caption"], None, "",
+            {"display": "none"})
 
 
 def help_children(unit):
@@ -509,3 +624,111 @@ def help_children(unit):
         html.Span(body, style={"color": vc.TEXT_COLOR}),
     ], style={"fontSize": "0.82rem", "marginBottom": "4px"})
         for title, body in how_to_read(unit)]
+
+
+#: The crosshair marking the week being described. Dotted and half-strength, matching
+#: the one on OI Alignment, so a reader who learned the gesture there recognises it here.
+CROSSHAIR = {"color": "rgba(255,255,255,0.5)", "width": 1, "dash": "dot"}
+
+
+@callback(
+    Output('exposure_contributions', 'figure', allow_duplicate=True),
+    Output('exposure_contrib_label', 'children', allow_duplicate=True),
+    Output('exposure_composition', 'children', allow_duplicate=True),
+    Output('exposure_headline', 'children', allow_duplicate=True),
+    Output('exposure_headline', 'style', allow_duplicate=True),
+    Output('exposure_caption', 'children', allow_duplicate=True),
+    Output('exposure_chart', 'figure', allow_duplicate=True),
+    Output('exposure_selected_week', 'data', allow_duplicate=True),
+    Output('exposure_rewind', 'children', allow_duplicate=True),
+    Output('exposure_rewind_row', 'style', allow_duplicate=True),
+    Input('exposure_chart', 'clickData'),
+    Input('exposure_reset', 'n_clicks'),
+    State('exposure_class_selector', 'value'),
+    State('exposure_member_selector', 'value'),
+    State('exposure_leg_selector', 'value'),
+    State('exposure_unit_selector', 'value'),
+    State('session_palette_theme_asset_store', 'data'),
+    State('exposure_chart', 'figure'),
+    prevent_initial_call=True,
+)
+def select_week(click_data, _reset, asset_classes, members, leg, unit, palette_name,
+                current_fig):
+    """Move the whole reading to the week under the cursor, same gesture as OI Alignment.
+
+    Everything above the chart describes one week, and until now that week was always
+    the last one. Clicking a twenty-year series and having the headline stay on 2026 is
+    the wrong answer twice over: the reader asked a question and the page ignored it,
+    and the numbers they are looking at stop matching the words above them.
+
+    The figure is PATCHED rather than rebuilt, so a click cannot undo a zoom. That is
+    the same reason OI Alignment patches: returning a whole figure hands back the stored
+    x-range with it.
+
+    The percentile is the number that survives this move best, and for a reason worth
+    knowing. It is expanding, so a week in 2015 is ranked against the history up to 2015,
+    which is what a reader looking at 2015 wants. A full-sample rank would tell them
+    where that week sits in a distribution half of which had not happened yet.
+    """
+    if not asset_classes:
+        return (no_update,) * 10
+
+    triggered = dash.callback_context.triggered
+    by_reset = bool(triggered) and triggered[0]["prop_id"].startswith("exposure_reset")
+
+    when = None
+    if not by_reset:
+        if not click_data or not click_data.get("points"):
+            return (no_update,) * 10
+        when = click_data["points"][0].get("x")
+        if when is None:
+            return (no_update,) * 10
+
+    palette = viz_config.get_palette(palette_name)
+    leg = leg or exposure.LEG_SPEC
+    unit = unit or exposure_traces.UNIT_RISK
+    names = list(members) if members else _names_in(asset_classes)
+
+    agg = exposure.aggregate_exposure(names, leg=leg)
+    if agg.frame.empty:
+        return (no_update,) * 10
+
+    part_frames = {}
+    for part_leg in exposure_traces.LEG_PARTS.get(leg, ()):
+        part = exposure.aggregate_exposure(names, leg=part_leg)
+        part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
+
+    said = describe_week(agg, part_frames, unit, leg, palette, when=when)
+    latest = agg.frame.index[-1]
+    notice, notice_style = rewind_notice(said["shown"], latest)
+
+    patched = Patch()
+    patched["layout"]["shapes"] = crosshair_shapes(
+        ((current_fig or {}).get("layout") or {}).get("shapes"),
+        None if by_reset else said["shown"])
+
+    return (said["bars"], said["bar_label"], said["composition"], said["headline"],
+            said["head_style"], said["caption"], patched,
+            None if by_reset else str(said["shown"]), notice, notice_style)
+
+
+def crosshair_shapes(existing, when):
+    """The figure's own shapes, plus at most one crosshair.
+
+    Rebuilt from `existing` rather than appended to. A Patch that appended would stack a
+    line on every click and leave a comb across the chart after a dozen, and one that
+    returned only the crosshair would delete the zero line the exposure panel is read
+    against, which is the more expensive mistake because nothing about the result looks
+    broken.
+
+    The crosshair is identified by being the only paper-referenced one: the figure's own
+    shapes are all bound to a data axis, so this survives new shapes being added to the
+    figure without this function knowing about them.
+    """
+    shapes = [dict(shape) for shape in (existing or [])
+              if not (shape.get("yref") == "paper" and shape.get("type") == "line")]
+    if when is not None:
+        shapes.append({"type": "line", "xref": "x2", "yref": "paper",
+                       "x0": str(when), "x1": str(when), "y0": 0, "y1": 1,
+                       "line": CROSSHAIR})
+    return shapes

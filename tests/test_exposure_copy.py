@@ -22,9 +22,14 @@ from pages.analytics.exposure import (  # noqa: E402
     LEDE,
     caption,
     composition_line,
+    crosshair_shapes,
     headline,
     how_to_read,
     membership,
+    ordinal,
+    rewind_notice,
+    snap_week,
+    week_row,
 )
 
 
@@ -347,3 +352,125 @@ def test_the_explanation_covers_what_the_total_is_made_of():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "one market carried it" in body
     assert "opposite sides 59%" in body
+
+
+# ── picking a week off the chart ──────────────────────────────────────────────
+
+def test_a_clicked_week_is_snapped_to_a_week_the_frame_actually_has():
+    """Hover is unified across four traces and a band edge can report a neighbouring
+    stamp, so the click's x is snapped rather than trusted."""
+    frame = agg(rows=5).frame
+    assert snap_week(frame, "2026-01-14") == pd.Timestamp("2026-01-13")
+    assert snap_week(frame, frame.index[2]) == frame.index[2]
+
+
+def test_a_stale_selection_survives_a_change_of_set():
+    """Click a 2015 week, switch to Metals, and the nearest Metals week is a better
+    answer than an exception."""
+    frame = agg(rows=3).frame
+    assert snap_week(frame, "1999-01-01") == frame.index[0]
+    assert snap_week(frame, "2099-01-01") == frame.index[-1]
+
+
+def test_no_selection_means_the_latest_week():
+    frame = agg(rows=4).frame
+    assert snap_week(frame, None) is None
+    assert week_row(frame, None).name == frame.index[-1]
+
+
+def test_every_line_on_the_page_describes_the_week_that_was_clicked():
+    """The whole point of the gesture. Before this the headline stayed on the last week
+    while the reader looked at 2015, so the numbers on screen stopped matching the words
+    above them."""
+    frame = agg(rows=4).frame.copy()
+    frame["risk_usd"] = [1e7, 2e7, 3e7, -9e7]
+    picked = frame.index[1]
+    text = caption(frame, et.UNIT_RISK, LEG_SPEC, when=picked)
+    assert f"{picked:%B %d, %Y}" in text
+    assert "net long" in text
+    head, _ = headline(frame, et.UNIT_RISK, LEG_SPEC, when=picked)
+    assert "$20.0m" in head
+
+
+def test_the_axis_unit_does_not_change_when_a_week_is_picked():
+    """Scaled against the whole series, not the selected week. A number that grew three
+    orders of magnitude because you clicked left is not a comparison."""
+    frame = agg(rows=3).frame.copy()
+    frame["risk_usd"] = [1.0e3, 5.0e10, 2.0e10]
+    small, _ = headline(frame, et.UNIT_RISK, LEG_SPEC, when=frame.index[0])
+    big, _ = headline(frame, et.UNIT_RISK, LEG_SPEC, when=frame.index[1])
+    assert "bn" in small and "bn" in big
+    # The tiny week reads as a rounding error IN the series' unit, which is the honest
+    # answer: it was a rounding error beside the rest of the series.
+    assert "$0.0bn" in small
+
+
+def test_a_past_week_says_it_is_a_past_week():
+    """A page describing 2015 under a headline with no date is a page that lies
+    quietly."""
+    frame = agg(rows=3).frame
+    notice, style = rewind_notice(frame.index[0], frame.index[-1])
+    assert "not the latest" in notice
+    assert style["display"] != "none"
+
+
+def test_the_latest_week_shows_no_rewind_notice_and_no_reset():
+    """A permanent "Back to latest" is a control that does nothing on the state it is
+    most often seen in."""
+    frame = agg(rows=3).frame
+    notice, style = rewind_notice(frame.index[-1], frame.index[-1])
+    assert notice == ""
+    assert style["display"] == "none"
+
+
+# ── the crosshair ─────────────────────────────────────────────────────────────
+
+ZERO_LINE = {"type": "line", "yref": "y2", "xref": "x2 domain",
+             "x0": 0, "x1": 1, "y0": 0, "y1": 0}
+
+
+def test_the_crosshair_does_not_delete_the_figures_own_zero_line():
+    """The more expensive mistake of the two, because nothing about the result looks
+    broken: the exposure panel is read against that line."""
+    out = crosshair_shapes([ZERO_LINE], "2015-03-10")
+    assert ZERO_LINE in out
+    assert len(out) == 2
+
+
+def test_a_second_click_replaces_the_crosshair_rather_than_stacking_one():
+    """Appending would leave a comb across the chart after a dozen clicks."""
+    once = crosshair_shapes([ZERO_LINE], "2015-03-10")
+    twice = crosshair_shapes(once, "2018-01-02")
+    assert len(twice) == 2
+    assert twice[-1]["x0"] == "2018-01-02"
+
+
+def test_going_back_to_latest_takes_the_crosshair_with_it():
+    after = crosshair_shapes(crosshair_shapes([ZERO_LINE], "2015-03-10"), None)
+    assert after == [ZERO_LINE]
+
+
+def test_the_crosshair_spans_both_panels():
+    """Paper-referenced in y so it crosses the price panel too: the reader is comparing
+    exposure against price at that week, which is the whole reason both panels share an
+    axis."""
+    line = crosshair_shapes([], "2015-03-10")[0]
+    assert line["yref"] == "paper"
+    assert (line["y0"], line["y1"]) == (0, 1)
+
+
+def test_the_percentile_gets_an_english_ordinal():
+    """43th in bold above a chart reads as unfinished whatever the chart does, and two
+    different lines print a percentile."""
+    assert [ordinal(n) for n in (1, 2, 3, 4, 21, 43, 52)] == [
+        "1st", "2nd", "3rd", "4th", "21st", "43rd", "52nd"]
+
+
+def test_the_teens_are_the_exception_they_are_in_english():
+    assert [ordinal(n) for n in (11, 12, 13)] == ["11th", "12th", "13th"]
+
+
+def test_the_headline_uses_it():
+    text, _ = headline(ranked(43.0), et.UNIT_RISK, LEG_SPEC)
+    assert "43rd percentile" in text
+    assert "43th" not in text
