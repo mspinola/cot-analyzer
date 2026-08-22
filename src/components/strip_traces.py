@@ -134,38 +134,20 @@ STATE_LABELS = {
 # held; it did not give the header more room. Air between the classes comes from a real
 # empty row instead, which the axis does honour.
 ROW_PX = 19
-# The top margin holds the legend AND the top axis, in that order.
-#
-# DERIVED, not a constant, because a constant was wrong three times: once at 84 against
-# an 87px legend, then at 104 when adding two more keys took the legend to 125. The
-# legend grows whenever a mark or a leg is added to it, and nothing connects a hardcoded
-# margin to that. A legend that outgrows its margin does not look broken, it just quietly
-# covers the scale, which is the failure this keeps producing.
-#
-# Plotly lays a grouped horizontal legend out as one column per group, so its height is
-# set by the TALLEST group plus its title. 22px per line is measured, with the bottom
-# axis and a little air on top of it.
 # Faint enough to group without reading as shading in its own right. The class-header
 # band that was tried and removed sat at 0.07, which was visible as a stripe rather than
 # as an association.
 ROW_BAND_ALPHA = 0.035
 
-LEGEND_LINE_PX = 22
-AXIS_PX = 24
+# The top margin holds only the top axis. The legend that used to sit above it inside
+# the first figure is page chrome now (`legend_items` below): Plotly stacked the two
+# legend groups vertically, the stack outgrew the margin arithmetic that tried to
+# predict its height, and Plotly quietly pushed that one figure's margin out — which
+# left the left column's rows ~40px below the right column's. A constant margin on
+# every figure is what keeps the columns level, and there is nothing above the axis
+# left to collide with it.
+TOP_CHROME_PX = 34
 BOTTOM_CHROME_PX = 46
-
-
-def legend_lines(model, mark):
-    """Lines in the tallest legend group, plus its title."""
-    verdicts = 3                                   # bull setup, bear setup, near
-    verdicts += 0 if mark == MARK_BAR else 1       # the no-setup tick
-    verdicts += 1                                  # where it stood N weeks ago
-    legs = len([leg for leg in model.spec_legs if leg in LEG_LABELS])
-    return 1 + max(verdicts, legs)
-
-
-def top_margin(model, mark):
-    return LEGEND_LINE_PX * legend_lines(model, mark) + AXIS_PX
 
 # The axis stops just past 100. It used to run to 128 to carry two text columns, the
 # index value and the gate verdict, in fixed positions where they could not collide with
@@ -396,9 +378,8 @@ def split_columns(rows, columns=2):
     return [c[1:] if c and c[0].kind == "spacer" else c for c in out]
 
 
-def figure_height(rows, model=None, mark=MARK_DOT):
-    model = model or models.DEFAULT_MODEL
-    return top_margin(model, mark) + BOTTOM_CHROME_PX + ROW_PX * len(rows)
+def figure_height(rows):
+    return TOP_CHROME_PX + BOTTOM_CHROME_PX + ROW_PX * len(rows)
 
 
 def _bar_colour(row, colors):
@@ -488,47 +469,47 @@ def _tick_text(model):
     return [str(v) for v in _ticks(model)]
 
 
-def _add_legend_key(fig, model, colors, palette, mark=MARK_DOT):
-    """Legend entries drawn as empty traces, the idiom plot_traces already uses.
+# The glyph kinds legend_items hands back. The page renders them as text, so each kind
+# is a character there, but the KINDS are named here because which marks exist is this
+# module's fact: they mirror the symbols build_figure actually draws.
+GLYPH_MARK = "mark"        # the diamond, or the bar swatch in bar mode
+GLYPH_TICK = "tick"        # the line-ns symbol: quiet rows and speculator legs
+GLYPH_CIRCLE = "circle"    # the hollow prior-position circle
 
-    The bar itself stays out of the legend as a COLOUR, because its colour varies per row
-    and Plotly would take the swatch from whichever market happened to sort first, which
-    would mean something different every week. It is named by the group title instead.
 
-    Grouping the key is the point rather than decoration. Read cold, the figure has two
-    kinds of mark and no way to tell whose positioning either one is: the first reaction
-    to it was "what are the numbers, what are the ticks, is this Commercials only?", all
-    three of which are answered here and in the caption rather than left to be inferred.
+def legend_items(model, colors, palette, mark=MARK_DOT):
+    """The legend, as data: `[(group title, [(label, colour, glyph), ...]), ...]`.
+
+    This used to be empty traces inside the first figure, the idiom plot_traces uses.
+    It moved out because Plotly stacked the two groups vertically and pushed that one
+    figure's top margin to fit, so the column carrying the legend started ~40px below
+    the other. As page chrome it is drawn once above both columns, costs the strip no
+    figure height, and cannot desynchronise the margins.
+
+    The grouping itself is the point rather than decoration. Read cold, the figure has
+    two kinds of mark and no way to tell whose positioning either one is: the first
+    reaction to it was "what are the numbers, what are the ticks, is this Commercials
+    only?", all three of which are answered here and in the caption rather than left to
+    be inferred. The bar's own colour stays out of the key because it varies per row;
+    the group title names it instead.
     """
-    swatch = "square" if mark == MARK_BAR else "diamond"
     comm = palette[LEG_PALETTE_SLOT["comm"]]
-    commercial = [("Bull setup", colors.bull, swatch),
-                  ("Bear setup", colors.bear, swatch),
-                  ("Near", colors.bull_near, swatch)]
+    commercial = [("Bull setup", colors.bull, GLYPH_MARK),
+                  ("Bear setup", colors.bear, GLYPH_MARK),
+                  ("Near", colors.bull_near, GLYPH_MARK)]
     if mark != MARK_BAR:
-        commercial.append(("No setup", comm, "line-ns"))
-    commercial.append((f"{const.MOMENTUM_PERIOD}w ago", comm, "circle-open"))
-    groups = [
-        ("bar", f"{'Bar' if mark == MARK_BAR else 'Diamond'}: Commercial index",
-         commercial),
-        ("ticks", "Ticks: the legs this gate also reads",
-         [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], "line-ns")
+        commercial.append(("No setup", comm, GLYPH_TICK))
+    commercial.append((f"{const.MOMENTUM_PERIOD}w ago", comm, GLYPH_CIRCLE))
+    return [
+        (f"{'Bar' if mark == MARK_BAR else 'Diamond'}: Commercial index", commercial),
+        ("Ticks: the legs this gate also reads",
+         [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
           for leg in model.spec_legs if leg in LEG_LABELS]),
     ]
-    for group, title, entries in groups:
-        for i, (name, colour, symbol) in enumerate(entries):
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(symbol=symbol, color=colour, size=8,
-                            line=dict(color=colour, width=1.6)),
-                name=name, legendgroup=group,
-                legendgrouptitle_text=title if i == 0 else None,
-                hoverinfo="skip", showlegend=True))
-    return fig
 
 
 def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
-                 show_legend=True, mark=MARK_DOT):
+                 mark=MARK_DOT):
     """The strip, as one figure.
 
     `rows` comes from build_rows. Nothing here reads a store, so a caller can hand it
@@ -553,8 +534,8 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
     # A band on every other market row.
     #
     # A row carries four marks now (Commercials, its prior position, and a tick per
-    # speculator leg) on 19 pixels of height, and nothing tied them to each other or
-    # separated them from the row above. The printed reference solves the same problem by
+    # speculator leg) on ROW_PX pixels of height, and nothing tied them to each other
+    # or separated them from the row above. The printed reference solves the same problem by
     # drawing each asset inside its own rectangle. Here the rectangle would be the whole
     # axis on every row, because the index is 0-100 by construction, so it would be
     # identical everywhere and carry nothing; alternating it is the same grouping for
@@ -690,29 +671,18 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
             xanchor="left", yanchor="middle",
             font=dict(size=12, color=vc.BRIGHTER_TEXT_COLOR), align="left")
 
-    if show_legend:
-        _add_legend_key(fig, model, colors, palette, mark)
-
     fig.update_layout(
         barmode="overlay",
-        height=figure_height(rows, model, mark),
-        margin=dict(l=LEFT_MARGIN_PX, r=20, t=top_margin(model, mark), b=34),
+        height=figure_height(rows),
+        margin=dict(l=LEFT_MARGIN_PX, r=20, t=TOP_CHROME_PX, b=34),
         paper_bgcolor=background,
         plot_bgcolor=background,
         font=dict(color=vc.TEXT_COLOR),
         hoverlabel=dict(font_color=vc.HOVER_TEXT_COLOR),
-        # Pinned to the top of the FIGURE, not to the top of the plot area.
-        #
-        # A legend at paper y=1.03 sits three percent of the plot height above it, and
-        # the plot height is the row count. With a full board that clears the top axis
-        # comfortably; with one or two asset classes selected it is a few pixels and the
-        # legend lands on the tick row, hiding the scale. Same layout, and whether it
-        # was legible depended on how many markets the user had switched on.
-        #
-        # `yref="container"` measures against the whole figure instead, so the gap is
-        # fixed and the top margin reserves room for both.
-        legend=dict(orientation="h", yref="container", y=1, yanchor="top",
-                    xanchor="left", x=0, font=dict(size=10)),
+        # No legend: it lives in the page above the columns (see legend_items). This is
+        # belt-and-braces against a future trace accidentally opting in and pushing this
+        # figure's margin out of line with its neighbour's.
+        showlegend=False,
         bargap=0,
     )
     fig.update_xaxes(

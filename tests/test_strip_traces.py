@@ -231,13 +231,9 @@ def test_the_mark_is_drawn_at_full_strength_and_the_bar_is_not():
 
 
 def test_the_legend_names_whichever_mark_is_drawn():
-    df = frame(matrix_row("Gold", "Metals", 40, 50, 50))
-    rows, _ = st.build_rows(df, models.RAW_PF)
     for mark, word in ((st.MARK_BAR, "Bar"), (st.MARK_DOT, "Diamond")):
-        fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=mark)
-        title = next(t.legendgrouptitle.text for t in fig.data
-                     if t.showlegend and t.legendgrouptitle.text)
-        assert title == f"{word}: Commercial index"
+        groups = st.legend_items(models.RAW_PF, COLORS, PALETTE, mark=mark)
+        assert groups[0][0] == f"{word}: Commercial index"
 
 
 def test_no_text_column_repeats_what_the_bar_already_says():
@@ -255,12 +251,14 @@ def test_no_text_column_repeats_what_the_bar_already_says():
 
 
 def test_the_legend_keys_the_colours_and_the_legs():
-    df = frame(matrix_row("Gold", "Metals", 40, 50, 50))
-    rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    named = [t.name for t in fig.data if t.showlegend]
+    groups = st.legend_items(models.RAW_PF, COLORS, PALETTE)
+    named = [label for _, entries in groups for label, _, _ in entries]
     assert named == ["Bull setup", "Bear setup", "Near", "No setup", "6w ago",
                      "Large Specs", "Small Traders"]
+    # Bar mode has no quiet tick to key: the quiet rows draw (short) bars.
+    bar_groups = st.legend_items(models.RAW_PF, COLORS, PALETTE, mark=st.MARK_BAR)
+    assert "No setup" not in [label for _, entries in bar_groups
+                              for label, _, _ in entries]
 
 
 def test_the_figure_grows_with_the_board():
@@ -276,7 +274,7 @@ def test_an_empty_board_still_draws():
     rows, skipped = st.build_rows(frame(), models.RAW_PF)
     assert rows == [] and skipped == []
     fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    assert fig.layout.height == st.figure_height([], models.RAW_PF)
+    assert fig.layout.height == st.figure_height([])
 
 
 def test_a_tick_takes_its_leg_colour_and_says_gating_with_opacity():
@@ -320,11 +318,7 @@ def test_the_legend_says_which_mark_is_which_leg():
     """Read cold, the figure has two kinds of mark and the numbers have no header. The
     first review of it asked all three questions in a row: what are the numbers, what
     are the ticks, is this Commercials only. The group titles are the answer."""
-    df = frame(matrix_row("Gold", "Metals", 40, 50, 50))
-    rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    titles = [t.legendgrouptitle.text for t in fig.data
-              if t.showlegend and t.legendgrouptitle.text]
+    titles = [title for title, _ in st.legend_items(models.RAW_PF, COLORS, PALETTE)]
     assert titles == ["Diamond: Commercial index",
                       "Ticks: the legs this gate also reads"]
 
@@ -437,29 +431,29 @@ def test_one_column_is_the_rows_unchanged():
     assert st.split_columns(rows, 1) == [rows]
 
 
-def test_the_legend_is_drawn_once_across_the_columns():
+def test_no_figure_draws_a_legend_of_its_own():
+    """The legend is page chrome above both columns, not a trace set inside the first
+    figure. Drawn inside, Plotly stacked its groups, outgrew every attempt to predict
+    its height, and silently pushed that one figure's top margin out — which put the
+    left column's rows ~40px below the right column's."""
+    rows, _ = st.build_rows(wide_board(), models.RAW_PF)
+    for chunk in st.split_columns(rows, 2):
+        fig = st.build_figure(chunk, models.RAW_PF, COLORS, PALETTE)
+        assert fig.layout.showlegend is False
+        assert not [t for t in fig.data if t.showlegend]
+
+
+def test_every_column_gets_the_same_top_margin_so_the_rows_stay_level():
+    """The columns are separate figures whose rows must read as one board, so their
+    margins have to be a constant nothing (legend, mark, model) can vary."""
     rows, _ = st.build_rows(wide_board(), models.RAW_PF)
     chunks = st.split_columns(rows, 2)
-    figs = [st.build_figure(c, models.RAW_PF, COLORS, PALETTE, show_legend=(i == 0))
-            for i, c in enumerate(chunks)]
-    assert [t.name for t in figs[0].data if t.showlegend]
-    assert not [t.name for t in figs[1].data if t.showlegend]
-
-
-def test_the_legend_clears_the_axis_however_few_rows_there_are():
-    """It used to sit three percent of the PLOT height above the plot, and the plot
-    height is the row count. On a full board that clears the top axis; with one asset
-    class selected it is a few pixels and the legend covers the scale. Measuring against
-    the figure instead makes the gap the same either way."""
-    one_class = frame(matrix_row("Bitcoin", "Crypto", 40, 50, 50))
-    full = frame(*[matrix_row(f"M{i}", "Metals", 40, 50, 50) for i in range(40)])
-    for df in (one_class, full):
-        rows, _ = st.build_rows(df, models.RAW_PF)
-        fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-        assert fig.layout.legend.yref == "container"
-        assert fig.layout.legend.yanchor == "top" and fig.layout.legend.y == 1
-        # and the margin that has to hold both is derived from the legend, not guessed
-        assert fig.layout.margin.t == st.top_margin(models.RAW_PF, st.MARK_DOT)
+    for model in models.MODELS:
+        for mark in (st.MARK_DOT, st.MARK_BAR):
+            margins = {st.build_figure(c, model, COLORS, PALETTE,
+                                       mark=mark).layout.margin.t
+                       for c in chunks}
+            assert margins == {st.TOP_CHROME_PX}
 
 
 def test_two_classes_do_split_into_two_columns():
@@ -558,24 +552,10 @@ def test_a_market_with_no_move_simply_has_no_prior_mark():
                 and t.marker.symbol == "circle-open"]
 
 
-def test_the_top_margin_grows_with_the_legend_it_has_to_hold():
-    """A hardcoded margin was wrong three times, each time by the legend quietly growing
-    past it and covering the scale. The margin is derived from the keys drawn."""
-    # NPF gates on one spec leg, Raw PF on two, so Raw PF's leg group is taller.
-    assert st.legend_lines(models.NPF, st.MARK_DOT) == 1 + 5
-    assert st.legend_lines(models.RAW_PF, st.MARK_DOT) == 1 + 5
-    # Bar mode drops the no-setup tick from the key.
-    assert st.legend_lines(models.RAW_PF, st.MARK_BAR) < st.legend_lines(
-        models.RAW_PF, st.MARK_DOT)
-    assert st.top_margin(models.RAW_PF, st.MARK_DOT) > st.top_margin(
-        models.RAW_PF, st.MARK_BAR)
-    # 125px is what the browser measures for the widest of these legends.
-    assert st.top_margin(models.RAW_PF, st.MARK_DOT) > 125
-
-
 def test_every_other_market_row_is_banded_to_group_its_marks():
-    """A row carries four marks on 19px and nothing tied them together. The phase resets
-    under each class header, so the first market in a class always looks the same."""
+    """A row carries four marks on ROW_PX pixels and nothing tied them together. The
+    phase resets under each class header, so the first market in a class always looks
+    the same."""
     df = frame(
         matrix_row("A", "Metals", 90, 50, 50),
         matrix_row("B", "Metals", 80, 50, 50),
@@ -598,15 +578,14 @@ def test_the_prior_mark_is_the_commercial_colour_the_legend_promises():
     df = frame(matrix_row("Gold", "Metals", 70, 50, 50, move=12))
     rows, _ = st.build_rows(df, models.RAW_PF)
     fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    drawn, key = [t for t in fig.data
-                  if t.type == "scatter" and t.marker.symbol == "circle-open"
-                  and not t.showlegend], \
-                 [t for t in fig.data
-                  if t.type == "scatter" and t.marker.symbol == "circle-open"
-                  and t.showlegend]
-    assert drawn and key
+    drawn = [t for t in fig.data
+             if t.type == "scatter" and t.marker.symbol == "circle-open"]
+    assert drawn
     assert drawn[0].marker.color.startswith("rgba(248, 113, 113")   # PALETTE[0]
-    assert key[0].marker.color == PALETTE[0]
+    key = [(colour, glyph)
+           for _, entries in st.legend_items(models.RAW_PF, COLORS, PALETTE)
+           for label, colour, glyph in entries if label.endswith("w ago")]
+    assert key == [(PALETTE[0], st.GLYPH_CIRCLE)]
 
 
 def test_no_drawn_mark_falls_through_to_the_template_colourway():
