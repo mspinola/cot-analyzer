@@ -71,7 +71,7 @@ def _options(labels):
 
 
 def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
-                     n_classes, n_all):
+                     n_classes, n_all, hidden=0, skipped=0):
     """One line saying what the folded controls are set to.
 
     Folding the card hides seven controls, and a board drawn on a filter you cannot see
@@ -80,12 +80,23 @@ def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
     data, so it names every filter that can hide a row, and says how many classes are
     on out of how many rather than listing them, because nine names do not fit and the
     fraction is what tells you something is off.
+
+    It also carries what the filters REMOVED, not only what they are set to, and that
+    is the half that had no home. The caption says the same two things in prose, and
+    the caption now starts folded, so without this a fresh visitor reads a board with
+    nothing on screen saying markets are missing from it. The counts sit ahead of the
+    class fraction and the column count because this line truncates on a narrow
+    viewport and they are the two segments least worth losing.
     """
     bits = [target_date or "latest", vc.MODEL_LABELS.get(model.key, model.key)]
     bits.append(f"{lookback}-week" if lookback in ("26", "52") else "Custom lookback")
     bits.append(ORDER_LABELS.get(sort_by, sort_by))
     bits.append(SHOW_LABELS.get(show, show))
     bits.append(SIDE_LABELS.get(side, side))
+    if hidden:
+        bits.append(f"{hidden} hidden")
+    if skipped:
+        bits.append(f"{skipped} no index")
     bits.append(f"{n_classes}/{n_all} classes")
     bits.append(f"{columns} column" + ("s" if int(columns or 1) != 1 else ""))
     return " · ".join(str(b) for b in bits)
@@ -117,12 +128,18 @@ def caption(report_date, lookback, model, skipped, hidden=0):
                      f"through its own gate. ")
     else:
         tick_note = ""
+    # Both sentences when both apply. The second branch used to assign rather than
+    # append, so a board that was BOTH filtered and short of data reported only the
+    # missing markets and said nothing about the filter. That is the wrong one to
+    # lose: a market with no index is absent from every view of this week, where a
+    # hidden one is a choice the reader made and can undo, and not knowing a filter
+    # is on is how a partial board gets read as the whole book.
     dropped = ""
     if hidden:
         dropped += f" {hidden} market(s) hidden by the Show/Side filters."
     if skipped:
-        dropped = (f" {len(skipped)} market(s) have no index this week and are not "
-                   f"shown: {', '.join(sorted(skipped))}.")
+        dropped += (f" {len(skipped)} market(s) have no index this week and are not "
+                    f"shown: {', '.join(sorted(skipped))}.")
     return (
         f"Positioning as of Tuesday {pretty}, gated on {model.title}, measured over "
         f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the stem "
@@ -499,19 +516,23 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         lookback = "Custom"
 
     model = models.resolve(model_key)
-    summary = controls_summary(target_date, model, lookback, sort_by,
-                               show or strip_traces.SHOW_ALL,
-                               side or strip_traces.SIDE_BOTH,
-                               columns, len(asset_classes), len(all_classes))
+    show = show or strip_traces.SHOW_ALL
+    side = side or strip_traces.SIDE_BOTH
+
+    def summarise(hidden=0, skipped=0):
+        return controls_summary(target_date, model, lookback, sort_by, show, side,
+                                columns, len(asset_classes), len(all_classes),
+                                hidden=hidden, skipped=skipped)
+
     df = get_matrix_data(asset_classes, lookback, target_date)
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
-                "", [], summary)
+                "", [], summarise())
 
     rows, skipped = strip_traces.build_rows(
         df, model, sort_by_index=(sort_by != SORT_ALPHA),
-        show=show or strip_traces.SHOW_ALL, side=side or strip_traces.SIDE_BOTH)
+        show=show, side=side)
     # What the filters removed, said rather than left to be noticed. The board is the
     # page's whole claim, so a filtered view that looks like a full one is the one
     # failure mode worth spending a sentence on.
@@ -550,7 +571,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         ], className="g-0", align="start"),
         caption(report_date, lookback, model, skipped, hidden),
         legend(model, colors, palette),
-        summary,
+        summarise(hidden=hidden, skipped=len(skipped)),
     )
 
 

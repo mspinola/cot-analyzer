@@ -97,6 +97,14 @@ the notification rather than the modelling.
   strip draws one figure across the whole board from a `get_matrix_data` row per market,
   so it shares no axis, no basis resolution and no builder with them. Its figure logic is
   `components/strip_traces.py`, pure over the frame and tested without a store.
+- **Aggregate Exposure** (`/exposure`) sits outside the registry for the same reason and
+  one more: it is the only page whose subject is a SET rather than a market. Every other
+  view normalizes each market against itself, which is what lets 47 markets share one
+  axis, and none of those numbers can be added. This page converts contracts to USD
+  notional and then to USD risk (`cotmetrics.exposure`), which is the only unit that is
+  both summable and comparable, and sums them. The arithmetic lives in cotmetrics
+  because it is a joiner (COT x prices x contract specs) and this repo computes no
+  metrics; `components/exposure_traces.py` holds the figure rules.
 
 ### F. The Plot Layer (`src/components/plot_registry.py` and the `plot_*` modules)
 
