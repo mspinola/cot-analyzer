@@ -97,16 +97,19 @@ def test_equity_spec_legs_never_count():
 
 # ── colour is the row's verdict, position is the level ────────────────────────
 
-def test_a_blocked_extreme_draws_the_plain_commercial_colour():
+def test_a_blocked_extreme_draws_the_faded_commercial_colour():
     """Orange Juice at (96, 0, 100): two legs through, Small Specs blocking outright.
-    Its lollipop sits deep in the bull band but takes the Commercial series colour, not
-    a verdict colour — the value is real, the verdict is withheld."""
+    Its lollipop sits deep in the bull band but takes the FADED Commercial colour, not
+    a verdict colour — the value is real, the verdict is withheld. Faded matters as
+    much as which hue: the Commercial red and the bear reds are one family, and at
+    full strength a quiet row read as a bear setup."""
     rows, _ = st.build_rows(
         frame(matrix_row("Orange Juice", "Softs", 96, 0, 100)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
     assert market.comm >= models.RAW_PF.high      # position is inside the bull band
     assert st._verdict_colour(market, COLORS) is None
-    assert st._mark_colour(market, COLORS, PALETTE) == PALETTE[0]
+    assert st._mark_colour(market, COLORS, PALETTE) == \
+        f"rgba(248, 113, 113, {st.QUIET_ALPHA})"          # PALETTE[0], knocked back
 
 
 def test_a_full_setup_draws_the_verdict_colour():
@@ -132,7 +135,7 @@ def test_each_model_reads_its_own_verdict_column():
     npf = [r for r in st.build_rows(df, models.NPF)[0] if r.kind == "market"][0]
     raw = [r for r in st.build_rows(df, models.RAW_PF)[0] if r.kind == "market"][0]
     assert st._mark_colour(npf, COLORS, PALETTE) == COLORS.bull
-    assert st._mark_colour(raw, COLORS, PALETTE) == PALETTE[0]
+    assert st._verdict_colour(raw, COLORS) is None
 
 
 # ── grouping, ordering and what gets left out ─────────────────────────────────
@@ -256,10 +259,12 @@ def test_the_legend_keys_the_colours_and_the_legs():
     assert named == ["Bull setup", "Bear setup", "Near", "No setup", "6w ago",
                      "Large Specs", "Small Traders"]
     # "No setup" is keyed because it is a COLOUR here, not an absence: the Commercial
-    # series colour, which a reader must not mistake for a verdict.
+    # series colour, which a reader must not mistake for a verdict. The key is faded
+    # exactly as the drawn mark is — a full-strength swatch would promise a red the
+    # plot never draws.
     no_setup = [colour for _, entries in groups
                 for label, colour, _ in entries if label == "No setup"]
-    assert no_setup == [PALETTE[0]]
+    assert no_setup == [f"rgba(248, 113, 113, {st.QUIET_ALPHA})"]
 
 
 def test_the_figure_grows_with_the_board():
@@ -508,8 +513,33 @@ def test_a_quiet_row_draws_a_commercial_coloured_lollipop_not_a_grey_one():
                  if t.type == "scatter" and t.marker.symbol == "circle" and t.hovertext)
     stem = next(t for t in fig.data if t.type == "bar")
     assert list(heads.x) == [98, 55]
-    assert list(heads.marker.color) == [COLORS.bull, PALETTE[0]]
-    assert list(stem.marker.color) == [st._fill(COLORS.bull), st._fill(PALETTE[0])]
+    quiet = f"rgba(248, 113, 113, {st.QUIET_ALPHA})"      # PALETTE[0], knocked back
+    assert list(heads.marker.color) == [COLORS.bull, quiet]
+    assert list(stem.marker.color) == [
+        st._fill(COLORS.bull), f"rgba(248, 113, 113, {st.QUIET_STEM_ALPHA})"]
+
+
+def test_the_quiet_tier_sits_below_both_verdict_tiers():
+    """The Commercial red and the bear reds are one hue family, so on colour alone a
+    quiet row, a near-bear and a bear setup were a line-up of similar reds. Colour
+    cannot fix that without giving up the series identity, so the quiet tier drops on
+    the channels colour does not own: a smaller head, and a fade deeper than the near
+    tier's. Full setup > near > quiet."""
+    df = frame(
+        matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BEAR),
+        matrix_row("Silver", "Metals", 80, 30, 30, state_cls=const.SETUP_NEAR_BEAR),
+        matrix_row("Gold", "Metals", 55, 50, 50),
+    )
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    heads = next(t for t in fig.data
+                 if t.type == "scatter" and t.marker.symbol == "circle" and t.hovertext)
+    by_x = dict(zip(heads.x, zip(heads.marker.size, heads.marker.color)))
+    assert by_x[98] == (st.HEAD_SIZE, COLORS.bear)
+    assert by_x[80] == (st.HEAD_SIZE, COLORS.bear_near)
+    assert by_x[55][0] == st.QUIET_HEAD_SIZE
+    assert st.QUIET_HEAD_SIZE < st.HEAD_SIZE
+    assert st.QUIET_ALPHA < 0.5                    # deeper than the near tier's fade
 
 
 def test_the_prior_position_is_drawn_from_the_matching_basis():
@@ -585,7 +615,7 @@ def test_the_prior_mark_is_the_commercial_colour_the_legend_promises():
     key = [(colour, glyph)
            for _, entries in st.legend_items(models.RAW_PF, COLORS, PALETTE)
            for label, colour, glyph in entries if label.endswith("w ago")]
-    assert key == [(PALETTE[0], st.GLYPH_CIRCLE)]
+    assert key == [(f"rgba(248, 113, 113, {st.QUIET_ALPHA})", st.GLYPH_CIRCLE)]
 
 
 def test_no_drawn_mark_falls_through_to_the_template_colourway():

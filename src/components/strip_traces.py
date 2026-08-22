@@ -29,10 +29,10 @@ Spec marker appears on the NPF strip.
 **Colour comes from the ROW's setup state, not from each value's own level.** Same rule
 the Heatmap's index cells follow, and for the same reason: a positioning index only
 means something in the company of the other legs. A market whose Commercials sit at 97
-with a spec leg blocking it draws in the plain Commercial series colour deep inside
-the bullish band. That looks wrong until you know the rule, which is why it is written
-here: the lollipop's POSITION is the level and its COLOUR is the verdict, and the two
-disagreeing is the interesting case rather than a defect.
+with a spec leg blocking it draws small and faded, in the Commercial series colour,
+deep inside the bullish band. That looks wrong until you know the rule, which is why it
+is written here: the lollipop's POSITION is the level and its COLOUR is the verdict,
+and the two disagreeing is the interesting case rather than a defect.
 
 Everything in here is a pure function over a `get_matrix_data` frame plus a colour set,
 so the layout is testable without a store, a palette file or a browser.
@@ -109,7 +109,18 @@ LEG_PALETTE_SLOT = {
 # ink than a half-row slab, but forty of them still add up.
 STEM_ALPHA = 0.55
 STEM_WIDTH = 0.14      # in row units; ~3px at ROW_PX
-HEAD_SIZE = 8
+HEAD_SIZE = 9
+
+# Quiet rows are background material, and they need to LOOK like it, because their
+# colour alone cannot say so. The palette's Commercial slot is #F87171-family red and
+# `grid_colors` builds the bear verdicts from the same family (#FF4D4D full, the same
+# at 0.5 for near) — at full strength the three tiers were a line-up of nearly
+# identical reds. So the quiet tier drops below both verdict tiers on the two channels
+# colour does not own: a smaller head, and a fade deeper than the near tier's 0.5.
+# Full setup > near > quiet, in size and intensity, whatever the hues.
+QUIET_ALPHA = 0.45
+QUIET_STEM_ALPHA = 0.22
+QUIET_HEAD_SIZE = 5
 
 # Gate state on a tick is opacity, not colour, because colour is now carrying which leg
 # it is. One channel per variable.
@@ -394,16 +405,27 @@ def _verdict_colour(row, colors):
 
 
 def _mark_colour(row, colors, palette):
-    """Colour for a market's lollipop.
+    """Colour for a market's lollipop head.
 
-    A row with a verdict takes the verdict colour. A row without one takes the app's
-    COMMERCIAL colour rather than a neutral grey: the mark is Commercial positioning
-    whatever the gate thinks of it, and grey said only "nothing here" while leaving the
-    one series on the row unnamed by colour, which is the thing every other panel names
-    by colour. (Grey was tried, on the old filled bars, and read as disabled rather
-    than as quiet.)
+    A row with a verdict takes the verdict colour, full strength. A row without one
+    takes the app's COMMERCIAL colour rather than a neutral grey — the mark is
+    Commercial positioning whatever the gate thinks of it, and grey read as disabled
+    rather than as quiet — but FADED, below even the near tier's 0.5: the Commercial
+    red and the bear reds are one family, and at full strength a quiet row was a bear
+    setup to a squint. See the QUIET_ALPHA comment.
     """
-    return _verdict_colour(row, colors) or palette[LEG_PALETTE_SLOT["comm"]]
+    verdict = _verdict_colour(row, colors)
+    if verdict:
+        return verdict
+    return hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
+
+
+def _stem_colour(row, colors, palette):
+    """The stem is one step fainter than its head, whichever tier the head is in."""
+    verdict = _verdict_colour(row, colors)
+    if verdict:
+        return _fill(verdict)
+    return hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_STEM_ALPHA)
 
 
 def _fill(colour, alpha=STEM_ALPHA):
@@ -491,14 +513,17 @@ def legend_items(model, colors, palette):
     quiet row is not colourless: it is the Commercial series colour, and a reader has
     to be told that red-ish head does not mean bearish.
     """
-    comm = palette[LEG_PALETTE_SLOT["comm"]]
+    # The comm-coloured keys are faded exactly as the marks they stand for are: a
+    # full-strength "No setup" swatch would promise a red the plot never draws, and
+    # promise it in the bear family.
+    faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
     return [
         ("Lollipop: Commercial index",
          [("Bull setup", colors.bull, GLYPH_MARK),
           ("Bear setup", colors.bear, GLYPH_MARK),
           ("Near", colors.bull_near, GLYPH_MARK),
-          ("No setup", comm, GLYPH_MARK),
-          (f"{const.MOMENTUM_PERIOD}w ago", comm, GLYPH_CIRCLE)]),
+          ("No setup", faint_comm, GLYPH_MARK),
+          (f"{const.MOMENTUM_PERIOD}w ago", faint_comm, GLYPH_CIRCLE)]),
         ("Ticks: the legs this gate also reads",
          [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
           for leg in model.spec_legs if leg in LEG_LABELS]),
@@ -566,30 +591,33 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
     fig.update_layout(shapes=shapes)
 
     if markets:
-        # The stem: a hairline bar from neutral to the value, in the head's colour
-        # knocked back. It carries no hover of its own — a 3px target is misery to hit,
-        # and the head at its end says the same thing.
-        colours = [_mark_colour(r, colors, palette) for _, r in markets]
+        # The stem: a hairline bar from neutral to the value, in the head's colour one
+        # step fainter. It carries no hover of its own — a 3px target is misery to
+        # hit, and the head at its end says the same thing.
         fig.add_trace(go.Bar(
             x=[r.comm - const.INDEX_NEUTRAL for _, r in markets],
             base=[const.INDEX_NEUTRAL] * len(markets),
             y=[i for i, _ in markets],
             orientation="h",
             width=STEM_WIDTH,
-            marker=dict(color=[_fill(c) for c in colours], line_width=0),
+            marker=dict(color=[_stem_colour(r, colors, palette) for _, r in markets],
+                        line_width=0),
             hoverinfo="skip",
             showlegend=False,
         ))
-        # The head: the value itself, full strength, carrying the hover. One shape for
-        # every row — the verdict is the colour (and the lit market name), not a shape
-        # change, so a quiet row reads as the same object in the series' own colour
-        # rather than as a special case.
+        # The head: the value itself, carrying the hover. One shape for every row, so
+        # a quiet row reads as the same object rather than as a special case — but on
+        # the quiet tier it is smaller as well as fainter, because its colour is the
+        # bear verdicts' own family and needs the other channels to not read as one.
+        heads = [_mark_colour(r, colors, palette) for _, r in markets]
         fig.add_trace(go.Scatter(
             x=[r.comm for _, r in markets],
             y=[i for i, _ in markets],
             mode="markers",
-            marker=dict(symbol="circle", size=HEAD_SIZE, color=colours,
-                        line=dict(width=1, color=colours)),
+            marker=dict(symbol="circle",
+                        size=[HEAD_SIZE if _verdict_colour(r, colors) else
+                              QUIET_HEAD_SIZE for _, r in markets],
+                        color=heads, line=dict(width=1, color=heads)),
             hovertext=[_hover(r, model) for _, r in markets],
             hoverinfo="text",
             showlegend=False,
@@ -608,7 +636,7 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
         # and drew these in its third default colour, a teal green, while the legend
         # key beside them was the red this actually sets. Nothing errors when a colour
         # is omitted, it just quietly becomes the theme's.
-        faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], 0.45)
+        faint_comm = hex_to_rgba(palette[LEG_PALETTE_SLOT["comm"]], QUIET_ALPHA)
         fig.add_trace(go.Scatter(
             x=[v for _, v in prior], y=[i for i, _ in prior],
             mode="markers",

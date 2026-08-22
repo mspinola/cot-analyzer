@@ -81,8 +81,8 @@ def caption(report_date, lookback, model, skipped, hidden=0):
         f"for the exact figures. "
         f"{tick_note}"
         f"Its colour is the model's verdict on the whole row, not on its own value, so "
-        f"a lollipop in the plain Commercial colour deep in a band is a market at an "
-        f"extreme with another leg blocking it.{dropped}")
+        f"a small faded lollipop deep in a band is a market at an extreme with another "
+        f"leg blocking it.{dropped}")
 
 
 def legend(model, colors, palette):
