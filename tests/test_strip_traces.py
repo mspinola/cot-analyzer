@@ -97,13 +97,16 @@ def test_equity_spec_legs_never_count():
 
 # ── colour is the row's verdict, position is the level ────────────────────────
 
-def test_a_blocked_extreme_draws_dim_despite_sitting_in_the_band():
-    """Orange Juice at (96, 0, 100): two legs through, Small Specs blocking outright."""
+def test_a_blocked_extreme_draws_the_plain_commercial_colour():
+    """Orange Juice at (96, 0, 100): two legs through, Small Specs blocking outright.
+    Its lollipop sits deep in the bull band but takes the Commercial series colour, not
+    a verdict colour — the value is real, the verdict is withheld."""
     rows, _ = st.build_rows(
         frame(matrix_row("Orange Juice", "Softs", 96, 0, 100)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
     assert market.comm >= models.RAW_PF.high      # position is inside the bull band
-    assert st._bar_colour(market, COLORS) == COLORS.dim   # colour says no setup
+    assert st._verdict_colour(market, COLORS) is None
+    assert st._mark_colour(market, COLORS, PALETTE) == PALETTE[0]
 
 
 def test_a_full_setup_draws_the_verdict_colour():
@@ -111,7 +114,7 @@ def test_a_full_setup_draws_the_verdict_colour():
         frame(matrix_row("Canadian Dollar", "FX", 100, 0, 0,
                          state_cls=const.SETUP_BULL)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
-    assert st._bar_colour(market, COLORS) == COLORS.bull
+    assert st._mark_colour(market, COLORS, PALETTE) == COLORS.bull
 
 
 def test_a_near_setup_draws_the_faded_colour():
@@ -119,7 +122,7 @@ def test_a_near_setup_draws_the_faded_colour():
         frame(matrix_row("Cocoa", "Softs", 3, 100, 80,
                          state_cls=const.SETUP_NEAR_BEAR)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
-    assert st._bar_colour(market, COLORS) == COLORS.bear_near
+    assert st._mark_colour(market, COLORS, PALETTE) == COLORS.bear_near
 
 
 def test_each_model_reads_its_own_verdict_column():
@@ -128,8 +131,8 @@ def test_each_model_reads_its_own_verdict_column():
                           state_cls=const.SETUP_NONE, state_npf=const.SETUP_BULL))
     npf = [r for r in st.build_rows(df, models.NPF)[0] if r.kind == "market"][0]
     raw = [r for r in st.build_rows(df, models.RAW_PF)[0] if r.kind == "market"][0]
-    assert st._bar_colour(npf, COLORS) == COLORS.bull
-    assert st._bar_colour(raw, COLORS) == COLORS.dim
+    assert st._mark_colour(npf, COLORS, PALETTE) == COLORS.bull
+    assert st._mark_colour(raw, COLORS, PALETTE) == PALETTE[0]
 
 
 # ── grouping, ordering and what gets left out ─────────────────────────────────
@@ -187,53 +190,50 @@ def test_the_figure_bands_and_ticks_come_from_the_model():
         assert {(r.x0, r.x1) for r in rects} == {(0, model.low), (model.high, 100)}
 
 
-def test_bars_diverge_from_neutral_rather_than_from_zero():
-    """In bar mode, length is distance from neutral and sign is direction. Zero is not
-    the baseline: 0 on this index is maximally short, not the absence of a position."""
+def test_stems_diverge_from_neutral_rather_than_from_zero():
+    """The stem's length is distance from neutral and its sign is direction. Zero is
+    not the baseline: 0 on this index is maximally short, not the absence of a
+    position."""
     df = frame(
         matrix_row("Copper", "Metals", 98, 2, 4),
         matrix_row("Gold", "Metals", 8, 90, 88),
     )
     rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=st.MARK_BAR)
-    bar = next(t for t in fig.data if t.type == "bar")
-    assert list(bar.base) == [const.INDEX_NEUTRAL] * 2
-    assert list(bar.x) == [98 - const.INDEX_NEUTRAL, 8 - const.INDEX_NEUTRAL]
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    stem = next(t for t in fig.data if t.type == "bar")
+    assert list(stem.base) == [const.INDEX_NEUTRAL] * 2
+    assert list(stem.x) == [98 - const.INDEX_NEUTRAL, 8 - const.INDEX_NEUTRAL]
+    assert stem.width == st.STEM_WIDTH            # a hairline, not the old half-row slab
 
 
-def test_the_dot_sits_at_the_value_itself():
-    """A bar says the value twice, as the position of its end and as its length. The
-    mark says it once, which is all a bounded 0-100 index has to say."""
+def test_the_head_sits_at_the_value_itself():
     df = frame(
         matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL),
         matrix_row("Gold", "Metals", 8, 90, 88, state_cls=const.SETUP_BEAR),
     )
     rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=st.MARK_DOT)
-    assert not [t for t in fig.data if t.type == "bar"]
-    dots = next(t for t in fig.data
-                if t.type == "scatter" and t.marker.symbol == "diamond" and t.hovertext)
-    assert list(dots.x) == [98, 8]
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    heads = next(t for t in fig.data
+                 if t.type == "scatter" and t.marker.symbol == "circle" and t.hovertext)
+    assert list(heads.x) == [98, 8]
 
 
-def test_the_mark_is_drawn_at_full_strength_and_the_bar_is_not():
-    """A 10px diamond is a fraction of the pixels a filled row was, so the colour that
-    glared as a bar reads as a cue as a mark."""
+def test_the_head_is_drawn_at_full_strength_and_the_stem_is_not():
+    """The head is the datum; the stem is a run of pixels of the same colour, and forty
+    of them at full strength would glare the way the old filled bars did."""
     df = frame(matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL))
     rows, _ = st.build_rows(df, models.RAW_PF)
-    bar_fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=st.MARK_BAR)
-    dot_fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=st.MARK_DOT)
-    bar = next(t for t in bar_fig.data if t.type == "bar")
-    dots = next(t for t in dot_fig.data
-                if t.type == "scatter" and t.marker.symbol == "diamond" and t.hovertext)
-    assert bar.marker.color[0] == st._fill(COLORS.bull)
-    assert dots.marker.color[0] == COLORS.bull
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    stem = next(t for t in fig.data if t.type == "bar")
+    heads = next(t for t in fig.data
+                 if t.type == "scatter" and t.marker.symbol == "circle" and t.hovertext)
+    assert stem.marker.color[0] == st._fill(COLORS.bull)
+    assert heads.marker.color[0] == COLORS.bull
 
 
-def test_the_legend_names_whichever_mark_is_drawn():
-    for mark, word in ((st.MARK_BAR, "Bar"), (st.MARK_DOT, "Diamond")):
-        groups = st.legend_items(models.RAW_PF, COLORS, PALETTE, mark=mark)
-        assert groups[0][0] == f"{word}: Commercial index"
+def test_the_legend_names_the_lollipop():
+    groups = st.legend_items(models.RAW_PF, COLORS, PALETTE)
+    assert groups[0][0] == "Lollipop: Commercial index"
 
 
 def test_no_text_column_repeats_what_the_bar_already_says():
@@ -255,10 +255,11 @@ def test_the_legend_keys_the_colours_and_the_legs():
     named = [label for _, entries in groups for label, _, _ in entries]
     assert named == ["Bull setup", "Bear setup", "Near", "No setup", "6w ago",
                      "Large Specs", "Small Traders"]
-    # Bar mode has no quiet tick to key: the quiet rows draw (short) bars.
-    bar_groups = st.legend_items(models.RAW_PF, COLORS, PALETTE, mark=st.MARK_BAR)
-    assert "No setup" not in [label for _, entries in bar_groups
-                              for label, _, _ in entries]
+    # "No setup" is keyed because it is a COLOUR here, not an absence: the Commercial
+    # series colour, which a reader must not mistake for a verdict.
+    no_setup = [colour for _, entries in groups
+                for label, colour, _ in entries if label == "No setup"]
+    assert no_setup == [PALETTE[0]]
 
 
 def test_the_figure_grows_with_the_board():
@@ -295,10 +296,10 @@ def test_a_tick_takes_its_leg_colour_and_says_gating_with_opacity():
     assert idle != large                             # fainter, because it is not gating
 
 
-def test_bar_fills_are_knocked_back_but_the_text_beside_them_is_not():
-    """`grid_colors` picks colours for 11px grid text. A filled bar is far more pixels
-    of it, so the value that reads as legible in a table reads as glare here."""
-    assert st._fill("#FF4D4D") == f"rgba(255, 77, 77, {st.BAR_FILL_ALPHA})"
+def test_stem_fills_are_knocked_back_but_the_head_beside_them_is_not():
+    """`grid_colors` picks colours for 11px grid text. A stem is a run of pixels of it,
+    so the value that reads as legible in a table reads as glare here."""
+    assert st._fill("#FF4D4D") == f"rgba(255, 77, 77, {st.STEM_ALPHA})"
     # The near tier arrives already translucent; fading it again would lose it.
     assert st._fill("rgba(255,77,77,0.5)") == "rgba(255,77,77,0.5)"
 
@@ -319,7 +320,7 @@ def test_the_legend_says_which_mark_is_which_leg():
     first review of it asked all three questions in a row: what are the numbers, what
     are the ticks, is this Commercials only. The group titles are the answer."""
     titles = [title for title, _ in st.legend_items(models.RAW_PF, COLORS, PALETTE)]
-    assert titles == ["Diamond: Commercial index",
+    assert titles == ["Lollipop: Commercial index",
                       "Ticks: the legs this gate also reads"]
 
 
@@ -445,15 +446,13 @@ def test_no_figure_draws_a_legend_of_its_own():
 
 def test_every_column_gets_the_same_top_margin_so_the_rows_stay_level():
     """The columns are separate figures whose rows must read as one board, so their
-    margins have to be a constant nothing (legend, mark, model) can vary."""
+    margins have to be a constant nothing (legend or model) can vary."""
     rows, _ = st.build_rows(wide_board(), models.RAW_PF)
     chunks = st.split_columns(rows, 2)
     for model in models.MODELS:
-        for mark in (st.MARK_DOT, st.MARK_BAR):
-            margins = {st.build_figure(c, model, COLORS, PALETTE,
-                                       mark=mark).layout.margin.t
-                       for c in chunks}
-            assert margins == {st.TOP_CHROME_PX}
+        margins = {st.build_figure(c, model, COLORS, PALETTE).layout.margin.t
+                   for c in chunks}
+        assert margins == {st.TOP_CHROME_PX}
 
 
 def test_two_classes_do_split_into_two_columns():
@@ -492,24 +491,25 @@ def test_a_market_name_lights_when_its_row_has_a_verdict():
     assert labels[1] == "Gold"       # nothing to say, so nothing added
 
 
-# ── the shape is the verdict, the colour is whose leg it is ───────────────────
+# ── one form for every row; colour says whose it is, or what the verdict is ───
 
-def test_a_quiet_row_draws_a_commercial_coloured_tick_not_a_grey_diamond():
-    """The diamond is reserved for rows the model has something to say about. A quiet
-    row gets the same mark the speculator legs use, in the app's Commercial colour, so
-    colour only ever says whose positioning a mark is or what the verdict on it is."""
+def test_a_quiet_row_draws_a_commercial_coloured_lollipop_not_a_grey_one():
+    """Every market draws the same object. A quiet row takes the app's Commercial
+    colour rather than a neutral grey — the mark is Commercial positioning whatever
+    the gate thinks of it — so colour only ever says whose positioning a mark is or
+    what the verdict on it is."""
     df = frame(
         matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL),
         matrix_row("Gold", "Metals", 55, 50, 50),
     )
     rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=st.MARK_DOT)
-    by_symbol = {t.marker.symbol: t for t in fig.data
-                 if t.type == "scatter" and t.hovertext and not t.showlegend}
-    assert list(by_symbol["diamond"].x) == [98]
-    assert by_symbol["diamond"].marker.color[0] == COLORS.bull
-    assert list(by_symbol["line-ns"].x) == [55]
-    assert by_symbol["line-ns"].marker.color[0] == PALETTE[0]   # Commercials
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    heads = next(t for t in fig.data
+                 if t.type == "scatter" and t.marker.symbol == "circle" and t.hovertext)
+    stem = next(t for t in fig.data if t.type == "bar")
+    assert list(heads.x) == [98, 55]
+    assert list(heads.marker.color) == [COLORS.bull, PALETTE[0]]
+    assert list(stem.marker.color) == [st._fill(COLORS.bull), st._fill(PALETTE[0])]
 
 
 def test_the_prior_position_is_drawn_from_the_matching_basis():
@@ -596,12 +596,11 @@ def test_no_drawn_mark_falls_through_to_the_template_colourway():
         matrix_row("Gold", "Metals", 55, 50, 50, move=-3),
     )
     rows, _ = st.build_rows(df, models.RAW_PF)
-    for mark in (st.MARK_DOT, st.MARK_BAR):
-        fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, mark=mark)
-        for trace in fig.data:
-            # Legend keys are proxies, and the empty trace that exists only to make
-            # Plotly draw the top axis has nothing to colour.
-            if trace.showlegend or not [v for v in (trace.x or []) if v is not None]:
-                continue
-            assert trace.marker.color is not None, (
-                f"{trace.type}/{trace.marker.symbol} takes its colour from the theme")
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    for trace in fig.data:
+        # The empty trace that exists only to make Plotly draw the top axis has
+        # nothing to colour.
+        if not [v for v in (trace.x or []) if v is not None]:
+            continue
+        assert trace.marker.color is not None, (
+            f"{trace.type}/{trace.marker.symbol} takes its colour from the theme")

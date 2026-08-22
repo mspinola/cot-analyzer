@@ -42,8 +42,7 @@ SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
 
 
-def caption(report_date, lookback, model, skipped, hidden=0,
-            mark=strip_traces.MARK_DOT):
+def caption(report_date, lookback, model, skipped, hidden=0):
     """The two lines under the controls.
 
     Everything here is a fact the picture cannot carry on its own, and the list grew by
@@ -61,7 +60,6 @@ def caption(report_date, lookback, model, skipped, hidden=0,
     else:
         window = ("each market's own tuned lookback, so the windows differ between "
                   "rows")
-    mark_word = "bar" if mark == strip_traces.MARK_BAR else "diamond"
     legs = [strip_traces.LEG_LABELS[leg] for leg in model.spec_legs
             if leg in strip_traces.LEG_LABELS]
     if legs:
@@ -78,30 +76,29 @@ def caption(report_date, lookback, model, skipped, hidden=0,
                    f"shown: {', '.join(sorted(skipped))}.")
     return (
         f"Positioning as of Tuesday {pretty}, gated on {model.title}, measured over "
-        f"{window}. The {mark_word} is the COMMERCIAL positioning index, 0-100; hover "
-        f"any row for the exact figures. "
+        f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the stem "
+        f"hangs from neutral (50), so length is distance from neutral; hover any head "
+        f"for the exact figures. "
         f"{tick_note}"
         f"Its colour is the model's verdict on the whole row, not on its own value, so "
-        f"a dim {mark_word} deep in a band is a market at an extreme with another leg "
-        f"blocking it.{dropped}")
+        f"a lollipop in the plain Commercial colour deep in a band is a market at an "
+        f"extreme with another leg blocking it.{dropped}")
 
 
-def legend(model, colors, palette, mark):
+def legend(model, colors, palette):
     """The figure key, rendered as one line of page chrome above both columns.
 
     `strip_traces.legend_items` says what the entries are; this only turns them into
-    coloured text. Glyphs stand in for the plot symbols: the diamond and square are the
-    marks themselves, the vertical bar is the line-ns tick, the ring is the hollow
-    prior-position circle.
+    coloured text. Glyphs stand in for the plot symbols: the disc is the lollipop head,
+    the vertical bar is the line-ns tick, the ring is the hollow prior-position circle.
     """
     glyphs = {
-        strip_traces.GLYPH_MARK:
-            "■" if mark == strip_traces.MARK_BAR else "◆",
+        strip_traces.GLYPH_MARK: "●",
         strip_traces.GLYPH_TICK: "│",
         strip_traces.GLYPH_CIRCLE: "○",
     }
     groups = []
-    for title, entries in strip_traces.legend_items(model, colors, palette, mark):
+    for title, entries in strip_traces.legend_items(model, colors, palette):
         bits = [html.Span(f"{title}:",
                           style={"color": vc.TEXT_COLOR, "marginRight": "0.6rem"})]
         for label, colour, glyph in entries:
@@ -192,19 +189,6 @@ def layout(**kwargs):
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
                                     )
                                 ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
-
-                                dbc.Col([
-                                    html.Label("Mark", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.RadioItems(
-                                        persistence='session',
-                                        id='strip_mark_selector',
-                                        options=[{"label": "Dot", "value": strip_traces.MARK_DOT},
-                                                 {"label": "Bar", "value": strip_traces.MARK_BAR}],
-                                        value=strip_traces.MARK_DOT,
-                                        inline=True,
-                                        style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
-                                    )
-                                ], xs=6, md=1, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
                                     html.Label("Columns", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
@@ -373,12 +357,11 @@ def follow_global_lookback(value, current_local_val):
      Input('strip_show_selector', 'value'),
      Input('strip_side_selector', 'value'),
      Input('strip_columns_selector', 'value'),
-     Input('strip_mark_selector', 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('strip_date_selector', 'value')]
 )
 def render_strip(asset_classes, lookback, model_key, sort_by, show, side, columns,
-                 mark, palette_name, target_date):
+                 palette_name, target_date):
     empty = html.P("Select an asset class to draw the strip.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     if not asset_classes:
@@ -403,8 +386,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     chunks = strip_traces.split_columns(rows, int(columns or 1))
-    figures = [strip_traces.build_figure(chunk, model, colors, palette,
-                                         mark=mark or strip_traces.MARK_DOT)
+    figures = [strip_traces.build_figure(chunk, model, colors, palette)
                for chunk in chunks]
 
     report_date = target_date or df.iloc[0]["Date"]
@@ -432,7 +414,6 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         # its rows landed on a ~23px pitch beside the other column's 19px, two visibly
         # different densities on one board.
         ], className="g-0", align="start"),
-        caption(report_date, lookback, model, skipped, hidden,
-                mark=mark or strip_traces.MARK_DOT),
-        legend(model, colors, palette, mark or strip_traces.MARK_DOT),
+        caption(report_date, lookback, model, skipped, hidden),
+        legend(model, colors, palette),
     )

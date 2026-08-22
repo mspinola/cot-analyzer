@@ -9,12 +9,12 @@ Three choices here are deliberate departures from how the printed positioning re
 this was modelled on draw the same thing, and each one is a fix for something those
 reports get wrong.
 
-**A diverging bar from 50, not a min..max rule.** Those reports draw each market's
-window range as a bar and put a marker where the current value sits. In index space
-that bar is always the full axis, because the index IS the position within the range,
-so the rule would carry no information at all. Worse, drawing every market's range at
-the same width invites reading two ranges as comparable when one may be eight times the
-other. A bar from the neutral midpoint says the one thing that survives the
+**A lollipop diverging from 50, not a min..max rule.** Those reports draw each
+market's window range as a bar and put a marker where the current value sits. In index
+space that bar is always the full axis, because the index IS the position within the
+range, so the rule would carry no information at all. Worse, drawing every market's
+range at the same width invites reading two ranges as comparable when one may be eight
+times the other. A stem from the neutral midpoint says the one thing that survives the
 normalization: how far from neutral, and which way. It also makes the neutral majority
 recede on its own, since a market sitting near 50 draws almost no ink.
 
@@ -29,10 +29,10 @@ Spec marker appears on the NPF strip.
 **Colour comes from the ROW's setup state, not from each value's own level.** Same rule
 the Heatmap's index cells follow, and for the same reason: a positioning index only
 means something in the company of the other legs. A market whose Commercials sit at 97
-with a spec leg blocking it draws a dim bar deep inside the bullish band. That looks
-wrong until you know the rule, which is why it is written here: the bar's POSITION is
-the level and its COLOUR is the verdict, and the two disagreeing is the interesting
-case rather than a defect.
+with a spec leg blocking it draws in the plain Commercial series colour deep inside
+the bullish band. That looks wrong until you know the rule, which is why it is written
+here: the lollipop's POSITION is the level and its COLOUR is the verdict, and the two
+disagreeing is the interesting case rather than a defect.
 
 Everything in here is a pure function over a `get_matrix_data` frame plus a colour set,
 so the layout is testable without a store, a palette file or a browser.
@@ -102,16 +102,14 @@ LEG_PALETTE_SLOT = {
     models.LEG_SMALL: 2,
 }
 
-# Fill alpha for the bars.
-#
-# `grid_colors` picks colours for AG Grid CELL TEXT, where 11px glyphs on a near-black
-# background need to be hot to be legible at all, and it deliberately swaps several
-# palette reds for a brighter one for exactly that reason. A filled bar is two orders of
-# magnitude more pixels of the same colour, so the value that reads as "legible" in a
-# table reads as glare here. The fill is knocked back and the small text beside it keeps
-# the full-strength colour, which is the same trade the Heatmap is making, sized for the
-# mark it is actually applied to.
-BAR_FILL_ALPHA = 0.55
+# The lollipop's proportions. The head is the datum and gets full-strength colour; the
+# stem is context (how far from neutral, which way) and is knocked back for the same
+# reason the old filled bars were: `grid_colors` picks colours hot enough for 11px grid
+# text, and a run of pixels at that strength reads as glare. A 3-ish-px stem is far less
+# ink than a half-row slab, but forty of them still add up.
+STEM_ALPHA = 0.55
+STEM_WIDTH = 0.14      # in row units; ~3px at ROW_PX
+HEAD_SIZE = 8
 
 # Gate state on a tick is opacity, not colour, because colour is now carrying which leg
 # it is. One channel per variable.
@@ -182,20 +180,16 @@ SIDE_BOTH = "both"
 SIDE_BULL = "bull"
 SIDE_BEAR = "bear"
 
-# How the Commercial index is drawn.
+# How the Commercial index is drawn: ONE form, a lollipop — a thin stem from the
+# neutral midpoint with a full-strength head at the value.
 #
-# A bar from the neutral midpoint encodes the value twice: its right end is the value,
-# and its length is the distance from neutral. That second reading is free to a reader
-# and costs a row's worth of saturated colour, which is why the fills had to be knocked
-# back at all. A mark encodes position only, which is the whole of what a bounded 0-100
-# index says, and it leaves the row empty.
-#
-# The mark is the better default here for two reasons beyond the ink. The decision this
-# page supports is "which side of the band", which is a position question rather than a
-# magnitude one. And the verdict no longer needs area to be scannable, because the market
-# name carries it as well now.
-MARK_BAR = "bar"
-MARK_DOT = "dot"
+# This page shipped with two switchable marks, a filled bar and a bare diamond, because
+# neither had won. The bar's fill was a half-row of colour saying one number; the
+# diamond scattered over an empty row and did not scan — read side by side, the bare
+# marks were the harder half to interpret. The lollipop is the working part of each:
+# the stem is the bar's at-a-glance answer to "how far from neutral, and which way",
+# on a twentieth of the ink, and the head is the diamond's precise position, sized to
+# carry the hover.
 
 
 @dataclass(frozen=True)
@@ -388,40 +382,34 @@ def figure_height(rows):
     return TOP_CHROME_PX + BOTTOM_CHROME_PX + ROW_PX * len(rows)
 
 
-def _bar_colour(row, colors):
-    """Verdict colour for a market's bar. See the module docstring on why it is the
-    row's state and not the bar's own value that decides."""
-    if row.state in (const.SETUP_BULL,):
-        return colors.bull
-    if row.state in (const.SETUP_BEAR,):
-        return colors.bear
-    if row.state == const.SETUP_NEAR_BULL:
-        return colors.bull_near
-    if row.state == const.SETUP_NEAR_BEAR:
-        return colors.bear_near
-    return colors.dim
+def _verdict_colour(row, colors):
+    """The model's colour for a row it has something to say about, else None. See the
+    module docstring on why it is the row's state and not the value that decides."""
+    return {const.SETUP_BULL: colors.bull,
+            const.SETUP_BEAR: colors.bear,
+            const.SETUP_NEAR_BULL: colors.bull_near,
+            const.SETUP_NEAR_BEAR: colors.bear_near}.get(row.state)
 
 
 def _mark_colour(row, colors, palette):
-    """Colour for a market's current mark.
+    """Colour for a market's lollipop.
 
     A row with a verdict takes the verdict colour. A row without one takes the app's
     COMMERCIAL colour rather than a neutral grey: the mark is Commercial positioning
     whatever the gate thinks of it, and grey said only "nothing here" while leaving the
     one series on the row unnamed by colour, which is the thing every other panel names
-    by colour.
+    by colour. (Grey was tried, on the old filled bars, and read as disabled rather
+    than as quiet.)
     """
-    if row.state == const.SETUP_NONE:
-        return palette[LEG_PALETTE_SLOT["comm"]]
-    return _bar_colour(row, colors)
+    return _verdict_colour(row, colors) or palette[LEG_PALETTE_SLOT["comm"]]
 
 
-def _fill(colour, alpha=BAR_FILL_ALPHA):
-    """A bar fill from a verdict colour.
+def _fill(colour, alpha=STEM_ALPHA):
+    """A stem fill from a head colour.
 
     Only full-strength colours are knocked back. The near-setup colours arrive already
-    translucent from `grid_colors`, and the neutral dim is fainter still, so fading
-    those again would push a whole tier of the ramp out of sight.
+    translucent from `grid_colors`, so fading those again would push a whole tier of
+    the ramp out of sight.
     """
     return hex_to_rgba(colour, alpha) if str(colour).startswith("#") else colour
 
@@ -442,15 +430,16 @@ def _leg_colour(leg, gate, palette):
 def _tick_label(row, colors):
     """The market name, lit when its row has a verdict.
 
-    The name column is where the eye starts, and the bar that carries the verdict is
-    off to the right of it, so a reader scanning names alone had no way to find the
-    setups without tracking across. This is the same variable the bar colour carries,
+    The name column is where the eye starts, and the lollipop that carries the verdict
+    is off to the right of it, so a reader scanning names alone had no way to find the
+    setups without tracking across. This is the same variable the head colour carries,
     which is usually a reason not to draw it twice; the exception is that the two live
     at opposite ends of a wide row.
     """
-    if row.state == const.SETUP_NONE:
+    verdict = _verdict_colour(row, colors)
+    if verdict is None:
         return row.label
-    return f'<span style="color:{_bar_colour(row, colors)}">{row.label}</span>'
+    return f'<span style="color:{verdict}">{row.label}</span>'
 
 
 def _hover(row, model):
@@ -478,12 +467,12 @@ def _tick_text(model):
 # The glyph kinds legend_items hands back. The page renders them as text, so each kind
 # is a character there, but the KINDS are named here because which marks exist is this
 # module's fact: they mirror the symbols build_figure actually draws.
-GLYPH_MARK = "mark"        # the diamond, or the bar swatch in bar mode
-GLYPH_TICK = "tick"        # the line-ns symbol: quiet rows and speculator legs
+GLYPH_MARK = "mark"        # the lollipop head
+GLYPH_TICK = "tick"        # the line-ns symbol: the speculator legs
 GLYPH_CIRCLE = "circle"    # the hollow prior-position circle
 
 
-def legend_items(model, colors, palette, mark=MARK_DOT):
+def legend_items(model, colors, palette):
     """The legend, as data: `[(group title, [(label, colour, glyph), ...]), ...]`.
 
     This used to be empty traces inside the first figure, the idiom plot_traces uses.
@@ -496,26 +485,25 @@ def legend_items(model, colors, palette, mark=MARK_DOT):
     two kinds of mark and no way to tell whose positioning either one is: the first
     reaction to it was "what are the numbers, what are the ticks, is this Commercials
     only?", all three of which are answered here and in the caption rather than left to
-    be inferred. The bar's own colour stays out of the key because it varies per row;
-    the group title names it instead.
+    be inferred. "No setup" is a key entry like the verdicts, because on this scheme a
+    quiet row is not colourless: it is the Commercial series colour, and a reader has
+    to be told that red-ish head does not mean bearish.
     """
     comm = palette[LEG_PALETTE_SLOT["comm"]]
-    commercial = [("Bull setup", colors.bull, GLYPH_MARK),
-                  ("Bear setup", colors.bear, GLYPH_MARK),
-                  ("Near", colors.bull_near, GLYPH_MARK)]
-    if mark != MARK_BAR:
-        commercial.append(("No setup", comm, GLYPH_TICK))
-    commercial.append((f"{const.MOMENTUM_PERIOD}w ago", comm, GLYPH_CIRCLE))
     return [
-        (f"{'Bar' if mark == MARK_BAR else 'Diamond'}: Commercial index", commercial),
+        ("Lollipop: Commercial index",
+         [("Bull setup", colors.bull, GLYPH_MARK),
+          ("Bear setup", colors.bear, GLYPH_MARK),
+          ("Near", colors.bull_near, GLYPH_MARK),
+          ("No setup", comm, GLYPH_MARK),
+          (f"{const.MOMENTUM_PERIOD}w ago", comm, GLYPH_CIRCLE)]),
         ("Ticks: the legs this gate also reads",
          [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
           for leg in model.spec_legs if leg in LEG_LABELS]),
     ]
 
 
-def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
-                 mark=MARK_DOT):
+def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
     """The strip, as one figure.
 
     `rows` comes from build_rows. Nothing here reads a store, so a caller can hand it
@@ -575,46 +563,35 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
     ]
     fig.update_layout(shapes=shapes)
 
-    if markets and mark == MARK_BAR:
-        vals = [r.comm for _, r in markets]
+    if markets:
+        # The stem: a hairline bar from neutral to the value, in the head's colour
+        # knocked back. It carries no hover of its own — a 3px target is misery to hit,
+        # and the head at its end says the same thing.
+        colours = [_mark_colour(r, colors, palette) for _, r in markets]
         fig.add_trace(go.Bar(
-            x=[v - const.INDEX_NEUTRAL for v in vals],
-            base=[const.INDEX_NEUTRAL] * len(vals),
+            x=[r.comm - const.INDEX_NEUTRAL for _, r in markets],
+            base=[const.INDEX_NEUTRAL] * len(markets),
             y=[i for i, _ in markets],
             orientation="h",
-            width=0.46,
-            marker=dict(color=[_fill(_bar_colour(r, colors)) for _, r in markets],
-                        line_width=0),
+            width=STEM_WIDTH,
+            marker=dict(color=[_fill(c) for c in colours], line_width=0),
+            hoverinfo="skip",
+            showlegend=False,
+        ))
+        # The head: the value itself, full strength, carrying the hover. One shape for
+        # every row — the verdict is the colour (and the lit market name), not a shape
+        # change, so a quiet row reads as the same object in the series' own colour
+        # rather than as a special case.
+        fig.add_trace(go.Scatter(
+            x=[r.comm for _, r in markets],
+            y=[i for i, _ in markets],
+            mode="markers",
+            marker=dict(symbol="circle", size=HEAD_SIZE, color=colours,
+                        line=dict(width=1, color=colours)),
             hovertext=[_hover(r, model) for _, r in markets],
             hoverinfo="text",
             showlegend=False,
         ))
-    elif markets:
-        # Two shapes, and the shape is the verdict rather than a second colour.
-        #
-        # A diamond means the model has something to say about this row; a tick means it
-        # does not, and a tick is the same mark the speculator legs use, so a quiet row
-        # reads as three marks of one family rather than as a special case. Colour then
-        # only ever says WHOSE positioning a mark is, or, where there is a verdict, what
-        # it is. Full strength for both: a 9px mark is a fraction of the pixels a filled
-        # bar was, so the colour that glared as a row reads as a cue here.
-        for state_group, symbol, size in (
-                ("verdict", "diamond", 9), ("quiet", "line-ns", 11)):
-            group = [(i, r) for i, r in markets
-                     if (r.state != const.SETUP_NONE) == (state_group == "verdict")]
-            if not group:
-                continue
-            colours = [_mark_colour(r, colors, palette) for _, r in group]
-            fig.add_trace(go.Scatter(
-                x=[r.comm for _, r in group],
-                y=[i for i, _ in group],
-                mode="markers",
-                marker=dict(symbol=symbol, size=size, color=colours,
-                            line=dict(width=2, color=colours)),
-                hovertext=[_hover(r, model) for _, r in group],
-                hoverinfo="text",
-                showlegend=False,
-            ))
 
     # Where it stood MOMENTUM_PERIOD weeks ago, as a hollow mark on the same row.
     #
