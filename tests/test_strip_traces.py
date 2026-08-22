@@ -396,10 +396,12 @@ def test_a_class_emptied_by_a_filter_loses_its_header():
                                                  ("market", "Cocoa")]
 
 
-def test_classes_are_separated_by_a_blank_row_carrying_the_rule():
-    """A rule alone left the groups touching, so the break read as a line through one
-    continuous list. No spacer leads the first class: that would be a gap under the
-    legend, not between anything."""
+def test_classes_are_separated_by_a_blank_row_and_nothing_is_drawn_on_it():
+    """No spacer leads the first class: that would be a gap under the legend, not
+    between anything. The spacer row itself is empty. It carried a hairline rule while
+    the blank row alone was the whole separation, and with the gate zones stopping at
+    the block edges and the heading below the gap drawn as a bar, that rule was the
+    third divider in a stack of three."""
     df = frame(
         matrix_row("Gold", "Metals", 40, 50, 50),
         matrix_row("Euro", "FX", 55, 50, 50),
@@ -410,9 +412,80 @@ def test_classes_are_separated_by_a_blank_row_carrying_the_rule():
                                       "spacer", "class", "market",
                                       "spacer", "class", "market"]
     fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
-    rules = [sh for sh in fig.layout.shapes
-             if sh.type == "line" and sh.xref == "paper"]
-    assert [sh.y0 for sh in rules] == [2, 5]   # the two spacer rows, and nothing else
+    spacers = [i for i, r in enumerate(rows) if r.kind == "spacer"]
+    assert spacers == [2, 5]
+    # Nothing paints over a spacer: not a rule on it, and not a band reaching across it.
+    covers = [sh for sh in fig.layout.shapes if sh.yref == "y"
+              for i in spacers if min(sh.y0, sh.y1) <= i <= max(sh.y0, sh.y1)]
+    assert covers == []
+
+
+def test_the_gate_bands_cover_the_markets_and_nothing_else():
+    """The red and green run per run-of-markets, not once down the whole figure, so the
+    whole break between two classes, the blank row and the heading in it, is clean
+    background. Painted through, the separator was doing its work against a continuous
+    wash and the break read as weaker than the rows it was separating."""
+    df = frame(
+        matrix_row("Gold", "Metals", 40, 50, 50),
+        matrix_row("Silver", "Metals", 60, 50, 50),
+        matrix_row("Cocoa", "Softs", 30, 50, 50),
+    )
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    assert [r.kind for r in rows] == ["class", "market", "market",
+                                      "spacer", "class", "market"]
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    bands = [sh for sh in fig.layout.shapes
+             if sh.type == "rect" and sh.xref == "x"]
+    # Both zones over both runs of markets: rows 1-2 and row 5, and nothing on 0, 3, 4.
+    assert {(sh.y0, sh.y1) for sh in bands} == {(0.5, 2.5), (4.5, 5.5)}
+    assert len(bands) == 4
+
+
+def test_a_column_with_no_break_keeps_one_unbroken_band():
+    """Splitting is per break, so a single-class column carries one span."""
+    df = frame(matrix_row("Gold", "Metals", 40, 50, 50),
+               matrix_row("Silver", "Metals", 60, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    bands = [sh for sh in fig.layout.shapes
+             if sh.type == "rect" and sh.xref == "x"]
+    assert {(sh.y0, sh.y1) for sh in bands} == {(0.5, 2.5)}
+
+
+def test_the_heading_row_carries_its_own_bar_and_its_name_is_centred():
+    """The heading sits ON the row rather than out in the margin, where it was stacked
+    left-aligned directly above the market labels and differed from them only in
+    weight. Its bar is the only thing painted on that row, and it outweighs the
+    alternating row band without reaching the gate zones."""
+    df = frame(matrix_row("Gold", "Metals", 40, 50, 50),
+               matrix_row("Cocoa", "Softs", 30, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    headers = [i for i, r in enumerate(rows) if r.kind == "class"]
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+
+    bars = [sh for sh in fig.layout.shapes
+            if sh.type == "rect" and sh.xref == "paper"
+            and sh.opacity == st.HEADER_BAND_ALPHA]
+    assert [sh.y0 + 0.5 for sh in bars] == headers
+    assert st.ROW_BAND_ALPHA < st.HEADER_BAND_ALPHA < 0.09
+
+    named = [a for a in fig.layout.annotations if "METALS" in a.text]
+    assert len(named) == 1
+    assert (named[0].xref, named[0].x, named[0].xanchor) == ("paper", 0.5, "center")
+    assert named[0].xshift in (0, None)
+
+
+def test_the_neutral_rule_still_runs_the_full_height():
+    """It is a grid line, not a zone: a spine broken at every class stops being one
+    axis a reader can sight down."""
+    df = frame(matrix_row("Gold", "Metals", 40, 50, 50),
+               matrix_row("Cocoa", "Softs", 30, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF)
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    spine = [sh for sh in fig.layout.shapes
+             if sh.type == "line" and sh.xref == "x"]
+    assert len(spine) == 1
+    assert (spine[0].yref, spine[0].y0, spine[0].y1) == ("paper", 0, 1)
 
 
 # ── two columns ───────────────────────────────────────────────────────────────
@@ -616,7 +689,8 @@ def test_every_other_market_row_is_banded_to_group_its_marks():
     rows, _ = st.build_rows(df, models.RAW_PF)
     fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
     banded = {sh.y0 + 0.5 for sh in fig.layout.shapes
-              if sh.type == "rect" and sh.xref == "paper"}
+              if sh.type == "rect" and sh.xref == "paper"
+              and sh.opacity == st.ROW_BAND_ALPHA}
     labels = {i: r.label for i, r in enumerate(rows) if r.kind == "market"}
     assert {labels[i] for i in banded} == {"B", "E"}
 
