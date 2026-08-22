@@ -171,6 +171,13 @@ ROW_PX = 22
 # on the page.
 ROW_BAND_ALPHA = 0.045
 
+# The heading's own row, one step up from the alternating row band and one step below
+# the gate zones. It has to read as a label bar rather than as another market row, and
+# it must not outrank the shading that means something. It is the app's neutral white
+# rather than any verdict colour, for the reason the quiet tier is: red and green on
+# this figure belong to the verdicts, and a class name has no verdict.
+HEADER_BAND_ALPHA = 0.07
+
 # The top margin holds only the top axis. The legend that used to sit above it inside
 # the first figure is page chrome now (`legend_items` below): Plotly stacked the two
 # legend groups vertically, the stack outgrew the margin arithmetic that tried to
@@ -189,7 +196,24 @@ BOTTOM_CHROME_PX = 46
 # numbers are still one hover away, which is what makes dropping them cheap here and
 # would not on a printed page.
 AXIS_MAX = 104
-LEFT_MARGIN_PX = 140
+
+# The name column, sized to the text rather than to a guess.
+#
+# It was 140 while the class headings lived out here too, left-aligned above the market
+# names. They sit centred on their own row now, so the only thing this has to hold is
+# the widest instrument name in the universe. Measured in the browser at the tick font
+# (10px, Plotly's default family) against every name in cotmetrics-config: the widest is
+# "MSCI Emerging Mkts" at 105px, and the widest one currently PLOTTED is "Australian
+# Dollar" at 83px.
+#
+# Sized to the first, not the second, because roles change. MSCI Emerging Mkts and S&P
+# MidCap 400 are the two longest and both are `heldout` today, so a margin fitted to
+# what is on screen would clip the day either is promoted to `deploy`, and it would clip
+# quietly, as a shortened name rather than an error. 124 is 105 of text plus the 7px
+# TICK_STANDOFF_PX leaves before the plot and 12px of air at the figure's own edge.
+# Re-measure before trimming further; a name longer than that one is what breaks this.
+LEFT_MARGIN_PX = 124
+TICK_STANDOFF_PX = 12
 
 # Filters. Two axes, deliberately, because they answer different questions and never
 # contradict each other: SHOW is about the model's verdict, SIDE is about which half of
@@ -410,6 +434,29 @@ def figure_height(rows):
     return TOP_CHROME_PX + BOTTOM_CHROME_PX + ROW_PX * len(rows)
 
 
+def _block_spans(rows):
+    """The y extent of each run of MARKET rows, in row units.
+
+    A row occupies i-0.5 to i+0.5 on the y axis (the axis runs over row indices, see
+    update_yaxes), so a run from a to b covers a-0.5 to b+0.5. Class headers and blank
+    spacers both end a run, which is what leaves the whole break between two classes,
+    the gap and the heading in it, clear of the gate colours. Returns [] for rows with
+    no markets at all, which split_columns already prevents but a hand-written caller
+    can still hand over.
+    """
+    spans, start = [], None
+    for i, row in enumerate(rows):
+        if row.kind == "market":
+            if start is None:
+                start = i
+        elif start is not None:
+            spans.append((start - 0.5, i - 1 + 0.5))
+            start = None
+    if start is not None:
+        spans.append((start - 0.5, len(rows) - 1 + 0.5))
+    return spans
+
+
 def _verdict_colour(row, colors):
     """The model's colour for a row it has something to say about, else None. See the
     module docstring on why it is the row's state and not the value that decides."""
@@ -553,15 +600,27 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
     # painted: the middle is not a band, it is the absence of one.
     # 0.09 keeps the zones a step above ROW_BAND_ALPHA, so the strongest shading on
     # the page is still the one that means something.
+    #
+    # Painted per BLOCK rather than once over the whole figure, so the blank row
+    # between two classes is genuinely blank. Run as one full-height rectangle the
+    # colour crossed the gap, which left the separator doing its work against a
+    # continuous red and a continuous green and made the break read as weaker than the
+    # rows it was separating. Cutting the paint at the gap gives the eye an unbroken
+    # line of background all the way across, which is the one thing on this figure that
+    # says "new group" without adding any ink at all.
     shapes = [
-        dict(type="rect", xref="x", yref="paper", x0=0, x1=model.low, y0=0, y1=1,
-             fillcolor=colors.bear, opacity=0.09, layer="below", line_width=0),
-        dict(type="rect", xref="x", yref="paper", x0=model.high, x1=100, y0=0, y1=1,
-             fillcolor=colors.bull, opacity=0.09, layer="below", line_width=0),
+        dict(type="rect", xref="x", yref="y", x0=x0, x1=x1, y0=y0, y1=y1,
+             fillcolor=fill, opacity=0.09, layer="below", line_width=0)
+        for y0, y1 in _block_spans(rows)
+        for x0, x1, fill in ((0, model.low, colors.bear),
+                             (model.high, 100, colors.bull))
+    ]
+    # The neutral rule stays full height. It is a grid line rather than a zone, and a
+    # spine broken in three places stops being one axis a reader can sight down.
+    shapes.append(
         dict(type="line", xref="x", yref="paper", x0=const.INDEX_NEUTRAL,
              x1=const.INDEX_NEUTRAL, y0=0, y1=1, layer="below",
-             line=dict(color=vc.GRID_COLOR, width=1)),
-    ]
+             line=dict(color=vc.GRID_COLOR, width=1)))
     # A band on every other market row.
     #
     # A row carries four marks now (Commercials, its prior position, and a tick per
@@ -589,13 +648,28 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
         for i in band_ys
     ]
 
-    # The rule goes through the middle of each spacer row, so the gap reads as a gap
-    # with a line in it rather than as a line with rows crowding it.
+    # The heading's own bar, across the full width at HEADER_BAND_ALPHA.
+    #
+    # This was tried once before and rejected as noise, and what makes it work now is
+    # the pair of changes it arrived with: the gate zones stop at the block edges, so
+    # the heading row is the only thing painted on it, and the heading sits ON the bar
+    # rather than out in the label column. A quiet full-width bar in a gap that is
+    # otherwise empty reads as a divider carrying a name, which is the job. The same
+    # bar under the old scheme sat on top of a continuous red and green wash and read
+    # as a third stripe among many.
     shapes += [
-        dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=i, y1=i, layer="below",
-             line=dict(color=vc.GRID_COLOR, width=1))
-        for i, r in enumerate(rows) if r.kind == "spacer"
+        dict(type="rect", xref="paper", yref="y", x0=0, x1=1,
+             y0=i - 0.5, y1=i + 0.5, layer="below",
+             fillcolor=vc.BRIGHTER_TEXT_COLOR, opacity=HEADER_BAND_ALPHA, line_width=0)
+        for i, _ in headers
     ]
+
+    # Nothing is drawn on the spacer row itself. It used to carry a hairline rule
+    # through its middle, from when the blank row alone was the whole separation and the
+    # gate colours ran straight through it. Two changes since then made the rule a third
+    # divider in a stack of three: the zones stop at the block edges, and the heading
+    # below the gap is a bar with a hard top edge. Empty space between two painted
+    # blocks separates them on its own.
     fig.update_layout(shapes=shapes)
 
     if markets:
@@ -675,24 +749,28 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
             showlegend=False,
         ))
 
-    # Class headers sit out in the left margin, level with the break, bold and a point
-    # larger than the market names under them.
+    # Class headers sit centred on their own row, bold and a point larger than the
+    # market names under them.
     #
-    # Left-aligned rather than centred over the bars, deliberately. Headings on one left
-    # edge are scanned by running the eye down a single line; centred ones move with the
-    # length of each word, and over the plot area they would sit among the marks they
-    # are labelling.
+    # They were left-aligned out in the margin before this, on the argument that
+    # headings on one left edge are scanned by running the eye down a single line. What
+    # that argument missed is that the margin is already a column of names: the heading
+    # sat directly above the market labels in the same left-aligned stack, differing
+    # from them only in weight, so the thing separating two classes was competing with
+    # the thing naming a market. Centred, it is nowhere near that column, and the row
+    # it sits on carries no marks for it to land among.
     #
-    # Nothing behind them and nothing beside them. A shaded band and a per-class tally
-    # were both tried: the band read as noise across every group, and the counts said
-    # what the lit market names under them already say. The blank row above is the
-    # separation, and the weight of the text is the emphasis.
+    # Centred on the PLOT rather than the whole figure, so the headings line up with
+    # each other and with the axis under them whatever the left margin is doing.
+    #
+    # A per-class tally was tried here too and is still refused: the counts said what
+    # the lit market names under them already say.
     for i, row in headers:
         fig.add_annotation(
-            x=0, xref="paper", y=i, yref="y", xshift=-(LEFT_MARGIN_PX - 4),
+            x=0.5, xref="paper", y=i, yref="y",
             text=f"<b>{row.label.upper()}</b>", showarrow=False,
-            xanchor="left", yanchor="middle",
-            font=dict(size=12, color=vc.BRIGHTER_TEXT_COLOR), align="left")
+            xanchor="center", yanchor="middle",
+            font=dict(size=12, color=vc.BRIGHTER_TEXT_COLOR), align="center")
 
     fig.update_layout(
         barmode="overlay",
@@ -738,6 +816,12 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
         tickvals=[i for i, _ in markets],
         ticktext=[_tick_label(r, colors) for _, r in markets],
         tickfont=dict(size=10),
+        # Explicit, because the margin is now sized to the text. Plotly leaves about a
+        # pixel between a tick label and the plot when `ticks=""`, which went unnoticed
+        # while the margin carried 35px of slack and would have put the longest name
+        # flush against the heading bar once that slack was reclaimed. 12 measures out
+        # as a 7px gap to the plot edge.
+        ticklabelstandoff=TICK_STANDOFF_PX,
         showgrid=False, zeroline=False, ticks="",
     )
     return fig
