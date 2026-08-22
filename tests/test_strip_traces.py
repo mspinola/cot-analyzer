@@ -557,7 +557,8 @@ def test_the_quiet_tier_sits_below_both_verdict_tiers():
     assert st.QUIET_HEAD_SIZE < st.HEAD_SIZE
     # Dim's own alpha sits below the near tier's fade, the ordering viz_constants
     # documents: "approaching" must never look quieter than "neutral".
-    alpha = lambda c: float(c.rstrip(")").rsplit(",", 1)[1])
+    def alpha(c):
+        return float(c.rstrip(")").rsplit(",", 1)[1])
     assert alpha(COLORS.dim) < alpha(COLORS.bear_near)
 
 
