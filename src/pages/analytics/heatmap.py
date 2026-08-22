@@ -570,17 +570,33 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
                     "valueFormatter": {"function": "d3.format('+.2f')(params.value)"},
                     "cellStyle": {"styleConditions": oi_styles}
                 },
+                # Delta IV is deliberately absent, on the argument that retired the
+                # dollar-risk level one column over, only stronger. It is the gap in
+                # TOTAL CHAIN INTRINSIC VALUE between the current price and max pain,
+                # in millions, so it scales with the size of the option chain it was
+                # measured on: live, it ran 0.0001 (5-Year Note) to 8.5 (Gold), five
+                # orders of magnitude, which is a chain-size ranking rather than a
+                # reading about any market.
+                #
+                # And the chain is never the futures market's. Every symbol here is
+                # priced through options_data.ETF_PROXIES, and the snapshot scales the
+                # STRIKES to futures while leaving IntrinsicValue_M in the ETF chain's
+                # own dollars, so the number cannot honestly be labelled in the units
+                # of the row it sits on. That is why it is dropped outright rather than
+                # moved to a hover the way $ Risk was: a tooltip has to say what the
+                # number IS.
+                #
+                # Nothing is lost from the page. Max Pain Pull above is the same
+                # phenomenon, the distance between price and max pain, as a percentage,
+                # which IS comparable across markets and is the half a reader can act
+                # on. get_matrix_data still carries the column for the emailed HTML.
                 {
                     "field": "Max Pain Pull",
-                    "headerTooltip": "Max Pain Pull (%)",
+                    "headerTooltip": "Distance from the current price to max pain, as a percent of price. Positive means max pain sits above the market",
                     "cellStyle": {"styleConditions": pull_styles},
-                    "valueFormatter": {"function": "params.value ? d3.format('+.1f')(params.value) + '%' : '–'"}
-                },
-                {
-                    "field": "Delta IV",
-                    "headerTooltip": "Delta Intrinsic Value",
-                    "cellStyle": {"fontSize": "0.68rem", "color": DIM_TEXT},
-                    "valueFormatter": {"function": "params.value ? (Math.abs(params.value) < 0.1 ? d3.format(',.3f')(params.value) : Math.abs(params.value) < 1.0 ? d3.format(',.2f')(params.value) : d3.format(',.1f')(params.value)) : '–'"}
+                    "valueFormatter": {"function": "params.value != null ? d3.format('+.1f')(params.value) + '%' : '–'"},
+                    "headerClass": "group-border-right",
+                    "cellClass": "group-border-right",
                 },
             ]
         }
