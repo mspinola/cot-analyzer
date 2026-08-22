@@ -143,6 +143,81 @@ def headline(frame, unit, leg):
             f"{rank:.0f}th percentile of this set's own history."), vc.TEXT_COLOR
 
 
+#: Below this, a total is a residual between markets doing different things rather than
+#: a crowd, and the word "crowded" above it needs qualifying. Chosen as the point where
+#: a fifth of the gross size is cancelling out.
+AGREEMENT_SPLIT = 0.80
+
+#: A member holding this share of the gross total is the total, whatever the other names
+#: on the list say.
+DOMINANT_SHARE = 0.50
+
+
+def composition_line(agg, unit, leg, part_frames=None):
+    """What the headline is actually made of, in one sentence under it.
+
+    Two facts, both invisible in a sum and both measured rather than suspected.
+
+    The leg split, when the drawn leg is Speculators. Large and Small sit on OPPOSITE
+    sides 59% of weeks, and the sign of their total disagrees with one of them about a
+    third of the time. So the page can say CROWDED LONG on a week where one of the two
+    groups inside that number is short, which is what it did before this line existed.
+
+    The concentration. `agreement` is |sum| / sum|.| across markets: 1.00 is unanimous,
+    and a low reading means the total is what is left after markets cancelled. Beside it
+    the largest single contributor, because a market holding half the gross total IS the
+    total whatever else is on the list.
+    """
+    if agg is None or agg.frame.empty:
+        return ""
+    column = exposure_traces.UNIT_RANK_COLUMN[unit].replace("_pct_rank", "_usd")
+    shares = exposure.contributions(agg.members, column)
+    if shares.empty:
+        return ""
+    divisor, suffix = exposure_traces.unit_scale(agg.frame[unit])
+
+    bits = []
+    parts = part_frames or {}
+    if len(parts) == 2:
+        # Named in the order they are drawn, and only when they disagree is the sentence
+        # worth its length. When they agree, saying so is still worth a clause: it tells
+        # a reader the headline is not one group's doing.
+        told = []
+        for part_leg, frame in parts.items():
+            if frame is None or frame.empty:
+                continue
+            value = frame.iloc[-1] / divisor
+            told.append((exposure.LEG_LABELS[part_leg], value))
+        if len(told) == 2:
+            (a_name, a), (b_name, b) = told
+            if (a >= 0) != (b >= 0):
+                long_side = (a_name, a) if a >= 0 else (b_name, b)
+                short_side = (b_name, b) if a >= 0 else (a_name, a)
+                bits.append(
+                    f"The two halves disagree: {long_side[0]} long "
+                    f"${abs(long_side[1]):,.1f}{suffix} against {short_side[0]} short "
+                    f"${abs(short_side[1]):,.1f}{suffix}")
+            else:
+                bits.append(f"Both halves agree ({a_name} ${a:,.1f}{suffix}, "
+                            f"{b_name} ${b:,.1f}{suffix})")
+
+    gross = float(sum(abs(v) for v in shares))
+    score = exposure.agreement(shares)
+    top_name = shares.index[0]
+    top_share = abs(shares.iloc[0]) / gross if gross else float("nan")
+    same_way = sum(1 for v in shares if (v >= 0) == (shares.sum() >= 0))
+    if top_share == top_share and top_share >= DOMINANT_SHARE:
+        bits.append(f"{top_name} alone is {top_share:.0%} of it")
+    else:
+        bits.append(f"{top_name} is the largest single market at {top_share:.0%}")
+    if score == score:
+        qualifier = (" so the total is a residual rather than a crowd"
+                     if score < AGREEMENT_SPLIT else "")
+        bits.append(f"{same_way} of {len(shares)} markets point the same way "
+                    f"(agreement {score:.2f}){qualifier}")
+    return ". ".join(bits) + "."
+
+
 def how_to_read(unit):
     """What each part of the picture is for, in the order a reader meets it.
 
@@ -167,6 +242,13 @@ def how_to_read(unit):
          "is the crowd adding to a move; exposure falling while price climbs is the "
          "crowd being sold to. Those read very differently and neither is visible in "
          "one panel alone."),
+        ("What it is made of",
+         "A sum says nothing about whether every market agreed or one market carried "
+         "it, so the bars below break the latest week apart and the line under the "
+         "headline scores it. Faded bars point against the total. When the leg is "
+         "Speculators the chart also draws its two halves, Large and Small, because "
+         "they sit on opposite sides 59% of weeks and the total can point somewhere "
+         "neither of them does."),
         ("What it does NOT tell you",
          "This is a description, not a signal. Positioning can sit at an extreme for "
          "months, and this page runs no gate: the Strip and the setup pages do that. "
@@ -273,6 +355,9 @@ def layout(**kwargs):
             html.Div(id='exposure_headline',
                      style={"fontSize": "1.05rem", "fontWeight": 600,
                             "marginBottom": "2px"}),
+            html.Div(id='exposure_composition',
+                     style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem",
+                            "marginBottom": "4px"}),
             html.Div(LEDE, style={"color": vc.TEXT_COLOR, "fontSize": "0.85rem",
                                   "marginBottom": "6px"}),
 
@@ -289,6 +374,12 @@ def layout(**kwargs):
                                   config={"displayModeBar": False,
                                           "responsive": True}),
                         type="default", color=vc.TEXT_COLOR),
+
+            html.Div(id='exposure_contrib_label',
+                     style={"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
+                            "marginTop": "4px"}),
+            dcc.Graph(id='exposure_contributions',
+                      config={"displayModeBar": False, "responsive": True}),
 
             html.P(id='exposure_caption',
                    style={"color": vc.TEXT_COLOR, "fontSize": "0.85rem",
@@ -342,6 +433,9 @@ def apply_help_fold(is_open):
 
 @callback(
     Output('exposure_chart', 'figure'),
+    Output('exposure_contributions', 'figure'),
+    Output('exposure_contrib_label', 'children'),
+    Output('exposure_composition', 'children'),
     Output('exposure_headline', 'children'),
     Output('exposure_headline', 'style'),
     Output('exposure_help', 'children'),
@@ -364,7 +458,10 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     if not asset_classes:
         empty = exposure_traces.build_figure(None, None, unit=unit, colors=colors,
                                              palette=palette)
-        return (empty, "", {**head_style, "color": vc.TEXT_COLOR}, help_block,
+        no_bars = exposure_traces.build_contributions_figure(
+            None, unit=unit, palette=palette, leg=leg)
+        return (empty, no_bars, "", "", "",
+                {**head_style, "color": vc.TEXT_COLOR}, help_block,
                 "Select an asset class.", "")
 
     # An empty member list is the moment between a class change and the callback that
@@ -374,12 +471,29 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index) if not agg.frame.empty else None
 
+    # The halves, when the drawn leg is a sum of two others. Computed over the same
+    # member list rather than the same date index, so a leg whose completeness differs
+    # is reindexed onto the total in build_figure rather than silently shifted here.
+    part_frames = {}
+    for part_leg in exposure_traces.LEG_PARTS.get(leg, ()):
+        part = exposure.aggregate_exposure(names, leg=part_leg)
+        part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
+
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
-        leg=leg)
+        leg=leg, parts=part_frames)
+
+    shares = exposure.contributions(agg.members, unit)
+    bars = exposure_traces.build_contributions_figure(
+        shares, unit=unit, palette=palette, leg=leg)
+    bar_label = (f"What made it, week of {agg.frame.index[-1]:%B %d, %Y}. "
+                 f"Faded bars point against the total."
+                 if len(shares) else "")
     head_text, head_colour = headline(agg.frame, unit, leg)
-    return (figure, head_text, {**head_style, "color": head_colour}, help_block,
+    return (figure, bars, bar_label,
+            composition_line(agg, unit, leg, part_frames),
+            head_text, {**head_style, "color": head_colour}, help_block,
             membership(agg, names), caption(agg.frame, unit, leg))
 
 

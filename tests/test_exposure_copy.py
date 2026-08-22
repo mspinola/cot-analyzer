@@ -18,7 +18,14 @@ from components.plot_colors import GridColors  # noqa: E402
 COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
                     bull_near="rgba(52,211,153,0.4)",
                     bear_near="rgba(255,77,77,0.4)")
-from pages.analytics.exposure import LEDE, caption, headline, how_to_read, membership  # noqa: E402
+from pages.analytics.exposure import (  # noqa: E402
+    LEDE,
+    caption,
+    composition_line,
+    headline,
+    how_to_read,
+    membership,
+)
 
 
 def agg(dropped=None, coverage=None, bounded_by=None, weeks_lost=0, rows=3):
@@ -220,9 +227,9 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 4
+    assert len(titles) == 5
     joined = " ".join(titles).lower()
-    for topic in ("number", "band", "panels", "not"):
+    for topic in ("number", "band", "panels", "made of", "not"):
         assert topic in joined
 
 
@@ -247,3 +254,96 @@ def test_the_explanation_follows_the_unit_being_drawn():
     notional = " ".join(b for _, b in how_to_read(et.UNIT_NOTIONAL))
     assert "vol-targeting" in risk
     assert "not comparable" in notional
+
+
+# ── the composition line ──────────────────────────────────────────────────────
+
+def with_members(per_market, unit="risk_usd", rows=3):
+    base = agg()
+    idx = base.frame.index
+    members = {name: pd.DataFrame({unit: [value] * rows,
+                                   "notional_usd": [value] * rows}, index=idx)
+               for name, value in per_market.items()}
+    frame = base.frame.copy()
+    frame[unit] = sum(per_market.values())
+    return AggregateExposure(frame, {}, base.coverage, {}, 0, members)
+
+
+def test_the_two_halves_are_named_when_they_disagree():
+    """Large and Small sit on opposite sides 59% of weeks, and the sign of their total
+    disagrees with one of them about a third of the time. The page could say CROWDED
+    LONG on a week where one of the two groups inside that number is short."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL
+    a = with_members({"S&P 500": 4e8, "Nasdaq": 1e8})
+    parts = {LEG_LARGE: pd.Series([-1.56e8] * 3, index=a.frame.index),
+             LEG_SMALL: pd.Series([6.65e8] * 3, index=a.frame.index)}
+    line = composition_line(a, et.UNIT_RISK, LEG_SPEC, parts)
+    assert "two halves disagree" in line
+    assert "Small Traders long" in line
+    assert "Large Speculators short" in line
+
+
+def test_two_halves_pointing_the_same_way_are_said_to_agree():
+    """Worth its clause either way: it tells a reader the headline is not one group's
+    doing."""
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL
+    a = with_members({"S&P 500": 4e8})
+    parts = {LEG_LARGE: pd.Series([2e8] * 3, index=a.frame.index),
+             LEG_SMALL: pd.Series([2e8] * 3, index=a.frame.index)}
+    line = composition_line(a, et.UNIT_RISK, LEG_SPEC, parts)
+    assert "Both halves agree" in line
+    assert "disagree" not in line
+
+
+def test_a_leg_that_is_not_a_sum_gets_no_split_clause():
+    """Commercials are the exact mirror of Speculators, measured at 0.000000 across the
+    store, so there is nothing to split them into that is not the identity."""
+    line = composition_line(with_members({"A": 1e8}), et.UNIT_RISK, LEG_COMM, {})
+    assert "halves" not in line
+
+
+def test_a_market_holding_half_the_gross_is_called_out_as_being_the_total():
+    line = composition_line(with_members({"S&P 500": 3.71e8, "Nasdaq": 1.16e8,
+                                          "Russell": -5.7e7}),
+                            et.UNIT_RISK, LEG_COMM, {})
+    assert "S&P 500 alone is" in line
+
+
+def test_a_total_with_no_dominant_market_names_the_largest_without_the_word_alone():
+    line = composition_line(with_members({"A": 1.0e8, "B": 0.9e8, "C": 0.9e8}),
+                            et.UNIT_RISK, LEG_COMM, {})
+    assert "largest single market" in line
+    assert "alone" not in line
+
+
+def test_a_low_agreement_total_is_called_a_residual_rather_than_a_crowd():
+    """It moves a lot and independently of the level: 1.00 for Small Traders and 0.63
+    for Large Speculators on the same markets on the same day."""
+    line = composition_line(with_members({"A": 1.0e8, "B": -0.6e8, "C": 0.3e8}),
+                            et.UNIT_RISK, LEG_COMM, {})
+    assert "residual rather than a crowd" in line
+
+
+def test_a_unanimous_total_is_not_called_a_residual():
+    line = composition_line(with_members({"A": 1.0e8, "B": 1.0e8}),
+                            et.UNIT_RISK, LEG_COMM, {})
+    assert "residual" not in line
+    assert "2 of 2 markets point the same way" in line
+
+
+def test_the_composition_line_counts_agreement_against_the_totals_direction():
+    """On a net-short total the negative markets are the ones agreeing."""
+    line = composition_line(with_members({"A": -1.0e8, "B": -1.0e8, "C": 0.1e8}),
+                            et.UNIT_RISK, LEG_COMM, {})
+    assert "2 of 3 markets point the same way" in line
+
+
+def test_an_empty_total_has_no_composition_to_report():
+    empty = AggregateExposure(pd.DataFrame(), {}, {}, {}, 0, {})
+    assert composition_line(empty, et.UNIT_RISK, LEG_SPEC, {}) == ""
+
+
+def test_the_explanation_covers_what_the_total_is_made_of():
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "one market carried it" in body
+    assert "opposite sides 59%" in body

@@ -195,3 +195,85 @@ def test_the_line_is_broken_across_a_real_hole_rather_than_drawn_through_it():
 def test_consecutive_weeks_are_never_broken():
     idx = pd.date_range("2026-01-06", periods=5, freq="W-TUE")
     assert et.break_gaps(idx, [1.0, 2.0, 3.0, 4.0, 5.0]) == [1.0, 2.0, 3.0, 4.0, 5.0]
+
+
+# ── the leg split ─────────────────────────────────────────────────────────────
+
+def test_only_the_summed_leg_has_parts_to_draw():
+    """Comm_net + Spec_net is 0.000000 across all 45 priceable markets and every week in
+    the store, because the Legacy legs sum to zero by construction. Drawing Commercials
+    beside Speculators would be one series and its reflection, and two lines converging
+    and diverging across a zero axis look like a relationship rather than an identity."""
+    from cotmetrics.exposure import LEG_COMM, LEG_LARGE, LEG_SMALL, LEG_SPEC
+    assert set(et.LEG_PARTS) == {LEG_SPEC}
+    assert et.LEG_PARTS[LEG_SPEC] == (LEG_LARGE, LEG_SMALL)
+    for leg in (LEG_COMM, LEG_LARGE, LEG_SMALL):
+        assert leg not in et.LEG_PARTS
+
+
+def test_the_parts_are_drawn_in_their_own_leg_colours_under_the_total():
+    from cotmetrics.exposure import LEG_LARGE, LEG_SMALL, LEG_SPEC
+    df = frame([1e9, 2e9])
+    parts = {LEG_LARGE: pd.Series([-3e8, -4e8], index=df.index),
+             LEG_SMALL: pd.Series([1.3e9, 2.4e9], index=df.index)}
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Spec", leg=LEG_SPEC, parts=parts)
+    drawn = {t.name: t for t in fig.data}
+    assert "Large Speculators" in drawn
+    assert "Small Traders" in drawn
+    # Thinner and unfilled: they are context for the total, not rivals to it.
+    for name in ("Large Speculators", "Small Traders"):
+        assert drawn[name].fill is None
+        assert drawn[name].line.width < drawn["Spec"].line.width
+
+
+def test_a_part_with_no_data_is_skipped_rather_than_drawn_flat():
+    from cotmetrics.exposure import LEG_LARGE, LEG_SPEC
+    fig = et.build_figure(frame([1e9, 2e9]), None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Spec", leg=LEG_SPEC,
+                          parts={LEG_LARGE: None})
+    assert "Large Speculators" not in [t.name for t in fig.data]
+
+
+# ── the contributors ──────────────────────────────────────────────────────────
+
+def test_the_largest_contributor_is_drawn_at_the_top():
+    """A horizontal bar axis counts upward from the bottom, so the order has to be
+    reversed or the reader meets the smallest market first."""
+    values = pd.Series({"S&P 500": 3.71e8, "Nasdaq": 1.16e8, "Russell": -5.7e7})
+    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
+    assert list(fig.data[0].y)[-1] == "S&P 500"
+    assert list(fig.data[0].y)[0] == "Russell"
+
+
+def test_a_contributor_pointing_against_the_total_is_faded_not_recoloured():
+    """"Opposite" is one variable, and the palette slot is already spending itself on
+    which leg this is."""
+    values = pd.Series({"S&P 500": 3.71e8, "Russell": -5.7e7})
+    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
+    colours = dict(zip(fig.data[0].y, fig.data[0].marker.color))
+    assert str(et.AGAINST_ALPHA) in colours["Russell"]
+    assert str(et.WITH_ALPHA) in colours["S&P 500"]
+
+
+def test_against_is_judged_by_the_totals_sign_not_by_being_negative():
+    """On a net-short total the negative markets are the ones AGREEING."""
+    values = pd.Series({"A": -3.0e8, "B": 5.0e7})
+    fig = et.build_contributions_figure(values, unit=et.UNIT_RISK, palette=PALETTE)
+    colours = dict(zip(fig.data[0].y, fig.data[0].marker.color))
+    assert str(et.WITH_ALPHA) in colours["A"]
+    assert str(et.AGAINST_ALPHA) in colours["B"]
+
+
+def test_the_bar_figure_grows_with_the_number_of_markets():
+    small = et.build_contributions_figure(pd.Series({"A": 1.0e8, "B": 2.0e8}),
+                                          unit=et.UNIT_RISK, palette=PALETTE)
+    big = et.build_contributions_figure(
+        pd.Series({c: 1.0e8 for c in "ABCDEFGHI"}), unit=et.UNIT_RISK, palette=PALETTE)
+    assert big.layout.height > small.layout.height
+
+
+def test_no_contributors_draws_an_empty_frame_rather_than_raising():
+    fig = et.build_contributions_figure(None, unit=et.UNIT_RISK, palette=PALETTE)
+    assert len(fig.data) == 0
+    assert fig.layout.height == et.CONTRIB_MIN_PX
