@@ -24,7 +24,7 @@ import dash
 import dash_bootstrap_components as dbc
 from cotmetrics import exposure
 from cotmetrics.indexer import get_indexer
-from dash import Input, Output, callback, dcc, html
+from dash import Input, Output, State, callback, dcc, html
 
 import components.exposure_traces as exposure_traces
 import viz_config
@@ -83,6 +83,98 @@ def membership(agg, names):
     return bits
 
 
+#: Where the percentile stops being "within the usual range" and starts being a
+#: crowd. The same 10/90 the band draws and the same pair the rest of the app treats as
+#: the edge of normal, so a reader carries one threshold between pages.
+CROWDED_HIGH = 90
+CROWDED_LOW = 10
+
+LEDE = (
+    "How much money one group of traders has committed to a whole group of markets, "
+    "and whether that is a lot by this group's own standards.")
+
+
+def headline(frame, unit, leg):
+    """The one-line answer, before any of the machinery that produced it.
+
+    A reader arriving at a twenty-year chart of dollars has to do two conversions before
+    they know anything: read the last value, then decide whether it is big. The second
+    is the one nobody can do by eye on a series that drifts with the price level, which
+    is this page's whole hazard, so the page does it for them and says which way.
+
+    It describes, it does not advise. An extreme is a state, not a trigger: positioning
+    can sit in the top decile for months, the effective sample is roughly a fifth of
+    nominal because exceedances arrive in episodes, and this page runs no gate. The
+    setup pages do that, and this one deliberately says so rather than letting a bold
+    red number imply it.
+
+    Which is also why it does NOT use the app's verdict colours. Green and red mean bull
+    setup and bear setup everywhere else here, and a crowded long is neither: under a
+    positioning-fade model it would read as the OPPOSITE of the green it was painted in.
+    An extreme is emphasised rather than coloured, so the one channel this line spends
+    is weight, on the one variable it actually measures.
+    """
+    if frame is None or frame.empty:
+        return "", vc.TEXT_COLOR
+    latest = frame.iloc[-1]
+    rank = latest[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    divisor, suffix = exposure_traces.unit_scale(frame[unit])
+    value = latest[unit] / divisor
+    side = "long" if value >= 0 else "short"
+    money = f"${abs(value):,.1f}{suffix}"
+    who = exposure.LEG_LABELS[leg]
+
+    if rank != rank:
+        return (f"{who} are net {side} {money}. Not enough history yet to say whether "
+                f"that is unusual."), vc.TEXT_COLOR
+    if rank >= CROWDED_HIGH:
+        return (f"CROWDED {side.upper()}. {who} are net {side} {money}, higher than "
+                f"{rank:.0f}% of the weeks in this set's own history.",
+                vc.BRIGHTER_TEXT_COLOR)
+    if rank <= CROWDED_LOW:
+        # A low percentile on a signed series is the crowd at its most short, or least
+        # long, for this set. Saying "crowded short" only when the level is actually
+        # negative keeps the word honest.
+        word = "CROWDED SHORT" if value < 0 else "UNUSUALLY LIGHT"
+        return (f"{word}. {who} are net {side} {money}, lower than "
+                f"{100 - rank:.0f}% of the weeks in this set's own history.",
+                vc.BRIGHTER_TEXT_COLOR)
+    return (f"Within the usual range. {who} are net {side} {money}, around the "
+            f"{rank:.0f}th percentile of this set's own history."), vc.TEXT_COLOR
+
+
+def how_to_read(unit):
+    """What each part of the picture is for, in the order a reader meets it.
+
+    Written as "what you learn" rather than "what it is". A legend saying "expanding
+    10th to 90th percentile" is accurate and answers a question nobody asked; what a
+    reader wants is that the band is where this set normally sits, so a line outside it
+    is the crowd doing something it does not usually do.
+    """
+    return [
+        ("The number itself",
+         "Contracts converted to dollars, so markets that cannot otherwise be compared "
+         "can be added into one total. Here that is "
+         + exposure_traces.UNIT_NOTES[unit]),
+        ("Where it sits in the band",
+         "The shaded band is where this set normally sits, the middle 80% of its own "
+         "history up to that week. A line outside it is the crowd doing something it "
+         "does not usually do. The band widens over the years because dollar figures "
+         "grow with the price level, which is exactly why the level alone cannot tell "
+         "you whether today is a lot."),
+        ("The two panels together",
+         "The top panel is the same markets' own price. Exposure climbing with price "
+         "is the crowd adding to a move; exposure falling while price climbs is the "
+         "crowd being sold to. Those read very differently and neither is visible in "
+         "one panel alone."),
+        ("What it does NOT tell you",
+         "This is a description, not a signal. Positioning can sit at an extreme for "
+         "months, and this page runs no gate: the Strip and the setup pages do that. "
+         "The figures are as-of Tuesday and published the following Friday, so no week "
+         "on this chart was knowable when its price printed."),
+    ]
+
+
 def caption(frame, unit, leg):
     """The reading, in words, including the one fact the chart cannot show.
 
@@ -116,6 +208,11 @@ def caption(frame, unit, leg):
 
 def layout(**kwargs):
     return html.Div([
+        # `local`, like the Strip's folds: whether the explanation is wanted is a
+        # standing preference, not a fact about this visit. It starts OPEN here where
+        # the Strip's start shut, because a board of markets explains its own shape and
+        # a twenty-year dollar series does not.
+        dcc.Store(id='exposure_help_open', storage_type='local', data=True),
         dbc.Container([
             dbc.Card(dbc.CardBody([
                 dbc.Row([
@@ -169,6 +266,21 @@ def layout(**kwargs):
                        "border": "1px solid rgba(255, 255, 255, 0.1)",
                        "borderRadius": "8px"}),
 
+            # The headline sits ABOVE the figure, not under it. A reader who has
+            # already formed an impression of a twenty-year line is not going to revise
+            # it on the strength of a sentence underneath, and the impression this
+            # particular chart invites (recent swings look largest) is the wrong one.
+            html.Div(id='exposure_headline',
+                     style={"fontSize": "1.05rem", "fontWeight": 600,
+                            "marginBottom": "2px"}),
+            html.Div(LEDE, style={"color": vc.TEXT_COLOR, "fontSize": "0.85rem",
+                                  "marginBottom": "6px"}),
+
+            dbc.Button(id='exposure_help_toggle', size="sm", color="secondary",
+                       outline=True, className="py-0 mb-2"),
+            dbc.Collapse(id='exposure_help_collapse', is_open=True, className="mb-2",
+                         children=html.Div(id='exposure_help')),
+
             html.Div(id='exposure_membership',
                      style={"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
                             "marginBottom": "6px"}),
@@ -209,7 +321,30 @@ def _names_in(asset_classes):
 
 
 @callback(
+    Output('exposure_help_open', 'data'),
+    Input('exposure_help_toggle', 'n_clicks'),
+    State('exposure_help_open', 'data'),
+    prevent_initial_call=True,
+)
+def toggle_help(_n, is_open):
+    return not is_open
+
+
+@callback(
+    Output('exposure_help_collapse', 'is_open'),
+    Output('exposure_help_toggle', 'children'),
+    Input('exposure_help_open', 'data'),
+)
+def apply_help_fold(is_open):
+    return bool(is_open), ("\u25be How to read this" if is_open
+                           else "\u25b8 How to read this")
+
+
+@callback(
     Output('exposure_chart', 'figure'),
+    Output('exposure_headline', 'children'),
+    Output('exposure_headline', 'style'),
+    Output('exposure_help', 'children'),
     Output('exposure_membership', 'children'),
     Output('exposure_caption', 'children'),
     Input('exposure_class_selector', 'value'),
@@ -224,10 +359,13 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
 
+    help_block = help_children(unit)
+    head_style = {"fontSize": "1.05rem", "fontWeight": 600, "marginBottom": "2px"}
     if not asset_classes:
         empty = exposure_traces.build_figure(None, None, unit=unit, colors=colors,
                                              palette=palette)
-        return empty, "Select an asset class.", ""
+        return (empty, "", {**head_style, "color": vc.TEXT_COLOR}, help_block,
+                "Select an asset class.", "")
 
     # An empty member list is the moment between a class change and the callback that
     # repopulates it, not a request for an empty total.
@@ -240,4 +378,20 @@ def render_exposure(asset_classes, members, leg, unit, palette_name):
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg], set_label=", ".join(asset_classes),
         leg=leg)
-    return figure, membership(agg, names), caption(agg.frame, unit, leg)
+    head_text, head_colour = headline(agg.frame, unit, leg)
+    return (figure, head_text, {**head_style, "color": head_colour}, help_block,
+            membership(agg, names), caption(agg.frame, unit, leg))
+
+
+def help_children(unit):
+    """`how_to_read` as markup: a definition list, not a paragraph.
+
+    Four labelled points a reader can scan and stop at the one they wanted, where the
+    same words as prose are a wall nobody reads and the fold below it is what a wall
+    earns."""
+    return [html.Div([
+        html.Span(f"{title}. ", style={"color": vc.BRIGHTER_TEXT_COLOR,
+                                       "fontWeight": 600}),
+        html.Span(body, style={"color": vc.TEXT_COLOR}),
+    ], style={"fontSize": "0.82rem", "marginBottom": "4px"})
+        for title, body in how_to_read(unit)]
