@@ -687,3 +687,58 @@ tooltip, time-in-state, the horizon ladder, and the dollar-notional aggregate. T
 percentile tick argued for in the whiskers section needs a percentile rank that
 `cotmetrics` does not currently expose, so it is a change there before it is a change
 here.
+
+
+## After the seventh review: the dollar aggregate is built
+
+Idea 5 in the suggested order above ("Dollar-notional aggregate, as a `cotmetrics` column
+plus an Aggregation basis") shipped as its own page, `/exposure`, rather than as a basis
+on the existing Aggregation view. The reason for the change of shape is the reason the
+idea was worth building at all: Aggregation is a per-market stack of panels, and the
+whole point of converting units is that the TOTAL means something, so a total needed a
+view whose subject is the set.
+
+**What the earlier sections got right and what they missed.**
+
+The four traps listed under "The dollar-notional chart" all held and are all handled:
+`unadj` for levels (and the guard turned out to matter more than expected, because
+`marketdata.get_bars` DEFAULTS to `backadj` and the `Closing Price` column already on
+every CotIndexer frame is that default, so the wrong series is the one nearest to hand);
+multipliers as a present-day snapshot; the sign convention, where the spec leg is
+computed as Large PLUS Small rather than as the negation of Commercials; and the code
+living in `cotmetrics` with this repo drawing it.
+
+Two things those sections did NOT anticipate, both found by building it:
+
+- **Dollar notional is not a normalizer.** This document treated the dollar conversion as
+  making positions "commensurable across markets", which is true of ADDING them and false
+  of COMPARING them. Notional makes ES dwarf orange juice permanently because the ES
+  market is larger, so ranking markets by it produces a market-size ranking wearing a
+  positioning label. The rung that is both summable and comparable is notional x daily
+  volatility, and it MULTIPLIES: a vol-targeting book sizes at `target / sigma`, so the
+  product is what stays constant while it sits at target. Both units ship, labelled for
+  what each can and cannot support.
+- **No unit here is stationary through time.** Dollar risk carries the price level just
+  as notional does (`price x percent vol` is dollar vol), so a twenty-year history of
+  either is substantially a history of the index level and its most recent swings will
+  always look the largest. This is why the expanding percentile is not optional
+  decoration: it is the only thing on the page that answers "is this a lot". The section
+  above recommended shading the extremes as an improvement over the source; it is closer
+  to a requirement.
+
+**The layout critique's four fixes all shipped**: the reference panel is
+`composite_price_index` over the same set the bottom panel sums, so reference and subject
+cannot come apart the way the source's S&P-over-four-markets does; the extremes are
+marked with an expanding 10th/90th envelope; both weekly series step; and the publication
+lag is stated in the caption in words.
+
+**One problem the source never had to solve**, because it fixed its own four markets: a
+strict "sum only weeks every member can price" rule is correct and expensive. The live
+equity complex includes NKD, whose COT history ends 2026-03-03, so a six-market total
+ends there while the other five run to the current week, and nothing about the resulting
+chart would say so. `AggregateExposure` reports dropped members by name and reason,
+per-member coverage, which member bounds each end, and how many weeks the rule cost; the
+page turns that into a line above the figure and a per-market control for removing the
+constraining member. Week-snapping was tried first and rejected on measurement: aligning
+to Mon-Fri weeks recovers 1,373 shared observations against 1,375 by exact date, so the
+missing weeks are genuine coverage gaps rather than misalignment.
