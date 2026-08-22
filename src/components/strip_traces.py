@@ -136,12 +136,14 @@ STATE_LABELS = {
 # held; it did not give the header more room. Air between the classes comes from a real
 # empty row instead, which the axis does honour.
 ROW_PX = 22
-# Strong enough to actually see. 0.035 was faint enough to group "without reading as
-# shading", and on a real monitor over the near-black background it turned out not to
-# read at all, so the marks it was meant to tie together floated free. 0.06 is about
-# the faintest value that survives the screen. The gate bands stay above it in weight:
-# they are a shade stronger AND saturated, so zones still outrank row bands.
-ROW_BAND_ALPHA = 0.06
+# Calibrated twice, in opposite directions, both times on a real monitor. 0.035 did
+# not read at all, so the marks it was meant to tie together floated free. 0.06 read —
+# and beside hairline stems it read as the brightest thing on the row, white stripes
+# with data in the gaps. 0.045 is between: visible as association, beaten for
+# attention by any actual mark. The gate bands stay above it in weight — a full step
+# stronger AND saturated — so the shading that means something is still the strongest
+# on the page.
+ROW_BAND_ALPHA = 0.045
 
 # The top margin holds only the top axis. The legend that used to sit above it inside
 # the first figure is page chrome now (`legend_items` below): Plotly stacked the two
