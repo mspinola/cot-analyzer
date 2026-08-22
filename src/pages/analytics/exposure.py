@@ -313,9 +313,11 @@ def contracts_rank(agg):
     """The same expanding percentile the page ranks dollars with, run on the raw
     contract count. `None` for anything but a single market.
 
-    Read off the MEMBER frame rather than the aggregate's `net_contracts`, which is a
-    sum of contract counts across markets and so is not a quantity: adding ES contracts
-    to corn contracts is exactly what converting to dollars exists to avoid.
+    Read off the MEMBER frame, never off the aggregate. The aggregate used to carry a
+    summed `net_contracts` that added ES contracts to corn contracts, which is not a
+    quantity and is exactly what converting to dollars exists to avoid; cotmetrics #21
+    removed the column for that reason. Reading the member is what stays right either
+    way, and is the only thing that could ever have been right here.
 
     Numeraire-free by construction, which is worth knowing when the Gold switch is on.
     The divisor is applied to the value columns only, because contracts are contracts
