@@ -1,3 +1,4 @@
+import functools
 import urllib.parse
 from datetime import datetime
 
@@ -7,6 +8,8 @@ import cotmetrics.utils as utils
 import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
+import pandas as pd
+from cotmetrics import exposure
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
 from dash import (
@@ -278,6 +281,85 @@ def setup_styles_for(state_col, role, high_val, low_val, colors,
     ]
 
 
+# ── Speculator dollar risk ────────────────────────────────────────────────────
+# Two columns joined onto the matrix from cotmetrics.exposure, which is where the
+# arithmetic lives (this app computes no metrics of its own). Every other number on
+# this grid normalizes a market against itself; dollar risk is the one that is
+# comparable ACROSS markets, so beside 42 unitless indices it answers the question
+# none of them can: is this market's speculator position large in absolute terms.
+#
+# Display thresholds for the percentile column, not a strategy gate. Both tails light
+# the same way because both mean "at an extreme of this market's own history": the
+# direction is carried by the $ Risk sign next door, and colouring the extreme
+# bull/bear would render a verdict no model on this page renders.
+RISK_RANK_HIGH = 95
+RISK_RANK_LOW = 5
+
+
+@functools.lru_cache(maxsize=256)
+def _spec_risk(asset, newest_date):
+    """One market's weekly speculator dollar risk and its expanding percentile.
+
+    Keyed by the store's newest date purely as a cache-buster: a Friday release must
+    invalidate this, and nothing else does. Lookback is deliberately NOT a key and the
+    computation always passes "Custom", because the risk series reads net contracts,
+    price and volatility, none of which the index-window control touches (the weekly
+    frame is full-history under every lookback, only its index columns differ).
+
+    The percentile is expanding against the market's own history, so a historical
+    Target Date reads what was knowable that week rather than today's distribution.
+
+    Returns {date_str: (risk_usd, pct_rank)} with NaNs already turned into None, or
+    None when the market has no dollar risk at all (no contract multiplier, no bars).
+    Broad catch by design: this is a display join, and one market without prices must
+    not take the other 41 rows down with it.
+    """
+    try:
+        ex = exposure.market_exposure(asset, leg=exposure.LEG_SPEC, lookback="Custom")
+        risk = ex["risk_usd"]
+        rank = exposure.expanding_pct_rank(risk)
+    except Exception as e:
+        utils.cot_logger.warning(f"heatmap: no speculator dollar risk for {asset}: {e}")
+        return None
+    return {ts.strftime('%Y-%m-%d'): (float(v) if v == v else None,
+                                      float(r) if r == r else None)
+            for ts, v, r in zip(risk.index, risk.to_numpy(), rank.to_numpy())}
+
+
+def attach_spec_risk(df, newest_date):
+    """Join the two exposure columns onto the matrix frame, by asset and week.
+
+    Row-by-row on the row's OWN date rather than the page's target date: with no
+    target selected each market shows its latest week, and those can differ.
+    """
+    risks, ranks = [], []
+    for asset, date in zip(df["Asset"], df["Date"]):
+        table = _spec_risk(asset, newest_date) or {}
+        risk, rank = table.get(date, (None, None))
+        risks.append(risk)
+        ranks.append(rank)
+    # Object dtype on purpose: a float column would coerce every None to NaN, and the
+    # grid's null guards ('params.value != null') key on null, not NaN.
+    df["Spec Risk"] = pd.Series(risks, index=df.index, dtype=object)
+    df["Risk %ile"] = pd.Series(ranks, index=df.index, dtype=object)
+    return df
+
+
+def risk_rank_styles_for(colors, highlight=None):
+    """Cell styling for the Risk %ile column.
+
+    The null guard is load-bearing: JS coerces null to 0, so a bare `value <= 5` would
+    light every market that has no percentile yet, which is exactly the set with the
+    least history behind the number.
+    """
+    return [
+        {"condition": f"params.value != null && (params.value >= {RISK_RANK_HIGH} "
+                      f"|| params.value <= {RISK_RANK_LOW})",
+         "style": {"color": highlight or colors.bull}},
+        {"condition": "true", "style": {"color": colors.dim}},
+    ]
+
+
 @callback(
     Output('heatmap_display_container', 'children'),
     [Input('page_heatmap_selector', 'value'),
@@ -297,6 +379,9 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
     if df.empty:
         return html.P("No data available.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
 
+    available = get_indexer().get_available_dates()
+    df = attach_spec_risk(df, available[0] if available else None)
+
     matrix_date = ""
     if not df.empty:
         matrix_date = df.iloc[0]["Date"]
@@ -307,6 +392,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
     BULL_COLOR, BEAR_COLOR, DIM_TEXT = colors.bull, colors.bear, colors.dim
 
     oi_styles = oi_styles_for(colors, highlight=color_palette[2])
+    risk_rank_styles = risk_rank_styles_for(colors, highlight=color_palette[2])
 
     _RAW = models.RAW_PF.band
     _NORM = models.NPF.band
@@ -427,7 +513,42 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
             "headerName": "Friction & Flow",
             "children": [
                 {"field": "WILLCO", "headerTooltip": "Williams Commercial Index (Thresholds: <= 20 Bearish / >= 80 Bullish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": willco_styles}},
-                {"field": "Inst Sentiment", "headerTooltip": "Institutional Speculator Sentiment (Thresholds: <= 20 Bullish / >= 80 Bearish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": inst_sentiment_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                # minWidth 110, not the default 90: at 90 the header wraps mid-word
+                # ("Sentim / ent"), and wrapHeaderText cannot know where the word breaks.
+                {"field": "Inst Sentiment", "minWidth": 110, "headerTooltip": "Institutional Speculator Sentiment (Thresholds: <= 20 Bullish / >= 80 Bearish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": inst_sentiment_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+            ]
+        },
+        {
+            # The one group in absolute units, from cotmetrics.exposure. d3's SI suffix
+            # for 1e9 is G, which nobody reads as dollars, hence the replace.
+            "headerName": "Exposure · Speculators",
+            "children": [
+                {
+                    "field": "Spec Risk",
+                    "headerName": "$ Risk",
+                    "minWidth": 100,
+                    "headerTooltip": (
+                        f"Net {exposure.LEG_LABELS[exposure.LEG_SPEC]} position in USD "
+                        f"daily risk: contracts x point value x price x "
+                        f"{exposure.DEFAULT_VOL_WINDOW}-day daily vol. The one column "
+                        f"comparable across markets: positive is net long"),
+                    "valueFormatter": {"function": "params.value != null ? d3.format('$.3s')(params.value).replace('G','B') : '–'"},
+                    "cellStyle": {"color": DIM_TEXT},
+                },
+                {
+                    "field": "Risk %ile",
+                    "minWidth": 95,
+                    "headerTooltip": (
+                        f"That dollar risk as an expanding percentile of this market's "
+                        f"own history, so a past date reads what was knowable then: "
+                        f"100 is the most net-long speculators have ever been, 0 the "
+                        f"most net-short. Lit at >= {RISK_RANK_HIGH} or "
+                        f"<= {RISK_RANK_LOW}. Blank until two years of priced history"),
+                    "valueFormatter": {"function": "params.value != null ? d3.format('.0f')(params.value) : '–'"},
+                    "cellStyle": {"styleConditions": risk_rank_styles},
+                    "headerClass": "group-border-right",
+                    "cellClass": "group-border-right",
+                },
             ]
         },
         {
@@ -455,6 +576,17 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
         }
     ]
 
+    # Every column past the pinned four is a number, and numbers compare by their
+    # right edge: left-aligned, 9 sits under 100's hundreds digit and reads larger.
+    # Done as a pass rather than per definition so a new column cannot forget it, and
+    # driven by the text set because that is the list that is actually short. The
+    # matching font-variant-numeric: tabular-nums lives in custom.css.
+    _TEXT_FIELDS = {"Asset Class", "Asset", "Tape Bias", "Signals"}
+    for group in columnDefs:
+        for child in group["children"]:
+            if child["field"] not in _TEXT_FIELDS:
+                child["type"] = "rightAligned"
+
     # Convert asset column to markdown links
     df['Asset'] = df['Asset'].apply(lambda x: f"[{x}](/oi_alignment?asset={urllib.parse.quote(x)})")
 
@@ -479,8 +611,23 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
         },
     )
 
+    # The colour grammar, in words, once. The grid encodes verdicts (a washed cell is
+    # a full setup, tinted text a leg near its gate) and nothing on the page said so;
+    # the tooltips explain columns one at a time, which is no help to a reader asking
+    # what the colours mean at all. One muted line, under the grid so it costs the
+    # table nothing above the fold.
+    key_line = html.P(
+        "Reading the colours: a washed cell is a full setup on that model, every leg "
+        "it gates on through its band; bright text is a leg at its gate; faint tinted "
+        "text is a leg approaching it, with the blocking leg left grey. Risk %ile and "
+        "OI Z light at extremes of the market's own history and render no verdict. "
+        "Hover any header for its definition and thresholds.",
+        style={'color': vc.TEXT_COLOR, 'fontSize': '0.8rem', 'fontStyle': 'italic',
+               'marginTop': '8px', 'marginBottom': '4px'})
+
     return dbc.Row([
-        dbc.Col(grid, width=12)
+        dbc.Col(grid, width=12),
+        dbc.Col(key_line, width=12),
     ])
 
 

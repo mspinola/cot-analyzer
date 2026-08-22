@@ -47,6 +47,7 @@ def _to_python(js):
     expr = expr.replace("Math.abs(", "abs(").replace("===", "==")
     expr = expr.replace("&&", " and ").replace("||", " or ")
     expr = re.sub(r"!(?=row\[|value)", " not ", expr)
+    expr = re.sub(r"\bnull\b", "None", expr)
     return re.sub(r"\btrue\b", "True", expr)
 
 
@@ -103,6 +104,12 @@ def test_the_condition_translator_is_faithful():
     assert eval(_to_python("params.value >= 1 && params.value <= 5"), {}, {"row": row, "value": 3})
     assert eval(_to_python("params.value >= 9 || params.value <= 1"), {}, {"row": row, "value": 0})
     assert eval(_to_python("true"), {}, {"row": {}, "value": 0})
+    # JS null guard: a Python None stands in for a null cell, and the guard must
+    # short-circuit before any comparison touches it.
+    assert not eval(_to_python("params.value != null && params.value <= 5"),
+                    {}, {"row": row, "value": None})
+    assert eval(_to_python("params.value != null && params.value <= 5"),
+                {}, {"row": row, "value": 3})
 
 
 # ── parity with the emailed HTML ──────────────────────────────────────────────
