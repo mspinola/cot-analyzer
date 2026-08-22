@@ -24,11 +24,13 @@ from pages.analytics.exposure import (  # noqa: E402
     caption,
     column_name,
     composition_line,
+    contracts_rank,
     contribution_columns,
     contribution_grid,
     crosshair_shapes,
     headline,
     how_to_read,
+    lens_line,
     membership,
     money,
     ordinal,
@@ -242,10 +244,10 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 10
+    assert len(titles) == 11
     joined = " ".join(titles).lower()
     for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
-                  "gold is here", "scale switch", "third panel", "not"):
+                  "gold is here", "dotted line", "scale switch", "third panel", "not"):
         assert topic in joined
 
 
@@ -833,3 +835,72 @@ def test_the_contribution_bar_survives_a_real_set():
     ids = [c.get("colId") or c["field"]
            for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, two)]
     assert "bar" in ids
+
+
+# ── the other lens ────────────────────────────────────────────────────────────
+
+def lensed(contracts, dollars, unit="risk_usd"):
+    """A single-market aggregate whose contract percentile and dollar percentile are
+    whatever the test needs them to be."""
+    base = agg()
+    idx = base.frame.index
+    frame = base.frame.copy()
+    frame["risk_pct_rank"] = dollars
+    frame["notional_pct_rank"] = dollars
+    one = AggregateExposure(frame=frame, dropped={},
+                            coverage={"Silver": (idx[0], idx[-1])},
+                            bounded_by={}, weeks_lost=0,
+                            members={"Silver": base.frame})
+    return one, pd.Series([contracts] * len(idx), index=idx)
+
+
+def test_the_lens_line_is_silent_when_the_two_lenses_agree():
+    """Pooled across 43 markets the median gap is 5.4 percentile points. A sentence
+    printed every week is a sentence nobody reads on the week it matters."""
+    one, ranks = lensed(52.0, 57.0)
+    assert lens_line(one, et.UNIT_RISK, ranks=ranks) == ""
+
+
+def test_the_lens_line_speaks_when_the_dollars_are_extreme_and_the_contracts_are_not():
+    """The live case it was built from: Large Specs in Silver at the 45th percentile on
+    contracts and the 98th on dollar risk, in the same week."""
+    one, ranks = lensed(45.0, 98.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "45th percentile" in line
+    assert "98th" in line
+    assert "price and volatility" in line
+
+
+def test_the_lens_line_speaks_the_other_way_round_too():
+    one, ranks = lensed(96.0, 60.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "more extreme than the money at stake" in line
+
+
+def test_a_wide_gap_is_reported_even_without_an_extreme():
+    one, ranks = lensed(30.0, 62.0)
+    line = lens_line(one, et.UNIT_RISK, ranks=ranks)
+    assert "30th percentile" in line
+    assert "62nd" in line
+    assert line.endswith("for the dollars.")
+
+
+def test_the_lens_is_read_off_the_member_not_the_summed_contract_count():
+    """The aggregate's own net_contracts adds ES contracts to corn contracts, which is
+    the sum converting to dollars exists to avoid. A set gets no lens at all."""
+    assert contracts_rank(with_members({"Gold": 4e8, "Silver": 1e8})) is None
+
+
+def test_a_single_market_gets_a_lens_from_its_own_contract_count():
+    idx = agg().frame.index
+    member = pd.DataFrame({"net_contracts": range(len(idx))}, index=idx)
+    one = AggregateExposure(frame=agg().frame, dropped={},
+                            coverage={"Gold": (idx[0], idx[-1])},
+                            bounded_by={}, weeks_lost=0, members={"Gold": member})
+    assert contracts_rank(one) is not None
+
+
+def test_the_explanation_says_what_the_dotted_line_is_and_is_not():
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "0.30" in body
+    assert "flips sign" in body

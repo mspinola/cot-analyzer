@@ -825,3 +825,58 @@ and the explanation gained an entry carrying the measurement above.
 The noun comes from `len(agg.coverage)`, not from the length of the Markets selection: a
 two-name selection where one market dropped for want of a contract multiplier IS a
 single market, and the sentences should say so.
+
+
+## After the tenth review: contracts against dollars, on one market
+
+The obvious follow-on to the ninth review. If a single market's dollars and its contract
+count are different series, show them together.
+
+**The gap is its own fact, not a volatility chart wearing a positioning label.** That was
+the thing worth checking, because `risk = contracts x point value x price x sigma`, so
+the wedge could be nothing but "vol is high". Measured against each market's own dollar
+volatility, as a 52-week range index like everything else here: correlation **0.30 at the
+median** and it **flips sign across markets**, +0.74 on Gasoline against -0.52 on Russell.
+The flip is the mechanism rather than noise: volatility acts on a position that has a
+side, so the same vol spike widens the wedge upward on a long and downward on a short.
+
+**It is a state, not a jitter.** Lag-1 autocorrelation of the gap is **0.925**; gaps of
+25+ percentile points occur on **6.6%** of weeks; the median episode is 2 weeks and the
+p90 is 10. Long enough to read, short enough to be an event rather than a regime.
+
+**The live case it was built from.** Large Specs in Silver, week of 2026-08-18: **45th
+percentile on contracts, 98th on dollar risk**. Gasoline 53 against 98, Heating Oil 68
+against 98. Twelve of the 43 priceable markets disagreed that week about whether the leg
+was at a 90/10 extreme at all, and pooled on the page's own expanding percentile the two
+lenses disagree on the decile call **15% of weeks**.
+
+Three constraints fell out of the arithmetic rather than out of taste:
+
+- **Single market only.** Contracts do not add across markets, which is the entire reason
+  this module converts to dollars. The line is read off the MEMBER frame, not the
+  aggregate's `net_contracts`, which sums ES contracts and corn contracts.
+- **Percentile scale only.** Contracts and dollars share no axis. On the level scale this
+  would be a second y-axis inviting a reader to measure the space between incommensurable
+  units, which is the classic dual-axis lie.
+- **Numeraire-free.** The gold divisor applies to the value columns only, so the contracts
+  line does not move when the Gold switch does. Worth knowing, because a line that stayed
+  put while everything around it moved would otherwise look like a bug.
+
+**Two lines was the wrong drawing and the fix was the wedge.** Both series are weekly over
+twenty to forty years in a panel about 110px tall, so drawn as two lines of the same shape
+they are a thicket the eye cannot separate, and it made no difference whether the second
+was dotted, dimmed or a contrasting neutral. Shading the area between them makes the GAP
+the visual object, which is the question being asked. At full range the panel then shows
+the envelope of divergence rather than any single episode, and the reader drags to open
+one up; the help text says so, because a chart that is only readable after an interaction
+has to mention the interaction.
+
+The sentence under the headline carries the same fact for the selected week and appears
+only when the two lenses disagree about the extreme, or part by 20 percentile points.
+Pooled median gap is 5.4 points, so a sentence printed every week is one nobody reads on
+the week it matters.
+
+**What this is not.** It is description. Whether the wedge predicts anything is a signal
+question for the ladder in npf, judged by someone other than whoever proposed it. The
+prior is not neutral: `crowdmon` tested a close cousin, damage = crowding x illiquidity x
+fragility, across four pre-registered tests and got no positive result.

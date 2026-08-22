@@ -200,7 +200,7 @@ def unit_scale(values):
 def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
                  leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL,
-                 numeraire=None, single=False):
+                 numeraire=None, single=False, contracts=None):
     """Two panels: the selection's own price, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
@@ -263,6 +263,37 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         mode="lines", line_shape="hv", line=dict(width=0), fill="tonexty",
         fillcolor=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, BAND_ALPHA),
         hoverinfo="skip"), row=2, col=1)
+
+    # ── the other lens, under the level it is there to be read against ───────
+    #
+    # The SAME leg's raw contract count, on the SAME expanding percentile, drawn only
+    # on the percentile scale and only for a single market. Both restrictions are load
+    # bearing. Contracts and dollars share no axis, so on the level scale this would be
+    # a second y-axis inviting a reader to measure the space between two incommensurable
+    # units; and contracts do not add across markets, which is the whole reason this
+    # page converts to dollars in the first place.
+    #
+    # It is the same colour as the level, dotted and dimmed, because it is not another
+    # series: it is the same crowd through the other lens. Two colours would say they
+    # are two things worth comparing on the merits rather than one thing measured twice.
+    if ranked and contracts is not None and not contracts.empty:
+        aligned = break_gaps(frame.index, contracts.reindex(frame.index).to_numpy())
+        fig.add_trace(go.Scatter(
+            x=frame.index, y=aligned,
+            name="Contracts %ile", mode="lines", line_shape="hv",
+            line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, LENS_ALPHA), width=1),
+            hovertemplate="%{y:,.0f}th percentile, contracts<extra></extra>"),
+            row=2, col=1)
+        # The GAP is the object, not the second line. Both series are weekly over
+        # twenty years, so two lines of the same shape in one small panel are a thicket
+        # the eye cannot separate; shading between them turns "where do they part" into
+        # something readable at a glance. A duplicate of the level carries the fill so
+        # the level itself keeps its own hover and legend entry, and draws on top.
+        fig.add_trace(go.Scatter(
+            x=frame.index, y=break_gaps(frame.index, scaled.to_numpy()),
+            mode="lines", line_shape="hv", line=dict(width=0), fill="tonexty",
+            fillcolor=hex_to_rgba(leg_colour, LENS_FILL_ALPHA),
+            showlegend=False, hoverinfo="skip"), row=2, col=1)
 
     # ── the level ────────────────────────────────────────────────────────────
     #
@@ -383,6 +414,14 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
 #: bar figure this module used to build. Opposite is one variable, and the hue is
 #: already spending itself on which leg this is.
 AGAINST_ALPHA = 0.30
+
+#: The other lens, dimmed against the level it sits under. Bright enough to follow
+#: across a 20-year panel, faint enough that the drawn unit stays the subject.
+LENS_ALPHA = 0.55
+
+#: The wedge between the two lenses. Faint: it is a difference, and a difference drawn
+#: as loudly as the thing it is a difference OF becomes the subject.
+LENS_FILL_ALPHA = 0.16
 WITH_ALPHA = 0.85
 
 

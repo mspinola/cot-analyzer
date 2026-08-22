@@ -304,6 +304,32 @@ def headline(frame, unit, leg, when=None, numeraire=None, single=False):
             f"{subject_noun(single, possessive=True)} own history."), vc.TEXT_COLOR
 
 
+#: A gap this wide between the two lenses is worth a sentence. Below it they are the
+#: same reading twice and saying so every week is noise.
+LENS_SPLIT = 20
+
+
+def contracts_rank(agg):
+    """The same expanding percentile the page ranks dollars with, run on the raw
+    contract count. `None` for anything but a single market.
+
+    Read off the MEMBER frame rather than the aggregate's `net_contracts`, which is a
+    sum of contract counts across markets and so is not a quantity: adding ES contracts
+    to corn contracts is exactly what converting to dollars exists to avoid.
+
+    Numeraire-free by construction, which is worth knowing when the Gold switch is on.
+    The divisor is applied to the value columns only, because contracts are contracts
+    whatever you price them in, so this line does not move when the dollars do.
+    """
+    if len(agg.members) != 1:
+        return None
+    frame = next(iter(agg.members.values()))
+    if "net_contracts" not in frame:
+        return None
+    return exposure.expanding_pct_rank(frame["net_contracts"],
+                                       exposure_traces.MIN_RANK_PERIODS)
+
+
 #: Below this, a total is a residual between markets doing different things rather than
 #: a crowd, and the word "crowded" above it needs qualifying. Chosen as the point where
 #: a fifth of the gross size is cancelling out.
@@ -312,6 +338,47 @@ AGREEMENT_SPLIT = 0.80
 #: A member holding this share of the gross total is the total, whatever the other names
 #: on the list say.
 DOMINANT_SHARE = 0.50
+
+
+def lens_line(agg, unit, when=None, ranks=None):
+    """What the raw contract count says about the same week, when it disagrees.
+
+    The reason this is worth a line rather than a footnote: on the week it was written
+    Large Specs in Silver sat at the 45th percentile on contracts and the 98th on
+    dollar risk, and 12 of the 43 priceable markets disagreed about whether the leg was
+    at a 90/10 extreme at all. The gap is not a second opinion about positioning, it is
+    positioning multiplied by price and volatility, so a reader who only ever sees the
+    dollars can mistake a volatility event for the crowd piling in.
+
+    Silent when the two agree, which is most weeks: pooled across 43 markets the median
+    gap is 5.4 percentile points. A sentence printed every week is a sentence nobody
+    reads on the week it matters.
+    """
+    if ranks is None or ranks.empty or agg.frame.empty:
+        return ""
+    when = snap_week(agg.frame, when)
+    row = week_row(agg.frame, when)
+    if row is None or row.name not in ranks.index:
+        return ""
+    contracts, dollars = ranks[row.name], row[exposure_traces.UNIT_RANK_COLUMN[unit]]
+    if contracts != contracts or dollars != dollars:
+        return ""
+
+    def extreme(v):
+        return v >= CROWDED_HIGH or v <= CROWDED_LOW
+
+    disagree = extreme(contracts) != extreme(dollars)
+    if not disagree and abs(dollars - contracts) < LENS_SPLIT:
+        return ""
+    lens = (f"Contracts put the same week at the {ordinal(contracts)} percentile "
+            f"against the {ordinal(dollars)} for the dollars")
+    if not disagree:
+        return lens + "."
+    if extreme(dollars):
+        return (lens + ", so the extreme is price and volatility acting on the "
+                "position rather than more contracts.")
+    return (lens + ", so the contract count reads more extreme than the money at "
+            "stake does.")
 
 
 def composition_line(agg, unit, leg, part_frames=None, when=None,
@@ -456,6 +523,19 @@ def how_to_read(unit):
          "direction, and it is the whole point over years. Gold measured in gold is "
          "just its contract count, so a Metals total in ounces carries one "
          "self-referential market."),
+        ("The dotted line, on one market",
+         "The same leg's raw contract count on the same percentile, drawn under the "
+         "dollars on the %ile scale. Where the two part, the money at stake moved and "
+         "the position did not: dollar risk is contracts times price times volatility, "
+         "so a quiet position in a market that has become expensive or violent reads as "
+         "an extreme in dollars and as nothing at all in contracts. It is not a second "
+         "opinion, and it is not a volatility chart either: the gap correlates only "
+         "0.30 with the market's own dollar volatility and flips sign across markets, "
+         "because volatility acts on a position that has a side. Most weeks the two "
+         "agree, median gap 5.4 percentile points, and the sentence under the headline "
+         "appears only when they do not. The shading between the two lines is the gap "
+         "itself; at full range the panel shows the envelope of it, so drag across the "
+         "chart to open up one episode."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -828,7 +908,7 @@ def _default_names(asset_classes):
     return sorted(out)
 
 
-def describe_week(agg, part_frames, unit, leg, palette, when=None):
+def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None):
     numeraire = getattr(agg, "numeraire", None)
     """Everything the page says about ONE week, in one place.
 
@@ -859,8 +939,15 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None):
     return dict(
         bars=bars,
         bar_label=label,
-        composition=composition_line(agg, unit, leg, part_frames, when=stamp,
-                                     numeraire=numeraire),
+        # Two sentences, not one, and never both: a set gets what its total is made
+        # of, a single market gets what its other lens says. `contracts_rank` returns
+        # None for a set, so the second is empty exactly where the first is not.
+        composition=" ".join(part for part in (
+            composition_line(agg, unit, leg, part_frames, when=stamp,
+                             numeraire=numeraire),
+            lens_line(agg, unit, when=stamp,
+                      ranks=contracts_rank(agg) if ranks is None else ranks),
+        ) if part),
         headline=head_text,
         head_style={**HEAD_STYLE, "color": head_colour},
         caption=caption(agg.frame, unit, leg, when=stamp, numeraire=numeraire,
@@ -958,6 +1045,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
         part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
+    ranks = contracts_rank(agg)
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg],
@@ -966,9 +1054,9 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
         set_label=(names[0] if len(agg.coverage) == 1 and len(names) == 1
                    else ", ".join(asset_classes)),
         leg=leg, parts=part_frames, scale=scale, numeraire=numeraire,
-        single=len(agg.coverage) == 1)
+        single=len(agg.coverage) == 1, contracts=ranks)
 
-    said = describe_week(agg, part_frames, unit, leg, palette)
+    said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks)
     # A control change resets the selection: the clicked week belonged to the set that
     # was on screen when it was clicked, and silently carrying it onto a different set
     # is how a page ends up describing a week it never drew.
