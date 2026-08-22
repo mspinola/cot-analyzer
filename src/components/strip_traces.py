@@ -128,16 +128,22 @@ STATE_LABELS = {
 
 # Row geometry, in pixels. Tight on purpose: the point of two columns is to get the
 # whole board onto one screen, and every pixel per row is 50-odd pixels of scrolling.
+# 22 rather than the 19 it started at: four marks share a row, and at 19px they read
+# in the browser as one blurred lane. The column that the stretch bug (see
+# align="start" in strip.py) accidentally spread to ~23px was the easier half of the
+# page to read, which settled the number by experiment.
 # ONE height for every row, because the y axis is linear over
 # the row count and spreads them evenly whatever this file would prefer. Two constants
 # here, a taller one for class headers, only ever made the figure taller than the rows it
 # held; it did not give the header more room. Air between the classes comes from a real
 # empty row instead, which the axis does honour.
-ROW_PX = 19
-# Faint enough to group without reading as shading in its own right. The class-header
-# band that was tried and removed sat at 0.07, which was visible as a stripe rather than
-# as an association.
-ROW_BAND_ALPHA = 0.035
+ROW_PX = 22
+# Strong enough to actually see. 0.035 was faint enough to group "without reading as
+# shading", and on a real monitor over the near-black background it turned out not to
+# read at all, so the marks it was meant to tie together floated free. 0.06 is about
+# the faintest value that survives the screen. The gate bands stay above it in weight:
+# they are a shade stronger AND saturated, so zones still outrank row bands.
+ROW_BAND_ALPHA = 0.06
 
 # The top margin holds only the top axis. The legend that used to sit above it inside
 # the first figure is page chrome now (`legend_items` below): Plotly stacked the two
@@ -522,11 +528,13 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
 
     # Bands first, so every mark lands on top of them. Only the two extremes are
     # painted: the middle is not a band, it is the absence of one.
+    # 0.09 keeps the zones a step above ROW_BAND_ALPHA, so the strongest shading on
+    # the page is still the one that means something.
     shapes = [
         dict(type="rect", xref="x", yref="paper", x0=0, x1=model.low, y0=0, y1=1,
-             fillcolor=colors.bear, opacity=0.07, layer="below", line_width=0),
+             fillcolor=colors.bear, opacity=0.09, layer="below", line_width=0),
         dict(type="rect", xref="x", yref="paper", x0=model.high, x1=100, y0=0, y1=1,
-             fillcolor=colors.bull, opacity=0.07, layer="below", line_width=0),
+             fillcolor=colors.bull, opacity=0.09, layer="below", line_width=0),
         dict(type="line", xref="x", yref="paper", x0=const.INDEX_NEUTRAL,
              x1=const.INDEX_NEUTRAL, y0=0, y1=1, layer="below",
              line=dict(color=vc.GRID_COLOR, width=1)),
