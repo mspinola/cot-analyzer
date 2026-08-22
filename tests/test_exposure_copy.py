@@ -245,7 +245,7 @@ def test_the_explanation_covers_each_thing_a_reader_meets():
     assert len(titles) == 9
     joined = " ".join(titles).lower()
     for topic in ("number", "band", "panels", "made of", "gold switch",
-                  "gold is and is not", "scale switch", "third panel", "not"):
+                  "gold is here", "scale switch", "third panel", "not"):
         assert topic in joined
 
 
@@ -703,15 +703,15 @@ def test_the_aggregate_tuple_is_built_by_keyword_in_these_tests():
     assert inspect.signature(AggregateExposure).parameters["numeraire"].default == "usd"
 
 
-def test_the_explanation_refuses_to_call_gold_an_inflation_adjustment():
-    """The difference is not academic. From January 1980 to August 1999 gold fell 63%
-    while US consumer prices rose 2.3 times, losing about 84% in real terms over
-    nineteen years: over that window it would have ADDED a trend rather than removed
-    one. A page that called it inflation-adjusted would be teaching the wrong reading."""
-    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
-    assert "not an inflation adjustment" in body
-    assert "84%" in body
-    assert "ADDED a trend" in body
+def test_the_explanation_calls_gold_a_benchmark_and_never_an_inflation_adjustment():
+    """Hard money, full stop. Gold beats consumer prices over five decades and misses
+    them badly over two, so an inflation framing would invite reading a rise as real
+    growth. The page says what gold is, a second asset with its own trend, and leaves
+    price indices out of it entirely."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
+    assert "hard money" in body or "hard-money" in body
+    for word in ("inflation", "consumer price", "cpi", "real terms"):
+        assert word not in body
 
 
 def test_the_explanation_credits_the_idea_it_borrows():

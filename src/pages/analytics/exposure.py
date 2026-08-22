@@ -403,16 +403,15 @@ def how_to_read(unit):
          "is up 13.9 times in dollars and 1.0 times in gold. It changes the reading and "
          "not just the axis: on the current week those speculators sit at the 98th "
          "percentile of their own history in dollars and the 67th in ounces."),
-        ("What gold is and is not",
-         "It is a hard-money benchmark, not an inflation adjustment, and the difference "
-         "is not academic. From January 1980 to August 1999 gold fell 63% while US "
-         "consumer prices rose 2.3 times, so it lost about 84% in real terms over "
-         "nineteen years: over that window it would have ADDED a trend rather than "
-         "removed one. It has run 6.6% a year since 1978 at 19% volatility, so read it "
-         "as a second asset the first is being compared against. The two series "
-         "disagree on the direction of a weekly change under 4% of weeks. And gold "
-         "measured in gold is just its contract count, so a Metals total in ounces "
-         "carries one self-referential market."),
+        ("What gold is here",
+         "A hard-money benchmark: a second asset the first is being measured against, "
+         "not a fixed ruler. It has run 6.6% a year since 1978 at 19% volatility and "
+         "has spent long stretches falling, 63% between 1980 and 1999, so both ends of "
+         "the comparison move and a change in the series can be gold rather than "
+         "positioning. That is rare week to week, under 4% of weeks disagree on "
+         "direction, and it is the whole point over years. Gold measured in gold is "
+         "just its contract count, so a Metals total in ounces carries one "
+         "self-referential market."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
