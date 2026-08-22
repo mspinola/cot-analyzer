@@ -19,6 +19,9 @@ not have to drag the indexer in to get it.
 # Everything below is re-exported for callers rather than used here.
 
 from components.plot_colors import (  # noqa: F401
+    DIM_TEXT,
+    GridColors,
+    grid_colors,
     hex_to_rgba,
     lighten_hex,
 )

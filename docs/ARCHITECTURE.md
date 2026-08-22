@@ -92,6 +92,11 @@ the notification rather than the modelling.
 - Communicates directly with the `CotIndexer` singleton to query filtered datasets and render AG Grids and Plotly graphical objects.
 - Four pages stack plots: **OI Alignment**, **Analysis**, **Graphs** and **Aggregation**.
   What those plots *are* is described once, in the registry below.
+- The **Crowding Strip** (`/strip`) is a Plotly page that deliberately sits OUTSIDE that
+  registry. The registry describes panels drawn per instrument from an indexer frame; the
+  strip draws one figure across the whole board from a `get_matrix_data` row per market,
+  so it shares no axis, no basis resolution and no builder with them. Its figure logic is
+  `components/strip_traces.py`, pure over the frame and tested without a store.
 
 ### F. The Plot Layer (`src/components/plot_registry.py` and the `plot_*` modules)
 
