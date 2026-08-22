@@ -101,6 +101,18 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                         }
                     });
 
+                // And so does every fold. The legend and the caption sit in a collapse
+                // that is shut by default, and they are the only things saying what
+                // week this is and what the marks mean, so a PNG without them is a
+                // board of coloured dots. The fold is about screen space; it has no
+                // business deciding what a shared image contains.
+                Array.prototype.forEach.call(
+                    clone.querySelectorAll('.collapse'), function(node) {
+                        node.classList.add('show');
+                        node.style.height = 'auto';
+                        node.style.visibility = 'visible';
+                    });
+
                 // Swap each live plot for its snapshot, in the same order and in place,
                 // so the column layout the page chose is the layout the PNG gets.
                 var clonePlots = Array.prototype.slice.call(

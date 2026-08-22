@@ -173,11 +173,17 @@ def layout(**kwargs):
         style={"display": "flex", "flexDirection": "column",
                "height": f"calc(100vh - {NAVBAR_PX}px)"},
         children=[
-        # `local`, not `session`: folding the controls is a standing preference about
-        # how this page should look, not a fact about this visit. The filters below use
-        # session persistence because the opposite is true of them, a filter restored
-        # weeks later is a board that lies about what it is showing.
-        dcc.Store(id='strip_controls_open', storage_type='local', data=True),
+        # `local`, not `session`: folding is a standing preference about how this page
+        # should look, not a fact about this visit. The filters below use session
+        # persistence because the opposite is true of them, a filter restored weeks
+        # later is a board that lies about what it is showing.
+        #
+        # Both start shut. The page is a board, and everything else on it is either an
+        # input to the board or an explanation of it: worth one click when wanted,
+        # not worth a permanent third of the screen. What survives the fold is the one
+        # line that says what you are looking at, and the board itself.
+        dcc.Store(id='strip_controls_open', storage_type='local', data=False),
+        dcc.Store(id='strip_key_open', storage_type='local', data=False),
         dbc.Container(style={"display": "flex", "flexDirection": "column",
                              "flex": "1 1 auto", "minHeight": 0},
                       children=[
@@ -185,12 +191,18 @@ def layout(**kwargs):
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
-                            # The always-visible line: the fold toggle, a summary of
-                            # what the controls currently say, and the export. Nothing
-                            # here is a filter, so nothing here is worth hiding.
+                            # The always-visible line: the two fold toggles, a summary
+                            # of what the controls currently say, and the export.
+                            # Nothing here is a filter or an explanation, so nothing
+                            # here is worth hiding.
                             dbc.Row([
                                 dbc.Col(
                                     dbc.Button(id='strip_controls_toggle', size="sm",
+                                               color="secondary", outline=True,
+                                               className="py-0"),
+                                    xs="auto"),
+                                dbc.Col(
+                                    dbc.Button(id='strip_key_toggle', size="sm",
                                                color="secondary", outline=True,
                                                className="py-0"),
                                     xs="auto"),
@@ -212,7 +224,7 @@ def layout(**kwargs):
                                 ], xs="auto"),
                             ], align="center", className="g-2"),
 
-                            dbc.Collapse(id='strip_controls_collapse', is_open=True,
+                            dbc.Collapse(id='strip_controls_collapse', is_open=False,
                                          className="mt-2", children=[
                             dbc.Row([
                                 dbc.Col([
@@ -342,21 +354,32 @@ def layout(**kwargs):
                      style={"display": "flex", "flexDirection": "column",
                             "flex": "1 1 auto", "minHeight": 0},
                      children=[
-                dbc.Row([
-                    dbc.Col([
-                        html.Div(id='strip_legend',
-                                 style={'display': 'flex', 'flexWrap': 'wrap',
-                                        'alignItems': 'baseline', 'fontSize': '0.8rem',
-                                        'marginBottom': '2px'})
-                    ], xs=12, md=True),
-                ], align="center"),
+                # The key: what the marks mean and what the board was measured over.
+                # Folded by default like the controls, and INSIDE the export container
+                # rather than beside it, because the PNG must carry both whatever the
+                # fold says. The export re-opens every collapse in its clone, so a
+                # reader who has never expanded this still gets a dated, explained
+                # image. See export_strip_image in clientside.js.
+                dbc.Collapse(id='strip_key_collapse', is_open=False, children=[
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div(id='strip_legend',
+                                     style={'display': 'flex', 'flexWrap': 'wrap',
+                                            'alignItems': 'baseline',
+                                            'fontSize': '0.8rem',
+                                            'marginBottom': '2px'})
+                        ], xs=12, md=True),
+                    ], align="center"),
 
-                dbc.Row([
-                    dbc.Col([
-                        html.P(id='strip_caption',
-                               style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                      'fontStyle': 'italic', 'marginBottom': '4px'})
-                    ], width=12)
+                    dbc.Row([
+                        dbc.Col([
+                            html.P(id='strip_caption',
+                                   style={'color': vc.TEXT_COLOR,
+                                          'fontSize': '0.85rem',
+                                          'fontStyle': 'italic',
+                                          'marginBottom': '4px'})
+                        ], width=12)
+                    ]),
                 ]),
 
                 dcc.Loading(
@@ -558,6 +581,25 @@ def apply_controls_fold(is_open):
     style = {"color": vc.TEXT_COLOR, "fontSize": "0.8rem",
              "display": "none" if is_open else "block"}
     return bool(is_open), label, style
+
+
+@callback(
+    Output('strip_key_open', 'data'),
+    Input('strip_key_toggle', 'n_clicks'),
+    State('strip_key_open', 'data'),
+    prevent_initial_call=True,
+)
+def toggle_key(_n, is_open):
+    return not is_open
+
+
+@callback(
+    Output('strip_key_collapse', 'is_open'),
+    Output('strip_key_toggle', 'children'),
+    Input('strip_key_open', 'data'),
+)
+def apply_key_fold(is_open):
+    return bool(is_open), ("▾ Key" if is_open else "▸ Key")
 
 
 # The PNG export. Clientside for the reason OI Alignment's is: the figure, the caption
