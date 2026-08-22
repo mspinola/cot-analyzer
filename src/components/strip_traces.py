@@ -162,20 +162,35 @@ STATE_LABELS = {
 # held; it did not give the header more room. Air between the classes comes from a real
 # empty row instead, which the axis does honour.
 ROW_PX = 22
-# Calibrated twice, in opposite directions, both times on a real monitor. 0.035 did
-# not read at all, so the marks it was meant to tie together floated free. 0.06 read —
-# and beside hairline stems it read as the brightest thing on the row, white stripes
-# with data in the gaps. 0.045 is between: visible as association, beaten for
-# attention by any actual mark. The gate bands stay above it in weight — a full step
-# stronger AND saturated — so the shading that means something is still the strongest
-# on the page.
-ROW_BAND_ALPHA = 0.045
+# A hairline on the boundary between two market rows, which is what ties a row's marks
+# to each other and separates them from the row above.
+#
+# This was an alternating filled band for a long time, and the band was calibrated twice
+# on a real monitor before being abandoned: 0.035 did not read at all, 0.06 read as
+# white stripes with data in the gaps, and 0.045 sat between them. The thing none of
+# those numbers could fix is that a filled band is a RHYTHM. Every other row is lit, so
+# an eleven-row class (Currencies is the real worst case) carries a ladder that the eye
+# resolves before it resolves the data, and the treatment meant to help you read a row
+# is the second-loudest element on the page after the gate zones.
+#
+# A rule has no rhythm: every row is treated alike and gets a floor rather than a fill.
+# It is also far less ink for the same association, which is why it can sit at a higher
+# alpha than the band ever could and still be quieter overall. 0.10 of the app's neutral
+# white is visible as a lane edge at ROW_PX and disappears behind any actual mark.
+#
+# Three alternatives were drawn on the same board before this one was picked. Nothing at
+# all is calmer still and fails on exactly one case, a row whose only right-hand mark is
+# a lone leg tick, where the eye has 700px to cross with no guide. A hairline THROUGH
+# each row (a leader from the name to the marks) is collinear with the stem, so it reads
+# as the stem continuing past its head and fights the one thing the stem measures. And a
+# half-strength band keeps the rhythm while losing most of the association.
+ROW_RULE_ALPHA = 0.10
 
-# The heading's own row, one step up from the alternating row band and one step below
-# the gate zones. It has to read as a label bar rather than as another market row, and
-# it must not outrank the shading that means something. It is the app's neutral white
-# rather than any verdict colour, for the reason the quiet tier is: red and green on
-# this figure belong to the verdicts, and a class name has no verdict.
+# The heading's own row, above the row rules and below the gate zones. It has to read as
+# a label bar rather than as another market row, and it must not outrank the shading
+# that means something. It is the app's neutral white rather than any verdict colour,
+# for the reason the quiet tier is: red and green on this figure belong to the verdicts,
+# and a class name has no verdict.
 HEADER_BAND_ALPHA = 0.07
 
 # The top margin holds only the top axis. The legend that used to sit above it inside
@@ -598,8 +613,8 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
 
     # Bands first, so every mark lands on top of them. Only the two extremes are
     # painted: the middle is not a band, it is the absence of one.
-    # 0.09 keeps the zones a step above ROW_BAND_ALPHA, so the strongest shading on
-    # the page is still the one that means something.
+    # 0.09 keeps the zones the strongest shading on the page, which is right because
+    # they are the only shading that means anything.
     #
     # Painted per BLOCK rather than once over the whole figure, so the blank row
     # between two classes is genuinely blank. Run as one full-height rectangle the
@@ -621,31 +636,26 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
         dict(type="line", xref="x", yref="paper", x0=const.INDEX_NEUTRAL,
              x1=const.INDEX_NEUTRAL, y0=0, y1=1, layer="below",
              line=dict(color=vc.GRID_COLOR, width=1)))
-    # A band on every other market row.
+    # A rule between adjacent market rows, so each row is a lane. See ROW_RULE_ALPHA for
+    # why this is a rule rather than the alternating band it replaced.
     #
-    # A row carries four marks now (Commercials, its prior position, and a tick per
-    # speculator leg) on ROW_PX pixels of height, and nothing tied them to each other
-    # or separated them from the row above. The printed reference solves the same problem by
-    # drawing each asset inside its own rectangle. Here the rectangle would be the whole
-    # axis on every row, because the index is 0-100 by construction, so it would be
-    # identical everywhere and carry nothing; alternating it is the same grouping for
-    # half the ink.
+    # A row carries four marks (Commercials, its prior position, and a tick per
+    # speculator leg) on ROW_PX pixels of height, and nothing tied them to each other or
+    # separated them from the row above. The printed reference solves the same problem by
+    # drawing each asset inside its own rectangle. That rectangle would be the whole axis
+    # on every row here, because the index is 0-100 by construction, so it would be
+    # identical everywhere and carry nothing; its bottom edge alone does the same work.
     #
-    # The phase resets at each class header, so the first market under a heading always
-    # looks the same rather than depending on how many markets the class above had.
-    band_ys, ordinal = [], 0
-    for i, row in enumerate(rows):
-        if row.kind == "class":
-            ordinal = 0
-        elif row.kind == "market":
-            if ordinal % 2:
-                band_ys.append(i)
-            ordinal += 1
+    # BETWEEN rows, never around a block. A rule under the last market of a class would
+    # close the block off just above the gap that already separates it from the next one,
+    # and a rule above the first would double the heading bar's own bottom edge.
+    market_ys = [i for i, r in enumerate(rows) if r.kind == "market"]
     shapes += [
-        dict(type="rect", xref="paper", yref="y", x0=0, x1=1,
-             y0=i - 0.5, y1=i + 0.5, layer="below",
-             fillcolor=vc.BRIGHTER_TEXT_COLOR, opacity=ROW_BAND_ALPHA, line_width=0)
-        for i in band_ys
+        dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=i + 0.5, y1=i + 0.5,
+             layer="below",
+             line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ROW_RULE_ALPHA),
+                       width=1))
+        for i in market_ys if i + 1 in set(market_ys)
     ]
 
     # The heading's own bar, across the full width at HEADER_BAND_ALPHA.

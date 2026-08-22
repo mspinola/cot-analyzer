@@ -626,6 +626,62 @@ happens to draw from `marker.line`, so that one was one symbol change away from 
 becoming a template colour. Every drawn trace now names its colour, and a test asserts it
 for both marks rather than pinning the one case that was noticed.
 
+### Class breaks and row isolation, after the sixth review (2026-08-22)
+
+Four changes that turned out to depend on each other, plus the two earlier passages they
+supersede. **The header paragraph in "Two defects and the group headers" and the whole of
+"Row banding, after the fifth review" describe what the page did before this, and both are
+now wrong about the shipped code.** They are left in place because they record what was
+tried, which is the argument for what replaced them.
+
+**The gate zones stop at the block edges.** They were one rectangle each over the whole
+figure, so the red and green washed straight through the blank row between two asset
+classes and the separator was doing its work against a continuous colour. They are drawn
+per run of market rows now, so the whole break, the gap and the heading in it, is clean
+background. Empty space between two painted blocks is the one thing on this figure that
+separates them at no cost in ink.
+
+**The class heading is centred on a quiet bar of its own.** Both halves of this reverse an
+earlier decision. The band was tried once and rejected as noise, correctly, back when it
+sat on top of the continuous wash and read as a third stripe among many; with the zones
+cut back it is the only thing painted on that row and reads as a divider carrying a name.
+And the left-alignment argument, that headings on one left edge are scanned by running the
+eye down a single line, missed that the left margin is ALREADY a column of names: the
+heading sat in the same left-aligned stack as the market labels, differing only in weight,
+so the element separating two classes competed with the element naming a market. Centred
+on the plot it is nowhere near that column and lands on a row that carries no marks. The
+tally that paragraph describes is not in the shipped page; the counts said what the lit
+market names already say.
+
+**The hairline rule through the spacer row is gone.** With the heading bar and the blank
+row both in place it was the third divider in a stack of three.
+
+**Row banding became a row RULE**, a hairline on the boundary between adjacent market rows,
+inside a block only. The band was calibrated twice (0.035 invisible, 0.06 read as white
+stripes with data in the gaps, 0.045 between them) and the thing no alpha could fix is that
+a filled band is a rhythm: every other row lit gives an eleven-row class, and Currencies is
+exactly that, a ladder the eye resolves before it resolves the data. A rule treats every row
+alike, gives it a floor rather than a fill, and is enough less ink that it can sit at 0.10
+and still read quieter than the band did at 0.045.
+
+Three alternatives were drawn on the same board before that was picked, and the losing two
+are the useful part of the record. **Nothing at all** is calmer still and fails on one case,
+a row whose only right-hand mark is a lone leg tick, where the eye crosses 700px with no
+guide; the failure is concentrated in the long classes. **A hairline through each row**, as
+a leader from the name to the marks, is collinear with the stem, so it reads as the stem
+continuing past its head and fights the one quantity the stem measures. **A half-strength
+band** keeps the rhythm and loses most of the association it was buying.
+
+**The margin the headings vacated was reclaimed, 140px to 124px**, sized by measuring every
+name in `cotmetrics-config` at the tick font rather than by eye. It fits "MSCI Emerging
+Mkts" (105px), not the widest name currently plotted, "Australian Dollar" (83px), because
+the two longest are both `heldout` today and a margin fitted to what is on screen would clip
+the day either is promoted, and clip quietly, as a shortened name rather than an error.
+Reclaiming the slack also exposed that Plotly leaves about a pixel between a tick label and
+the plot when `ticks=""`, invisible while the margin carried 35px of spare, so the standoff
+is explicit now. The real reclaim is 16px per column, not the ~35 the old constant looked
+like it was wasting.
+
 Still not built, in the order the list above gives them: the window min/max/current
 tooltip, time-in-state, the horizon ladder, and the dollar-notional aggregate. The
 percentile tick argued for in the whiskers section needs a percentile rank that
