@@ -36,8 +36,13 @@ dependencies = [
     # Bars; ADR-0007 moved them out of cotdata. The DISTRIBUTION is
     # crucible-marketdata (`marketdata` on PyPI is an unrelated abandoned
     # project); the IMPORT that cotmetrics uses is still `marketdata`.
-    "crucible-marketdata>=0.1.0",
-    "cotmetrics[options]>=0.3.0",
+    # Floor is 0.2.0, not 0.1.0, and it is a CORRECTNESS floor rather than a
+    # nominal one: cotmetrics 0.4.0 values each COT week at the contract
+    # multiplier in force that week, and reads the regime table that marketdata
+    # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
+    # pricing the Russell's pre-2016 weeks at half their true notional.
+    "crucible-marketdata>=0.2.0",
+    "cotmetrics[options]>=0.4.0",
 ]
 
 [project.optional-dependencies]
