@@ -565,3 +565,51 @@ def test_the_figure_records_which_axis_its_bottom_panel_is_on():
     """The row count is not fixed, so the page asks rather than counting panels."""
     assert build(with_vol([1e9, 2e9])).layout.meta[et.XREF_META] == "x4"
     assert build(frame([1e9, 2e9])).layout.meta[et.XREF_META] == "x3"
+
+
+# ── zooming ───────────────────────────────────────────────────────────────────
+
+def test_the_chart_offers_the_same_range_ladder_as_the_rest_of_the_app():
+    """A reader who learned 1Y/3Y/Max on another page should not have to learn it
+    again here."""
+    fig = build(frame([1e9, 2e9, 3e9]))
+    labels = [b.label for b in fig.layout.xaxis.rangeselector.buttons]
+    assert labels == [f"{n}Y" for n in et.RANGE_YEARS] + ["Max"]
+
+
+def test_the_buttons_sit_on_the_top_panel_where_they_render_above_the_figure():
+    fig = build(frame([1e9, 2e9, 3e9]))
+    assert not fig.layout.xaxis2.rangeselector.buttons
+
+
+def test_the_figure_carries_the_rules_the_browser_needs_to_re_fit_it():
+    """Plotly's autorange spans all of a trace's data rather than the part on screen, so
+    the browser has to do the fitting, and it has to reach the same answer this module
+    would."""
+    spec = build(frame([1e9, 2e9, 3e9])).layout.meta[et.REFIT_META]
+    assert spec["log_ratio_min"] == et.LOG_RATIO_MIN
+    assert spec["price_axis"] == "yaxis"
+    assert spec["pad"] == et.REFIT_PAD
+
+
+def test_the_level_scale_fits_every_panel():
+    spec = build(with_vol([1e9, 2e9, 3e9])).layout.meta[et.REFIT_META]
+    assert spec["axes"] == ["yaxis", "yaxis2", "yaxis3", "yaxis4"]
+
+
+def test_the_percentile_scale_fits_the_price_panel_and_nothing_else():
+    """The panels below are pinned to 0-100 on purpose. Fitting them to a zoomed window
+    would let the band at 10 and 90 drift off a scale that exists to stay put."""
+    fig = et.build_figure(with_vol([1e9, 2e9, 3e9]), None, unit=et.UNIT_NOTIONAL,
+                          colors=COLORS, palette=PALETTE, leg_label="Specs",
+                          set_label="Equities", scale=et.SCALE_RANK)
+    assert fig.layout.meta[et.REFIT_META]["axes"] == ["yaxis"]
+
+
+def test_the_top_panel_is_the_axis_the_others_follow():
+    """`shared_xaxes` makes the BOTTOM axis the master, and Plotly ignores a range set
+    on a slave. The range buttons live on the top panel, so the top panel has to be the
+    master or clicking 3Y does nothing at all."""
+    fig = build(with_vol([1e9, 2e9, 3e9]))
+    assert fig.layout.xaxis.matches is None
+    assert [fig.layout[f"xaxis{n}"].matches for n in (2, 3, 4)] == ["x", "x", "x"]
