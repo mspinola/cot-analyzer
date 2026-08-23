@@ -119,6 +119,23 @@ ZERO_LINE_ALPHA = 0.55
 PANEL_HEIGHTS = (0.26, 0.46, 0.28)
 FIGURE_PX = 700
 
+#: The same three plus volatility, which goes LAST rather than beside the price panel it
+#: is a property of. Two reasons. The crosshair binds to the bottom axis, so a panel
+#: added anywhere else renumbers the companions and every row reference with them. And
+#: the top three are a positioning story read top to bottom; volatility is the market
+#: condition underneath it, which is where a footing belongs.
+#:
+#: The subject gives up the least it can and the companions give up the most, because a
+#: companion is read for sign and shape and survives being short.
+PANEL_HEIGHTS_VOL = (0.23, 0.40, 0.21, 0.16)
+FIGURE_PX_VOL = 800
+
+#: Annualised for display only. `sigma_daily` is what `risk_usd` is built from, and it
+#: is what the arithmetic needs, but nobody reads 1.3% a day. cotmetrics keeps
+#: TRADING_DAYS for exactly this reason and says so: it exists because humans read
+#: annualised vol and cannot read daily vol.
+ANNUALISE = exposure.TRADING_DAYS ** 0.5
+
 
 #: The OTHER Legacy legs, drawn in their own panel beneath the one that is the subject.
 #:
@@ -159,6 +176,11 @@ LEG_PARTS = {exposure.LEG_SPEC: (exposure.LEG_LARGE, exposure.LEG_SMALL)}
 #: rather than spelled "x3" at the call site so adding a panel cannot leave the page
 #: drawing a crosshair against an axis that has moved.
 CROSSHAIR_XREF = "x3"
+
+#: Where the figure records which axis its bottom panel ended up on, so the page can ask
+#: rather than assume. The row count is not fixed: the volatility panel appears only
+#: when the aggregate can supply one, and a constant would be wrong half the time.
+XREF_META = "crosshair_xref"
 
 PART_WIDTH = 1.0
 PART_ALPHA = 0.75
@@ -207,8 +229,18 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     matching `composite_price_index`. Both may be empty, and an empty figure with its
     axes intact beats an exception in a callback.
     """
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04,
-                        row_heights=list(PANEL_HEIGHTS))
+    # The volatility panel appears only when the aggregate can supply one. Older
+    # cotmetrics has no such column, and an aggregate holding nothing has no holdings to
+    # weight a volatility by, so both cases fall back to the three-panel figure rather
+    # than drawing an empty register.
+    vol = None
+    if frame is not None and not frame.empty and "sigma_weighted" in frame.columns:
+        if frame["sigma_weighted"].notna().any():
+            vol = frame["sigma_weighted"]
+    rows = 4 if vol is not None else 3
+    heights = PANEL_HEIGHTS_VOL if vol is not None else PANEL_HEIGHTS
+    fig = make_subplots(rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+                        row_heights=list(heights))
 
     if frame is None or frame.empty:
         fig.update_layout(height=FIGURE_PX, paper_bgcolor=background,
@@ -371,7 +403,8 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                if numeraire == exposure.NUMERAIRE_GOLD else UNIT_LABELS[unit])
     title = " ".join(p for p in [set_label, "-", measure] if p).strip(" -")
     fig.update_layout(
-        height=FIGURE_PX, paper_bgcolor=background, plot_bgcolor=background,
+        height=FIGURE_PX_VOL if vol is not None else FIGURE_PX,
+        paper_bgcolor=background, plot_bgcolor=background,
         margin=dict(l=64, r=16, t=28, b=36),
         font=dict(color=vc.TEXT_COLOR, size=11),
         hovermode="x unified",
@@ -405,6 +438,45 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # can be read against the subject by eye. Only the AXIS RANGE differs, which is the
     # whole reason the panel is separate.
     fig.update_yaxes(title_text=usd, row=3, col=1, title_font=dict(size=10))
+
+    # ── what the money is riding on ──────────────────────────────────────────
+    #
+    # The second factor of the drawn unit. `risk = notional x sigma` market by market,
+    # the price panel above already carries the first factor, and without this one the
+    # reader can see dollar risk move without the position moving and has no way to find
+    # out why.
+    #
+    # Drawn in the PRICE slot rather than a positioning colour, because that is what it
+    # is a property of. The palette's other slots mean Commercials, Large Specs, Small
+    # Traders and Open Interest, and borrowing one of those would say this line is a
+    # kind of positioning.
+    if vol is not None:
+        shown = (exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS) if ranked
+                 else vol * ANNUALISE * 100)
+        fig.add_trace(go.Scatter(
+            x=frame.index, y=break_gaps(frame.index, shown.to_numpy()),
+            name="Volatility" if single else "Volatility (held-weighted)",
+            mode="lines", line_shape="hv",
+            line=dict(color=hex_to_rgba(palette[3], VOL_ALPHA), width=1.2),
+            # Each scale carries the other quantity, the same rule the level and the
+            # percentile follow above.
+            customdata=(vol * ANNUALISE * 100).to_numpy() if ranked
+            else exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS).to_numpy(),
+            hovertemplate=(
+                "%{y:,.0f}th percentile<br>%{customdata:,.1f}% annualised"
+                if ranked else
+                "%{y:,.1f}% annualised<br>%{customdata:,.0f}th percentile")
+            + "<extra>Volatility</extra>"), row=4, col=1)
+        if ranked:
+            fig.update_yaxes(range=[0, 100], row=4, col=1)
+            fig.add_hline(y=50, row=4, col=1, line=dict(
+                color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, ZERO_LINE_ALPHA), width=1))
+        fig.update_yaxes(title_text="Percentile" if ranked else "Ann. vol (%)",
+                         row=4, col=1, title_font=dict(size=10))
+
+    # The bottom axis is where the crosshair goes and the row count is not fixed, so the
+    # figure records which one it is instead of leaving the page to count panels.
+    fig.update_layout(meta={XREF_META: f"x{rows}"})
     return fig
 
 
@@ -422,6 +494,10 @@ LENS_ALPHA = 0.55
 #: The wedge between the two lenses. Faint: it is a difference, and a difference drawn
 #: as loudly as the thing it is a difference OF becomes the subject.
 LENS_FILL_ALPHA = 0.16
+
+#: Volatility, dimmed. It is context for the panels above rather than a subject, and at
+#: full strength in the price colour it competes with the price line itself.
+VOL_ALPHA = 0.75
 WITH_ALPHA = 0.85
 
 

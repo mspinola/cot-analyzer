@@ -502,3 +502,66 @@ def test_the_gap_between_the_lenses_is_shaded_rather_than_left_to_the_eye():
     # neutral: it is a fact about this leg's two lenses, not about the distribution.
     wedge = hex_to_rgba(PALETTE[et.LEG_PALETTE_SLOT[LEG_SPEC]], et.LENS_FILL_ALPHA)
     assert [t.fillcolor for t in fig.data].count(wedge) == 1
+
+
+# ── the volatility panel ──────────────────────────────────────────────────────
+
+def with_vol(values, sigma=0.013):
+    df = frame(values)
+    df["sigma_weighted"] = sigma
+    return df
+
+
+def test_volatility_gets_its_own_panel_when_the_total_can_supply_one():
+    fig = build(with_vol([1e9, 2e9, 3e9]))
+    assert "Volatility (held-weighted)" in [t.name for t in fig.data]
+    assert fig.layout.height == et.FIGURE_PX_VOL
+
+
+def test_a_total_with_no_volatility_keeps_the_three_panel_figure():
+    """Older cotmetrics has no such column, and a set holding nothing has no holdings to
+    weight a volatility by. Neither draws an empty register."""
+    fig = build(frame([1e9, 2e9, 3e9]))
+    assert "Volatility (held-weighted)" not in [t.name for t in fig.data]
+    assert fig.layout.height == et.FIGURE_PX
+
+
+def test_a_column_of_nothing_is_not_a_panel():
+    df = frame([1e9, 2e9, 3e9])
+    df["sigma_weighted"] = float("nan")
+    assert build(df).layout.height == et.FIGURE_PX
+
+
+def test_the_volatility_axis_is_annualised_because_nobody_reads_daily_vol():
+    """0.013 a day is 20.6% a year. cotmetrics keeps TRADING_DAYS for exactly this."""
+    fig = build(with_vol([1e9, 2e9, 3e9]))
+    vol = next(t for t in fig.data if t.name.startswith("Volatility"))
+    assert round(float(vol.y[0]), 1) == 20.6
+
+
+def test_the_volatility_panel_follows_the_scale_switch_like_every_other_panel():
+    fig = et.build_figure(with_vol([1e9, 2e9, 3e9]), None, unit=et.UNIT_NOTIONAL,
+                          colors=COLORS, palette=PALETTE, leg_label="Specs",
+                          set_label="Equities", scale=et.SCALE_RANK)
+    assert tuple(fig.layout.yaxis4.range) == (0, 100)
+
+
+def test_volatility_borrows_the_price_colour_not_a_positioning_one():
+    """The palette's other slots mean Commercials, Large Specs, Small Traders and Open
+    Interest. Borrowing one would say this line is a kind of positioning."""
+    fig = build(with_vol([1e9, 2e9, 3e9]))
+    vol = next(t for t in fig.data if t.name.startswith("Volatility"))
+    assert vol.line.color == hex_to_rgba(PALETTE[3], et.VOL_ALPHA)
+
+
+def test_a_single_market_calls_it_what_it_is():
+    fig = et.build_figure(with_vol([1e9, 2e9, 3e9]), None, unit=et.UNIT_NOTIONAL,
+                          colors=COLORS, palette=PALETTE, leg_label="Specs",
+                          set_label="Gold", single=True)
+    assert "Volatility" in [t.name for t in fig.data]
+
+
+def test_the_figure_records_which_axis_its_bottom_panel_is_on():
+    """The row count is not fixed, so the page asks rather than counting panels."""
+    assert build(with_vol([1e9, 2e9])).layout.meta[et.XREF_META] == "x4"
+    assert build(frame([1e9, 2e9])).layout.meta[et.XREF_META] == "x3"
