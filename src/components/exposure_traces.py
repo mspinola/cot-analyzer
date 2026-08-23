@@ -257,7 +257,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
                  leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL,
                  numeraire=None, single=False, contracts=None,
-                 contract_counts=None):
+                 contract_counts=None, window=None):
     """Two panels: the selection's own price, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
@@ -330,8 +330,10 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         flat = pd.Series(BAND_LOW * 100, index=frame.index)
         low, high = flat, pd.Series(BAND_HIGH * 100, index=frame.index)
     else:
-        low = exposure.expanding_quantile(values, BAND_LOW, MIN_RANK_PERIODS) / divisor
-        high = exposure.expanding_quantile(values, BAND_HIGH, MIN_RANK_PERIODS) / divisor
+        low = exposure.windowed_quantile(
+            values, BAND_LOW, window, MIN_RANK_PERIODS) / divisor
+        high = exposure.windowed_quantile(
+            values, BAND_HIGH, window, MIN_RANK_PERIODS) / divisor
     fig.add_trace(go.Scatter(
         x=frame.index, y=high.to_numpy(), name=f"{int(BAND_HIGH * 100)}th pct",
         mode="lines", line_shape="hv", line=dict(width=0), showlegend=False,
@@ -440,7 +442,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         # panel; ranking them against the subject would put them back on its axis by
         # another route.
         if ranked:
-            aligned = exposure.expanding_pct_rank(aligned, MIN_RANK_PERIODS)
+            aligned = exposure.windowed_pct_rank(aligned, window, MIN_RANK_PERIODS)
         fig.add_trace(go.Scatter(
             x=frame.index,
             y=break_gaps(frame.index, (aligned / divisor).to_numpy()),
@@ -519,7 +521,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # `viz_config.PALETTE_SLOTS`, which is the one place the slot meanings are written
     # down.
     if vol is not None:
-        vol_rank = exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS)
+        vol_rank = exposure.windowed_pct_rank(vol, window, MIN_RANK_PERIODS)
         shown = vol_rank if ranked else vol * ANNUALISE * 100
         fig.add_trace(go.Scatter(
             x=frame.index, y=break_gaps(frame.index, shown.to_numpy()),
