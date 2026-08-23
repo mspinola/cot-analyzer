@@ -5,7 +5,7 @@ this view honest is arithmetic and lives in `cotmetrics.exposure`, and what is l
 is the handful of drawing decisions that would silently mislead if they drifted.
 """
 import pandas as pd
-from cotmetrics.exposure import LEG_SPEC
+from cotmetrics.exposure import LEG_LARGE, LEG_SPEC
 
 import components.exposure_traces as et
 from components.plot_colors import GridColors, hex_to_rgba
@@ -701,3 +701,44 @@ def test_the_lens_is_grey_and_not_the_theme_text_colour():
     # Palette-independent: this line is the subject seen another way, not a series of
     # its own, so it claims no slot.
     assert et.LENS_COLOR not in PALETTE
+
+
+# ── ordinals in the hovers ────────────────────────────────────────────────────
+
+def test_english_ordinals_including_the_teens():
+    assert et.ordinals([1, 2, 3, 11, 12, 13, 21, 42, 63, 100]) == [
+        "1st", "2nd", "3rd", "11th", "12th", "13th", "21st", "42nd", "63rd", "100th"]
+
+
+def test_a_missing_percentile_says_nothing_rather_than_nan():
+    assert et.ordinals([float("nan"), 5]) == ["", "5th"]
+
+
+def test_no_hover_appends_a_bare_th():
+    """A template can only append a FIXED suffix, so every percentile printed as "42th",
+    and 27 of the 101 values a percentile can take end in 1, 2 or 3 outside the teens."""
+    df = with_vol([1e9, 2e9, 3e9])
+    price = pd.Series([100.0, 101.0, 102.0], index=df.index)
+    for scale in (et.SCALE_LEVEL, et.SCALE_RANK):
+        fig = et.build_figure(
+            df, price, unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+            leg_label="Specs", set_label="Gold", single=True, scale=scale,
+            contracts=pd.Series([20.0, 40.0, 60.0], index=df.index),
+            parts={LEG_LARGE: pd.Series([1e8, 2e8, 3e8], index=df.index)})
+        for trace in fig.data:
+            assert "th percentile" not in (trace.hovertemplate or ""), (scale, trace.name)
+
+
+def test_every_ranked_trace_carries_its_ordinals():
+    df = with_vol([1e9, 2e9, 3e9])
+    fig = et.build_figure(
+        df, None, unit=et.UNIT_NOTIONAL, colors=COLORS, palette=PALETTE,
+        leg_label="Specs", set_label="Gold", single=True, scale=et.SCALE_RANK,
+        contracts=pd.Series([1.0, 2.0, 63.0], index=df.index),
+        parts={LEG_LARGE: pd.Series([1e8, 2e8, 3e8], index=df.index)})
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    assert list(lens.text) == ["1st", "2nd", "63rd"]
+    subject = next(t for t in fig.data if t.name == "Specs")
+    assert list(subject.text) == ["50th", "50th", "50th"]
+    vol = next(t for t in fig.data if (t.name or "").startswith("Volatility"))
+    assert vol.text is not None

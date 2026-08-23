@@ -41,6 +41,10 @@ from components.plot_colors import grid_colors, hex_to_rgba
 
 dash.register_page(__name__, path='/exposure')
 
+#: One implementation, used by this page's prose and by the figure's hovers.
+#: It lives beside the figure because that is where 27% of its callers are.
+ordinal = exposure_traces.ordinal
+
 #: Short labels for the CONTROL only. The prose keeps `exposure.LEG_LABELS`, where
 #: "Speculators (Large + Small)" is worth its length because a reader meeting the total
 #: for the first time needs to know what is in it. In a 180px select it is three words
@@ -175,18 +179,6 @@ def subject_noun(single, possessive=False):
     """
     noun = "this market" if single else "this set"
     return noun + "'s" if possessive else noun
-
-
-def ordinal(n):
-    """43rd, not 43th. English, so the teens are the exception rather than the rule.
-
-    Worth a function because two different lines print a percentile and a page that
-    writes "43th" in bold above a chart reads as unfinished whatever the chart does.
-    """
-    n = int(round(n))
-    if 11 <= (n % 100) <= 13:
-        return f"{n}th"
-    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }".replace(" ", "")
 
 
 def money(value, suffix, numeraire=None):
