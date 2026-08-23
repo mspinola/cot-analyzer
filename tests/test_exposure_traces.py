@@ -682,3 +682,22 @@ def test_the_lens_still_draws_without_the_counts():
     lens = next(t for t in fig.data if t.name == "Contracts %ile")
     assert lens.customdata is None
     assert "customdata" not in lens.hovertemplate
+
+
+def test_the_lens_is_grey_and_not_the_theme_text_colour():
+    """It used vc.BRIGHTER_TEXT_COLOR, which is not neutral: viz_constants defines it as
+    "#E2E8F0" and then reassigns it to Solarized base3 "#fdf6e3", a warm cream. At 55%
+    on a dark ground that reads as yellow, one panel above Small Traders in amber, so a
+    line that is not a trader group looked like one."""
+    import viz_constants as vc
+    df = frame([1e9, 2e9, 3e9])
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, scale=et.SCALE_RANK,
+                          contracts=pd.Series([20.0, 40.0, 60.0], index=df.index))
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    assert lens.line.color == hex_to_rgba(et.LENS_COLOR, et.LENS_ALPHA)
+    assert lens.line.color != hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, et.LENS_ALPHA)
+    # Palette-independent: this line is the subject seen another way, not a series of
+    # its own, so it claims no slot.
+    assert et.LENS_COLOR not in PALETTE

@@ -949,3 +949,17 @@ def test_the_counts_come_from_the_member_and_only_for_one_market():
                             bounded_by={}, weeks_lost=0, members={"Gold": member})
     assert list(contracts_net(one)) == [-10.0, 5.0, 20.0]
     assert contracts_net(with_members({"Gold": 4e8, "Silver": 1e8})) is None
+
+
+def test_both_lenses_are_ranked_over_the_SAME_lookback():
+    """The wedge between them is only a comparison if the two sides share a transform.
+    The contracts percentile is computed in this page against MIN_RANK_PERIODS and the
+    dollar percentile inside cotmetrics, whose own default happens to match today and is
+    a different repo's constant. So the page passes its own rather than inheriting one,
+    and this pins that it does."""
+    import inspect
+
+    import pages.analytics.exposure as page
+    source = inspect.getsource(page.render_exposure) + inspect.getsource(page.select_week)
+    assert source.count("min_rank_periods=exposure_traces.MIN_RANK_PERIODS") == 4
+    assert "aggregate_exposure(names, leg=leg, numeraire=numeraire)" not in source

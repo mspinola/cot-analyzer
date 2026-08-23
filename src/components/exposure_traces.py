@@ -333,7 +333,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         fig.add_trace(go.Scatter(
             x=frame.index, y=aligned,
             name="Contracts %ile", mode="lines", line_shape="hv",
-            line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, LENS_ALPHA), width=1),
+            line=dict(color=hex_to_rgba(LENS_COLOR, LENS_ALPHA), width=1),
             # The signed count, because a percentile has no side and this line's whole
             # subject is a position that has one. The sign is not new information: it
             # matches the dollars above it in every one of the 219,846 market-weeks in
@@ -553,6 +553,17 @@ AGAINST_ALPHA = 0.30
 #: The other lens, dimmed against the level it sits under. Bright enough to follow
 #: across a 20-year panel, faint enough that the drawn unit stays the subject.
 LENS_ALPHA = 0.55
+
+#: A literal grey rather than `vc.BRIGHTER_TEXT_COLOR`, which is what this used and
+#: which is NOT neutral: viz_constants defines it as "#E2E8F0" and then reassigns it to
+#: the Solarized base3 "#fdf6e3", a warm cream. Rendered at 55% on a dark ground that
+#: reads as yellow, one panel above Small Traders in amber, so a line that is not a
+#: trader group looked like one.
+#:
+#: Palette-independent on purpose. This line is the SUBJECT seen another way rather than
+#: a series of its own, so it should not claim a palette slot; every slot names
+#: something (see viz_config.PALETTE_SLOTS) and none of them names this.
+LENS_COLOR = "#CBD5E1"
 
 #: The side, in the same words the headline and the caption use. A minus sign would be
 #: the same fact in a weaker notation than the panel above it already spends.
