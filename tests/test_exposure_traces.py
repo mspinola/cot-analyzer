@@ -620,3 +620,84 @@ def test_the_top_panel_is_the_axis_the_others_follow():
     fig = build(with_vol([1e9, 2e9, 3e9]))
     assert fig.layout.xaxis.matches is None
     assert [fig.layout[f"xaxis{n}"].matches for n in (2, 3, 4)] == ["x", "x", "x"]
+
+
+def test_the_lens_hover_carries_the_SIDE_because_a_percentile_has_none():
+    """The line's subject is a position, and a position has a side. The sign is not new
+    information, since it matches the dollars above it in every market-week in the
+    store, but a reader following this line should not have to reconstruct it from a
+    different trace's hover."""
+    df = frame([1e9, 2e9, 3e9])
+    ranks = pd.Series([20.0, 40.0, 60.0], index=df.index)
+    counts = pd.Series([-4616.0, 100.0, 23625.0], index=df.index)
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, contracts=ranks, contract_counts=counts,
+                          scale=et.SCALE_RANK)
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    # The side in WORDS beside an absolute magnitude, matching the prose above.
+    assert [list(row) for row in lens.customdata] == [
+        ["net short", 4616.0], ["net long", 100.0], ["net long", 23625.0]]
+    assert "%{customdata[0]}" in lens.hovertemplate
+    assert "contracts" in lens.hovertemplate
+
+
+def test_the_side_is_words_and_the_size_is_absolute():
+    """"net short -28,639" would be the fact twice, once wrongly."""
+    idx = pd.date_range("2026-01-06", periods=3, freq="W-TUE")
+    rows = et.side_and_size(pd.Series([-28639.0, 0.0, 3805.0], index=idx), idx)
+    assert rows == [["net short", 28639.0], ["net long", 0.0], ["net long", 3805.0]]
+
+
+def test_a_week_with_no_count_says_nothing_rather_than_guessing_a_side():
+    idx = pd.date_range("2026-01-06", periods=2, freq="W-TUE")
+    rows = et.side_and_size(pd.Series([float("nan"), 5.0], index=idx), idx)
+    assert rows[0][0] == ""
+    assert rows[1] == ["net long", 5.0]
+
+
+def test_the_plus_format_that_plotly_silently_drops_is_not_used():
+    """Measured in the browser: `%{customdata:+,.0f}` on -28639 renders "-28639",
+    discarding the thousands separator along with the sign it was asked for, while
+    `,.0f` renders "-28,639". A format that failed loudly would have been fine."""
+    df = frame([1e9, 2e9, 3e9])
+    idx = df.index
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, contracts=pd.Series([20.0, 40.0, 60.0], index=idx),
+                          contract_counts=pd.Series([-1.0, 2.0, 3.0], index=idx),
+                          scale=et.SCALE_RANK)
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    assert "+," not in lens.hovertemplate
+
+
+def test_the_lens_still_draws_without_the_counts():
+    """The percentile is what the LINE is; the counts are what the hover adds. A caller
+    that has only the first still gets a line rather than a traceback."""
+    df = frame([1e9, 2e9, 3e9])
+    ranks = pd.Series([20.0, 40.0, 60.0], index=df.index)
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, contracts=ranks, scale=et.SCALE_RANK)
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    assert lens.customdata is None
+    assert "customdata" not in lens.hovertemplate
+
+
+def test_the_lens_is_grey_and_not_the_theme_text_colour():
+    """It used vc.BRIGHTER_TEXT_COLOR, which is not neutral: viz_constants defines it as
+    "#E2E8F0" and then reassigns it to Solarized base3 "#fdf6e3", a warm cream. At 55%
+    on a dark ground that reads as yellow, one panel above Small Traders in amber, so a
+    line that is not a trader group looked like one."""
+    import viz_constants as vc
+    df = frame([1e9, 2e9, 3e9])
+    fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
+                          palette=PALETTE, leg_label="Specs", set_label="Gold",
+                          single=True, scale=et.SCALE_RANK,
+                          contracts=pd.Series([20.0, 40.0, 60.0], index=df.index))
+    lens = next(t for t in fig.data if t.name == "Contracts %ile")
+    assert lens.line.color == hex_to_rgba(et.LENS_COLOR, et.LENS_ALPHA)
+    assert lens.line.color != hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, et.LENS_ALPHA)
+    # Palette-independent: this line is the subject seen another way, not a series of
+    # its own, so it claims no slot.
+    assert et.LENS_COLOR not in PALETTE

@@ -332,6 +332,22 @@ def contracts_rank(agg):
                                        exposure_traces.MIN_RANK_PERIODS)
 
 
+def contracts_net(agg):
+    """The raw signed contract count behind `contracts_rank`, for the hover.
+
+    A percentile has no side, and this line's whole subject is a position that has one.
+    The sign is not new information: it matches the dollars in the panel above in every
+    one of the 219,846 market-weeks in the store, because notional is contracts times a
+    positive multiplier times a positive price, and no as-of price in the store is
+    non-positive. But a reader following the dotted line should not have to reconstruct
+    the side from a different trace's hover.
+    """
+    if len(agg.members) != 1:
+        return None
+    frame = next(iter(agg.members.values()))
+    return frame["net_contracts"] if "net_contracts" in frame else None
+
+
 #: Below this, a total is a residual between markets doing different things rather than
 #: a crowd, and the word "crowded" above it needs qualifying. Chosen as the point where
 #: a fifth of the gross size is cancelling out.
@@ -1072,7 +1088,9 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
     # An empty member list is the moment between a class change and the callback that
     # repopulates it, not a request for an empty total.
     names = list(members) if members else _names_in(asset_classes)
-    agg = exposure.aggregate_exposure(names, leg=leg, numeraire=numeraire)
+    agg = exposure.aggregate_exposure(
+        names, leg=leg, numeraire=numeraire,
+        min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index,
         numeraire=numeraire) if not agg.frame.empty else None
@@ -1082,7 +1100,9 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
     # reindexed onto the subject in build_figure rather than silently shifted here.
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
-        part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
+        part = exposure.aggregate_exposure(
+            names, leg=part_leg, numeraire=numeraire,
+            min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
     ranks = contracts_rank(agg)
@@ -1094,7 +1114,8 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
         set_label=(names[0] if len(agg.coverage) == 1 and len(names) == 1
                    else ", ".join(asset_classes)),
         leg=leg, parts=part_frames, scale=scale, numeraire=numeraire,
-        single=len(agg.coverage) == 1, contracts=ranks)
+        single=len(agg.coverage) == 1, contracts=ranks,
+        contract_counts=contracts_net(agg))
 
     said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks)
     # A control change resets the selection: the clicked week belonged to the set that
@@ -1187,13 +1208,17 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in
     names = list(members) if members else _names_in(asset_classes)
     numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
-    agg = exposure.aggregate_exposure(names, leg=leg, numeraire=numeraire)
+    agg = exposure.aggregate_exposure(
+        names, leg=leg, numeraire=numeraire,
+        min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     if agg.frame.empty:
         return (no_update,) * 10
 
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
-        part = exposure.aggregate_exposure(names, leg=part_leg, numeraire=numeraire)
+        part = exposure.aggregate_exposure(
+            names, leg=part_leg, numeraire=numeraire,
+            min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
     said = describe_week(agg, part_frames, unit, leg, palette, when=when)
