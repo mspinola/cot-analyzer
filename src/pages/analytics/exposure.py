@@ -60,6 +60,87 @@ LEG_OPTIONS = [{"label": LEG_SHORT[k], "value": k}
                for k in (exposure.LEG_SPEC, exposure.LEG_COMM,
                          exposure.LEG_LARGE, exposure.LEG_SMALL)]
 
+#: How far back a percentile looks. "All history" is the expanding rank the page was
+#: built on and stays the default, because it is the only one that can say "the most
+#: ever"; the rest are the app's own lookback vocabulary, where an index is a range over
+#: a trailing window.
+LOOKBACK_ALL = "all"
+LOOKBACK_CUSTOM = "custom"
+
+LOOKBACK_OPTIONS = [
+    {"label": "All history", "value": LOOKBACK_ALL},
+    {"label": "26 weeks", "value": "26"},
+    {"label": "52 weeks", "value": "52"},
+    {"label": "Custom", "value": LOOKBACK_CUSTOM},
+]
+
+
+def custom_window(names):
+    """The tuned window these markets share, or None if they do not share one.
+
+    `CustomLookbackWeeks` is tuned PER MARKET and the universe spends 25 distinct values
+    on it, from 8 weeks to 216. A total is one summed series with one rank, so "Custom"
+    only means something when every member agrees: ranking a sum of markets tuned to 10
+    and 126 weeks over either number would be a choice the data does not support, and
+    averaging them would invent a number nobody tuned.
+
+    It is not a rare case. The page's own default, the four deploy equity markets, all
+    carry 28, and Fixed Income and Live Stock are single-valued classes.
+    """
+    indexer = get_indexer()
+    windows = set()
+    for name in names or ():
+        instrument = indexer.get_instrument_from_name(name)
+        if instrument is None or not instrument.custom_lookback:
+            return None
+        windows.add(int(instrument.custom_lookback))
+    return windows.pop() if len(windows) == 1 else None
+
+
+def resolve_window(choice, names):
+    """(weeks or None, what to tell the reader). None means rank against all history."""
+    if choice in (None, LOOKBACK_ALL):
+        return None, ""
+    if choice == LOOKBACK_CUSTOM:
+        weeks = custom_window(names)
+        if weeks is None:
+            # Refuse rather than pick. The alternative is a number nobody chose sitting
+            # under a control that says the markets were tuned.
+            return None, ("these markets do not share one tuned lookback, so Custom "
+                          "cannot apply to their total; ranked against all history")
+        return weeks, ""
+    return int(choice), ""
+
+
+def window_phrase(window):
+    """"the last 52 weeks", or "its own history" when there is no window."""
+    return f"the last {window} weeks" if window else "its own history"
+
+
+def ranked_against(single, window):
+    """What a percentile was measured against, as "the last 52 weeks" or "this set's
+    own history".
+
+    The subject noun stops mattering once a window is named: "the last 52 weeks" is the
+    same stretch whether one market or forty is being ranked, and "this set's last 52
+    weeks" would suggest the window came from the set.
+    """
+    if window:
+        return f"the last {window} weeks"
+    return f"{subject_noun(single, possessive=True)} own history"
+
+
+def weeks_compared(single, window):
+    """The same thing after "higher than 97% of", which wants different words.
+
+    "of the weeks in the last 52 weeks" says weeks twice, and "of this set's own
+    history" without them makes a percentage of a history rather than of its weeks.
+    """
+    if window:
+        return f"the last {window} weeks"
+    return f"the weeks in {subject_noun(single, possessive=True)} own history"
+
+
 SCALE_OPTIONS = [
     {"label": exposure_traces.SCALE_LABELS[k], "value": k}
     for k in (exposure_traces.SCALE_LEVEL, exposure_traces.SCALE_RANK)
@@ -239,7 +320,8 @@ def week_row(frame, when=None):
     return frame.loc[stamp] if stamp is not None else frame.iloc[-1]
 
 
-def headline(frame, unit, leg, when=None, numeraire=None, single=False):
+def headline(frame, unit, leg, when=None, numeraire=None, single=False,
+             window=None):
     """The one-line answer, before any of the machinery that produced it.
 
     A reader arriving at a twenty-year chart of dollars has to do two conversions before
@@ -279,8 +361,7 @@ def headline(frame, unit, leg, when=None, numeraire=None, single=False):
                 f"that is unusual."), vc.TEXT_COLOR
     if rank >= CROWDED_HIGH:
         return (f"CROWDED {side.upper()}. {who} are net {side} {amount}, higher than "
-                f"{rank:.0f}% of the weeks in "
-                f"{subject_noun(single, possessive=True)} own history.",
+                f"{rank:.0f}% of {weeks_compared(single, window)}.",
                 vc.BRIGHTER_TEXT_COLOR)
     if rank <= CROWDED_LOW:
         # A low percentile on a signed series is the crowd at its most short, or least
@@ -288,12 +369,11 @@ def headline(frame, unit, leg, when=None, numeraire=None, single=False):
         # actually negative keeps the word honest.
         word = "CROWDED SHORT" if value < 0 else "UNUSUALLY LIGHT"
         return (f"{word}. {who} are net {side} {amount}, lower than "
-                f"{100 - rank:.0f}% of the weeks in "
-                f"{subject_noun(single, possessive=True)} own history.",
+                f"{100 - rank:.0f}% of {weeks_compared(single, window)}.",
                 vc.BRIGHTER_TEXT_COLOR)
     return (f"Within the usual range. {who} are net {side} {amount}, around the "
             f"{ordinal(rank)} percentile of "
-            f"{subject_noun(single, possessive=True)} own history."), vc.TEXT_COLOR
+            f"{ranked_against(single, window)}."), vc.TEXT_COLOR
 
 
 #: A gap this wide between the two lenses is worth a sentence. Below it they are the
@@ -301,7 +381,7 @@ def headline(frame, unit, leg, when=None, numeraire=None, single=False):
 LENS_SPLIT = 20
 
 
-def contracts_rank(agg):
+def contracts_rank(agg, window=None):
     """The same expanding percentile the page ranks dollars with, run on the raw
     contract count. `None` for anything but a single market.
 
@@ -320,8 +400,10 @@ def contracts_rank(agg):
     frame = next(iter(agg.members.values()))
     if "net_contracts" not in frame:
         return None
-    return exposure.expanding_pct_rank(frame["net_contracts"],
-                                       exposure_traces.MIN_RANK_PERIODS)
+    # The SAME window as the dollars it is drawn against, or the wedge between them
+    # stops being a comparison of two units and becomes one of two stretches of time.
+    return exposure.windowed_pct_rank(frame["net_contracts"], window,
+                                      exposure_traces.MIN_RANK_PERIODS)
 
 
 def contracts_net(agg):
@@ -546,6 +628,18 @@ def how_to_read(unit):
          "appears only when they do not. The shading between the two lines is the gap "
          "itself; at full range the panel shows the envelope of it, so drag across the "
          "chart to open up one episode."),
+        ("The Lookback switch",
+         "What a percentile is measured against. All history ranks each week among "
+         "every week before it, which is the only setting that can say a thing has "
+         "never been bigger; 26 and 52 weeks are the app's own lookback vocabulary, a "
+         "range over a trailing window; Custom is the per-market tuned window and is "
+         "available only where every selected market shares one, since the universe "
+         "spends 25 different values on it from 8 weeks to 216 and a total has one "
+         "rank. A window renormalises every week, so it answers "
+         "\u201cextreme lately\u201d rather than \u201cextreme ever\u201d, and it "
+         "hides the side: on 52 weeks a reading above 50 is a net SHORT position 12.5% "
+         "of the time at the median market and 62% on the Russell, against 0.2% on all "
+         "history. The band moves with it."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -686,7 +780,8 @@ def contribution_grid(table, unit, palette, leg, numeraire=None):
     )
 
 
-def caption(frame, unit, leg, when=None, numeraire=None, single=False):
+def caption(frame, unit, leg, when=None, numeraire=None, single=False,
+            window=None, window_note=""):
     """The reading, in words, including the one fact the chart cannot show.
 
     The publication lag is the sentence that matters. The series is plotted at its
@@ -704,17 +799,23 @@ def caption(frame, unit, leg, when=None, numeraire=None, single=False):
     divisor, suffix = exposure_traces.unit_scale(frame[unit])
     value = row[unit] / divisor
     side = "net long" if value >= 0 else "net short"
-    rank_text = (f"the {ordinal(rank)} percentile of its own history"
+    rank_text = (f"the {ordinal(rank)} percentile of {window_phrase(window)}"
                  if rank == rank else "no percentile yet, under two years of history")
     return (
         f"{exposure.LEG_LABELS[leg]} are {side} {money(value, suffix, numeraire)} "
         f"({unit_name(unit, numeraire)}) as of {row.name:%B %d, %Y}, "
         f"which is {rank_text}. {exposure_traces.UNIT_NOTES[unit]} "
-        f"The shaded band is the 10th to 90th percentile of the history up to each "
-        f"week, so it carries no look-ahead and neither does the percentile. "
-        f"Positioning is as-of Tuesday and published the following Friday: it is "
-        f"plotted at the Tuesday it describes, which is three days before anyone could "
-        f"have acted on it. " + (
+        + (f"Lookback: {window_note}. " if window_note else "")
+        + (f"The shaded band is the 10th to 90th percentile of the last {window} "
+           f"weeks, moving with the line rather than behind it, and neither carries "
+           f"look-ahead: a trailing window ends at the week it describes. "
+           if window else
+           "The shaded band is the 10th to 90th percentile of the history up to each "
+           "week, so it carries no look-ahead and neither does the percentile. ")
+        +
+        "Positioning is as-of Tuesday and published the following Friday: it is "
+        "plotted at the Tuesday it describes, which is three days before anyone could "
+        "have acted on it. " + (
             "The top panel is that market's own price, rebased to 100."
             if single else
             "The top panel is an equal-weight composite of the same markets, rebased "
@@ -756,7 +857,7 @@ def layout(**kwargs):
                                      persistence='session',
                                      options=_class_options(), value=["Equities"],
                                      className="cot-dropdown"),
-                    ], xs=12, md=3, className="px-md-2"),
+                    ], xs=12, md=2, className="px-md-2"),
 
                     dbc.Col([
                         # Per-market, because the constraining member is usually not a
@@ -777,6 +878,18 @@ def layout(**kwargs):
                         html.Label("Leg", style=CONTROL_LABEL),
                         dbc.Select(id='exposure_leg_selector', options=LEG_OPTIONS,
                                    value=exposure.LEG_SPEC, size="sm",
+                                   className="bg-dark text-white border-secondary"),
+                    ], xs=7, md=2, className="px-md-2 mt-2 mt-md-0"),
+
+                    dbc.Col([
+                        # Beside Scale and Unit rather than beside Markets, because it
+                        # decides what a percentile is measured AGAINST rather than what
+                        # is in the total.
+                        html.Label("Lookback", style=CONTROL_LABEL),
+                        dbc.Select(id='exposure_lookback_selector',
+                                   persistence='session',
+                                   options=LOOKBACK_OPTIONS, value=LOOKBACK_ALL,
+                                   size="sm",
                                    className="bg-dark text-white border-secondary"),
                     ], xs=7, md=2, className="px-md-2 mt-2 mt-md-0"),
 
@@ -828,7 +941,7 @@ def layout(**kwargs):
                             "since 2002). Gold is an asset, not a ruler, and gold "
                             "itself in gold terms is just its contract count.",
                             target='exposure_gold_toggle', placement="bottom"),
-                    ], xs=12, md=3, className="px-md-2 mt-2 mt-md-0"),
+                    ], xs=12, md=2, className="px-md-2 mt-2 mt-md-0"),
                 ], align="center"),
             ], className="py-2"), className="mb-2 shadow-sm",
                 style={"backgroundColor": "rgba(30, 30, 30, 0.6)",
@@ -933,7 +1046,8 @@ def _default_names(asset_classes):
     return sorted(out)
 
 
-def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None):
+def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None,
+                  window=None, window_note=""):
     numeraire = getattr(agg, "numeraire", None)
     """Everything the page says about ONE week, in one place.
 
@@ -960,7 +1074,7 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None):
     # multiplier IS a single market, and the sentences should say so.
     single = len(agg.coverage) == 1
     head_text, head_colour = headline(agg.frame, unit, leg, when=stamp,
-                                      numeraire=numeraire, single=single)
+                                      numeraire=numeraire, single=single, window=window)
     return dict(
         bars=bars,
         bar_label=label,
@@ -971,12 +1085,12 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None):
             composition_line(agg, unit, leg, part_frames, when=stamp,
                              numeraire=numeraire),
             lens_line(agg, unit, when=stamp,
-                      ranks=contracts_rank(agg) if ranks is None else ranks),
+                      ranks=contracts_rank(agg, window) if ranks is None else ranks),
         ) if part),
         headline=head_text,
         head_style={**HEAD_STYLE, "color": head_colour},
         caption=caption(agg.frame, unit, leg, when=stamp, numeraire=numeraire,
-                        single=single),
+                        single=single, window=window, window_note=window_note),
         shown=shown,
     )
 
@@ -1057,10 +1171,12 @@ clientside_callback(
     Input('exposure_leg_selector', 'value'),
     Input('exposure_unit_selector', 'value'),
     Input('exposure_scale_selector', 'value'),
+    Input('exposure_lookback_selector', 'value'),
     Input('exposure_gold_toggle', 'value'),
     Input('session_palette_theme_asset_store', 'data'),
 )
-def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_name):
+def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
+                    palette_name):
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     leg = leg or exposure.LEG_SPEC
@@ -1080,8 +1196,9 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
     # An empty member list is the moment between a class change and the callback that
     # repopulates it, not a request for an empty total.
     names = list(members) if members else _names_in(asset_classes)
+    window, window_note = resolve_window(lookback, names)
     agg = exposure.aggregate_exposure(
-        names, leg=leg, numeraire=numeraire,
+        names, leg=leg, numeraire=numeraire, rank_window=window,
         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index,
@@ -1093,11 +1210,11 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(
-            names, leg=part_leg, numeraire=numeraire,
+            names, leg=part_leg, numeraire=numeraire, rank_window=window,
             min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
-    ranks = contracts_rank(agg)
+    ranks = contracts_rank(agg, window)
     figure = exposure_traces.build_figure(
         agg.frame, composite, unit=unit, colors=colors, palette=palette,
         leg_label=exposure.LEG_LABELS[leg],
@@ -1107,9 +1224,10 @@ def render_exposure(asset_classes, members, leg, unit, scale, in_gold, palette_n
                    else ", ".join(asset_classes)),
         leg=leg, parts=part_frames, scale=scale, numeraire=numeraire,
         single=len(agg.coverage) == 1, contracts=ranks,
-        contract_counts=contracts_net(agg))
+        contract_counts=contracts_net(agg), window=window)
 
-    said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks)
+    said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks,
+                         window=window, window_note=window_note)
     # A control change resets the selection: the clicked week belonged to the set that
     # was on screen when it was clicked, and silently carrying it onto a different set
     # is how a page ends up describing a week it never drew.
@@ -1157,13 +1275,14 @@ CROSSHAIR = {"color": "rgba(255,255,255,0.5)", "width": 1, "dash": "dot"}
     State('exposure_leg_selector', 'value'),
     State('exposure_unit_selector', 'value'),
     State('exposure_scale_selector', 'value'),
+    State('exposure_lookback_selector', 'value'),
     State('exposure_gold_toggle', 'value'),
     State('session_palette_theme_asset_store', 'data'),
     State('exposure_chart', 'figure'),
     prevent_initial_call=True,
 )
-def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in_gold,
-                palette_name, current_fig):
+def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lookback,
+                in_gold, palette_name, current_fig):
     """Move the whole reading to the week under the cursor, same gesture as OI Alignment.
 
     Everything above the chart describes one week, and until now that week was always
@@ -1200,8 +1319,9 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in
     names = list(members) if members else _names_in(asset_classes)
     numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
+    window, window_note = resolve_window(lookback, names)
     agg = exposure.aggregate_exposure(
-        names, leg=leg, numeraire=numeraire,
+        names, leg=leg, numeraire=numeraire, rank_window=window,
         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     if agg.frame.empty:
         return (no_update,) * 10
@@ -1209,11 +1329,12 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(
-            names, leg=part_leg, numeraire=numeraire,
+            names, leg=part_leg, numeraire=numeraire, rank_window=window,
             min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
-    said = describe_week(agg, part_frames, unit, leg, palette, when=when)
+    said = describe_week(agg, part_frames, unit, leg, palette, when=when,
+                         window=window, window_note=window_note)
     latest = agg.frame.index[-1]
     notice, notice_style = rewind_notice(said["shown"], latest)
 
