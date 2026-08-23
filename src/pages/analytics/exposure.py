@@ -545,6 +545,17 @@ def how_to_read(unit):
          "on Metals since 1989 the typical weekly figure grew about 48 times between "
          "the 1990s and the 2020s. %ile puts every year on the same footing. The band "
          "goes flat at 10 and 90 there, and the hover still tells you the dollars."),
+        ("The volatility panel",
+         "The second factor of the number above it. Dollar risk is notional times "
+         "volatility, the price panel at the top already carries the first factor, and "
+         "without this one you can watch dollar risk climb with the position unchanged "
+         "and have no way to find out why. On a set it is the volatility of the markets "
+         "actually held, weighted by how much of each is held and by gross size so that "
+         "members leaning opposite ways cannot send it to infinity; on a single market "
+         "it is simply that market's own. Shown annualised because nobody reads 1.3% a "
+         "day, while the arithmetic underneath uses the daily figure: a rolling 63 "
+         "trading day standard deviation of percentage returns, about a quarter, "
+         "needing 42 observations before it says anything."),
         ("The third panel",
          "The other two Legacy groups, whichever one you are looking at. The three sum "
          "to zero every week, so no group moves without another moving against it, but "
@@ -1165,14 +1176,27 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, in
     patched = Patch()
     patched["layout"]["shapes"] = crosshair_shapes(
         ((current_fig or {}).get("layout") or {}).get("shapes"),
-        None if by_reset else said["shown"])
+        None if by_reset else said["shown"],
+        xref=bottom_axis(current_fig))
 
     return (said["bars"], said["bar_label"], said["composition"], said["headline"],
             said["head_style"], said["caption"], patched,
             None if by_reset else str(said["shown"]), notice, notice_style)
 
 
-def crosshair_shapes(existing, when):
+def bottom_axis(figure):
+    """Which x axis the crosshair belongs on, asked of the figure rather than assumed.
+
+    The row count is not fixed: the volatility panel is drawn only when the aggregate
+    can supply one, so a figure is three panels or four. `build_figure` records the
+    answer in `layout.meta`, and the constant is the fallback for a figure drawn before
+    that existed, which is the shape a stale browser tab still holds.
+    """
+    meta = ((figure or {}).get("layout") or {}).get("meta") or {}
+    return meta.get(exposure_traces.XREF_META) or exposure_traces.CROSSHAIR_XREF
+
+
+def crosshair_shapes(existing, when, xref=None):
     """The figure's own shapes, plus at most one crosshair.
 
     Rebuilt from `existing` rather than appended to. A Patch that appended would stack a
@@ -1189,7 +1213,8 @@ def crosshair_shapes(existing, when):
               if not (shape.get("yref") == "paper" and shape.get("type") == "line")]
     if when is not None:
         shapes.append({"type": "line",
-                       "xref": exposure_traces.CROSSHAIR_XREF, "yref": "paper",
+                       "xref": xref or exposure_traces.CROSSHAIR_XREF,
+                       "yref": "paper",
                        "x0": str(when), "x1": str(when), "y0": 0, "y1": 1,
                        "line": CROSSHAIR})
     return shapes

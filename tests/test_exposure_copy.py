@@ -21,6 +21,7 @@ COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
                     bear_near="rgba(255,77,77,0.4)")
 from pages.analytics.exposure import (  # noqa: E402
     LEDE,
+    bottom_axis,
     caption,
     column_name,
     composition_line,
@@ -244,10 +245,11 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 11
+    assert len(titles) == 12
     joined = " ".join(titles).lower()
     for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
-                  "gold is here", "dotted line", "scale switch", "third panel", "not"):
+                  "gold is here", "dotted line", "scale switch", "volatility panel",
+                  "third panel", "not"):
         assert topic in joined
 
 
@@ -904,3 +906,31 @@ def test_the_explanation_says_what_the_dotted_line_is_and_is_not():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "0.30" in body
     assert "flips sign" in body
+
+
+def test_the_explanation_says_what_the_volatility_panel_is_for():
+    """It is the second factor of the drawn unit, not decoration: without it a reader
+    watches dollar risk climb on an unchanged position with no way to find out why."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "63 trading day" in body
+    assert "annualised" in body
+    assert "gross size" in body
+
+
+def test_the_crosshair_asks_the_figure_which_axis_its_bottom_panel_is():
+    """Three panels or four, depending on whether the total can supply a volatility. A
+    constant would be wrong half the time and the crosshair would land on a panel that
+    is not the bottom one."""
+    assert bottom_axis({"layout": {"meta": {et.XREF_META: "x4"}}}) == "x4"
+    assert bottom_axis({"layout": {"meta": {et.XREF_META: "x3"}}}) == "x3"
+
+
+def test_a_figure_drawn_before_the_meta_existed_still_gets_a_crosshair():
+    """The shape a stale browser tab holds. Falling back beats raising in a callback."""
+    assert bottom_axis({"layout": {}}) == et.CROSSHAIR_XREF
+    assert bottom_axis(None) == et.CROSSHAIR_XREF
+
+
+def test_the_crosshair_is_drawn_on_the_axis_it_is_given():
+    shapes = crosshair_shapes([], pd.Timestamp("2026-01-06"), xref="x4")
+    assert [s["xref"] for s in shapes] == ["x4"]
