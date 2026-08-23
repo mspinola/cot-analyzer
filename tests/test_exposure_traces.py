@@ -10,7 +10,9 @@ from cotmetrics.exposure import LEG_SPEC
 import components.exposure_traces as et
 from components.plot_colors import GridColors, hex_to_rgba
 
-PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#A78BFA"]
+# Six slots, because the figure indexes Volatility at 5. Real palettes come
+# through viz_config.get_palette, which pads; a hand-written one has to be whole.
+PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9", "#A78BFA"]
 COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
                     bull_near="rgba(52,211,153,0.4)", bear_near="rgba(255,77,77,0.4)")
 

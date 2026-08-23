@@ -565,7 +565,9 @@ def table_of(**per_market):
     return pd.DataFrame(per_market).T
 
 
-PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#A78BFA"]
+# Six slots, because the figure indexes Volatility at 5. Real palettes come
+# through viz_config.get_palette, which pads; a hand-written one has to be whole.
+PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9", "#A78BFA"]
 
 
 def test_the_table_shows_both_units_whichever_one_is_drawn():

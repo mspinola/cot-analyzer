@@ -25,12 +25,21 @@ roles:
   default: deploy
 
 # Color palettes for the plot/theme dropdowns (UI only).
+#
+# Slots are positional and mean the same thing in every palette:
+#   0 Commercials   1 Large Specs   2 Small Traders   3 Price   4 Open Interest
+#   5 Volatility
+#
+# Append-only. Renumbering a slot silently repaints every chart in the app, and each
+# palette's sixth colour is chosen to be distinct from its own other five rather than
+# to match the other palettes: Cyberpunk already spends purple on Small Traders, so it
+# takes orange where the rest take a violet.
 palettes:
-  "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
-  "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#00FF00", "#E2E8F0"]
-  "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#00FF00", "#ABB8C9"]
-  "CMR": ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0"]
-  "Solarized": ["#dc322f", "#268bd2", "#b58900", "#2aa198", "#fdf6e3"]
+  "Muted": ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9", "#A78BFA"]
+  "Vibrant": ["#FF453A", "#0A84FF", "#FFD60A", "#00FF00", "#E2E8F0", "#BF5AF2"]
+  "Cyberpunk": ["#FF007F", "#00E5FF", "#BF5AF2", "#00FF00", "#ABB8C9", "#FF9F0A"]
+  "CMR": ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0", "#ff00ff"]
+  "Solarized": ["#dc322f", "#268bd2", "#b58900", "#2aa198", "#fdf6e3", "#6c71c4"]
 
 # A small, generic universe. Public futures tickers, untuned 52-week lookbacks.
 AssetClasses:
