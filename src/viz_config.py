@@ -19,7 +19,14 @@ _VIZ_CONFIG_PATH = Path(
     os.environ.get("COT_VIZ_CONFIG", str(_APP_ROOT / "config" / "params.yaml"))
 )
 
-_DEFAULT_PALETTE = ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0"]
+#: What each palette slot MEANS, app-wide. A palette is a list and a slot is an index,
+#: so this tuple is the only place the association is written down; every page indexes
+#: `palette[n]` against it. Order is load-bearing and slots are append-only: renumbering
+#: one would silently repaint every chart in the app.
+PALETTE_SLOTS = ("Commercials", "Large Specs", "Small Traders", "Price",
+                 "Open Interest", "Volatility")
+
+_DEFAULT_PALETTE = ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0", "#ff00ff"]
 
 
 def _load():
@@ -37,11 +44,26 @@ def get_palette_names():
     return list(_palettes.keys())
 
 
+def _padded(palette):
+    """A palette with every slot filled, borrowing the default's colour for any missing.
+
+    The palettes come from a config file this repo does not own: the real ones live in
+    the private cotmetrics-config, which is not updated in lockstep. So a palette can
+    legitimately predate a slot, and a consumer indexing by slot would raise IndexError
+    on a machine whose config is a week old. Padding turns that into a wrong-ish colour,
+    which is the right trade for a presentation value.
+    """
+    filled = list(palette or ())
+    for slot in range(len(filled), len(PALETTE_SLOTS)):
+        filled.append(_DEFAULT_PALETTE[slot])
+    return filled
+
+
 def get_palette(name=None):
     """Return a specific palette by name, or the first one as default."""
     if not name or name not in _palettes:
-        return _palettes.get(_default_palette_name, _DEFAULT_PALETTE)
-    return _palettes[name]
+        return _padded(_palettes.get(_default_palette_name, _DEFAULT_PALETTE))
+    return _padded(_palettes[name])
 
 
 def _build_tv_chart_map():

@@ -153,3 +153,30 @@ def test_pages_only_reference_known_plots(page, dict_name):
 
     assert ids, f"no plot ids parsed from {page}.py"
     assert ids <= ALL_IDS, f"{page} offers unknown plots: {sorted(ids - ALL_IDS)}"
+
+
+# ── palette slots ─────────────────────────────────────────────────────────────
+
+def test_every_palette_fills_every_slot():
+    """A page indexes `palette[n]` against viz_config.PALETTE_SLOTS, so a palette short
+    of a slot is an IndexError on a real screen."""
+    import viz_config
+    for name in viz_config.get_palette_names():
+        assert len(viz_config.get_palette(name)) >= len(viz_config.PALETTE_SLOTS), name
+
+
+def test_a_palette_that_predates_a_slot_is_padded_rather_than_raising():
+    """The real palettes live in the private cotmetrics-config, which is not updated in
+    lockstep with this repo, so a config a week old must not crash a chart."""
+    import viz_config
+    assert viz_config._padded(["#111111"]) [:1] == ["#111111"]
+    assert len(viz_config._padded(["#111111"])) == len(viz_config.PALETTE_SLOTS)
+    assert len(viz_config._padded([])) == len(viz_config.PALETTE_SLOTS)
+
+
+def test_volatility_owns_the_sixth_slot_rather_than_borrowing_one():
+    import components.exposure_traces as et
+    import viz_config
+    assert viz_config.PALETTE_SLOTS[et.VOL_PALETTE_SLOT] == "Volatility"
+    assert et.VOL_PALETTE_SLOT not in et.LEG_PALETTE_SLOT.values()
+    assert et.VOL_PALETTE_SLOT != 3
