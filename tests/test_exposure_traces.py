@@ -546,12 +546,17 @@ def test_the_volatility_panel_follows_the_scale_switch_like_every_other_panel():
     assert tuple(fig.layout.yaxis4.range) == (0, 100)
 
 
-def test_volatility_borrows_the_price_colour_not_a_positioning_one():
-    """The palette's other slots mean Commercials, Large Specs, Small Traders and Open
-    Interest. Borrowing one would say this line is a kind of positioning."""
-    fig = build(with_vol([1e9, 2e9, 3e9]))
+def test_volatility_is_not_drawn_in_the_price_colour():
+    """It started there, on the argument that volatility is a property of the price. Two
+    panels apart a shared colour does not read as a shared subject, it reads as the same
+    line twice. Every other slot names a trader group, so it takes the muted one."""
+    df = with_vol([1e9, 2e9, 3e9])
+    fig = build(df, pd.Series([100.0, 101.0, 102.0], index=df.index))
     vol = next(t for t in fig.data if t.name.startswith("Volatility"))
-    assert vol.line.color == hex_to_rgba(PALETTE[3], et.VOL_ALPHA)
+    price = next(t for t in fig.data if t.name == "Set composite")
+    assert vol.line.color == hex_to_rgba(PALETTE[et.VOL_PALETTE_SLOT], et.VOL_ALPHA)
+    assert vol.line.color != price.line.color
+    assert et.VOL_PALETTE_SLOT not in et.LEG_PALETTE_SLOT.values()
 
 
 def test_a_single_market_calls_it_what_it_is():

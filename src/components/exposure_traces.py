@@ -465,10 +465,18 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # reader can see dollar risk move without the position moving and has no way to find
     # out why.
     #
-    # Drawn in the PRICE slot rather than a positioning colour, because that is what it
-    # is a property of. The palette's other slots mean Commercials, Large Specs, Small
-    # Traders and Open Interest, and borrowing one of those would say this line is a
-    # kind of positioning.
+    # NOT the price slot, which is what it first used on the argument that volatility is
+    # a property of the price. Two panels apart, a shared colour does not read as a
+    # shared subject, it reads as the same line drawn twice, and green is already spoken
+    # for in four of the five palettes.
+    #
+    # Slot 4 instead. Every other slot names a trader group, so borrowing one would say
+    # this line is a kind of positioning; slot 4 is muted in all five palettes, which is
+    # what a context series should be. The cost is honest and worth stating: slot 4 means
+    # Open Interest elsewhere in the app. It is free here because this figure does not
+    # draw open interest and should not, since OI is a DENOMINATOR rather than a factor
+    # of `contracts x point value x price x sigma`. If that ever changes, the palettes
+    # need a sixth slot rather than this line needing a different one.
     if vol is not None:
         shown = (exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS) if ranked
                  else vol * ANNUALISE * 100)
@@ -476,7 +484,8 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             x=frame.index, y=break_gaps(frame.index, shown.to_numpy()),
             name="Volatility" if single else "Volatility (held-weighted)",
             mode="lines", line_shape="hv",
-            line=dict(color=hex_to_rgba(palette[3], VOL_ALPHA), width=1.2),
+            line=dict(color=hex_to_rgba(palette[VOL_PALETTE_SLOT], VOL_ALPHA),
+                      width=1.2),
             # Each scale carries the other quantity, the same rule the level and the
             # percentile follow above.
             customdata=(vol * ANNUALISE * 100).to_numpy() if ranked
@@ -540,9 +549,12 @@ LENS_ALPHA = 0.55
 #: as loudly as the thing it is a difference OF becomes the subject.
 LENS_FILL_ALPHA = 0.16
 
-#: Volatility, dimmed. It is context for the panels above rather than a subject, and at
-#: full strength in the price colour it competes with the price line itself.
+#: Volatility, dimmed. It is context for the panels above rather than a subject.
 VOL_ALPHA = 0.75
+
+#: The palette slot volatility borrows. See the comment beside the trace for why it is
+#: this one and not the price slot it started in.
+VOL_PALETTE_SLOT = 4
 
 #: The range buttons, in years. The same ladder the rest of the app offers, so a reader
 #: who learned it on another page does not have to learn it again here.
