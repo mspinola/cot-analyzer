@@ -194,6 +194,32 @@ PART_WIDTH = 1.0
 PART_ALPHA = 0.75
 
 
+def ordinal(n):
+    """43rd, not 43th. English, so the teens are the exception rather than the rule.
+
+    Worth a function because two different lines print a percentile and a page that
+    writes "43th" in bold above a chart reads as unfinished whatever the chart does.
+    """
+    n = int(round(n))
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }".replace(" ", "")
+
+
+def ordinals(values):
+    """"42nd", one per point, for a hover that cannot do English on its own.
+
+    A hover template can only append a FIXED suffix, so every percentile on this figure
+    printed as "42th", and 27 of the 101 values a percentile can take are wrong that
+    way: anything ending 1, 2 or 3 outside the teens. The page's prose has always used
+    `ordinal`; the hovers could not reach it, so they did not.
+
+    Precomputed per point and passed as `text`, which is the one channel a hover
+    template can read a STRING from.
+    """
+    return [ordinal(v) if v == v else "" for v in values]
+
+
 def break_gaps(index, values, max_join_days=MAX_JOIN_DAYS):
     """Insert a NaN wherever two observations are further apart than one COT week.
 
@@ -341,10 +367,11 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             # positive price. But a reader following THIS line should not have to
             # reconstruct that from another trace's hover.
             customdata=side_and_size(contract_counts, frame.index),
-            hovertemplate=("%{y:,.0f}th percentile, contracts<extra></extra>"
+            text=ordinals(contracts.reindex(frame.index)),
+            hovertemplate=("%{text} percentile, contracts<extra></extra>"
                            if contract_counts is None else
                            "%{customdata[0]} %{customdata[1]:,.0f} contracts, "
-                           "%{y:,.0f}th percentile<extra></extra>")),
+                           "%{text} percentile<extra></extra>")),
             row=2, col=1)
         # The GAP is the object, not the second line. Both series are weekly over
         # twenty years, so two lines of the same shape in one small panel are a thicket
@@ -376,11 +403,15 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         # percentile cannot say how much money that is.
         customdata=(frame[unit] / unit_scale(frame[unit])[0]).to_numpy() if ranked
         else frame[rank_column].to_numpy(),
+        # The percentile as a WORD, because a template can only append a fixed suffix
+        # and three values in ten do not end in "th". Same series either way: it is the
+        # y value on the ranked scale and the customdata on the level one.
+        text=ordinals(frame[rank_column]),
         hovertemplate=(
-            "%{x|%b %d, %Y}<br>%{y:,.0f}th percentile<br>%{customdata:,.1f}"
+            "%{x|%b %d, %Y}<br>%{text} percentile<br>%{customdata:,.1f}"
             + unit_scale(frame[unit])[1] + f" {base}<extra></extra>" if ranked else
             "%{x|%b %d, %Y}<br>%{y:,.1f}" + suffix
-            + f" {base}<br>" + "%{customdata:.0f}th percentile of its own history"
+            + f" {base}<br>" + "%{text} percentile of its own history"
             + "<extra></extra>"
         )),
         row=2, col=1)
@@ -417,7 +448,8 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             line=dict(color=hex_to_rgba(palette[LEG_PALETTE_SLOT[part_leg]],
                                         PART_ALPHA),
                       width=PART_WIDTH),
-            hovertemplate=(("%{y:,.0f}th percentile<extra>" if ranked
+            text=ordinals(aligned) if ranked else None,
+            hovertemplate=(("%{text} percentile<extra>" if ranked
                             else "%{y:,.1f}" + suffix + f" {base}<extra>")
                            + exposure.LEG_LABELS[part_leg] + "</extra>")),
             row=3, col=1)
@@ -487,8 +519,8 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # `viz_config.PALETTE_SLOTS`, which is the one place the slot meanings are written
     # down.
     if vol is not None:
-        shown = (exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS) if ranked
-                 else vol * ANNUALISE * 100)
+        vol_rank = exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS)
+        shown = vol_rank if ranked else vol * ANNUALISE * 100
         fig.add_trace(go.Scatter(
             x=frame.index, y=break_gaps(frame.index, shown.to_numpy()),
             name="Volatility" if single else "Volatility (held-weighted)",
@@ -498,11 +530,12 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             # Each scale carries the other quantity, the same rule the level and the
             # percentile follow above.
             customdata=(vol * ANNUALISE * 100).to_numpy() if ranked
-            else exposure.expanding_pct_rank(vol, MIN_RANK_PERIODS).to_numpy(),
+            else vol_rank.to_numpy(),
+            text=ordinals(vol_rank),
             hovertemplate=(
-                "%{y:,.0f}th percentile<br>%{customdata:,.1f}% annualised"
+                "%{text} percentile<br>%{customdata:,.1f}% annualised"
                 if ranked else
-                "%{y:,.1f}% annualised<br>%{customdata:,.0f}th percentile")
+                "%{y:,.1f}% annualised<br>%{text} percentile")
             + "<extra>Volatility</extra>"), row=4, col=1)
         if ranked:
             fig.update_yaxes(range=[0, 100], row=4, col=1)
