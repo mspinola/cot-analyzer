@@ -32,7 +32,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from cotmetrics import exposure
 from cotmetrics.indexer import get_indexer
-from dash import Input, Output, Patch, State, callback, dcc, html, no_update
+from dash import Input, Output, Patch, State, callback, clientside_callback, dcc, html, no_update
 
 import components.exposure_traces as exposure_traces
 import viz_config
@@ -730,6 +730,10 @@ def layout(**kwargs):
         # this visit, and a page that reopened weeks later still describing a 2015 week
         # under a headline saying CROWDED would be lying by default.
         dcc.Store(id='exposure_selected_week'),
+        # Where the zoom handler writes. It has nothing to say to the server; the store
+        # exists because a Dash callback needs an Output and this one does its work in
+        # the browser.
+        dcc.Store(id='exposure_zoom_sink'),
         dbc.Container([
             dbc.Card(dbc.CardBody([
                 # One row, four controls. It was two rows of two, which cost a strip of
@@ -1002,6 +1006,29 @@ def toggle_help(_n, is_open):
 def apply_help_fold(is_open):
     return bool(is_open), ("\u25be How to read this" if is_open
                            else "\u25b8 How to read this")
+
+
+# Re-fit the axes to whatever window is on screen.
+#
+# Plotly's own `autorange` spans ALL of a trace's data rather than the part in view, so
+# without this a two-year zoom keeps a y axis fitted to twenty years and the window is
+# drawn as a flat sliver against ticks chosen for decades it is not showing. Measured on
+# this page before the fix: zooming x to 2024-2026 and then asking for autorange
+# returned the identical full-history range, 64 to 1,321 on Silver.
+#
+# Clientside because the data is already in the browser: a server callback would ship
+# the whole figure back and forth on every drag. It is the SAME handler the Aggregation
+# page uses, which had already solved two traps worth keeping: Plotly packs numeric
+# columns as base64 rather than arrays, and `autosize` fires on first paint and on every
+# window resize where the reader has asked for nothing. What this page adds travels in
+# the figure, as `layout.meta.refit`, so the rules live in one place.
+clientside_callback(
+    "window.dash_clientside.clientside.autoscale_y_axes",
+    Output('exposure_zoom_sink', 'data'),
+    Input('exposure_chart', 'relayoutData'),
+    State('exposure_chart', 'id'),
+    prevent_initial_call=True,
+)
 
 
 @callback(

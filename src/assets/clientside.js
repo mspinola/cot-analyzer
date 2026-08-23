@@ -345,6 +345,19 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             var liveAxes = {};
             (figure.data || []).forEach(function(t) { liveAxes[axisKeyOf(t)] = true; });
 
+            // A figure may ship its own rules in layout.meta.refit: which axes are
+            // fitted at all, and the ratio at which a price panel earns a log scale.
+            // Exposure does, because two of its panels are pinned to 0-100 on the
+            // percentile scale and must not be fitted to a zoomed window, and because
+            // its price panel has to re-decide log against linear for the range now on
+            // screen. Figures without it behave exactly as they did.
+            var spec = (layout.meta || {}).refit || null;
+            if (spec) {
+                for (key in liveAxes) {
+                    if (spec.axes.indexOf(key) === -1) { delete liveAxes[key]; }
+                }
+            }
+
             // Reset Axes, Autoscale, or a double-click: hand each axis back to Plotly.
             //
             // `autosize` is grouped here but is NOT one of those gestures. It fires on
@@ -359,6 +372,15 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             // explicit range carries no autorange key at all. A genuine reset still
             // hands back everything, including those.
             var isReset = 'xaxis.autorange' in relayoutData;
+            if (isReset && spec) {
+                // Not autorange. A zoom may have switched the price panel to linear,
+                // and handing the axis back to Plotly would leave it there: autorange
+                // restores the RANGE and has no opinion about the TYPE. Re-fitting over
+                // the whole series reaches the answer the server drew in the first
+                // place, by the same rule.
+                fitAxes(-Infinity, Infinity);
+                return {xEnd: null, stamp: Date.now()};
+            }
             if (isReset || 'autosize' in relayoutData) {
                 for (key in liveAxes) {
                     if (!layout[key]) { continue; }
@@ -390,53 +412,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             var t1 = new Date(xEnd).getTime();
             if (isNaN(t0) || isNaN(t1)) { return noUpdate; }
 
-            var ranges = {};
-            (figure.data || []).forEach(function(trace) {
-                var xs = asArray(trace.x);
-                if (!xs || !xs.length) { return; }
-
-                // Candlesticks carry their extremes on high/low rather than y.
-                var isCandle = trace.type === 'candlestick';
-                var hi = asArray(isCandle ? trace.high : trace.y);
-                var lo = asArray(isCandle ? trace.low : trace.y);
-                if (!hi || !lo) { return; }
-
-                var lo_v = Infinity, hi_v = -Infinity, seen = false;
-                for (var i = 0; i < xs.length; i++) {
-                    var t = new Date(xs[i]).getTime();
-                    if (isNaN(t) || t < t0 || t > t1) { continue; }
-                    var a = lo[i], b = hi[i];
-                    if (a === null || b === null || a === undefined || b === undefined) { continue; }
-                    if (isNaN(a) || isNaN(b)) { continue; }
-                    if (a < lo_v) { lo_v = a; }
-                    if (b > hi_v) { hi_v = b; }
-                    seen = true;
-                }
-                if (!seen) { return; }
-
-                var axis = trace.yaxis || 'y';
-                var axisKey = axis === 'y' ? 'yaxis' : 'yaxis' + axis.slice(1);
-                if (!(axisKey in ranges)) { ranges[axisKey] = [lo_v, hi_v]; }
-                else {
-                    ranges[axisKey][0] = Math.min(ranges[axisKey][0], lo_v);
-                    ranges[axisKey][1] = Math.max(ranges[axisKey][1], hi_v);
-                }
-            });
-
-            for (var axisKey in ranges) {
-                var r = ranges[axisKey];
-                if (r[0] === r[1]) { continue; }
-                var pad = (r[1] - r[0]) * 0.05;
-                if (pad === 0) { pad = r[0] !== 0 ? Math.abs(r[0] * 0.05) : 1; }
-                update[axisKey + '.range'] = [r[0] - pad, r[1] + pad];
-                update[axisKey + '.autorange'] = false;
-            }
-            // Only y-axis keys go in, so the relayoutData this fires carries no x-range
-            // and the next pass falls out at the parse step. That is what stops it
-            // chasing its own tail.
-            if (Object.keys(update).length) {
-                try { Plotly.relayout(gd, update); } catch (e) { return noUpdate; }
-            }
+            fitAxes(t0, t1);
 
             // The rightmost visible date, for the panel below the chart.
             //
@@ -447,9 +423,117 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             // dropped before it reaches the DOM. Only a real x-zoom writes here, so
             // nothing supersedes it.
             return {xEnd: String(xEnd), stamp: Date.now()};
+
+            // Fit every live axis to the points between t0 and t1. Called with infinite
+            // bounds to fit the whole series, which is what a reset needs on a figure
+            // whose price panel decides its own scale.
+            function fitAxes(t0, t1) {
+                var ranges = {};
+                (figure.data || []).forEach(function(trace) {
+                    var axisKey = axisKeyOf(trace);
+                    if (!(axisKey in liveAxes)) { return; }
+                    var xs = asArray(trace.x);
+                    if (!xs || !xs.length) { return; }
+
+                    // Candlesticks carry their extremes on high/low rather than y.
+                    var isCandle = trace.type === 'candlestick';
+                    var hi = asArray(isCandle ? trace.high : trace.y);
+                    var lo = asArray(isCandle ? trace.low : trace.y);
+                    if (!hi || !lo) { return; }
+
+                    var lo_v = Infinity, hi_v = -Infinity, seen = false;
+                    for (var i = 0; i < xs.length; i++) {
+                        var t = new Date(xs[i]).getTime();
+                        if (isNaN(t) || t < t0 || t > t1) { continue; }
+                        var a = lo[i], b = hi[i];
+                        if (a === null || b === null || a === undefined || b === undefined) { continue; }
+                        if (isNaN(a) || isNaN(b)) { continue; }
+                        if (a < lo_v) { lo_v = a; }
+                        if (b > hi_v) { hi_v = b; }
+                        seen = true;
+                    }
+                    if (!seen) { return; }
+
+                    if (!(axisKey in ranges)) { ranges[axisKey] = [lo_v, hi_v]; }
+                    else {
+                        ranges[axisKey][0] = Math.min(ranges[axisKey][0], lo_v);
+                        ranges[axisKey][1] = Math.max(ranges[axisKey][1], hi_v);
+                    }
+                });
+
+                for (var axisKey in ranges) {
+                    var r = ranges[axisKey];
+                    if (spec && axisKey === spec.price_axis) {
+                        priceAxis(update, axisKey, r[0], r[1], spec);
+                        continue;
+                    }
+                    if (r[0] === r[1]) { continue; }
+                    var pad = (r[1] - r[0]) * 0.05;
+                    if (pad === 0) { pad = r[0] !== 0 ? Math.abs(r[0] * 0.05) : 1; }
+                    update[axisKey + '.range'] = [r[0] - pad, r[1] + pad];
+                    update[axisKey + '.autorange'] = false;
+                }
+                // Only y-axis keys go in, so the relayoutData this fires carries no
+                // x-range and the next pass falls out at the parse step. That is what
+                // stops it chasing its own tail.
+                if (Object.keys(update).length) {
+                    try { Plotly.relayout(gd, update); } catch (e) { return; }
+                }
+            }
         }
     }
 });
+
+// A price panel that decides its own scale, for the window actually on screen.
+//
+// Mirrors price_axis_type and log_ticks in components/exposure_traces.py, and takes the
+// threshold from the figure rather than repeating the number here. Log earns its place
+// on a RATIO, so a window too narrow to show one goes back to linear rather than keeping
+// a curvature it no longer has the range to express, and the ticks are rebuilt for the
+// decades on screen instead of the ones the whole series spans.
+function priceAxis(update, axis, min, max, spec) {
+    var useLog = min > 0 && max / min >= spec.log_ratio_min;
+    update[axis + '.type'] = useLog ? 'log' : 'linear';
+    update[axis + '.autorange'] = false;
+    var pad;
+    if (!useLog) {
+        pad = (max - min) * spec.pad;
+        if (pad === 0) { pad = min !== 0 ? Math.abs(min * spec.pad) : 1; }
+        update[axis + '.range'] = [min - pad, max + pad];
+        update[axis + '.tickmode'] = 'auto';
+        update[axis + '.tickvals'] = null;
+        update[axis + '.ticktext'] = null;
+        return;
+    }
+    // A log axis takes its range in log10 units, and so does the padding: a twentieth of
+    // a decade above a series is not a twentieth of its value.
+    var lo = Math.log10(min), hi = Math.log10(max);
+    pad = (hi - lo) * spec.pad;
+    if (pad === 0) { pad = spec.pad; }
+    update[axis + '.range'] = [lo - pad, hi + pad];
+
+    var values = [];
+    for (var e = Math.floor(lo); Math.pow(10, e) <= max; e++) {
+        [1, 2, 5].forEach(function(mantissa) {
+            var value = mantissa * Math.pow(10, e);
+            if (value >= min && value <= max) { values.push(value); }
+        });
+    }
+    // Fewer than three is a range too narrow to label by hand, which is the same bar
+    // log_ticks sets. Plotly's own labels beat two lonely gridlines.
+    if (values.length >= 3) {
+        update[axis + '.tickmode'] = 'array';
+        update[axis + '.tickvals'] = values;
+        update[axis + '.ticktext'] = values.map(function(v) {
+            return v.toLocaleString(undefined, {maximumFractionDigits: 0});
+        });
+    } else {
+        update[axis + '.tickmode'] = 'auto';
+        update[axis + '.tickvals'] = null;
+        update[axis + '.ticktext'] = null;
+    }
+}
+
 
 var dagcomponentfuncs = window.dashAgGridComponentFunctions = window.dashAgGridComponentFunctions || {};
 

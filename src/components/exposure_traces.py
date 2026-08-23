@@ -182,6 +182,14 @@ CROSSHAIR_XREF = "x3"
 #: when the aggregate can supply one, and a constant would be wrong half the time.
 XREF_META = "crosshair_xref"
 
+#: What the browser needs to re-fit the axes to a zoomed window, recorded in the figure
+#: rather than duplicated in JavaScript. Plotly's own `autorange` spans ALL of a trace's
+#: data rather than the part on screen (measured: zooming x to two years and asking for
+#: autorange returns the identical full-history range), so a zoomed panel keeps an axis
+#: fitted to a series it is no longer showing. The browser has to do the fitting, and
+#: these are the rules it has to follow to reach the same answer this module would.
+REFIT_META = "refit"
+
 PART_WIDTH = 1.0
 PART_ALPHA = 0.75
 
@@ -241,6 +249,17 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     heights = PANEL_HEIGHTS_VOL if vol is not None else PANEL_HEIGHTS
     fig = make_subplots(rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.04,
                         row_heights=list(heights))
+
+    # `shared_xaxes` makes the BOTTOM axis the master and every axis above it a slave,
+    # and Plotly silently ignores a range set on a slave. The range buttons belong on
+    # the top panel, which is the only place they render above the figure rather than
+    # between two panels, so the top panel has to be the master or they do nothing at
+    # all. Measured before this line existed: clicking 3Y left the chart on Max, and a
+    # zoom request fitted the y axes to a window the x axis never went to, which drew
+    # every panel clipped against a range it was not showing.
+    for row in range(2, rows + 1):
+        fig.update_xaxes(matches="x", row=row, col=1)
+    fig.update_xaxes(matches=None, row=1, col=1)
 
     if frame is None or frame.empty:
         fig.update_layout(height=FIGURE_PX, paper_bgcolor=background,
@@ -474,9 +493,35 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         fig.update_yaxes(title_text="Percentile" if ranked else "Ann. vol (%)",
                          row=4, col=1, title_font=dict(size=10))
 
+    # ── zooming ──────────────────────────────────────────────────────────────
+    #
+    # The buttons the rest of the app already offers, on the TOP panel's axis, which is
+    # where they render above the figure rather than between two panels.
+    fig.update_xaxes(rangeselector=dict(
+        buttons=[dict(count=n, label=f"{n}Y", step="year", stepmode="backward")
+                 for n in RANGE_YEARS] + [dict(step="all", label="Max")],
+        bgcolor=vc.BLUE_BACKGROUND, activecolor=vc.BLUE_BACKGROUND,
+        font=dict(color=vc.BRIGHTER_TEXT_COLOR, size=10),
+        y=1.0, yanchor="bottom", x=1.0, xanchor="right"), row=1, col=1)
+
     # The bottom axis is where the crosshair goes and the row count is not fixed, so the
     # figure records which one it is instead of leaving the page to count panels.
-    fig.update_layout(meta={XREF_META: f"x{rows}"})
+    #
+    # `refit` is for the browser. Only the axes that are FITTED to their data are listed:
+    # on the percentile scale the exposure, companion and volatility panels are pinned to
+    # 0-100 on purpose, so re-fitting them to a zoomed window would let the band at 10
+    # and 90 drift off a fixed scale that exists to stay fixed.
+    # The price panel is fitted on BOTH scales, because it is a price panel either way.
+    # The panels below it are fitted only on the level scale: on the percentile scale
+    # they are pinned to 0-100 on purpose, and re-fitting them to a zoomed window would
+    # let the band at 10 and 90 drift off a scale that exists to stay put.
+    refit = ["yaxis"] + ([] if ranked
+                         else [f"yaxis{n}" for n in range(2, rows + 1)])
+    fig.update_layout(meta={
+        XREF_META: f"x{rows}",
+        REFIT_META: {"axes": refit, "price_axis": "yaxis",
+                     "log_ratio_min": LOG_RATIO_MIN, "pad": REFIT_PAD},
+    })
     return fig
 
 
@@ -498,6 +543,15 @@ LENS_FILL_ALPHA = 0.16
 #: Volatility, dimmed. It is context for the panels above rather than a subject, and at
 #: full strength in the price colour it competes with the price line itself.
 VOL_ALPHA = 0.75
+
+#: The range buttons, in years. The same ladder the rest of the app offers, so a reader
+#: who learned it on another page does not have to learn it again here.
+RANGE_YEARS = (1, 2, 3, 5, 10, 15)
+
+#: Breathing room above and below a re-fitted range, as a fraction of its span. Plotly's
+#: own autorange pads by about this much, and a panel that changed padding when it was
+#: zoomed would read as the data having moved.
+REFIT_PAD = 0.05
 WITH_ALPHA = 0.85
 
 
