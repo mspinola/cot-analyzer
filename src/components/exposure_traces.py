@@ -230,7 +230,8 @@ def unit_scale(values):
 def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                  background=vc.BACKGROUND_COLOR, leg_label="", set_label="",
                  leg=exposure.LEG_SPEC, parts=None, scale=SCALE_LEVEL,
-                 numeraire=None, single=False, contracts=None):
+                 numeraire=None, single=False, contracts=None,
+                 contract_counts=None):
     """Two panels: the selection's own price, and its dollar positioning.
 
     `frame` is `cotmetrics.exposure.AggregateExposure.frame`; `composite` is the
@@ -333,7 +334,17 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
             x=frame.index, y=aligned,
             name="Contracts %ile", mode="lines", line_shape="hv",
             line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, LENS_ALPHA), width=1),
-            hovertemplate="%{y:,.0f}th percentile, contracts<extra></extra>"),
+            # The signed count, because a percentile has no side and this line's whole
+            # subject is a position that has one. The sign is not new information: it
+            # matches the dollars above it in every one of the 219,846 market-weeks in
+            # the store, since notional is contracts times a positive multiplier times a
+            # positive price. But a reader following THIS line should not have to
+            # reconstruct that from another trace's hover.
+            customdata=side_and_size(contract_counts, frame.index),
+            hovertemplate=("%{y:,.0f}th percentile, contracts<extra></extra>"
+                           if contract_counts is None else
+                           "%{customdata[0]} %{customdata[1]:,.0f} contracts, "
+                           "%{y:,.0f}th percentile<extra></extra>")),
             row=2, col=1)
         # The GAP is the object, not the second line. Both series are weekly over
         # twenty years, so two lines of the same shape in one small panel are a thicket
@@ -543,6 +554,11 @@ AGAINST_ALPHA = 0.30
 #: across a 20-year panel, faint enough that the drawn unit stays the subject.
 LENS_ALPHA = 0.55
 
+#: The side, in the same words the headline and the caption use. A minus sign would be
+#: the same fact in a weaker notation than the panel above it already spends.
+LONG_WORD = "net long"
+SHORT_WORD = "net short"
+
 #: The wedge between the two lenses. Faint: it is a difference, and a difference drawn
 #: as loudly as the thing it is a difference OF becomes the subject.
 LENS_FILL_ALPHA = 0.16
@@ -562,6 +578,33 @@ RANGE_YEARS = (1, 2, 3, 5, 10, 15)
 #: zoomed would read as the data having moved.
 REFIT_PAD = 0.05
 WITH_ALPHA = 0.85
+
+
+def side_and_size(counts, index):
+    """The signed contract count as (side in words, magnitude), per week.
+
+    Two columns rather than one signed number, for two reasons found by measurement.
+
+    A hover template silently DISCARDS a format spec it cannot parse, and `+` is one it
+    cannot: `%{customdata:+,.0f}` on -28639 renders "-28639", losing the thousands
+    separator as well as the sign it was asked for, while `,.0f` renders "-28,639". A
+    format that fails loudly would have been fine; one that half-works is why this is a
+    helper with a test rather than a string in a template.
+
+    And the side belongs in words. The panel above says "net long" and "net short" in
+    prose, so a lone minus sign in the panel below is the same fact in a weaker
+    notation. The magnitude is therefore absolute: "net short 28,639", never
+    "net short -28,639".
+
+    A 1-D customdata cannot be indexed in a template. `%{customdata[0]}` against a flat
+    array renders an empty string, so the pair has to be a genuine 2-D array.
+    """
+    if counts is None:
+        return None
+    aligned = counts.reindex(index)
+    return [[LONG_WORD if (v >= 0) else SHORT_WORD, abs(v)]
+            if v == v else ["", float("nan")]
+            for v in aligned]
 
 
 def price_axis_type(composite):

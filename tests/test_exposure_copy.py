@@ -25,6 +25,7 @@ from pages.analytics.exposure import (  # noqa: E402
     caption,
     column_name,
     composition_line,
+    contracts_net,
     contracts_rank,
     contribution_columns,
     contribution_grid,
@@ -936,3 +937,15 @@ def test_a_figure_drawn_before_the_meta_existed_still_gets_a_crosshair():
 def test_the_crosshair_is_drawn_on_the_axis_it_is_given():
     shapes = crosshair_shapes([], pd.Timestamp("2026-01-06"), xref="x4")
     assert [s["xref"] for s in shapes] == ["x4"]
+
+
+def test_the_counts_come_from_the_member_and_only_for_one_market():
+    """Same rule as the percentile beside it: contracts do not add across markets, so a
+    set gets no lens and no counts."""
+    idx = agg().frame.index
+    member = pd.DataFrame({"net_contracts": [-10.0, 5.0, 20.0]}, index=idx)
+    one = AggregateExposure(frame=agg().frame, dropped={},
+                            coverage={"Gold": (idx[0], idx[-1])},
+                            bounded_by={}, weeks_lost=0, members={"Gold": member})
+    assert list(contracts_net(one)) == [-10.0, 5.0, 20.0]
+    assert contracts_net(with_members({"Gold": 4e8, "Silver": 1e8})) is None
