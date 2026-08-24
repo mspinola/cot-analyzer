@@ -415,6 +415,77 @@ def contracts_rank(agg, window=None):
                                       exposure_traces.MIN_RANK_PERIODS)
 
 
+#: The two columns the contract lens rides on, joined onto the contribution table here
+#: rather than in cotmetrics. `contribution_table` ranks the columns in
+#: `exposure.TABLE_COLUMNS`, which is the two DOLLAR units, and contracts are
+#: deliberately not among them: the table decomposes a total, and contracts are the one
+#: unit that does not add across markets. They are a legitimate per-ROW reading all the
+#: same, which is what this pair supplies.
+CONTRACTS_COLUMN = "net_contracts"
+CONTRACTS_RANK_COLUMN = "contracts_pct_rank"
+
+
+def attach_contracts_rank(table, agg, when=None):
+    """Each market's own contract count and percentile, joined onto the table by name.
+
+    The per-market form of the sentence a single market already gets. Selecting one
+    market prints "contracts put the same week at the 88th percentile against the 100th
+    for the dollars"; selecting nine printed nothing of the kind, because that sentence
+    reads the single member frame. The reading exists for every member, and a set is
+    exactly where it earns its place: an extreme in money and an ordinary week in
+    contracts is one market having grown or its volatility having moved, and a total
+    cannot say which of its members that happened to.
+
+    **The SAME rank the dollar column beside it uses**, which is the expanding one, so
+    the two are a comparison of units and not of stretches of time. `contribution_table`
+    ranks against all history whatever the Lookback control says, so following the
+    control here would put two percentiles on one row measured over different histories,
+    which is the confusion this column exists to remove.
+
+    **"Its own history" means the weeks the SET covers, not the weeks the market has.**
+    `aggregate_exposure` restricts every member frame to the weeks the total can price,
+    so adding a short-lived market to the selection shortens every other member's
+    history and moves its percentile: Gold reads 88 on the contract count alone and 81
+    inside an equities-and-metals set that starts in 2002 because Russell does. The
+    dollar columns have always behaved this way and this follows them, which is the
+    point; it is called out because this column is the one a reader is most likely to
+    check against a published figure, and the published figure will have used the
+    market's whole history.
+
+    Returns the table unchanged when there is nothing to join, so a caller can apply it
+    unconditionally.
+    """
+    if table is None or table.empty or not getattr(agg, "members", None):
+        return table
+    counts, ranks = {}, {}
+    for name, frame in agg.members.items():
+        if CONTRACTS_COLUMN not in frame:
+            continue
+        series = pd.to_numeric(frame[CONTRACTS_COLUMN], errors="coerce")
+        rank = exposure.expanding_pct_rank(series,
+                                           exposure_traces.MIN_RANK_PERIODS)
+        # The same week the dollar columns were read at, and the same fallback:
+        # `contribution_table` takes the last valid week when the stamp is absent, and
+        # a row whose two percentiles came from different weeks is worse than a blank.
+        stamp = when if (when is not None and when in series.index) else None
+        if stamp is None:
+            valid = series.dropna()
+            if valid.empty:
+                continue
+            stamp = valid.index[-1]
+        value, pct = series.get(stamp), rank.get(stamp)
+        if value is not None and value == value:
+            counts[name] = float(value)
+        if pct is not None and pct == pct:
+            ranks[name] = float(pct)
+    if not ranks:
+        return table
+    table = table.copy()
+    table[CONTRACTS_COLUMN] = pd.Series(counts)
+    table[CONTRACTS_RANK_COLUMN] = pd.Series(ranks)
+    return table
+
+
 def contracts_net(agg):
     """The raw signed contract count behind `contracts_rank`, for the hover.
 
@@ -774,15 +845,43 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
             "width": 120,
         }
 
+    percentile = {"function": "params.value == null ? '' : "
+                              "d3.format('.0f')(params.value)"}
     columns = [
         {"headerName": "Market", "field": "market", "flex": 1, "minWidth": 130},
         money(unit),
         money(other),
         {"headerName": "%ile", "field": rank, "type": "numericColumn", "width": 80,
-         "valueFormatter": {"function": "params.value == null ? '' : "
-                                        "d3.format('.0f')(params.value)"},
-         "headerTooltip": "Where this market's own history puts this week, 0 to 100"},
+         "valueFormatter": percentile,
+         # Names the unit now that a second percentile sits beside it. Without that,
+         # two columns headed "%ile" and "Contracts %ile" leave the first one to be
+         # inferred from the money columns to its left.
+         "headerTooltip": f"Where this market's own history puts this week's "
+                          f"{exposure_traces.UNIT_LABELS[unit]}, 0 to 100. Against all "
+                          f"of it, whatever the Lookback control says"},
     ]
+    # The other lens, per market. The dollar percentile says whether the money is
+    # unusual; this says whether the POSITION is, and the two part company hard: the
+    # report this table was measured against has gold at the 88th percentile in
+    # contracts and the 99th in dollars in the same week, which is a market whose
+    # extreme is price and volatility rather than more contracts. A single market gets
+    # this as a sentence under the headline; every other selection got nothing.
+    if CONTRACTS_RANK_COLUMN in table.columns:
+        columns.append(
+            {"headerName": "Contracts %ile", "field": CONTRACTS_RANK_COLUMN,
+             "type": "numericColumn", "width": 120,
+             "valueFormatter": percentile,
+             "headerTooltip": "The same percentile on the raw contract count, over the "
+                              "weeks this set covers. Where it sits below the column "
+                              "to its left, the money is the extreme rather than the "
+                              "position",
+             # A percentile has no side and this column's whole subject is a position
+             # that has one, so the count rides the rowData for the hover. Same reason
+             # the single-market lens line carries it.
+             "tooltipValueGetter": {
+                 "function": f"params.data['{CONTRACTS_COLUMN}'] == null ? null : "
+                             f"d3.format('+,.0f')(params.data['{CONTRACTS_COLUMN}']) "
+                             f"+ ' contracts'"}})
     # The bar is a SHARE, so one row draws it full width whatever the number is and
     # encodes nothing. Dropped for the same reason the concentration sentence is.
     if len(table) < 2:
@@ -1137,6 +1236,7 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None,
 
     table = exposure.contribution_table(agg.members, when=stamp,
                                         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
+    table = attach_contracts_rank(table, agg, when=stamp)
     # The table is per-market contributions that SUM to the total, and shares do not
     # sum. So it stays in dollars while the chart above it is a share, and the copy
     # says so rather than leaving a reader to notice the units disagree.
