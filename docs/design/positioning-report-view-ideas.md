@@ -977,9 +977,11 @@ app wants one yet. The moment a second surface does, it moves to `cotmetrics.exp
 **One thing that fell out of the arithmetic and constrains what can ever be drawn here.** A
 position's share of open interest is the same number in contracts and in dollars, to 2.2e-16
 across the universe, because the point value, the price and the volatility cancel between the
-position and the market it sits in. So there is no dollar version of the NPF basis: the dollar
-lens is inherently a LEVEL lens, and under NPF the two marks differ in normalizer as well as in
-unit. That is the one place this comparison is not a controlled one, it is stated in the caption
+position and the market it sits in. The same identity was frozen independently as P5 of the
+pre-registration behind `cotmetrics` 0.8.0, where it is asserted from the numeraire side (a share
+must not move when the Gold switch does), which is the side that can actually break and did once.
+So there is no dollar version of the NPF basis: the dollar lens is inherently a LEVEL lens, and
+under NPF the two marks differ in normalizer as well as in unit. That is the one place this comparison is not a controlled one, it is stated in the caption
 rather than hidden, and it is also why the NPF disagreement rate (20.7% of weeks) is the largest
 of the three measured.
 

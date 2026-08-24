@@ -118,7 +118,15 @@ Across all 45 priceable markets and every week in the store, the position's shar
 computed in contracts and computed in dollars at risk differ by at most **2.2e-16**.
 
 This is algebra rather than a finding (the point value, the price and the volatility all cancel
-between numerator and denominator), and it decides something concrete: **there is no dollar
+between numerator and denominator, so the residual above is floating-point division and not a
+measurement of anything), and the same identity was frozen independently as P5 of the pre-registration
+behind `cotmetrics` 0.8.0 and is asserted in that package's own tests, from the numeraire side:
+a share does not move when the Gold switch does. That is the side worth asserting in code, because
+it is the side that can break. It did break once, in a first cut that deflated the position columns
+and not the open-interest ones, so the share carried 1/gold. The version measured here cannot break
+that way, because nothing in this script applies a numeraire.
+
+It decides something concrete: **there is no dollar
 version of the NPF basis to draw.** The dollar lens is inherently a LEVEL lens, so under NPF the
 mark compares two different normalizations, and the caption has to say the window and the unit
 rather than pretend only one thing changed.
