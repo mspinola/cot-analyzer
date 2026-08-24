@@ -20,9 +20,12 @@ COLORS = GridColors(bull="#34D399", bear="#FF4D4D",
                     bull_near="rgba(52,211,153,0.4)",
                     bear_near="rgba(255,77,77,0.4)")
 from pages.analytics.exposure import (  # noqa: E402
+    CONTRACTS_COLUMN,
+    CONTRACTS_RANK_COLUMN,
     LEDE,
     LOOKBACK_ALL,
     LOOKBACK_OPTIONS,
+    attach_contracts_rank,
     bottom_axis,
     caption,
     column_name,
@@ -1159,3 +1162,105 @@ def test_a_share_axis_is_never_rescaled_into_thousands():
     share = pd.Series([0.1, 0.53], name=et.UNIT_NOTIONAL_SHARE)
     assert et.unit_scale(share) == (1.0, "")
 
+
+# ── the contract percentile, per market ───────────────────────────────────────
+# The single-market lens line as a COLUMN, so a set gets the same reading its one
+# member always had. The comparison it carries is the one the printed reports are built
+# on: gold at the 88th percentile in contracts and the 99th in dollars in one week is a
+# market whose extreme is price and volatility rather than more contracts.
+
+
+#: Long enough that a percentile exists at all: `expanding_pct_rank` needs two years of
+#: weekly data before it emits anything, which is the same guard the dollar columns pass
+#: through. A three-row fixture returns an unranked table, which is correct behaviour
+#: and tests nothing about the join.
+RANKABLE_ROWS = 110
+
+
+def contract_agg(**per_market):
+    """An aggregate whose members carry enough weeks of contracts to be ranked."""
+    base = agg(rows=RANKABLE_ROWS)
+    idx = base.frame.index
+    return base._replace(members={
+        name: pd.DataFrame({"net_contracts": list(counts)}, index=idx)
+        for name, counts in per_market.items()})
+
+
+def ramp(*tail):
+    """A rising series ending on the given weeks, so the last rank is predictable."""
+    head = list(range(RANKABLE_ROWS - len(tail)))
+    return head + list(tail)
+
+
+def test_the_table_carries_a_contract_percentile_for_every_market():
+    """The reading exists for every member; only the sentence was single-market."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 99.0},
+                     Silver={"risk_usd": 1.0, "notional_usd": 2.0,
+                             "risk_pct_rank": 98.0, "notional_pct_rank": 97.0})
+    rising = list(range(RANKABLE_ROWS))
+    joined = attach_contracts_rank(
+        table, contract_agg(Gold=rising, Silver=list(reversed(rising))))
+    # Gold ends at its own highest week, Silver at its lowest.
+    assert joined[CONTRACTS_RANK_COLUMN].tolist() == [100.0,
+                                                      100.0 / RANKABLE_ROWS]
+    headers = [c["headerName"] for c
+               in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, joined)]
+    assert "Contracts %ile" in headers
+
+
+def test_the_contract_count_rides_along_for_the_hover():
+    """A percentile has no side and this column's subject is a position that has one."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 99.0})
+    joined = attach_contracts_rank(table, contract_agg(Gold=ramp(-258418)))
+    assert joined[CONTRACTS_COLUMN].tolist() == [-258418.0]
+    column = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC,
+                                                  joined)
+                  if c["headerName"] == "Contracts %ile")
+    assert CONTRACTS_COLUMN in column["tooltipValueGetter"]["function"]
+
+
+def test_both_percentiles_on_a_row_are_ranked_over_the_same_history():
+    """`contribution_table` ranks the dollar columns against ALL history whatever the
+    Lookback control says, so this follows it rather than the control. Two percentiles
+    on one row measured over different stretches of time is the confusion the column
+    exists to remove."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    one = contract_agg(Gold=ramp(-1))
+    joined = attach_contracts_rank(table, one, when=one.frame.index[-1])
+    # The last week is below every earlier one, so all history puts it at the bottom.
+    # A 52-week window would say the same of it only because it is the same series;
+    # what is pinned is that the join asked for no window at all.
+    assert joined[CONTRACTS_RANK_COLUMN].tolist() == [100.0 / RANKABLE_ROWS]
+
+
+def test_the_week_is_the_one_the_dollar_columns_were_read_at():
+    """A row whose two percentiles came from different weeks is worse than a blank."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    one = contract_agg(Gold=ramp(-1))
+    joined = attach_contracts_rank(table, one, when=one.frame.index[-3])
+    assert joined[CONTRACTS_COLUMN].tolist() == [float(RANKABLE_ROWS - 3)]
+
+
+def test_a_set_with_no_contract_counts_simply_has_no_column():
+    """Nothing here is load bearing enough to blank a table over."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 99.0})
+    unchanged = attach_contracts_rank(table, with_members({"Gold": 4e8}))
+    assert CONTRACTS_RANK_COLUMN not in unchanged.columns
+    headers = [c["headerName"] for c
+               in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC, unchanged)]
+    assert "Contracts %ile" not in headers
+
+
+def test_the_dollar_percentile_header_names_its_unit_now_that_two_exist():
+    """Two columns headed "%ile" and "Contracts %ile" leave the first to be inferred."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 97.0})
+    for unit in (et.UNIT_RISK, et.UNIT_NOTIONAL):
+        rank = next(c for c in contribution_columns(unit, PALETTE, LEG_SPEC, table)
+                    if c["headerName"] == "%ile")
+        assert et.UNIT_LABELS[unit] in rank["headerTooltip"]

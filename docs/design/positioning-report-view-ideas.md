@@ -990,3 +990,57 @@ in state, and the horizon ladder. The percentile tick from the whiskers section 
 since `cotmetrics.exposure` grew `windowed_pct_rank` and `expanding_pct_rank` for the exposure
 page, but it is a second statistic on one axis and would need the same care about labelling that
 this comparison needed about units.
+
+
+## A third report, and what was left of it (2026-08-24)
+
+A gold-and-silver positioning report, four charts: each market's speculative net position in
+contracts and again in US dollar notional, each with a percentile-against-entire-history panel
+underneath. Evaluated the same way as the two above, and it is the first one that turned out to be
+almost entirely already drawn.
+
+**Its four charts are one state of `/exposure`.** Markets = Gold, Leg = Speculators, Unit =
+Notional, Lookback = All history renders the report's gold pages: the dollar level over its own
+history, the expanding percentile under it, the contract percentile shaded against it. Ours
+carries three things theirs does not: the volatility panel that is the second factor of the
+number, the Large-against-Small split under the total, and the publication lag stated in words.
+
+**The numbers agree, which is worth recording once.** Their figures against ours on the same week:
+
+| | the report | this app |
+|---|---|---|
+| Gold, notional | 113 US$bn, 99th percentile | $114.2bn, 100th |
+| Gold, contracts | 258,418, 88th percentile | 258,418, **88th** |
+| Silver, contracts | 44,792, 52nd percentile | 44,792, **52nd** |
+| Silver, notional | 14 US$bn, 97th percentile | $14.3bn, 98th |
+
+The contract counts and their percentiles match exactly, which is a real cross-check of the store
+against an outside source. The dollar figures differ by about a percent because the price behind
+them does: they use Stooq/FMP/Yahoo, this stack prices futures off Norgate's unadjusted series.
+
+**One thing was genuinely missing, and it is the thing the report is built on.** The report shows
+two markets. This page sums them, and the contract percentile lived only in the single-market
+sentence under the headline, because it is read off the member frame. So the moment a reader
+selected Gold AND Silver, the comparison the whole report exists to make disappeared from the
+page. The fix is a column: `Contracts %ile` beside the dollar percentile in the contributions
+table, joined per member. On the live week that puts the report's four numbers in two rows, and it
+says out loud what the report leaves to the reader: gold's extreme is 100 in dollars against 88 in
+contracts, silver's is 98 against 52, so silver's is almost entirely price and volatility.
+
+Three details of that column, each of which could have gone the other way:
+
+- **It is ranked against all history, not against the Lookback control**, because
+  `contribution_table` ranks the dollar columns that way and two percentiles on one row measured
+  over different stretches of time is precisely the confusion the column exists to remove. That
+  the table does not follow the control while the headline does is a pre-existing inconsistency,
+  noted here and not fixed here.
+- **It reads the member frame, never the aggregate.** cotmetrics #21 removed the aggregate's
+  summed `net_contracts` because it added ES contracts to corn contracts, and this column would
+  have been the first thing to bring that back.
+- **The count rides along for the hover**, because a percentile has no side and this column's
+  whole subject is a position that has one.
+
+What was NOT taken, beyond what the two earlier evaluations already rejected: their "spec = mirror
+of commercials" labelling, which folds Small Traders into the speculator leg, and their choice to
+give each market its own page, which the contributions table answers in one row per market without
+five lines of history in one panel.
