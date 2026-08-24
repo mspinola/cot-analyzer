@@ -722,15 +722,22 @@ def test_the_prior_mark_is_the_neutral_colour_the_legend_promises():
     assert key == [(COLORS.dim, st.GLYPH_CIRCLE)]
 
 
-def test_no_drawn_mark_falls_through_to_the_template_colourway():
+@pytest.mark.parametrize("compare", [st.COMPARE_PRIOR, st.COMPARE_DOLLARS,
+                                     st.COMPARE_NONE])
+def test_no_drawn_mark_falls_through_to_the_template_colourway(compare):
     """The general form of the bug above: an unset colour is not an error, it is the
-    theme's colour, and it only shows up by disagreeing with something else."""
+    theme's colour, and it only shows up by disagreeing with something else.
+
+    Run over every comparison, because each one puts different traces on the figure and
+    the bug is invisible until some other element disagrees with the one that fell
+    through."""
     df = frame(
         matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL, move=8),
         matrix_row("Gold", "Metals", 55, 50, 50, move=-3),
     )
-    rows, _ = st.build_rows(df, models.RAW_PF)
-    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE)
+    rows, _ = st.build_rows(df, models.RAW_PF, dollars={
+        "Copper": st.DollarRead(index=40.0), "Gold": st.DollarRead(index=61.0)})
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, compare=compare)
     for trace in fig.data:
         # The empty trace that exists only to make Plotly draw the top axis has
         # nothing to colour.
@@ -738,3 +745,176 @@ def test_no_drawn_mark_falls_through_to_the_template_colourway():
             continue
         assert trace.marker.color is not None, (
             f"{trace.type}/{trace.marker.symbol} takes its colour from the theme")
+
+
+# ── the dollar comparison ─────────────────────────────────────────────────────
+# The same leg over the same window, measured in dollars at risk instead of in
+# contracts. What is pinned here is that the second mark is a COMPARISON: it is drawn
+# at its own value with a line back to the one it disagrees with, it never appears
+# beside the six-weeks-ago ring, and a market that cannot be priced is counted rather
+# than left as a row that looks like agreement.
+
+
+def dollars_for(**reads):
+    return {asset: st.DollarRead(**kwargs) for asset, kwargs in reads.items()}
+
+
+def _diamonds(fig):
+    return [t for t in fig.data if t.type == "scatter"
+            and t.marker.symbol == st.DOLLAR_SYMBOL]
+
+
+def _rings(fig):
+    return [t for t in fig.data if t.type == "scatter"
+            and t.marker.symbol == "circle-open"]
+
+
+def _wedges(fig):
+    return [t for t in fig.data if t.type == "scatter" and t.mode == "lines"]
+
+
+def test_the_dollar_mark_sits_at_the_dollar_reading():
+    df = frame(matrix_row("Silver", "Metals", 0, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Silver=dict(index=96.0)))
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                          compare=st.COMPARE_DOLLARS)
+    assert list(_diamonds(fig)[0].x) == [96.0]
+
+
+def test_the_wedge_runs_from_the_contract_reading_to_the_dollar_one():
+    """The gap is the subject, so unlike the prior ring this mark carries a connector.
+    One trace with None breaks, because Plotly colours a line per trace and per-row
+    colour would mean one trace per market."""
+    df = frame(matrix_row("Silver", "Metals", 0, 50, 50),
+               matrix_row("Gold", "Metals", 20, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Silver=dict(index=96.0),
+                                                Gold=dict(index=63.0)))
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                          compare=st.COMPARE_DOLLARS)
+    wedges = _wedges(fig)
+    assert len(wedges) == 1
+    # Gold sorts above Silver (crowding order), so its segment comes first.
+    assert list(wedges[0].x) == [20, 63.0, None, 0, 96.0, None]
+
+
+def test_only_one_reference_mark_is_drawn_at_a_time():
+    """A ring and a diamond a few points apart at ROW_PX are one smudge, and on a quiet
+    row they are the same colour too. The selector exists so every mark on the row can
+    be named."""
+    df = frame(matrix_row("Silver", "Metals", 30, 50, 50, move=8))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Silver=dict(index=96.0)))
+
+    prior = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                            compare=st.COMPARE_PRIOR)
+    assert _rings(prior) and not _diamonds(prior) and not _wedges(prior)
+
+    money = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                            compare=st.COMPARE_DOLLARS)
+    assert _diamonds(money) and _wedges(money) and not _rings(money)
+
+    neither = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                              compare=st.COMPARE_NONE)
+    assert not _rings(neither) and not _diamonds(neither) and not _wedges(neither)
+
+
+def test_a_market_that_cannot_be_priced_simply_has_no_diamond():
+    """No contract multiplier or no bars. The row still draws; the caption counts it."""
+    df = frame(matrix_row("MSCI EAFE", "Equity Index", 40, 50, 50),
+               matrix_row("Gold", "Metals", 90, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Gold=dict(index=63.0)))
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                          compare=st.COMPARE_DOLLARS)
+    assert list(_diamonds(fig)[0].x) == [63.0]
+    assert st.dollar_split(rows, models.RAW_PF)[1] == 1
+
+
+def test_the_dollar_mark_takes_its_rows_tier_rather_than_a_colour_of_its_own():
+    """Colour on this figure means verdict, and the palette has no free slot for a
+    third meaning anyway: slot 3 is Price AND the bull colour, slot 0 is Commercials
+    AND the bear colour."""
+    df = frame(matrix_row("Copper", "Metals", 98, 2, 4, state_cls=const.SETUP_BULL),
+               matrix_row("Gold", "Metals", 55, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Copper=dict(index=70.0),
+                                                Gold=dict(index=40.0)))
+    fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE,
+                          compare=st.COMPARE_DOLLARS)
+    assert list(_diamonds(fig)[0].marker.color) == [COLORS.bull, COLORS.dim]
+
+
+def test_disagreement_is_counted_on_the_gate_bands_not_on_a_gap_in_points():
+    """The bands are where this page's decisions are made. Contracts at 98 against
+    dollars at 90 is a wide gap the model answers the same way twice; 96 against 94
+    under RAW PF straddles the line."""
+    df = frame(matrix_row("Wide", "Metals", 98, 50, 50),
+               matrix_row("Straddle", "Metals", 96, 50, 50),
+               matrix_row("Quiet", "Metals", 50, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Wide=dict(index=96.0),
+                                                Straddle=dict(index=94.0),
+                                                Quiet=dict(index=51.0)))
+    assert st.dollar_split(rows, models.RAW_PF) == (1, 0)
+
+
+def test_the_two_ends_of_the_axis_are_not_the_same_band():
+    """Silver on 2026-08-18: the bottom of its contract range and 96 on dollars at
+    risk. Asking only whether each reading is through A gate scores the sharpest
+    disagreement the board can carry as agreement, because both are extremes."""
+    df = frame(matrix_row("Silver", "Metals", 0, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF,
+                            dollars=dollars_for(Silver=dict(index=96.0)))
+    assert st.dollar_split(rows, models.RAW_PF) == (1, 0)
+    assert st.band_of(0, models.RAW_PF) == -1
+    assert st.band_of(96, models.RAW_PF) == 1
+    assert st.band_of(50, models.RAW_PF) == 0
+
+
+def test_the_legend_names_the_comparison_actually_on_screen():
+    """A key for a mark the figure is not drawing is worse than no key: the legend is
+    where a reader goes to find out what they are looking at."""
+    def labels(compare):
+        return [label
+                for _, entries in st.legend_items(models.RAW_PF, COLORS, PALETTE,
+                                                  compare)
+                for label, _, _ in entries]
+
+    assert any(label.endswith("w ago") for label in labels(st.COMPARE_PRIOR))
+    assert "Same, in $ at risk" not in labels(st.COMPARE_PRIOR)
+
+    money = labels(st.COMPARE_DOLLARS)
+    assert "Same, in $ at risk" in money
+    assert not any(label.endswith("w ago") for label in money)
+
+    none = labels(st.COMPARE_NONE)
+    assert "Same, in $ at risk" not in none
+    assert not any(label.endswith("w ago") for label in none)
+
+
+def test_the_hover_carries_the_dollar_figures_only_when_they_are_drawn():
+    df = frame(matrix_row("Silver", "Metals", 0, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF, dollars=dollars_for(
+        Silver=dict(index=96.0, risk_usd=-384_800_000.0, notional_index=57.7,
+                    sigma_daily=0.027, weeks=24)))
+    market = [r for r in rows if r.kind == "market"][0]
+
+    money = st._hover(market, models.RAW_PF, st.COMPARE_DOLLARS)
+    assert "In dollars at risk (24w): 96" in money
+    assert "-$384.8m" in money
+    # The notional reading is hover-only: over a rolling window it is very nearly the
+    # contract count again, so a second mark for it would sit on the first and say
+    # nothing, but it is what the printed reports plot.
+    assert "Same, on notional: 58" in money
+    assert "Daily vol: 2.7%" in money
+
+    assert "dollars at risk" not in st._hover(market, models.RAW_PF, st.COMPARE_PRIOR)
+
+
+def test_an_unpriceable_market_says_so_on_its_own_hover():
+    df = frame(matrix_row("MSCI EAFE", "Equity Index", 40, 50, 50))
+    rows, _ = st.build_rows(df, models.RAW_PF, dollars=None)
+    market = [r for r in rows if r.kind == "market"][0]
+    assert "No dollar reading" in st._hover(market, models.RAW_PF, st.COMPARE_DOLLARS)

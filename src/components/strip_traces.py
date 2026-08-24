@@ -34,6 +34,18 @@ band. That looks wrong until you know the rule, which is why it is written here:
 lollipop's POSITION is the level and its COLOUR is the verdict, and the two disagreeing
 is the interesting case rather than a defect.
 
+**One optional comparison per row, in dollars.** Those reports draw the same position
+twice, once in contracts and once in US dollars, and the two disagree far more than a
+reader expects: on this universe the same 52-week range index computed on dollar risk
+(contracts x point value x price x daily volatility) correlates 0.92 with the contract
+version at the median, parts from it by 30 index points at the 95th percentile, and
+disagrees about whether the market is through the model's own gate band on 12% of
+weeks. Silver on 2026-08-18 is the case that makes it concrete: Commercials sat at the
+very bottom of their 24-week contract range and at 96 on dollars at risk, because
+silver's daily volatility had fallen from 6.7% to 2.7% over the same window, so the
+larger short carried a third of the money. The mark is off by default and shares its
+place on the row with the six-weeks-ago mark, for the reasons at COMPARE_PRIOR.
+
 Everything in here is a pure function over a `get_matrix_data` frame plus a colour set,
 so the layout is testable without a store, a palette file or a browser.
 """
@@ -247,6 +259,46 @@ SIDE_BOTH = "both"
 SIDE_BULL = "bull"
 SIDE_BEAR = "bear"
 
+# The reference mark: ONE second position per row, and which one is a choice.
+#
+# A row already carries the head, its stem and a tick per gated leg. The two things
+# worth putting beside them answer the same shape of question, "the same leg measured
+# differently", and they compete for the same few pixels: where this index stood
+# MOMENTUM_PERIOD weeks ago (differently in TIME), and where it sits when the position
+# is measured in dollars at risk rather than in contracts (differently in UNIT).
+#
+# Drawing both was tried and is the reason this is a selector. At ROW_PX a hollow ring
+# and a hollow diamond a few points apart are one smudge, and on a quiet row they are
+# the same colour as well, so the row stops saying which is which. One at a time keeps
+# every mark on the row nameable, and the legend and caption then only have to explain
+# the comparison actually on screen.
+#
+# COMPARE_DOLLARS is the newer one and it is off by default, because it is the only
+# thing this page draws that needs the price store: a market with no contract
+# multiplier or no bars has no dollar reading at all, and the caption has to say so.
+COMPARE_PRIOR = "prior"
+COMPARE_DOLLARS = "dollars"
+COMPARE_NONE = "none"
+
+# The dollar mark and the line back to the head.
+#
+# Shape carries which comparison this is (a hollow diamond, against the prior mark's
+# hollow ring), and colour stays what it is everywhere else on this row: the ROW's
+# tier, verdict or quiet. Spending colour on "this one is the dollar reading" would put
+# a third meaning on the one channel that already means verdict here, and the palette
+# has no free slot for it anyway: slot 3 is Price AND the bull colour, slot 0 is
+# Commercials AND the bear colour.
+#
+# The connector is what makes the pair read as one fact rather than as two marks. It is
+# the opposite call from the prior mark, which deliberately has no connector, and the
+# reason is that here the GAP is the subject: contracts and money disagreeing about the
+# same week is the whole reason to switch this on. It also costs nothing on the rows
+# with nothing to say, since a market where the two agree draws a line of zero length.
+DOLLAR_SYMBOL = "diamond-open"
+DOLLAR_SIZE = 8
+WEDGE_ALPHA = 0.45
+WEDGE_WIDTH = 1
+
 # How the Commercial index is drawn: ONE form, a lollipop — a thin stem from the
 # neutral midpoint with a full-strength head at the value.
 #
@@ -260,6 +312,24 @@ SIDE_BEAR = "bear"
 
 
 @dataclass(frozen=True)
+class DollarRead:
+    """The same market, the same leg and the same window, measured in MONEY.
+
+    `index` is the range index the row's head already carries, recomputed on dollar
+    risk (contracts x point value x price x daily volatility) rather than on contracts
+    or on share of open interest. The rest is hover material: the level behind the
+    index, the volatility that scaled it, the window it was measured over, and the
+    notional index, which is drawn nowhere and is carried because it is the reading the
+    printed reports use (see COMPARE_DOLLARS).
+    """
+    index: float
+    risk_usd: float = None
+    notional_index: float = None
+    sigma_daily: float = None
+    weeks: int = None
+
+
+@dataclass(frozen=True)
 class StripRow:
     """One line of the strip: an asset-class header, a market, or a blank spacer."""
     kind: str            # "class", "market" or "spacer"
@@ -270,6 +340,7 @@ class StripRow:
     state: str = const.SETUP_NONE
     is_equity: bool = False
     prior: float = None  # where the index stood MOMENTUM_PERIOD weeks ago
+    dollar: DollarRead = None   # the same reading in dollars at risk, or None
 
 
 def _num(value):
@@ -313,7 +384,49 @@ def keeps(row, show, side):
     return True
 
 
-def build_rows(df, model, sort_by_index=True, show=SHOW_ALL, side=SIDE_BOTH):
+def band_of(value, model):
+    """Which of the model's three bands a 0-100 reading sits in: -1, 0 or +1.
+
+    Three, not two. Asking only "is it through a gate" scores the sharpest
+    disagreement on the board as agreement: Silver on 2026-08-18 sat at 0 on contracts
+    and 96 on dollars at risk, which is both ends of the axis at once, and a boolean
+    calls that a match because both are extremes.
+
+    The bands are also why this is asked here rather than on a gap in points. Contracts
+    at 98 against dollars at 90 is a wide gap the model answers the same way twice,
+    while 96 against 94 under NPF straddles the line and changes the answer.
+    """
+    if value is None:
+        return None
+    if value >= model.high:
+        return 1
+    if value <= model.low:
+        return -1
+    return 0
+
+
+def dollar_split(rows, model):
+    """`(disagree, missing)` over the drawn market rows.
+
+    `disagree` counts rows where the contract reading and the dollar reading are not
+    on the same side of the model's gate bands, which is the one difference between
+    the two lenses that changes an answer. `missing` counts markets with no dollar
+    reading at all: no contract multiplier in the specs table, or no bars to price.
+
+    Both are for the caption, and both exist for the same reason the skipped-market
+    count does. A board where six rows quietly have no second mark looks exactly like
+    a board where six markets agree.
+    """
+    markets = [r for r in rows if r.kind == "market"]
+    missing = sum(1 for r in markets if r.dollar is None or r.dollar.index is None)
+    disagree = sum(1 for r in markets
+                   if r.dollar is not None and r.dollar.index is not None
+                   and band_of(r.comm, model) != band_of(r.dollar.index, model))
+    return disagree, missing
+
+
+def build_rows(df, model, sort_by_index=True, show=SHOW_ALL, side=SIDE_BOTH,
+               dollars=None):
     """`(rows, skipped)` for one Signal Matrix frame.
 
     Markets with no index at the selected week cannot be placed on the axis, so they
@@ -323,6 +436,10 @@ def build_rows(df, model, sort_by_index=True, show=SHOW_ALL, side=SIDE_BOTH):
     Filtered-out markets are a different thing and are NOT counted here. The caller
     knows the filter it asked for, and a class left empty by one loses its header rather
     than sitting there as a heading over nothing.
+
+    `dollars` is an optional `{asset: DollarRead}` table, joined onto the rows here so
+    the figure stays pure over rows. It is the caller's job to have it match the week
+    being drawn; this only looks a name up.
     """
     cols = LEG_COLUMNS[model.key]
     state_col = SETUP_COLUMN[model.key]
@@ -353,7 +470,12 @@ def build_rows(df, model, sort_by_index=True, show=SHOW_ALL, side=SIDE_BOTH):
                           # point difference: a market that ran from 2 to 98 would put
                           # its prior mark off the axis otherwise.
                           prior=None if move is None
-                          else min(100.0, max(0.0, comm - move)))
+                          else min(100.0, max(0.0, comm - move)),
+                          # Keyed by the display name, the same key the frame and the
+                          # caller's dollar table both use. A market absent from that
+                          # table is one that cannot be priced, which is a state the
+                          # row has to carry rather than a lookup that may fail.
+                          dollar=(dollars or {}).get(asset))
         if not keeps(market, show, side):
             continue
         by_class.setdefault(market.asset_class, []).append(market)
@@ -538,7 +660,41 @@ def _tick_label(row, colors):
     return f'<span style="color:{verdict}">{row.label}</span>'
 
 
-def _hover(row, model):
+def _money(value):
+    """A dollar figure at the scale a reader can hold: bn, m, or k."""
+    if value is None or value != value:
+        return "n/a"
+    sign = "-" if value < 0 else ""
+    v = abs(value)
+    for unit, size in (("bn", 1e9), ("m", 1e6), ("k", 1e3)):
+        if v >= size:
+            return f"{sign}${v / size:,.1f}{unit}"
+    return f"{sign}${v:,.0f}"
+
+
+def _dollar_hover(row):
+    """The dollar block of a row's hover, or "" when there is nothing to say.
+
+    This is where the notional index lives. It is not drawn, because over a rolling
+    window it is very nearly the contract count again (the two agree to a median
+    correlation of 0.98, against 0.92 for dollar risk), so a second mark for it would
+    sit on top of the first on most rows and say nothing. In the hover it costs one
+    line and it is the reading the printed reports plot, so a reader comparing this
+    board against one of those can see both numbers rather than wonder which we drew.
+    """
+    d = row.dollar
+    if d is None or d.index is None:
+        return "<br><i>No dollar reading: no contract multiplier or no bars.</i>"
+    window = f" ({d.weeks}w)" if d.weeks else ""
+    notional = ("" if d.notional_index is None
+                else f"<br>Same, on notional: {d.notional_index:.0f}")
+    sigma = ("" if d.sigma_daily is None
+             else f"<br>Daily vol: {d.sigma_daily * 100:.1f}%")
+    return (f"<br><br>In dollars at risk{window}: {d.index:.0f}"
+            f"<br>Level: {_money(d.risk_usd)}{notional}{sigma}")
+
+
+def _hover(row, model, compare=COMPARE_PRIOR):
     legs = "".join(
         f"<br>{LEG_LABELS[leg]}: {value:.0f}"
         f"{' (through its gate)' if gate else ''}"
@@ -546,8 +702,11 @@ def _hover(row, model):
     verdict = STATE_LABELS.get(row.state)
     tail = f"<br><br>{model.title}: {verdict}" if verdict else f"<br><br>{model.title}: no setup"
     equity = "<br>Equity index: gated on Commercials alone" if row.is_equity else ""
+    # Only when the mark is on screen. A hover naming a dollar reading with no mark
+    # beside it is a claim about a comparison the reader cannot see.
+    money = _dollar_hover(row) if compare == COMPARE_DOLLARS else ""
     return (f"<b>{row.label}</b><br>{row.asset_class}"
-            f"<br>{LEG_LABELS['comm']}: {row.comm:.0f}{legs}{tail}{equity}")
+            f"<br>{LEG_LABELS['comm']}: {row.comm:.0f}{legs}{money}{tail}{equity}")
 
 
 def _ticks(model):
@@ -566,9 +725,10 @@ def _tick_text(model):
 GLYPH_MARK = "mark"        # the lollipop head
 GLYPH_TICK = "tick"        # the line-ns symbol: the speculator legs
 GLYPH_CIRCLE = "circle"    # the hollow prior-position circle
+GLYPH_DIAMOND = "diamond"  # the hollow dollar mark
 
 
-def legend_items(model, colors, palette):
+def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
     """The legend, as data: `[(group title, [(label, colour, glyph), ...]), ...]`.
 
     This used to be empty traces inside the first figure, the idiom plot_traces uses.
@@ -585,6 +745,13 @@ def legend_items(model, colors, palette):
     quiet row is not colourless: it is the Commercial series colour, and a reader has
     to be told that red-ish head does not mean bearish.
     """
+    # The reference key names whichever comparison is on, and nothing when neither is.
+    # A key for a mark the figure is not drawing is worse than no key at all: it is the
+    # one place a reader goes to find out what they are looking at.
+    reference = {
+        COMPARE_PRIOR: [(f"{const.MOMENTUM_PERIOD}w ago", colors.dim, GLYPH_CIRCLE)],
+        COMPARE_DOLLARS: [("Same, in $ at risk", colors.dim, GLYPH_DIAMOND)],
+    }.get(compare, [])
     # The neutral keys are as dim as the marks they stand for: a full-strength
     # "No setup" swatch would promise a colour the plot never draws.
     return [
@@ -592,15 +759,15 @@ def legend_items(model, colors, palette):
          [("Bull setup", colors.bull, GLYPH_MARK),
           ("Bear setup", colors.bear, GLYPH_MARK),
           ("Near", colors.bull_near, GLYPH_MARK),
-          ("No setup", colors.dim, GLYPH_MARK),
-          (f"{const.MOMENTUM_PERIOD}w ago", colors.dim, GLYPH_CIRCLE)]),
+          ("No setup", colors.dim, GLYPH_MARK)] + reference),
         ("Ticks: the legs this gate also reads",
          [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
           for leg in model.spec_legs if leg in LEG_LABELS]),
     ]
 
 
-def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
+def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
+                 compare=COMPARE_PRIOR):
     """The strip, as one figure.
 
     `rows` comes from build_rows. Nothing here reads a store, so a caller can hand it
@@ -709,7 +876,7 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
                         size=[HEAD_SIZE if _verdict_colour(r, colors) else
                               QUIET_HEAD_SIZE for _, r in markets],
                         color=heads, line=dict(width=1, color=heads)),
-            hovertext=[_hover(r, model) for _, r in markets],
+            hovertext=[_hover(r, model, compare) for _, r in markets],
             hoverinfo="text",
             showlegend=False,
         ))
@@ -719,7 +886,8 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
     # No connector to the current mark. The reference charts that do this well draw the
     # two positions and let the row pair them, and 42 connectors is a lot of line for a
     # move that is usually a few points wide.
-    prior = [(i, r.prior) for i, r in markets if r.prior is not None]
+    prior = ([(i, r.prior) for i, r in markets if r.prior is not None]
+             if compare == COMPARE_PRIOR else [])
     if prior:
         # `color`, not just `line.color`. An OPEN symbol draws its outline from
         # marker.color; marker.line is a second stroke around that. Setting only the
@@ -732,6 +900,46 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR):
             mode="markers",
             marker=dict(symbol="circle-open", size=6, color=colors.dim,
                         line=dict(width=1.2, color=colors.dim)),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+    # The same leg, the same window, measured in dollars at risk: a hollow diamond at
+    # the dollar reading and a hairline back to the head it disagrees with.
+    #
+    # The line first, so the two marks sit on top of it rather than behind it. One
+    # trace with None breaks between segments rather than one per row: Plotly colours a
+    # line per trace, so per-row colour would mean forty traces, and a single quiet
+    # neutral is the right answer anyway. The marks at either end carry the row's tier;
+    # the line only has to say which two belong together.
+    #
+    # Ink is self-limiting here, which is the property that makes it safe to leave on
+    # for the whole board: a market where money and contracts agree draws a diamond
+    # around its own head and no visible line, and the rows that draw a long connector
+    # are exactly the rows worth reading.
+    wedge = [(i, r) for i, r in markets
+             if r.dollar is not None and r.dollar.index is not None]
+    if compare == COMPARE_DOLLARS and wedge:
+        xs, ys = [], []
+        for i, r in wedge:
+            xs += [r.comm, r.dollar.index, None]
+            ys += [i, i, None]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines",
+            line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, WEDGE_ALPHA),
+                      width=WEDGE_WIDTH),
+            marker=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, WEDGE_ALPHA)),
+            hoverinfo="skip", showlegend=False,
+        ))
+        # `color`, not only `line.color`. Same trap the prior ring documents: an OPEN
+        # symbol draws its outline from marker.color, and leaving it unset takes the
+        # template's colourway rather than raising.
+        dollar_colours = [_mark_colour(r, colors, palette) for _, r in wedge]
+        fig.add_trace(go.Scatter(
+            x=[r.dollar.index for _, r in wedge], y=[i for i, _ in wedge],
+            mode="markers",
+            marker=dict(symbol=DOLLAR_SYMBOL, size=DOLLAR_SIZE,
+                        color=dollar_colours,
+                        line=dict(width=1.4, color=dollar_colours)),
             hoverinfo="skip", showlegend=False,
         ))
 

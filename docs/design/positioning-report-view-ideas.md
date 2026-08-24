@@ -880,3 +880,98 @@ the week it matters.
 question for the ladder in npf, judged by someone other than whoever proposed it. The
 prior is not neutral: `crowdmon` tested a close cousin, damage = crowding x illiquidity x
 fragility, across four pre-registered tests and got no positive result.
+
+
+## After the eleventh review: contracts against dollars, on the whole board
+
+The tenth review put the contracts-against-dollars wedge on `/exposure`, for one market at a
+time. This puts the same comparison on the strip, where it is forty-odd markets at once, and the
+measurements behind it are in
+[`docs/analysis/2026-08-24-contracts-against-dollars.md`](../analysis/2026-08-24-contracts-against-dollars.md)
+with a reproducer script beside it.
+
+The prompt was another printed report, this time gold and silver drawn twice each: net position
+in contracts, then the same position in US dollar notional, each with a percentile against its
+entire history. Its own numbers are the argument for looking. Silver's speculators were at the
+52nd percentile in contracts and the 97th in dollars in the same week.
+
+**What the strip draws is the risk rung, not the notional one, and that is measured rather than
+preferred.** Holding the market, the leg, the window and the statistic constant and changing only
+the unit: dollar risk correlates 0.917 with the contract reading at the median, parts from it by
+30 index points at the 95th percentile, and lands in a different one of the model's three bands
+on 11.7% of weeks. Dollar notional scores 0.979, 14.5 points and 5.4% on the same test. Over a
+rolling window notional is contracts times a slowly-moving price, so it is close to a monotone
+transform of the count, and a second mark for it would sit on top of the first on most rows. It
+is carried in the hover instead, one line, because it is the reading the printed reports plot and
+a reader comparing the two boards should be able to see both numbers.
+
+Worth being explicit that this is not a rebuttal of the source. The report ranks against the
+ENTIRE history, where notional carries the price level and therefore says a great deal; the strip
+ranks against a rolling window, which renormalizes exactly that away. The all-history version of
+the question already has a home on `/exposure`, and its expanding percentile is what answers it.
+
+**One reference mark per row, chosen by a control, rather than a fifth mark.** A row already
+carries the head, its stem and a tick per gated leg. The two comparisons worth putting beside them
+are the same shape of question, "this leg measured differently", and they compete for the same few
+pixels: where the index stood six weeks ago (differently in TIME) and where it sits in dollars at
+risk (differently in UNIT). Drawing both was tried first. At ROW_PX a hollow ring and a hollow
+diamond a few points apart are one smudge, and on a quiet row they are the same colour as well, so
+the row stops saying which is which. The COMPARE control picks one, and a third setting turns both
+off, which the page could not do before.
+
+**The dollar mark takes the row's colour and a different shape, because the palette has no free
+slot.** Every slot is spoken for twice over: `grid_colors` builds the bull verdict from slot 3,
+which is also Price, and the bear verdict from slot 0, which is also Commercials. So a
+"this is the dollar reading" colour would collide with a verdict on the one figure whose whole
+colour vocabulary is verdicts. Shape carries which comparison it is; colour goes on saying what it
+says everywhere else on the row.
+
+**The connector stays, which is the opposite call from the prior mark.** That mark deliberately has
+no line back to the head, on the argument that 42 connectors are a lot of ink for a move of a few
+points. Here the GAP is the subject rather than a by-product, and the ink is self-limiting in a way
+the momentum version's would not be: a market where money and contracts agree draws its diamond
+around its own head and a line of zero length, so the rows that spend ink are exactly the rows
+worth reading. Where the dollar reading falls between neutral and the head the connector lies along
+the stem and is invisible, which is the same information (the diamond is ON the stem, and the
+distance to the head is the gap) at no cost.
+
+**Disagreement is counted on the bands, and on three of them.** The caption says how many drawn
+markets the two lenses put in different bands, not how many differ by some number of points:
+contracts at 98 against dollars at 90 is a wide gap the model answers the same way twice, while 96
+against 94 under NPF straddles the line. Three bands rather than a boolean "through a gate",
+because Silver on 2026-08-18 sat at 0 on contracts and 96 on dollars, which is both ends of the
+axis at once, and a boolean scores the sharpest disagreement on the board as agreement.
+
+**Two counts, for the reason the caption already counts hidden and index-less markets.** A row with
+no diamond and a row whose two marks coincide look identical, and only one of them is a
+measurement. MSCI EAFE and MSCI Emerging Mkts have no contract multiplier, so they can never carry
+one; they are `heldout` today and therefore off the live board, which is why the sentence usually
+does not appear.
+
+**Off by default.** It is the only thing this page draws that needs the price store, so it is the
+only thing on it that can fail for reasons that have nothing to do with COT. The join costs about
+four seconds cold for the whole universe and about a third of a second warm, since `exposure`
+caches the daily price and volatility series per symbol and the strip caches the per-market
+readings keyed by the store's newest date, exactly as the Heatmap's two joined columns do.
+
+**Where the arithmetic lives.** Both halves are cotmetrics functions (`exposure.market_exposure`
+for the dollar series, `indicators.calculate_range_index` for the index) and this repo only
+composes them, the same shape as the Heatmap's `_spec_risk`, which pairs `market_exposure` with
+`expanding_pct_rank`. The composition is a range index of a dollar series and nothing else in the
+app wants one yet. The moment a second surface does, it moves to `cotmetrics.exposure` beside
+`windowed_pct_rank` rather than being copied.
+
+**One thing that fell out of the arithmetic and constrains what can ever be drawn here.** A
+position's share of open interest is the same number in contracts and in dollars, to 2.2e-16
+across the universe, because the point value, the price and the volatility cancel between the
+position and the market it sits in. So there is no dollar version of the NPF basis: the dollar
+lens is inherently a LEVEL lens, and under NPF the two marks differ in normalizer as well as in
+unit. That is the one place this comparison is not a controlled one, it is stated in the caption
+rather than hidden, and it is also why the NPF disagreement rate (20.7% of weeks) is the largest
+of the three measured.
+
+Still not built, from the list this document opened with: the window min/max/current tooltip, time
+in state, and the horizon ladder. The percentile tick from the whiskers section is now cheap,
+since `cotmetrics.exposure` grew `windowed_pct_rank` and `expanding_pct_rank` for the exposure
+page, but it is a second statistic on one axis and would need the same care about labelling that
+this comparison needed about units.
