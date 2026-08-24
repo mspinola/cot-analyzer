@@ -42,7 +42,12 @@ dependencies = [
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
     "crucible-marketdata>=0.2.0",
-    # Floor is 0.6.0 because /exposure ranks over a trailing window with
+    # Floor is 0.7.0 because the heatmap's Offside column imports
+    # `cotmetrics.offside`. Against 0.6.0 the module does not exist, and since
+    # `use_pages` imports every page module at startup, that ImportError takes
+    # down the whole route registry rather than one column.
+    #
+    # 0.6.0 was the floor because /exposure ranks over a trailing window with
     # `windowed_pct_rank` / `windowed_quantile` and passes `rank_window` to the
     # aggregate. Against 0.5.0 those do not exist, so the Lookback control
     # raises AttributeError the moment anything but All history is chosen.
@@ -50,8 +55,8 @@ dependencies = [
     # 0.5.0 was itself a correctness floor, for the `sigma_weighted` column the
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
-    # prevent. Both reasons stand; the higher number covers both.
-    "cotmetrics[options]>=0.6.0",
+    # prevent. All three reasons stand; the higher number covers them.
+    "cotmetrics[options]>=0.7.0",
 ]
 
 [project.optional-dependencies]
