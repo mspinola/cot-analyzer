@@ -41,19 +41,43 @@ from components.plot_colors import hex_to_rgba
 UNIT_NOTIONAL = "notional_usd"
 UNIT_RISK = "risk_usd"
 
+#: The same two quantities as a share of the market's OWN open interest, which is a
+#: BASIS and not a unit: it answers "how much of this market does the set hold" where the
+#: dollar columns answer "how much money is at stake". Kept in the same maps rather than
+#: given a parallel set, so every caller that resolves a column, a rank, a label or a
+#: note has exactly one code path and the Crowding switch is a change of column name.
+UNIT_NOTIONAL_SHARE = "notional_oi_share"
+UNIT_RISK_SHARE = "risk_oi_share"
+
+#: dollar column -> its share counterpart. The Crowding switch is this lookup.
+SHARE_OF = {
+    UNIT_NOTIONAL: UNIT_NOTIONAL_SHARE,
+    UNIT_RISK: UNIT_RISK_SHARE,
+}
+SHARE_UNITS = frozenset(SHARE_OF.values())
+
 UNIT_LABELS = {
     UNIT_NOTIONAL: "USD notional",
     UNIT_RISK: "USD daily risk",
+    UNIT_NOTIONAL_SHARE: "share of open interest",
+    UNIT_RISK_SHARE: "share of open-interest risk",
 }
 UNIT_RANK_COLUMN = {
     UNIT_NOTIONAL: "notional_pct_rank",
     UNIT_RISK: "risk_pct_rank",
+    UNIT_NOTIONAL_SHARE: "notional_oi_share_pct_rank",
+    UNIT_RISK_SHARE: "risk_oi_share_pct_rank",
 }
 UNIT_NOTES = {
     UNIT_NOTIONAL: ("contracts x point value x price. Summable across markets, but not "
                     "comparable between them: a bigger market carries bigger numbers."),
     UNIT_RISK: ("notional x daily volatility. The unit to compare on, and the one a "
                 "vol-targeting book holds constant while it sits at its target."),
+    UNIT_NOTIONAL_SHARE: ("the set's notional over the same set's open interest. Carries "
+                          "no price level and no market growth, so a 2005 reading and a "
+                          "2026 one mean the same thing."),
+    UNIT_RISK_SHARE: ("the same share, with both sides weighted by volatility. It is a "
+                      "share, not a share times a volatility: the sigma cancels."),
 }
 
 #: Percentiles drawn as the extreme envelope. Deliberately the same 10/90 the rest of
@@ -243,6 +267,10 @@ def unit_scale(values):
     same page draws equity-index notional in tens of billions and a single soft in tens
     of millions, and a hard-coded unit makes one of the two unreadable.
     """
+    # A share is already a small dimensionless number and scaling it would produce
+    # "0.5k" for a half. It is printed as a percentage instead, so it never scales.
+    if getattr(values, "name", None) in SHARE_UNITS:
+        return 1.0, ""
     peak = max((abs(v) for v in values if v == v), default=0.0)
     # `>= 10 x divisor`, not `>= divisor`, so the axis carries at least two digits. A
     # billion-dollar peak in billions is an axis labelled 0, 0.5, 1; in millions it is

@@ -249,10 +249,12 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 13
+    assert len(titles) == 17
     joined = " ".join(titles).lower()
     for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
-                  "gold is here", "dotted line", "lookback switch", "scale switch",
+                  "gold is here", "inflation switch", "answers the drift",
+                  "crowding switch", "crowding does not help",
+                  "dotted line", "lookback switch", "scale switch",
                   "volatility panel", "third panel", "not"):
         assert topic in joined
 
@@ -718,8 +720,16 @@ def test_the_aggregate_tuple_is_built_by_keyword_in_these_tests():
 def test_the_explanation_calls_gold_a_benchmark_and_never_an_inflation_adjustment():
     """Hard money, full stop. Gold beats consumer prices over five decades and misses
     them badly over two, so an inflation framing would invite reading a rise as real
-    growth. The page says what gold is, a second asset with its own trend, and leaves
-    price indices out of it entirely."""
+    growth. The page says what gold is, a second asset with its own trend.
+
+    The ban is on the whole body and stays there, deliberately, after a round where it
+    was briefly narrowed to the gold entries. The page now has a good reason to discuss
+    a price-index adjustment, since one was built and measured and found inert, and the
+    narrowing would have let it use these words to say so. Kept blanket anyway: the
+    words are what a reader takes away, and a body that contains them at all can be
+    skimmed into the framing this rule exists to prevent, whichever entry they sit in.
+    The copy says the same thing in other words, which cost one sentence to write.
+    """
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
     assert "hard money" in body or "hard-money" in body
     for word in ("inflation", "consumer price", "cpi", "real terms"):
@@ -734,7 +744,29 @@ def test_the_explanation_credits_the_idea_it_borrows():
 def test_the_explanation_keeps_the_circularity_caveat():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "self-referential" in body
-    assert "98th percentile" in body
+
+
+def test_the_gold_explanation_does_not_hardcode_a_live_percentile():
+    """This test replaces an assertion that pinned the stale number itself.
+
+    The copy used to say the crowd sits "at the 98th percentile of their own history in
+    dollars and the 67th in ounces", and this test asserted that phrase was present. It
+    was measured and true when written, and it is a reading that moves every Tuesday, so
+    static copy quoting it rots in silence and a test pinning it locks the rot in.
+    Measured against the pinned store on 2026-08-24 the same pair read 97.0 and 73.1, a
+    23.9 point gap rather than 31.
+
+    It was also the widest week standing in for the effect: the median week moves about 6
+    points and the ninetieth about 14. The copy now states the distribution, which moves
+    slowly, and carries a reproducer. See
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`.
+
+    The live reading belongs in the headline above the chart, which already is one.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "median week" in body
+    for stale in ("98th percentile", "67th in ounces"):
+        assert stale not in body
 
 
 # ── one market is a reading, not a degenerate set ─────────────────────────────
@@ -1042,3 +1074,87 @@ def test_the_headline_does_not_say_weeks_twice():
     # and without a window it is still a percentage OF WEEKS, not of a history
     plain, _ = headline(ranked(97.0), et.UNIT_RISK, LEG_SPEC)
     assert "of the weeks in this set's own history" in plain
+
+
+# ── the crowding control ──────────────────────────────────────────────────────
+
+
+def test_the_crowding_copy_says_where_it_does_not_help():
+    """A control offered without its failing cases reads as a strict improvement.
+
+    It is not one: `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md` measured
+    it clearing on 7 of 9 asset classes, and the two it misses are named here so a reader
+    on a Softs or Currencies view is not left wondering why nothing moved.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "Softs and Currencies" in body
+
+
+def test_the_page_says_why_there_is_no_inflation_switch():
+    """The DOCUMENT outcome of the study that produced the Crowding switch.
+
+    A twenty-year chart of dollars invites "shouldn't this be inflation adjusted", and
+    the honest answer is that it was tried and it is inert: CPI cleared on 0 of 9 asset
+    classes where gold cleared 8. Saying so on the page beats leaving each reader to
+    ask, and beats a silence that reads as an oversight.
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "general price index" in body
+    assert "percentile" in body
+
+
+def test_the_page_does_not_claim_no_deflator_could_work():
+    """The frozen gate forbids the generalisation, and the reason is a gap in evidence.
+
+    The study tested CPI and gold. It ran no placebo divisor and no trade-weighted
+    dollar, and the trade-weighted dollar is the one numeraire the adjacent returns work
+    found to do anything at all. So "CPI does not displace this" is supported and "no
+    deflator is the answer" is not, and the copy has to keep them apart.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "trade-weighted dollar was never tested" in body
+    assert "that ONE index rather than the whole idea" in body
+
+
+def test_the_crowding_copy_does_not_promise_a_deflator():
+    """It removes market growth, not the price level, and those are different claims.
+
+    The same study found CPI clears on 0 of 9 classes, so the page must not let a reader
+    take this control for an inflation adjustment, which is the framing `cotmetrics`
+    already refuses for the Gold switch.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
+    for word in ("inflation", "consumer price", "cpi", "real terms", "deflated"):
+        assert word not in body
+
+
+def test_the_crowding_copy_warns_the_table_stays_in_dollars():
+    """Shares do not add across markets, so the contribution table cannot follow the
+    chart into share units. Two panels in different units with nothing saying so is the
+    kind of thing a reader discovers by misreading it."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "stays in dollars" in body
+
+
+def test_a_share_prints_as_a_percentage_not_as_money():
+    """A share is a ratio of two quantities in the same unit, so it has no currency and
+    no ounces. Stamping it with either claims a denomination it does not have."""
+    from pages.analytics.exposure import money
+    out = money(0.532, "", unit=et.UNIT_NOTIONAL_SHARE)
+    assert out == "53.2% of open interest"
+    assert "$" not in out
+
+
+def test_a_share_reads_the_same_under_either_numeraire():
+    from pages.analytics.exposure import money
+    assert (money(0.532, "", numeraire="gold", unit=et.UNIT_RISK_SHARE)
+            == money(0.532, "", numeraire="usd", unit=et.UNIT_RISK_SHARE))
+
+
+def test_a_share_axis_is_never_rescaled_into_thousands():
+    """`unit_scale` exists so an axis reads $55bn rather than 55,387,601,984. A half is
+    not "0.5k", so a share opts out."""
+    import pandas as pd
+    share = pd.Series([0.1, 0.53], name=et.UNIT_NOTIONAL_SHARE)
+    assert et.unit_scale(share) == (1.0, "")

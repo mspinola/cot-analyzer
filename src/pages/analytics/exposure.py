@@ -262,7 +262,7 @@ def subject_noun(single, possessive=False):
     return noun + "'s" if possessive else noun
 
 
-def money(value, suffix, numeraire=None):
+def money(value, suffix, numeraire=None, unit=None):
     """A magnitude with its unit attached, in whichever numeraire is on.
 
     One function because five places print one of these and a page that said "$" on a
@@ -270,6 +270,11 @@ def money(value, suffix, numeraire=None):
     Sign is left to the caller: every one of them says "net long" or "net short" in
     words beside it, and a minus sign as well would be the same fact twice.
     """
+    if unit in exposure_traces.SHARE_UNITS:
+        # No currency mark and no ounces. A share is a ratio of two quantities in the
+        # same unit, so it is the same number under either numeraire, and stamping it
+        # with one would claim a denomination it does not have.
+        return f"{abs(value) * 100:,.1f}% of open interest"
     magnitude = f"{abs(value):,.1f}{suffix}"
     if numeraire == exposure.NUMERAIRE_GOLD:
         return f"{magnitude} oz"
@@ -279,6 +284,8 @@ def money(value, suffix, numeraire=None):
 def unit_name(unit, numeraire=None):
     """The unit in PROSE: "USD daily risk", or "daily risk, in troy ounces of gold"."""
     label = exposure_traces.UNIT_LABELS[unit]
+    if unit in exposure_traces.SHARE_UNITS:
+        return label
     if numeraire == exposure.NUMERAIRE_GOLD:
         return label.replace("USD ", "") + ", in troy ounces of gold"
     return label
@@ -288,6 +295,8 @@ def column_name(unit, suffix, numeraire=None):
     """The same unit as a COLUMN HEADER, which has about twenty characters rather than a
     sentence. "Daily risk (k oz)", not "daily risk, in troy ounces of gold (k)"."""
     label = exposure_traces.UNIT_LABELS[unit]
+    if unit in exposure_traces.SHARE_UNITS:
+        return label.capitalize()
     if numeraire == exposure.NUMERAIRE_GOLD:
         stem = label.replace("USD ", "").capitalize()
         return f"{stem} ({suffix} oz)".replace("( ", "(")
@@ -353,7 +362,7 @@ def headline(frame, unit, leg, when=None, numeraire=None, single=False,
     divisor, suffix = exposure_traces.unit_scale(frame[unit])
     value = row[unit] / divisor
     side = "long" if value >= 0 else "short"
-    amount = money(value, suffix, numeraire)
+    amount = money(value, suffix, numeraire, unit)
     who = exposure.LEG_LABELS[leg]
 
     if rank != rank:
@@ -558,6 +567,23 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
 def how_to_read(unit):
     """What each part of the picture is for, in the order a reader meets it.
 
+    **Do not put a live percentile in this copy.** The Gold switch entry used to read
+    "on the current week those speculators sit at the 98th percentile of their own
+    history in dollars and the 67th in ounces", which was accurate when written and is
+    a moving number frozen into static text, so it rots every Tuesday. Measured against
+    the pinned store on 2026-08-24 the same pair was 97.0 and 73.1, a 23.9 point gap
+    rather than 31, and the sentence had been quoting one dramatic week as though it
+    were the effect. The figures here are distributional (median, ninetieth, widest)
+    because those move slowly, and they are reproducible: dollar risk, speculators, the
+    four-market default composite, from npf's exposure-numeraire study,
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`. The headline above the
+    chart is where a live reading belongs, and it already is one.
+
+    The same study is why the tooltip's drift figures changed. It carried "Equities
+    4.2x to 1.3x since 2002", inherited from a comment in `cotmetrics.exposure` that
+    records no leg, no unit, no membership and no date range for it, so nothing could
+    reproduce it. The replacements are measured under this page's OWN defaults.
+
     Written as "what you learn" rather than "what it is". A legend saying "expanding
     10th to 90th percentile" is accurate and answers a question nobody asked; what a
     reader wants is that the band is where the line normally sits, so a value outside
@@ -604,8 +630,43 @@ def how_to_read(unit):
          "Larry Williams' WillVal applied to a whole complex: an asset measured against "
          "hard money rather than against a currency. Since 2002 the US equity composite "
          "is up 13.9 times in dollars and 1.0 times in gold. It changes the reading and "
-         "not just the axis: on the current week those speculators sit at the 98th "
-         "percentile of their own history in dollars and the 67th in ounces."),
+         "not just the axis, though by less than any single week suggests: across the "
+         "whole history of this composite the switch moves the percentile by about 6 "
+         "points in the median week, 14 at the ninetieth, and into the mid-20s at its "
+         "widest."),
+        ("Why there is no inflation switch",
+         "Because it was built, measured, and it did nothing. A twenty-year chart of "
+         "dollars invites the question, so the obvious answer was tested: divide by a "
+         "general price index and read the series in today's money. Across 43 markets it "
+         "moved the percentile by one or two points and changed the headline on at most "
+         "6% of weeks, clearing on none of the nine asset classes where gold clears "
+         "eight. The drift you can see here is mostly the market getting bigger, and the "
+         "general price level has not quite doubled while some of these markets grew "
+         "twenty-fold, so there was never enough in the index to remove it."),
+        ("What answers the drift instead",
+         "The percentile, which is why it is on every reading here rather than left to "
+         "the axis: it asks where this week sits in this set's own history, and a "
+         "history that drifts upward does not fool a rank the way it fools an eye. Then "
+         "the Crowding switch below, which removes the growth itself. Neither divides by "
+         "a price index, and what was measured was that ONE index rather than the whole "
+         "idea: a trade-weighted dollar was never tested here and would be the next "
+         "thing to try if you wanted one."),
+        ("The Crowding switch",
+         "Divides by the same set's own open interest, so the line is the share of the "
+         "market this group holds rather than the money it has at stake. It is the only "
+         "control here that removes market GROWTH rather than the price level, which is "
+         "what a deflator removes, and on the drift this page exists to fight it is the "
+         "strongest of the three: Metals runs 24.4 times its early history in dollars "
+         "and 1.8 in share, Fixed Income 14.1 and 1.0. It is a share, so it reads the "
+         "same with Gold on or off."),
+        ("Where Crowding does not help",
+         "Softs and Currencies, where it changes almost no reading, so it is not a "
+         "strict improvement on dollars and the switch is a switch rather than a "
+         "default. Two more things to hold. It answers how crowded relative to the "
+         "market and NOT how much money is at stake, so a set can grow its share while "
+         "cutting its position if the market shrank faster. And the contribution table "
+         "below stays in dollars while this is on, because per-market shares do not add "
+         "up to the set's share the way dollars do."),
         ("What gold is here",
          "A hard-money benchmark: a second asset the first is being measured against, "
          "not a fixed ruler. It has run 6.6% a year since 1978 at 19% volatility and "
@@ -802,7 +863,7 @@ def caption(frame, unit, leg, when=None, numeraire=None, single=False,
     rank_text = (f"the {ordinal(rank)} percentile of {window_phrase(window)}"
                  if rank == rank else "no percentile yet, under two years of history")
     return (
-        f"{exposure.LEG_LABELS[leg]} are {side} {money(value, suffix, numeraire)} "
+        f"{exposure.LEG_LABELS[leg]} are {side} {money(value, suffix, numeraire, unit)} "
         f"({unit_name(unit, numeraire)}) as of {row.name:%B %d, %Y}, "
         f"which is {rank_text}. {exposure_traces.UNIT_NOTES[unit]} "
         + (f"Lookback: {window_note}. " if window_note else "")
@@ -928,6 +989,18 @@ def layout(**kwargs):
                                            inline=True, className="me-3",
                                            style={"color": vc.BRIGHTER_TEXT_COLOR,
                                                   "fontSize": "0.85rem"}),
+                            dbc.Switch(id='exposure_crowding_toggle', label="Crowding",
+                                       persistence='session',
+                                       value=False, className="mb-0 me-3"),
+                            dbc.Tooltip(
+                                "Divide by the same set's own open interest, so the line "
+                                "is the share of the market it holds rather than the "
+                                "money at stake. Removes market GROWTH, which no "
+                                "deflator does: Metals drift 24.4x to 1.8x. It adds "
+                                "nothing on Softs or Currencies, and the contribution "
+                                "table below stays in dollars, because shares do not "
+                                "add.",
+                                target='exposure_crowding_toggle', placement="bottom"),
                             dbc.Switch(id='exposure_gold_toggle', label="Gold",
                                        persistence='session', value=False,
                                        className="mb-0",
@@ -937,8 +1010,9 @@ def layout(**kwargs):
                         dbc.Tooltip(
                             "Divide by the gold price, so the series is in troy ounces "
                             "rather than dollars. Dollar figures carry the price level; "
-                            "gold removes most of that drift (Equities 4.2x to 1.3x "
-                            "since 2002). Gold is an asset, not a ruler, and gold "
+                            "gold removes most of that drift (the equity composite's "
+                            "late history runs 3.2x its early history in dollars and "
+                            "0.8x in gold). Gold is an asset, not a ruler, and gold "
                             "itself in gold terms is just its contract count.",
                             target='exposure_gold_toggle', placement="bottom"),
                     ], xs=12, md=2, className="px-md-2 mt-2 mt-md-0"),
@@ -1047,6 +1121,7 @@ def _default_names(asset_classes):
 
 
 def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None,
+                  dollar_unit=None,
                   window=None, window_note=""):
     numeraire = getattr(agg, "numeraire", None)
     """Everything the page says about ONE week, in one place.
@@ -1062,7 +1137,10 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None,
 
     table = exposure.contribution_table(agg.members, when=stamp,
                                         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
-    bars = contribution_grid(table, unit, palette, leg, numeraire)
+    # The table is per-market contributions that SUM to the total, and shares do not
+    # sum. So it stays in dollars while the chart above it is a share, and the copy
+    # says so rather than leaving a reader to notice the units disagree.
+    bars = contribution_grid(table, dollar_unit or unit, palette, leg, numeraire)
     label = ("" if not len(table) else
              f"Week of {shown:%B %d, %Y}, against this market's own history."
              if len(table) == 1 else
@@ -1173,14 +1251,23 @@ clientside_callback(
     Input('exposure_scale_selector', 'value'),
     Input('exposure_lookback_selector', 'value'),
     Input('exposure_gold_toggle', 'value'),
+    Input('exposure_crowding_toggle', 'value'),
     Input('session_palette_theme_asset_store', 'data'),
 )
 def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
-                    palette_name):
+                    crowding, palette_name):
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
+    # The Crowding switch is a change of COLUMN, not a second code path. `unit` is the
+    # column name everything downstream resolves against, so swapping it here gives the
+    # chart, the headline, the rank, the band and the axis label their share versions at
+    # once. The contribution table is the one thing that must not follow: shares do not
+    # add across markets, so it keeps the dollar column and says so.
+    dollar_unit = unit
+    if crowding:
+        unit = exposure_traces.SHARE_OF[unit]
     scale = scale or exposure_traces.SCALE_LEVEL
     numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
@@ -1188,7 +1275,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
     if not asset_classes:
         empty = exposure_traces.build_figure(None, None, unit=unit, colors=colors,
                                              palette=palette)
-        no_bars = contribution_grid(None, unit, palette, leg)
+        no_bars = contribution_grid(None, dollar_unit, palette, leg)
         return (empty, no_bars, "", "", "",
                 {**HEAD_STYLE, "color": vc.TEXT_COLOR}, help_block,
                 "Select an asset class.", "", None, "", {"display": "none"})
@@ -1227,7 +1314,8 @@ def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
         contract_counts=contracts_net(agg), window=window)
 
     said = describe_week(agg, part_frames, unit, leg, palette, ranks=ranks,
-                         window=window, window_note=window_note)
+                         window=window, window_note=window_note,
+                         dollar_unit=dollar_unit)
     # A control change resets the selection: the clicked week belonged to the set that
     # was on screen when it was clicked, and silently carrying it onto a different set
     # is how a page ends up describing a week it never drew.
@@ -1277,12 +1365,13 @@ CROSSHAIR = {"color": "rgba(255,255,255,0.5)", "width": 1, "dash": "dot"}
     State('exposure_scale_selector', 'value'),
     State('exposure_lookback_selector', 'value'),
     State('exposure_gold_toggle', 'value'),
+    State('exposure_crowding_toggle', 'value'),
     State('session_palette_theme_asset_store', 'data'),
     State('exposure_chart', 'figure'),
     prevent_initial_call=True,
 )
 def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lookback,
-                in_gold, palette_name, current_fig):
+                in_gold, crowding, palette_name, current_fig):
     """Move the whole reading to the week under the cursor, same gesture as OI Alignment.
 
     Everything above the chart describes one week, and until now that week was always
@@ -1316,6 +1405,9 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lo
     palette = viz_config.get_palette(palette_name)
     leg = leg or exposure.LEG_SPEC
     unit = unit or exposure_traces.UNIT_RISK
+    dollar_unit = unit
+    if crowding:
+        unit = exposure_traces.SHARE_OF[unit]
     names = list(members) if members else _names_in(asset_classes)
     numeraire = (exposure.NUMERAIRE_GOLD if in_gold else exposure.NUMERAIRE_USD)
 
@@ -1334,7 +1426,8 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lo
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
     said = describe_week(agg, part_frames, unit, leg, palette, when=when,
-                         window=window, window_note=window_note)
+                         window=window, window_note=window_note,
+                         dollar_unit=dollar_unit)
     latest = agg.frame.index[-1]
     notice, notice_style = rewind_notice(said["shown"], latest)
 
