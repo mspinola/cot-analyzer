@@ -734,7 +734,29 @@ def test_the_explanation_credits_the_idea_it_borrows():
 def test_the_explanation_keeps_the_circularity_caveat():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "self-referential" in body
-    assert "98th percentile" in body
+
+
+def test_the_gold_explanation_does_not_hardcode_a_live_percentile():
+    """This test replaces an assertion that pinned the stale number itself.
+
+    The copy used to say the crowd sits "at the 98th percentile of their own history in
+    dollars and the 67th in ounces", and this test asserted that phrase was present. It
+    was measured and true when written, and it is a reading that moves every Tuesday, so
+    static copy quoting it rots in silence and a test pinning it locks the rot in.
+    Measured against the pinned store on 2026-08-24 the same pair read 97.0 and 73.1, a
+    23.9 point gap rather than 31.
+
+    It was also the widest week standing in for the effect: the median week moves about 6
+    points and the ninetieth about 14. The copy now states the distribution, which moves
+    slowly, and carries a reproducer. See
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`.
+
+    The live reading belongs in the headline above the chart, which already is one.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "median week" in body
+    for stale in ("98th percentile", "67th in ounces"):
+        assert stale not in body
 
 
 # ── one market is a reading, not a degenerate set ─────────────────────────────

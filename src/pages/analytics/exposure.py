@@ -558,6 +558,23 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
 def how_to_read(unit):
     """What each part of the picture is for, in the order a reader meets it.
 
+    **Do not put a live percentile in this copy.** The Gold switch entry used to read
+    "on the current week those speculators sit at the 98th percentile of their own
+    history in dollars and the 67th in ounces", which was accurate when written and is
+    a moving number frozen into static text, so it rots every Tuesday. Measured against
+    the pinned store on 2026-08-24 the same pair was 97.0 and 73.1, a 23.9 point gap
+    rather than 31, and the sentence had been quoting one dramatic week as though it
+    were the effect. The figures here are distributional (median, ninetieth, widest)
+    because those move slowly, and they are reproducible: dollar risk, speculators, the
+    four-market default composite, from npf's exposure-numeraire study,
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`. The headline above the
+    chart is where a live reading belongs, and it already is one.
+
+    The same study is why the tooltip's drift figures changed. It carried "Equities
+    4.2x to 1.3x since 2002", inherited from a comment in `cotmetrics.exposure` that
+    records no leg, no unit, no membership and no date range for it, so nothing could
+    reproduce it. The replacements are measured under this page's OWN defaults.
+
     Written as "what you learn" rather than "what it is". A legend saying "expanding
     10th to 90th percentile" is accurate and answers a question nobody asked; what a
     reader wants is that the band is where the line normally sits, so a value outside
@@ -604,8 +621,10 @@ def how_to_read(unit):
          "Larry Williams' WillVal applied to a whole complex: an asset measured against "
          "hard money rather than against a currency. Since 2002 the US equity composite "
          "is up 13.9 times in dollars and 1.0 times in gold. It changes the reading and "
-         "not just the axis: on the current week those speculators sit at the 98th "
-         "percentile of their own history in dollars and the 67th in ounces."),
+         "not just the axis, though by less than any single week suggests: across the "
+         "whole history of this composite the switch moves the percentile by about 6 "
+         "points in the median week, 14 at the ninetieth, and into the mid-20s at its "
+         "widest."),
         ("What gold is here",
          "A hard-money benchmark: a second asset the first is being measured against, "
          "not a fixed ruler. It has run 6.6% a year since 1978 at 19% volatility and "
@@ -937,8 +956,9 @@ def layout(**kwargs):
                         dbc.Tooltip(
                             "Divide by the gold price, so the series is in troy ounces "
                             "rather than dollars. Dollar figures carry the price level; "
-                            "gold removes most of that drift (Equities 4.2x to 1.3x "
-                            "since 2002). Gold is an asset, not a ruler, and gold "
+                            "gold removes most of that drift (the equity composite's "
+                            "late history runs 3.2x its early history in dollars and "
+                            "0.8x in gold). Gold is an asset, not a ruler, and gold "
                             "itself in gold terms is just its contract count.",
                             target='exposure_gold_toggle', placement="bottom"),
                     ], xs=12, md=2, className="px-md-2 mt-2 mt-md-0"),
