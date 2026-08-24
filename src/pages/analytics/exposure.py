@@ -130,6 +130,50 @@ def ranked_against(single, window):
     return f"{subject_noun(single, possessive=True)} own history"
 
 
+def table_ranked_against(single, window):
+    """What the contributions table's percentiles were measured against, in the words
+    that fit after "against".
+
+    Not `ranked_against`, which describes the TOTAL and so reaches for "this set's own
+    history" once more than one market is selected. Every ROW of this table is one
+    market whatever is selected, so the plural case wants "its own", never "this set's":
+    a column headed "%ile" that said it was ranked against the set would be claiming the
+    one thing the table exists to deny, which is that a member is measured on the
+    total's scale.
+
+    "Whole" rather than "own", because that phrase now has to stand next to "the last
+    52 weeks" and be told apart from it. "Its own history" is true of a window too.
+
+    Both restrictions or neither. A percentile in this table is bounded twice over and
+    a reader checking one against a published figure is off by both: by the Lookback
+    window, which this says, and by the set's coverage, which `set_coverage_note`
+    says beside it. `aggregate_exposure` restricts every member to the weeks the TOTAL
+    can price, so gold reads 88 alone and 81 in a set that starts in 2002 because
+    Russell does.
+    """
+    if window:
+        return f"the last {window} weeks"
+    return "this market's whole history" if single else "its own whole history"
+
+
+def set_coverage_note(single, lead="over"):
+    """The second restriction on every percentile in the table, for a set only.
+
+    A single market IS the set, so its coverage is its own history and the clause would
+    be a qualification with nothing to qualify. It earns its place the moment there are
+    two: adding a short-lived market shortens every other member's history and moves
+    its percentile, which is arithmetic a reader has no way to guess from a column of
+    numbers, and it is the reason a figure here can disagree with a published one for
+    the same market and week.
+
+    `lead` is the connective, because the three sentences that carry this clause reach
+    it by different routes and one of them already said "over". The phrase itself is
+    the part worth having in one place: three copies of it is three chances for one to
+    drift into saying "history" and stop meaning the same restriction.
+    """
+    return "" if single else f", {lead} the weeks this set covers"
+
+
 def weeks_compared(single, window):
     """The same thing after "higher than 97% of", which wants different words.
 
@@ -425,7 +469,7 @@ CONTRACTS_COLUMN = "net_contracts"
 CONTRACTS_RANK_COLUMN = "contracts_pct_rank"
 
 
-def attach_contracts_rank(table, agg, when=None):
+def attach_contracts_rank(table, agg, when=None, window=None):
     """Each market's own contract count and percentile, joined onto the table by name.
 
     The per-market form of the sentence a single market already gets. Selecting one
@@ -436,11 +480,12 @@ def attach_contracts_rank(table, agg, when=None):
     contracts is one market having grown or its volatility having moved, and a total
     cannot say which of its members that happened to.
 
-    **The SAME rank the dollar column beside it uses**, which is the expanding one, so
-    the two are a comparison of units and not of stretches of time. `contribution_table`
-    ranks against all history whatever the Lookback control says, so following the
-    control here would put two percentiles on one row measured over different histories,
-    which is the confusion this column exists to remove.
+    **The SAME rank the dollar column beside it uses**, so the two are a comparison of
+    units and not of stretches of time. That was the expanding rank when this column
+    shipped, because `contribution_table` had no window to follow; it takes one now, and
+    the invariant is what moved rather than the choice. The two columns have to be
+    passed the same `window` or the row goes back to mixing histories by the other
+    route, which is the confusion this column exists to remove.
 
     **"Its own history" means the weeks the SET covers, not the weeks the market has.**
     `aggregate_exposure` restricts every member frame to the weeks the total can price,
@@ -462,8 +507,8 @@ def attach_contracts_rank(table, agg, when=None):
         if CONTRACTS_COLUMN not in frame:
             continue
         series = pd.to_numeric(frame[CONTRACTS_COLUMN], errors="coerce")
-        rank = exposure.expanding_pct_rank(series,
-                                           exposure_traces.MIN_RANK_PERIODS)
+        rank = exposure.windowed_pct_rank(series, window,
+                                          exposure_traces.MIN_RANK_PERIODS)
         # The same week the dollar columns were read at, and the same fallback:
         # `contribution_table` takes the last valid week when the stamp is absent, and
         # a row whose two percentiles came from different weeks is worse than a blank.
@@ -690,12 +735,14 @@ def how_to_read(unit):
          "A sum says nothing about whether every market agreed or one market carried "
          "it, so the table below breaks the week apart and the line under the headline "
          "scores it. The Contribution bar runs from the centre, so a market leaning "
-         "against the total points the other way and is faded. The %ile column is each "
-         "market against ITS own history, which the bar cannot show: a market can be a "
-         "small part of the total and still be at the most extreme reading it has ever "
-         "had. With one market selected there is nothing to break apart, so the table "
-         "is one row and the concentration score is dropped rather than printed as a "
-         "meaningless 100%."),
+         "against the total points the other way and is faded. The two %ile columns are "
+         "each market against ITS own history, never against the total, which the bar "
+         "cannot show: a market can be a small part of the total and still be at the "
+         "most extreme reading it has had. Both follow the Lookback switch, the same "
+         "stretch of weeks the headline above them was ranked over, so a row and the "
+         "sentence over it are answering one question. With one market selected there "
+         "is nothing to break apart, so the table is one row and the concentration "
+         "score is dropped rather than printed as a meaningless 100%."),
         ("The Gold switch",
          "Prices everything in troy ounces instead of dollars, both panels, which is "
          "Larry Williams' WillVal applied to a whole complex: an asset measured against "
@@ -771,7 +818,8 @@ def how_to_read(unit):
          "\u201cextreme lately\u201d rather than \u201cextreme ever\u201d, and it "
          "hides the side: on 52 weeks a reading above 50 is a net SHORT position 12.5% "
          "of the time at the median market and 62% on the Russell, against 0.2% on all "
-         "history. The band moves with it."),
+         "history. Everything ranked on this page moves with it: the headline, the "
+         "band, the %ile scale, and both percentile columns of the table below."),
         ("The Scale switch",
          "Level plots the dollars; %ile plots where each week sat in the history up to "
          "itself, 0 to 100. On a long set the level view is dominated by recent years "
@@ -812,7 +860,7 @@ TABLE_HEADER_PX = 34
 TABLE_MAX_ROWS = 12
 
 
-def contribution_columns(unit, palette, leg, table, numeraire=None):
+def contribution_columns(unit, palette, leg, table, numeraire=None, window=None):
     """The table's columns: both units, the percentile of the drawn one, and the bar.
 
     Both units on every row whichever one is drawn, because they are not substitutes:
@@ -823,6 +871,11 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
     The percentile is each market's own, against ITS history, not the total's. That is
     the column the bar cannot carry: a market can be a small part of the total and be at
     the most extreme reading it has ever had, and those are different facts.
+
+    `window` is only ever read for the tooltips: the ranking happens upstream. It is
+    here because a header tooltip that names the wrong stretch of time is the same
+    defect as a column that ranks over one, and both were true of this table until the
+    window was threaded through.
     """
     other = (exposure_traces.UNIT_NOTIONAL if unit == exposure_traces.UNIT_RISK
              else exposure_traces.UNIT_RISK)
@@ -853,12 +906,15 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
         money(other),
         {"headerName": "%ile", "field": rank, "type": "numericColumn", "width": 80,
          "valueFormatter": percentile,
-         # Names the unit now that a second percentile sits beside it. Without that,
-         # two columns headed "%ile" and "Contracts %ile" leave the first one to be
-         # inferred from the money columns to its left.
-         "headerTooltip": f"Where this market's own history puts this week's "
-                          f"{exposure_traces.UNIT_LABELS[unit]}, 0 to 100. Against all "
-                          f"of it, whatever the Lookback control says"},
+         # Names the unit, now that a second percentile sits beside it: two columns
+         # headed "%ile" and "Contracts %ile" leave the first one to be inferred from
+         # the money columns to its left. And names the stretch, because "its own
+         # history" is true of every setting of the Lookback control and so tells a
+         # reader who changed it nothing.
+         "headerTooltip": f"Where this week's {exposure_traces.UNIT_LABELS[unit]} sits "
+                          f"against {table_ranked_against(True, window)}"
+                          f"{set_coverage_note(len(table) < 2)}, 0 to 100. Follows the "
+                          f"Lookback control"},
     ]
     # The other lens, per market. The dollar percentile says whether the money is
     # unusual; this says whether the POSITION is, and the two part company hard: the
@@ -871,10 +927,16 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
             {"headerName": "Contracts %ile", "field": CONTRACTS_RANK_COLUMN,
              "type": "numericColumn", "width": 120,
              "valueFormatter": percentile,
+             # Two restrictions on "the same weeks", because a reader checking this
+             # against a published figure is off by both: the Lookback window, and
+             # the set's own coverage. The second is dropped on one market for the
+             # same reason the column to its left drops it, which is that a single
+             # market IS the set and the clause has nothing to qualify.
              "headerTooltip": "The same percentile on the raw contract count, over the "
-                              "weeks this set covers. Where it sits below the column "
-                              "to its left, the money is the extreme rather than the "
-                              "position",
+                              "same weeks as the column to its left"
+                              f"{set_coverage_note(len(table) < 2, 'which are')}. "
+                              "Where it sits below that column, the money is the "
+                              "extreme rather than the position",
              # A percentile has no side and this column's whole subject is a position
              # that has one, so the count rides the rowData for the hover. Same reason
              # the single-market lens line carries it.
@@ -901,7 +963,7 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
     ]
 
 
-def contribution_grid(table, unit, palette, leg, numeraire=None):
+def contribution_grid(table, unit, palette, leg, numeraire=None, window=None):
     """The composition of one week, as a table rather than a chart.
 
     It replaced a horizontal bar figure, which drew the one column a chart is better at
@@ -930,7 +992,8 @@ def contribution_grid(table, unit, palette, leg, numeraire=None):
     return dag.AgGrid(
         id='exposure_contributions',
         rowData=rows,
-        columnDefs=contribution_columns(unit, palette, leg, table, numeraire),
+        columnDefs=contribution_columns(unit, palette, leg, table, numeraire,
+                                        window=window),
         className="ag-theme-quartz-dark",
         style={"height": f"{height}px", "width": "100%", "fontSize": "12px"},
         defaultColDef={"sortable": True, "resizable": True, "suppressMenu": True},
@@ -1234,18 +1297,29 @@ def describe_week(agg, part_frames, unit, leg, palette, when=None, ranks=None,
     shown = stamp if stamp is not None else (
         agg.frame.index[-1] if not agg.frame.empty else None)
 
-    table = exposure.contribution_table(agg.members, when=stamp,
+    # The SAME window the headline, the band and the rank scale were given. The table
+    # ranked expanding whatever the Lookback control said, so a reader on "52 weeks"
+    # read "higher than 97% of the last 52 weeks" directly above a "%ile" column
+    # measured against twenty years, with both on screen at once and nothing saying
+    # they were different questions. Threading it through is the only fix: copy can
+    # describe two bases, it cannot make them comparable, and the control exists
+    # because the window is the reader's choice rather than the page's.
+    table = exposure.contribution_table(agg.members, when=stamp, window=window,
                                         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
-    table = attach_contracts_rank(table, agg, when=stamp)
+    # Moves with the dollar columns or not at all: the contract percentile is only a
+    # second lens on the same week if the two were ranked over the same weeks.
+    table = attach_contracts_rank(table, agg, when=stamp, window=window)
     # The table is per-market contributions that SUM to the total, and shares do not
     # sum. So it stays in dollars while the chart above it is a share, and the copy
     # says so rather than leaving a reader to notice the units disagree.
-    bars = contribution_grid(table, dollar_unit or unit, palette, leg, numeraire)
+    bars = contribution_grid(table, dollar_unit or unit, palette, leg, numeraire,
+                             window=window)
     label = ("" if not len(table) else
-             f"Week of {shown:%B %d, %Y}, against this market's own history."
+             f"Week of {shown:%B %d, %Y}, against {table_ranked_against(True, window)}."
              if len(table) == 1 else
-             f"What made it, week of {shown:%B %d, %Y}. "
-             f"Percentiles are each market against its own history.")
+             f"What made it, week of {shown:%B %d, %Y}. Percentiles are each market "
+             f"against {table_ranked_against(False, window)}"
+             f"{set_coverage_note(False)}.")
 
     # One source for the noun the copy uses, from what was actually summed rather than
     # from what was asked for: a two-name selection where one dropped for want of a

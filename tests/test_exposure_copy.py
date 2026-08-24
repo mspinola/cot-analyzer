@@ -35,6 +35,7 @@ from pages.analytics.exposure import (  # noqa: E402
     contribution_columns,
     contribution_grid,
     crosshair_shapes,
+    describe_week,
     headline,
     how_to_read,
     lens_line,
@@ -43,7 +44,9 @@ from pages.analytics.exposure import (  # noqa: E402
     ordinal,
     resolve_window,
     rewind_notice,
+    set_coverage_note,
     snap_week,
+    table_ranked_against,
     unit_name,
     week_row,
 )
@@ -1222,14 +1225,17 @@ def test_the_contract_count_rides_along_for_the_hover():
 
 
 def test_both_percentiles_on_a_row_are_ranked_over_the_same_history():
-    """`contribution_table` ranks the dollar columns against ALL history whatever the
-    Lookback control says, so this follows it rather than the control. Two percentiles
-    on one row measured over different stretches of time is the confusion the column
-    exists to remove."""
+    """The invariant that survived the fix, with the other side of it moved.
+
+    This column shipped following `contribution_table`'s expanding rank because that
+    function had no window to follow. It takes one now, so both are handed the window
+    the Lookback control resolved to, and what is pinned here is that the join uses
+    whatever it is given rather than a stretch of its own choosing."""
     table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
                            "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
     one = contract_agg(Gold=ramp(-1))
-    joined = attach_contracts_rank(table, one, when=one.frame.index[-1])
+    when = one.frame.index[-1]
+    joined = attach_contracts_rank(table, one, when=when)
     # The last week is below every earlier one, so it lands at the bottom whatever
     # history it is ranked against. The NUMBER still discriminates, because the
     # denominator is how many weeks were compared: 0.91 against all 110, 1.92 on a
@@ -1237,6 +1243,15 @@ def test_both_percentiles_on_a_row_are_ranked_over_the_same_history():
     # version of this comment claimed a 52-week window would give the same answer
     # here, which is false, and would have left the assertion below pinning nothing.
     assert joined[CONTRACTS_RANK_COLUMN].tolist() == [100.0 / RANKABLE_ROWS]
+    # And asserted rather than left in a comment, since a discriminating constant that
+    # nothing checks is one refactor from not being one. The default has to be the
+    # expanding form because `contribution_table`'s is: a caller that omits the window
+    # on both columns has to get a matched pair, not two defaults that agree today.
+    for window in (52, 26):
+        moved = attach_contracts_rank(table, one, when=when, window=window)
+        assert moved[CONTRACTS_RANK_COLUMN].iloc[0] == 100.0 / window
+        assert moved[CONTRACTS_RANK_COLUMN].iloc[0] != joined[
+            CONTRACTS_RANK_COLUMN].iloc[0]
 
 
 def test_the_week_is_the_one_the_dollar_columns_were_read_at():
@@ -1291,7 +1306,163 @@ def test_the_percentile_moves_with_the_set_because_the_members_do():
         table, truncated)[CONTRACTS_RANK_COLUMN].iloc[0]
     assert long_history != short_history
 
-    column = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC,
-                                                  attach_contracts_rank(table, whole))
-                  if c["headerName"] == "Contracts %ile")
-    assert "weeks this set covers" in column["headerTooltip"]
+    # Two rows, because the clause names a set and one market IS the set: the column
+    # to its left drops the same clause on a one-row table, and two tooltips
+    # qualifying one restriction differently is the near-miss both of them exist to
+    # avoid.
+    pair = table_of(**{n: {"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 99.0}
+                       for n in ("Gold", "Silver")})
+    joined = attach_contracts_rank(pair, whole._replace(members={
+        name: whole.members["Gold"] for name in ("Gold", "Silver")}))
+    for header in ("%ile", "Contracts %ile"):
+        column = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC,
+                                                      joined)
+                      if c["headerName"] == header)
+        assert "weeks this set covers" in column["headerTooltip"]
+
+
+# ── the lookback reaches the table ────────────────────────────────────────────
+# The headline and the band followed the Lookback control; the contributions table
+# below them ranked every member against all history whatever the control said. So
+# "higher than 97% of the last 52 weeks" sat directly above a column headed "%ile"
+# measured over twenty years, both on screen at once, with nothing saying they were
+# different questions. Threading the window through is the fix rather than explaining
+# it, because copy can describe two bases and cannot make them comparable.
+
+
+def faded(last):
+    """Rising for the whole history, then one week back down to `last`.
+
+    Chosen so the two rankings cannot agree by accident: all history puts that week
+    near the middle, because half the series is below it, while the last 52 weeks put
+    it at the bottom, because every week still inside the window is above it. A series
+    where the two happen to give the same answer would pass this test unthreaded.
+    """
+    return list(range(RANKABLE_ROWS - 1)) + [last]
+
+
+def rankable_members(*names, rows=RANKABLE_ROWS):
+    """Members carrying both dollar units and contracts, which is what the table wants.
+
+    `contract_agg` carries contracts alone, which is enough to test the join and not
+    enough to reach `contribution_table`: a member with no value column contributes no
+    row, so the table comes back empty and the label with it.
+    """
+    idx = pd.date_range("2026-01-06", periods=rows, freq="W-TUE")
+    values = faded(50)
+    return {name: pd.DataFrame({"net_contracts": values,
+                                "notional_usd": [v * 1e6 for v in values],
+                                "risk_usd": [v * 1e4 for v in values]}, index=idx)
+            for name in names}
+
+
+def rankable_agg(*names):
+    return agg(rows=RANKABLE_ROWS)._replace(members=rankable_members(*names),
+                                            coverage={n: (None, None) for n in names})
+
+
+def test_the_contract_percentile_follows_the_window_it_is_given():
+    """The same series read two ways: middling over all of it, bottom over the last
+    year. A column that ignored the control would return the first number under a
+    headline built from the second."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
+    one = contract_agg(Gold=faded(50))
+    when = one.frame.index[-1]
+    expanding = attach_contracts_rank(table, one, when=when)
+    windowed = attach_contracts_rank(table, one, when=when, window=52)
+    assert expanding[CONTRACTS_RANK_COLUMN].iloc[0] == 52 / RANKABLE_ROWS * 100
+    assert windowed[CONTRACTS_RANK_COLUMN].iloc[0] == 100.0 / 52
+
+
+def test_the_dollar_columns_are_handed_the_same_window_as_the_contract_column():
+    """Whatever the number is, the two have to be measured over one stretch of weeks.
+    Moving one without the other puts the row back to mixing histories by the other
+    route, which is what the contract column exists to remove."""
+    one = rankable_agg("Gold")
+    when = one.frame.index[-1]
+    said = describe_week(one, {}, et.UNIT_RISK, LEG_SPEC, PALETTE, when=when,
+                         window=52)
+    rows = said["bars"].rowData
+    assert rows[0]["risk_pct_rank"] == rows[0][CONTRACTS_RANK_COLUMN] == 100.0 / 52
+
+    all_history = describe_week(one, {}, et.UNIT_RISK, LEG_SPEC, PALETTE, when=when)
+    row = all_history["bars"].rowData[0]
+    assert row["risk_pct_rank"] == row[CONTRACTS_RANK_COLUMN] == 52 / RANKABLE_ROWS * 100
+
+
+def test_the_table_label_names_the_window_the_headline_named():
+    """Both sentences are on screen together, so a reader comparing them is comparing
+    what the page told them they were comparing."""
+    one = rankable_agg("Gold")
+    when = one.frame.index[-1]
+    windowed = describe_week(one, {}, et.UNIT_RISK, LEG_SPEC, PALETTE, when=when,
+                             window=52)
+    assert "the last 52 weeks" in windowed["bar_label"]
+    assert "the last 52 weeks" in windowed["headline"]
+
+    expanding = describe_week(one, {}, et.UNIT_RISK, LEG_SPEC, PALETTE, when=when)
+    assert "whole history" in expanding["bar_label"]
+    assert "52" not in expanding["bar_label"]
+
+
+def test_a_set_says_each_market_rather_than_this_market():
+    """Every row is one market whatever is selected, so the plural case wants "its
+    own", never "this set's": a column claiming it was ranked against the set would be
+    claiming the one thing the table exists to deny."""
+    both = rankable_agg("Gold", "Silver")
+    said = describe_week(both, {}, et.UNIT_RISK, LEG_SPEC, PALETTE,
+                         when=both.frame.index[-1])
+    assert "each market against its own whole history" in said["bar_label"]
+    assert "this set's" not in said["bar_label"]
+    assert table_ranked_against(False, 26) == "the last 26 weeks"
+
+
+def test_the_label_carries_the_second_restriction_too():
+    """A percentile here is bounded twice over and a reader checking one against a
+    published figure is off by both: `aggregate_exposure` restricts every member to the
+    weeks the TOTAL can price, so gold reads 88 alone and 81 in a set starting in 2002.
+    A single market IS the set, so the clause has nothing to qualify there."""
+    both = rankable_agg("Gold", "Silver")
+    said = describe_week(both, {}, et.UNIT_RISK, LEG_SPEC, PALETTE,
+                         when=both.frame.index[-1], window=52)
+    assert "the last 52 weeks, over the weeks this set covers" in said["bar_label"]
+    one = describe_week(rankable_agg("Gold"), {}, et.UNIT_RISK, LEG_SPEC, PALETTE,
+                        when=both.frame.index[-1], window=52)
+    assert "this set covers" not in one["bar_label"]
+    assert set_coverage_note(True) == ""
+
+
+def test_the_header_tooltip_stops_saying_the_control_is_ignored():
+    """The tripwire. "Against all of it, whatever the Lookback control says" was true
+    of this column and goes false the moment the window reaches it, and a tooltip
+    naming the wrong stretch of time is the same defect as a column ranking over one."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 97.0})
+    for window, expected in ((52, "the last 52 weeks"),
+                             (None, "this market's whole history")):
+        rank = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC,
+                                                    table, window=window)
+                    if c["headerName"] == "%ile")
+        assert expected in rank["headerTooltip"]
+        assert "whatever the Lookback control says" not in rank["headerTooltip"]
+        assert "Follows the Lookback control" in rank["headerTooltip"]
+
+
+def test_the_grid_hands_the_window_to_its_columns():
+    """`contribution_grid` builds the column definitions, so a window that stopped at
+    its signature would rank correctly and label wrongly."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 97.0})
+    grid = contribution_grid(table, et.UNIT_RISK, PALETTE, LEG_SPEC, window=26)
+    rank = next(c for c in grid.columnDefs if c["headerName"] == "%ile")
+    assert "the last 26 weeks" in rank["headerTooltip"]
+
+
+def test_the_standing_explanation_says_the_table_moves_with_the_control():
+    """The help block is where a reader who changed the control goes to find out what
+    changed, and it named the band and not the table."""
+    entries = dict(how_to_read(et.UNIT_RISK))
+    assert "Lookback" in entries["What it is made of"]
+    assert "table" in entries["The Lookback switch"]

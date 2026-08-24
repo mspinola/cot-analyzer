@@ -42,7 +42,14 @@ dependencies = [
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
     "crucible-marketdata>=0.2.0",
-    # Floor is 0.8.0 because the Crowding switch reads `notional_oi_share`,
+    # Floor is 0.9.0 because /exposure passes `window` to
+    # `exposure.contribution_table`, so that the contributions table ranks each
+    # member over the same weeks the headline above it was ranked over. Against
+    # 0.8.0 the parameter does not exist and the call raises TypeError, which
+    # takes the page down on every render rather than degrading it: there is no
+    # setting of the Lookback control that avoids the keyword.
+    #
+    # 0.8.0 was the floor because the Crowding switch reads `notional_oi_share`,
     # `risk_oi_share` and their percentile columns. Against 0.7.0 those columns
     # are absent, so the switch produces a KeyError on the frame rather than a
     # degraded chart, and it does so on the first render after anyone flips it.
@@ -61,7 +68,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.8.0",
+    "cotmetrics[options]>=0.9.0",
 ]
 
 [project.optional-dependencies]
