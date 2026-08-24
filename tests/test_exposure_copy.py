@@ -1264,3 +1264,31 @@ def test_the_dollar_percentile_header_names_its_unit_now_that_two_exist():
         rank = next(c for c in contribution_columns(unit, PALETTE, LEG_SPEC, table)
                     if c["headerName"] == "%ile")
         assert et.UNIT_LABELS[unit] in rank["headerTooltip"]
+
+
+def test_the_percentile_moves_with_the_set_because_the_members_do():
+    """`aggregate_exposure` restricts every member to the weeks the total can price, so
+    a market's "own history" is the set's history. Gold reads 88 on its own and 81 in a
+    set that starts in 2002 because Russell does. The dollar columns have always done
+    this; pinned here so nobody "fixes" this column into disagreeing with them."""
+    table = table_of(Gold={"risk_usd": 1.0, "notional_usd": 2.0,
+                           "risk_pct_rank": 99.0, "notional_pct_rank": 99.0})
+    # A long climb ending on a week that is mid-range against all of it and near the
+    # bottom of its last third. Both frames clear MIN_RANK_PERIODS, so the only thing
+    # that differs is how much history the set left in.
+    base = agg(rows=300)
+    counts = list(range(299)) + [150]
+    whole = base._replace(members={
+        "Gold": pd.DataFrame({"net_contracts": counts}, index=base.frame.index)})
+    truncated = whole._replace(members={
+        name: frame.iloc[-150:] for name, frame in whole.members.items()})
+
+    long_history = attach_contracts_rank(table, whole)[CONTRACTS_RANK_COLUMN].iloc[0]
+    short_history = attach_contracts_rank(
+        table, truncated)[CONTRACTS_RANK_COLUMN].iloc[0]
+    assert long_history != short_history
+
+    column = next(c for c in contribution_columns(et.UNIT_RISK, PALETTE, LEG_SPEC,
+                                                  attach_contracts_rank(table, whole))
+                  if c["headerName"] == "Contracts %ile")
+    assert "weeks this set covers" in column["headerTooltip"]

@@ -442,6 +442,16 @@ def attach_contracts_rank(table, agg, when=None):
     control here would put two percentiles on one row measured over different histories,
     which is the confusion this column exists to remove.
 
+    **"Its own history" means the weeks the SET covers, not the weeks the market has.**
+    `aggregate_exposure` restricts every member frame to the weeks the total can price,
+    so adding a short-lived market to the selection shortens every other member's
+    history and moves its percentile: Gold reads 88 on the contract count alone and 81
+    inside an equities-and-metals set that starts in 2002 because Russell does. The
+    dollar columns have always behaved this way and this follows them, which is the
+    point; it is called out because this column is the one a reader is most likely to
+    check against a published figure, and the published figure will have used the
+    market's whole history.
+
     Returns the table unchanged when there is nothing to join, so a caller can apply it
     unconditionally.
     """
@@ -861,9 +871,10 @@ def contribution_columns(unit, palette, leg, table, numeraire=None):
             {"headerName": "Contracts %ile", "field": CONTRACTS_RANK_COLUMN,
              "type": "numericColumn", "width": 120,
              "valueFormatter": percentile,
-             "headerTooltip": "The same percentile on the raw contract count. Where it "
-                              "sits below the column to its left, the money is the "
-                              "extreme rather than the position",
+             "headerTooltip": "The same percentile on the raw contract count, over the "
+                              "weeks this set covers. Where it sits below the column "
+                              "to its left, the money is the extreme rather than the "
+                              "position",
              # A percentile has no side and this column's whole subject is a position
              # that has one, so the count rides the rowData for the hover. Same reason
              # the single-market lens line carries it.

@@ -1039,6 +1039,15 @@ Three details of that column, each of which could have gone the other way:
   have been the first thing to bring that back.
 - **The count rides along for the hover**, because a percentile has no side and this column's
   whole subject is a position that has one.
+- **"Its own history" means the weeks the SET covers.** `aggregate_exposure` restricts every
+  member frame to the weeks the total can price, so adding a short-lived market shortens every
+  other member's history and moves its percentile: gold reads 88 on its own and **81** inside an
+  equities-and-metals set that starts in 2002 because Russell does. The dollar columns have
+  always behaved this way and this one follows them, which is the point. It is called out because
+  this is the column a reader is most likely to check against a published figure, and a published
+  figure will have used the market's whole history. The table's own label still says "each market
+  against its own history", which is a shade imprecise for both column families; the fix belongs
+  with whoever next edits that label rather than in a second pass here.
 
 What was NOT taken, beyond what the two earlier evaluations already rejected: their "spec = mirror
 of commercials" labelling, which folds Small Traders into the speculator leg, and their choice to
