@@ -1230,9 +1230,12 @@ def test_both_percentiles_on_a_row_are_ranked_over_the_same_history():
                            "risk_pct_rank": 50.0, "notional_pct_rank": 50.0})
     one = contract_agg(Gold=ramp(-1))
     joined = attach_contracts_rank(table, one, when=one.frame.index[-1])
-    # The last week is below every earlier one, so all history puts it at the bottom.
-    # A 52-week window would say the same of it only because it is the same series;
-    # what is pinned is that the join asked for no window at all.
+    # The last week is below every earlier one, so it lands at the bottom whatever
+    # history it is ranked against. The NUMBER still discriminates, because the
+    # denominator is how many weeks were compared: 0.91 against all 110, 1.92 on a
+    # 52-week window, 3.85 on a 26-week one. Measured, not reasoned: an earlier
+    # version of this comment claimed a 52-week window would give the same answer
+    # here, which is false, and would have left the assertion below pinning nothing.
     assert joined[CONTRACTS_RANK_COLUMN].tolist() == [100.0 / RANKABLE_ROWS]
 
 
