@@ -9,7 +9,7 @@ import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pandas as pd
-from cotmetrics import exposure
+from cotmetrics import exposure, offside
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
 from dash import (
@@ -357,6 +357,102 @@ def attach_spec_risk(df, newest_date):
     return df
 
 
+#: How far under water is worth lighting, in the market's own weekly sigma. A DISPLAY
+#: threshold, deliberately rounder than any figure in the study behind the measure: the
+#: pooled tenth percentile of Large Spec readings is about -1.7 and the per-market median
+#: cutoff about -1.4, so -2 lights a genuinely unusual reading without implying the grid
+#: reproduces a statistic. Only the losing tail is lit; a cohort deep in PROFIT is not
+#: distress, and the measure is not symmetric in what it says.
+OFFSIDE_DEEP = -2.0
+
+#: The cohort this column reads. Large Specs alone, NOT the large+small `LEG_SPEC` the
+#: dollar-risk column uses, and the difference is not cosmetic: a basis computed on the
+#: summed net describes a trader who is both cohorts at once, and the two have different
+#: average costs and behave differently when under water (measured in
+#: `npf/docs/handoffs/2026-08-23-offside-capitulation-prereg.md`). Large Specs is also
+#: the cohort every published figure for this measure is quoted on.
+OFFSIDE_LEG = exposure.LEG_LARGE
+
+
+@functools.lru_cache(maxsize=256)
+def _leg_offside(asset, newest_date):
+    """One market's weekly offside reading, and the cost basis behind it.
+
+    Keyed by the store's newest date purely as a cache-buster, exactly as `_spec_risk`
+    is: a Friday release must invalidate this and nothing else does. Lookback is not a
+    key and the computation always passes "Custom", because a cost basis reads net
+    contracts and prices, none of which the index-window control touches.
+
+    No percentile here, unlike the dollar-risk column, and the asymmetry is the point.
+    Dollar risk is incomparable across markets, so it needs ranking against a market's
+    own history before it means anything. Offside is ALREADY comparable: dividing by the
+    market's own weekly sigma is what the measure does, and 0 means "at the cohort's
+    average cost" in every market. Ranking it would throw that away and replace a
+    readable quantity with a percentile of one.
+
+    Returns {date_str: (offside, basis, price)} with NaNs already turned into None, or
+    None when the market cannot be marked at all. Broad catch by design: this is a
+    display join, and one market without prices must not take the other rows down.
+    """
+    try:
+        r = offside.market_offside(asset, leg=OFFSIDE_LEG, lookback="Custom")
+    except Exception as e:
+        utils.cot_logger.warning(f"heatmap: no offside reading for {asset}: {e}")
+        return None
+    return {ts.strftime('%Y-%m-%d'): (float(o) if o == o else None,
+                                      float(b) if b == b else None,
+                                      float(p) if p == p else None)
+            for ts, o, b, p in zip(r.index, r["offside"].to_numpy(),
+                                   r["basis"].to_numpy(), r["price"].to_numpy())}
+
+
+def attach_offside(df, newest_date):
+    """Join the offside reading onto the matrix frame, by asset and week.
+
+    Row-by-row on the row's OWN date rather than the page's target date, matching
+    `attach_spec_risk`: with no target selected each market shows its latest week, and
+    those can differ.
+
+    Three columns ride the rowData and only one is a grid column: the basis and the mark
+    exist for the cell's tooltipValueGetter, which reads them off params.data. Dropping
+    them here would blank the tooltip, not raise.
+    """
+    reads, bases, prices = [], [], []
+    for asset, date in zip(df["Asset"], df["Date"]):
+        table = _leg_offside(asset, newest_date) or {}
+        o, b, p = table.get(date, (None, None, None))
+        reads.append(o)
+        bases.append(b)
+        prices.append(p)
+    # Object dtype on purpose: a float column would coerce every None to NaN, and the
+    # grid's null guards ('params.value != null') key on null, not NaN.
+    df["Offside"] = pd.Series(reads, index=df.index, dtype=object)
+    df["Offside Basis"] = pd.Series(bases, index=df.index, dtype=object)
+    df["Offside Mark"] = pd.Series(prices, index=df.index, dtype=object)
+    return df
+
+
+def offside_styles_for(colors, highlight=None):
+    """Cell styling for the Offside column.
+
+    Lights the LOSING tail only, and uses the bear colour for it. That is a P&L
+    statement rather than a market-direction verdict: the number is the sign of the
+    cohort's own mark-to-market, so red means "these holders are down", not "this market
+    goes lower". The distinction matters more here than anywhere else on the page,
+    because the intuitive next step (they are trapped, so they must fold) was
+    pre-registered, tested, and did not hold.
+
+    The null guard is load-bearing for the same reason it is on the risk column: JS
+    coerces null to 0, so without it a market with no basis yet would read as deeply
+    offside rather than as blank.
+    """
+    return [
+        {"condition": f"params.value != null && params.value <= {OFFSIDE_DEEP}",
+         "style": {"color": highlight or colors.bear}},
+        {"condition": "true", "style": {"color": colors.dim}},
+    ]
+
+
 def risk_rank_styles_for(colors, highlight=None):
     """Cell styling for the Risk %ile column.
 
@@ -393,6 +489,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
 
     available = get_indexer().get_available_dates()
     df = attach_spec_risk(df, available[0] if available else None)
+    df = attach_offside(df, available[0] if available else None)
 
     matrix_date = ""
     if not df.empty:
@@ -405,6 +502,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
 
     oi_styles = oi_styles_for(colors, highlight=color_palette[2])
     risk_rank_styles = risk_rank_styles_for(colors, highlight=color_palette[2])
+    offside_styles = offside_styles_for(colors)
 
     _RAW = models.RAW_PF.band
     _NORM = models.NPF.band
@@ -556,6 +654,45 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
                         " + (params.data['Spec Risk'] < 0 ? ' net short' : ' net long')"
                         " + ' in daily risk' : null")},
                     "cellStyle": {"styleConditions": risk_rank_styles},
+                    "headerClass": "group-border-right",
+                    "cellClass": "group-border-right",
+                },
+            ]
+        },
+        {
+            # Its own group rather than a third column under Exposure, because it reads a
+            # different cohort (Large Specs, not Large+Small) and answers the opposite
+            # question. Exposure is about SIZE; this is about P&L per contract, and the
+            # two move independently: a cohort can be at a record position and in profit,
+            # which is in fact the common case.
+            "headerName": "Cost Basis · Large Specs",
+            "children": [
+                {
+                    "field": "Offside",
+                    "minWidth": 100,
+                    "headerTooltip": (
+                        f"How far {exposure.LEG_LABELS[OFFSIDE_LEG]} sit from their own "
+                        f"average cost, in this market's weekly standard deviations. "
+                        f"Negative is under water. Per CONTRACT, so position size does "
+                        f"not enter: -3 means the cohort is three typical weekly moves "
+                        f"below what it paid, whether it holds 400 lots or 400,000. "
+                        f"Basis is average-cost on the weekly net, marked on "
+                        f"ratio-adjusted prices. Lit at <= {OFFSIDE_DEEP:.0f}. This is a "
+                        f"reading of who is LOSING, not a forecast: deep readings were "
+                        f"tested for predicting capitulation and did not, so a lit cell "
+                        f"is not a signal that the position is about to be cut. Hover a "
+                        f"cell for the basis. Blank until the market has half a year of "
+                        f"priced history"),
+                    "valueFormatter": {"function": "params.value != null ? d3.format('+.1f')(params.value) : '–'"},
+                    # The two prices behind the ratio, on hover rather than in columns,
+                    # on the same argument as the dollar-risk level one group over: a
+                    # reader who wants the level wants it once, not in every row.
+                    "tooltipValueGetter": {"function": (
+                        "params.data['Offside Basis'] != null ? "
+                        "'cost ' + d3.format(',.2f')(params.data['Offside Basis'])"
+                        " + ' vs mark ' + d3.format(',.2f')(params.data['Offside Mark'])"
+                        " : null")},
+                    "cellStyle": {"styleConditions": offside_styles},
                     "headerClass": "group-border-right",
                     "cellClass": "group-border-right",
                 },
