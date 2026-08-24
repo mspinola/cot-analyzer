@@ -7,9 +7,9 @@
 # Price type to use for daily estimations ("close" or "settlement").
 price_type: "settlement"
 
-# Max daily open-interest flow as a fraction of daily volume, per asset class.
-flow_caps:
-  Default: 0.10
+# flow_caps was removed 2026-08-23: its only consumer, the intra-week gap
+# estimator estimate_current_gap_positions, was deleted in cotmetrics 734bbc6
+# (an ADR-0006 prerequisite), and the key was read by nothing thereafter.
 
 # Lookback windows (weeks) computed for every COT report.
 lookbacks:
