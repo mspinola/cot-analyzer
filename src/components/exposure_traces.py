@@ -328,9 +328,26 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     ranked = scale == SCALE_RANK
     # What the money is denominated in, needed by the hovers as well as the axis.
     base = "oz gold" if numeraire == exposure.NUMERAIRE_GOLD else "USD"
+    # What the EXPOSURE panels are denominated in, which is NOT always `base`. A share
+    # of open interest is a ratio of two quantities in the same unit, so it has no
+    # denomination at all, and labelling its axis "USD" was wrong in the one way this
+    # feature can be wrong. `base` still describes panel 1, the price composite, which
+    # follows the numeraire and is genuinely in dollars or ounces whatever panels 2 and
+    # 3 are showing.
+    share = unit in SHARE_UNITS
+    # Deliberately NOT called `measure`: that name is taken further down for the chart
+    # title, which is built from UNIT_LABELS and needs the long form. This is the short
+    # form the hovers append to a number, where "share of open interest" would not fit.
+    hover_unit = "% of OI" if share else base
     rank_column = UNIT_RANK_COLUMN[unit]
     values = frame[rank_column] if ranked else frame[unit]
     divisor, suffix = (1.0, "") if ranked else unit_scale(values)
+    # Percentage POINTS on the axis, so it reads 0 to 60 rather than 0.0 to 0.6. Done
+    # here rather than in `unit_scale` on purpose: the headline reads that function too
+    # and already multiplies by 100 itself, so moving the factor there would print
+    # "3,200% of open interest".
+    if share and not ranked:
+        divisor = 0.01
     scaled = values / divisor
     leg_colour = palette[LEG_PALETTE_SLOT.get(leg, 0)]
 
@@ -431,17 +448,20 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
         # Each scale's hover carries the OTHER quantity, so neither view hides what the
         # other one is for: the level cannot answer "is this a lot" on its own, and the
         # percentile cannot say how much money that is.
-        customdata=(frame[unit] / unit_scale(frame[unit])[0]).to_numpy() if ranked
-        else frame[rank_column].to_numpy(),
+        # On the %ile scale the level rides along as customdata, and it needs the SAME
+        # scaling the level axis would have given it, percentage points included, or the
+        # hover reads "0.3 % of OI" for a third of the market.
+        customdata=(frame[unit] / (0.01 if share else unit_scale(frame[unit])[0])
+                    ).to_numpy() if ranked else frame[rank_column].to_numpy(),
         # The percentile as a WORD, because a template can only append a fixed suffix
         # and three values in ten do not end in "th". Same series either way: it is the
         # y value on the ranked scale and the customdata on the level one.
         text=ordinals(frame[rank_column]),
         hovertemplate=(
             "%{x|%b %d, %Y}<br>%{text} percentile<br>%{customdata:,.1f}"
-            + unit_scale(frame[unit])[1] + f" {base}<extra></extra>" if ranked else
+            + unit_scale(frame[unit])[1] + f" {hover_unit}<extra></extra>" if ranked else
             "%{x|%b %d, %Y}<br>%{y:,.1f}" + suffix
-            + f" {base}<br>" + "%{text} percentile of its own history"
+            + f" {hover_unit}<br>" + "%{text} percentile of its own history"
             + "<extra></extra>"
         )),
         row=2, col=1)
@@ -480,7 +500,7 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
                       width=PART_WIDTH),
             text=ordinals(aligned) if ranked else None,
             hovertemplate=(("%{text} percentile<extra>" if ranked
-                            else "%{y:,.1f}" + suffix + f" {base}<extra>")
+                            else "%{y:,.1f}" + suffix + f" {hover_unit}<extra>")
                            + exposure.LEG_LABELS[part_leg] + "</extra>")),
             row=3, col=1)
         drew_companion = True
@@ -510,7 +530,9 @@ def build_figure(frame, composite, *, unit=UNIT_NOTIONAL, colors, palette,
     # Parenthesised, because the two numeraires want opposite word orders otherwise:
     # "USD m" is the established form and "m USD" is not, while "k oz gold" is right and
     # "oz gold k" is not. "USD (m)" and "oz gold (k)" are both fine and are one rule.
-    usd = "Percentile" if ranked else (f"{base} ({suffix})" if suffix else base)
+    # A share carries no scale suffix and no currency, so it is the label on its own.
+    # This line used `base` before, which hardcoded "USD" over a fraction.
+    usd = "Percentile" if ranked else (f"{measure} ({suffix})" if suffix else measure)
     price_axis = price_axis_type(composite)
     # Plotly's default on a log axis puts a tick at every digit, which in a panel this
     # short (26% of the figure, about 180px) renders as a column of stacked single

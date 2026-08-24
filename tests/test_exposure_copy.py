@@ -1158,3 +1158,4 @@ def test_a_share_axis_is_never_rescaled_into_thousands():
     import pandas as pd
     share = pd.Series([0.1, 0.53], name=et.UNIT_NOTIONAL_SHARE)
     assert et.unit_scale(share) == (1.0, "")
+

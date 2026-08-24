@@ -30,6 +30,12 @@ def frame(values, ranks=None, weeks=6):
         "n_markets": 3,
         "notional_pct_rank": ranks or [50.0] * len(values),
         "risk_pct_rank": ranks or [50.0] * len(values),
+        # Share of open interest, as a FRACTION, which is how cotmetrics emits it.
+        # 0.32 is roughly where copper's speculators actually sit.
+        "notional_oi_share": [0.32] * len(values),
+        "risk_oi_share": [0.30] * len(values),
+        "notional_oi_share_pct_rank": ranks or [50.0] * len(values),
+        "risk_oi_share_pct_rank": ranks or [50.0] * len(values),
     }, index=idx)
 
 
@@ -742,3 +748,45 @@ def test_every_ranked_trace_carries_its_ordinals():
     assert list(subject.text) == ["50th", "50th", "50th"]
     vol = next(t for t in fig.data if (t.name or "").startswith("Volatility"))
     assert vol.text is not None
+
+
+# ── a share is not denominated in anything ────────────────────────────────────
+
+
+def test_a_share_axis_is_never_labelled_in_a_currency():
+    """It said USD while plotting a fraction, which is the one way this can be wrong.
+
+    The trap is that the same figure has a panel that legitimately IS in dollars: panel
+    1 is the price composite and follows the numeraire, so the fix could not be swapping
+    one string everywhere. A share of open interest is a ratio of two quantities in the
+    same unit and has no denomination at all.
+    """
+    fig = build(frame([1e9, 2e9]), unit=et.UNIT_NOTIONAL_SHARE)
+    exposure_axis = fig.layout.yaxis2.title.text
+    assert "USD" not in exposure_axis
+    assert "oz gold" not in exposure_axis
+    assert "open interest" in exposure_axis
+
+
+def test_the_price_panel_keeps_its_currency_when_the_exposure_panel_is_a_share():
+    """Panel 1 is a price index and follows the numeraire, not the basis. Relabelling it
+    alongside the exposure panel would have been the opposite error."""
+    fig = build(frame([1e9, 2e9]), unit=et.UNIT_NOTIONAL_SHARE)
+    assert "USD" in fig.layout.yaxis.title.text
+
+
+def test_a_share_is_drawn_in_percentage_points():
+    """0 to 60, not 0.0 to 0.6, so the axis agrees with the headline, which already
+    prints 32.0% for the same week."""
+    fig = build(frame([1e9, 2e9]), unit=et.UNIT_NOTIONAL_SHARE)
+    drawn = [v for t in fig.data if t.y is not None for v in t.y if v == v]
+    peak = max(drawn)
+    assert peak > 1.0, f"share drawn as a fraction, peak {peak}"
+    assert 25 < peak < 100
+
+
+def test_the_share_hover_says_what_the_number_is():
+    fig = build(frame([1e9, 2e9]), unit=et.UNIT_NOTIONAL_SHARE)
+    hovers = " ".join(t.hovertemplate or "" for t in fig.data)
+    assert "% of OI" in hovers
+    assert " USD" not in hovers
