@@ -1,0 +1,430 @@
+{
+  "lookback": "Custom",
+  "universe": 47,
+  "priced": 45,
+  "unpriced": {
+    "MSCI Emerging Mkts": "no contract multiplier or no bars",
+    "MSCI EAFE": "no contract multiplier or no bars"
+  },
+  "windows": {
+    "30-Year Note": 97,
+    "10-Year Note": 97,
+    "5-Year Note": 97,
+    "2-Year Note": 97,
+    "DOW": 28,
+    "Nasdaq": 28,
+    "Russell": 28,
+    "S&P 500": 28,
+    "S&P MidCap 400": 52,
+    "Nikkei 225": 52,
+    "Feeder Cattle": 13,
+    "Lean Hogs": 13,
+    "Live Cattle": 13,
+    "Cotton": 40,
+    "Cocoa": 10,
+    "Coffee": 8,
+    "Lumber": 140,
+    "Orange Juice": 8,
+    "Sugar": 128,
+    "Copper": 88,
+    "Gold": 26,
+    "Palladium": 216,
+    "Platinum": 16,
+    "Silver": 24,
+    "Bitcoin": 84,
+    "Ethereum": 92,
+    "Australian Dollar": 80,
+    "British Pound": 30,
+    "Canadian Dollar": 30,
+    "Swiss Franc": 30,
+    "Euro": 90,
+    "Japanese Yen": 30,
+    "Mexican Peso": 82,
+    "New Zealand": 82,
+    "US Dollar": 90,
+    "Crude Oil": 42,
+    "Natural Gas": 70,
+    "Gasoline": 42,
+    "Heating Oil": 42,
+    "Corn": 86,
+    "KC HRW Wheat": 52,
+    "Soybean": 126,
+    "Soybean Meal": 30,
+    "Soybean Oil": 34,
+    "Wheat": 10
+  },
+  "oi_share_identity": {
+    "markets": 45,
+    "max_abs_difference": 2.220446049250313e-16
+  },
+  "pairs": {
+    "raw_vs_risk": {
+      "markets": 44,
+      "bands": [
+        5,
+        95
+      ],
+      "corr": {
+        "median": 0.9168887407666972,
+        "p10": 0.7516074612160087,
+        "p90": 0.9484960620175786
+      },
+      "gap_p95": {
+        "median": 30.35689453108722,
+        "p10": 21.98899725297845,
+        "p90": 47.13864571731827
+      },
+      "band_disagree": {
+        "median": 0.11659427284427284,
+        "p10": 0.08999434819506971,
+        "p90": 0.1743120463740047
+      },
+      "gap_autocorr": {
+        "median": 0.9183795674964408,
+        "p10": 0.7474975170878647,
+        "p90": 0.9531940675042178
+      },
+      "gap_vs_vol": {
+        "median": 0.25345077355104106,
+        "p10": -0.3157527981271898,
+        "p90": 0.5234596308094619
+      },
+      "gap_vs_vol_positive": 33,
+      "gap_vs_vol_negative": 11,
+      "model": "raw_pf"
+    },
+    "raw_vs_notional": {
+      "markets": 44,
+      "bands": [
+        5,
+        95
+      ],
+      "corr": {
+        "median": 0.979059460464704,
+        "p10": 0.9317871211983836,
+        "p90": 0.9966965328499211
+      },
+      "gap_p95": {
+        "median": 14.533675042913952,
+        "p10": 5.3902186186113,
+        "p90": 28.821683730490555
+      },
+      "band_disagree": {
+        "median": 0.053978627568358785,
+        "p10": 0.018835746759053206,
+        "p90": 0.10727119177963158
+      },
+      "gap_autocorr": {
+        "median": 0.8323425769890425,
+        "p10": 0.4549747347116085,
+        "p90": 0.9334966607989217
+      },
+      "gap_vs_vol": {
+        "median": 0.055496787632892314,
+        "p10": -0.08768261886891124,
+        "p90": 0.17156175261216633
+      },
+      "gap_vs_vol_positive": 31,
+      "gap_vs_vol_negative": 13,
+      "model": "raw_pf"
+    },
+    "norm_vs_risk": {
+      "markets": 44,
+      "bands": [
+        20,
+        80
+      ],
+      "corr": {
+        "median": 0.895536490988696,
+        "p10": 0.7575535827113733,
+        "p90": 0.932763166107716
+      },
+      "gap_p95": {
+        "median": 33.899499630214635,
+        "p10": 25.405501675098034,
+        "p90": 49.668555553460465
+      },
+      "band_disagree": {
+        "median": 0.20696734079209247,
+        "p10": 0.15632332050680267,
+        "p90": 0.2862719368606502
+      },
+      "gap_autocorr": {
+        "median": 0.8874766450996081,
+        "p10": 0.7184805130025518,
+        "p90": 0.9416704777658953
+      },
+      "gap_vs_vol": {
+        "median": 0.1881894016842529,
+        "p10": -0.28349808465379545,
+        "p90": 0.45475284613598377
+      },
+      "gap_vs_vol_positive": 34,
+      "gap_vs_vol_negative": 10,
+      "model": "npf"
+    }
+  },
+  "latest": {
+    "raw_vs_risk": {
+      "markets": 45,
+      "disagree": 13,
+      "wide_gaps": 12,
+      "widest": [
+        {
+          "market": "Silver",
+          "date": "2026-08-18",
+          "raw": 0.0,
+          "risk": 96.26432021737897,
+          "gap": 96.26432021737897,
+          "disagrees": true
+        },
+        {
+          "market": "Natural Gas",
+          "date": "2026-08-18",
+          "raw": 99.0,
+          "risk": 8.928751648833504,
+          "gap": 90.0712483511665,
+          "disagrees": true
+        },
+        {
+          "market": "Gold",
+          "date": "2026-08-18",
+          "raw": 0.0,
+          "risk": 62.801135341456714,
+          "gap": 62.801135341456714,
+          "disagrees": true
+        },
+        {
+          "market": "Lean Hogs",
+          "date": "2026-08-18",
+          "raw": 100.0,
+          "risk": 60.879039924554036,
+          "gap": 39.120960075445964,
+          "disagrees": true
+        },
+        {
+          "market": "Ethereum",
+          "date": "2026-08-18",
+          "raw": 13.0,
+          "risk": 51.93282209028288,
+          "gap": 38.93282209028288,
+          "disagrees": false
+        },
+        {
+          "market": "Gasoline",
+          "date": "2026-08-18",
+          "raw": 76.0,
+          "risk": 38.94114561047047,
+          "gap": 37.05885438952953,
+          "disagrees": false
+        },
+        {
+          "market": "Heating Oil",
+          "date": "2026-08-18",
+          "raw": 67.0,
+          "risk": 31.874653482507398,
+          "gap": 35.1253465174926,
+          "disagrees": false
+        },
+        {
+          "market": "Swiss Franc",
+          "date": "2026-08-18",
+          "raw": 35.0,
+          "risk": 0.0,
+          "gap": 35.0,
+          "disagrees": true
+        },
+        {
+          "market": "10-Year Note",
+          "date": "2026-08-18",
+          "raw": 84.0,
+          "risk": 52.77871902778203,
+          "gap": 31.22128097221797,
+          "disagrees": false
+        },
+        {
+          "market": "Soybean Meal",
+          "date": "2026-08-18",
+          "raw": 22.0,
+          "risk": 50.899360317425476,
+          "gap": 28.899360317425476,
+          "disagrees": false
+        }
+      ]
+    },
+    "raw_vs_notional": {
+      "markets": 45,
+      "disagree": 5,
+      "wide_gaps": 6,
+      "widest": [
+        {
+          "market": "Heating Oil",
+          "date": "2026-08-18",
+          "raw": 67.0,
+          "notional": 5.6696261912663415,
+          "gap": 61.33037380873366,
+          "disagrees": false
+        },
+        {
+          "market": "Natural Gas",
+          "date": "2026-08-18",
+          "raw": 99.0,
+          "notional": 38.06108179626795,
+          "gap": 60.93891820373205,
+          "disagrees": true
+        },
+        {
+          "market": "Silver",
+          "date": "2026-08-18",
+          "raw": 0.0,
+          "notional": 57.706162588331246,
+          "gap": 57.706162588331246,
+          "disagrees": true
+        },
+        {
+          "market": "Gasoline",
+          "date": "2026-08-18",
+          "raw": 76.0,
+          "notional": 37.20786983991636,
+          "gap": 38.79213016008364,
+          "disagrees": false
+        },
+        {
+          "market": "Ethereum",
+          "date": "2026-08-18",
+          "raw": 13.0,
+          "notional": 40.43446906823555,
+          "gap": 27.43446906823555,
+          "disagrees": false
+        },
+        {
+          "market": "Lean Hogs",
+          "date": "2026-08-18",
+          "raw": 100.0,
+          "notional": 75.45914090401189,
+          "gap": 24.54085909598811,
+          "disagrees": true
+        },
+        {
+          "market": "Palladium",
+          "date": "2026-08-18",
+          "raw": 40.0,
+          "notional": 53.80816704684507,
+          "gap": 13.808167046845071,
+          "disagrees": false
+        },
+        {
+          "market": "Sugar",
+          "date": "2026-08-18",
+          "raw": 8.0,
+          "notional": 19.71073342668911,
+          "gap": 11.71073342668911,
+          "disagrees": false
+        },
+        {
+          "market": "S&P MidCap 400",
+          "date": "2026-08-18",
+          "raw": 36.0,
+          "notional": 26.214734835203966,
+          "gap": 9.785265164796034,
+          "disagrees": false
+        },
+        {
+          "market": "Soybean Oil",
+          "date": "2026-08-18",
+          "raw": 27.0,
+          "notional": 34.630723133490974,
+          "gap": 7.630723133490974,
+          "disagrees": false
+        }
+      ]
+    },
+    "norm_vs_risk": {
+      "markets": 45,
+      "disagree": 11,
+      "wide_gaps": 10,
+      "widest": [
+        {
+          "market": "Natural Gas",
+          "date": "2026-08-18",
+          "norm": 91.0,
+          "risk": 8.928751648833504,
+          "gap": 82.0712483511665,
+          "disagrees": true
+        },
+        {
+          "market": "Gold",
+          "date": "2026-08-18",
+          "norm": 0.0,
+          "risk": 62.801135341456714,
+          "gap": 62.801135341456714,
+          "disagrees": true
+        },
+        {
+          "market": "Silver",
+          "date": "2026-08-18",
+          "norm": 57.0,
+          "risk": 96.26432021737897,
+          "gap": 39.264320217378966,
+          "disagrees": true
+        },
+        {
+          "market": "Lean Hogs",
+          "date": "2026-08-18",
+          "norm": 100.0,
+          "risk": 60.879039924554036,
+          "gap": 39.120960075445964,
+          "disagrees": true
+        },
+        {
+          "market": "Ethereum",
+          "date": "2026-08-18",
+          "norm": 19.0,
+          "risk": 51.93282209028288,
+          "gap": 32.93282209028288,
+          "disagrees": true
+        },
+        {
+          "market": "Soybean Meal",
+          "date": "2026-08-18",
+          "norm": 20.0,
+          "risk": 50.899360317425476,
+          "gap": 30.899360317425476,
+          "disagrees": true
+        },
+        {
+          "market": "Nasdaq",
+          "date": "2026-08-18",
+          "norm": 42.0,
+          "risk": 12.850031092196925,
+          "gap": 29.149968907803075,
+          "disagrees": true
+        },
+        {
+          "market": "Gasoline",
+          "date": "2026-08-18",
+          "norm": 64.0,
+          "risk": 38.94114561047047,
+          "gap": 25.05885438952953,
+          "disagrees": false
+        },
+        {
+          "market": "10-Year Note",
+          "date": "2026-08-18",
+          "norm": 77.0,
+          "risk": 52.77871902778203,
+          "gap": 24.22128097221797,
+          "disagrees": false
+        },
+        {
+          "market": "Lumber",
+          "date": "2026-08-18",
+          "norm": 95.0,
+          "risk": 72.25126693217977,
+          "gap": 22.748733067820226,
+          "disagrees": true
+        }
+      ]
+    }
+  }
+}

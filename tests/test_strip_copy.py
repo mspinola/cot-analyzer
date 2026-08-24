@@ -19,6 +19,7 @@ import dash
 # is enough and keeps Dash from walking the tree.
 dash.Dash(__name__, use_pages=True, pages_folder='')
 
+import components.strip_traces as strip_traces  # noqa: E402
 from pages.analytics.strip import caption, controls_summary  # noqa: E402
 
 MODEL = models.RAW_PF
@@ -80,3 +81,46 @@ def test_the_summary_is_silent_when_the_board_is_whole():
     text = _summary()
     assert "hidden" not in text
     assert "no index" not in text
+
+
+# ── the dollar comparison ─────────────────────────────────────────────────────
+
+def test_the_caption_explains_the_diamond_and_counts_the_disagreement():
+    """The comparison is the reason to switch this on, so the sentence says what the
+    two marks are and how many markets they part on this week."""
+    text = caption("2026-08-18", "52", MODEL, set(),
+                   compare=strip_traces.COMPARE_DOLLARS, disagree=12, unpriced=2)
+    assert "dollars at risk" in text
+    # The statistic, named in the caption too: the first reader of this mark asked
+    # whether the diamond was a percentile. It is a range position, like the lollipop.
+    assert "not a percentile" in text
+    assert "12 of the drawn markets disagree" in text
+    assert "2 market(s) cannot be priced" in text
+
+
+def test_a_fully_priced_board_claims_nothing_about_pricing():
+    text = caption("2026-08-18", "52", MODEL, set(),
+                   compare=strip_traces.COMPARE_DOLLARS, disagree=3, unpriced=0)
+    assert "cannot be priced" not in text
+
+
+def test_the_caption_explains_whichever_mark_is_on():
+    """Each comparison gets its own sentence, and neither is claimed when the mark is
+    switched off: the ring and the diamond are different questions about the same
+    lollipop, and a caption naming one while the other is drawn is worse than silence."""
+    ring = caption("2026-08-18", "52", MODEL, set(),
+                   compare=strip_traces.COMPARE_PRIOR)
+    assert "weeks ago" in ring
+    assert "dollars at risk" not in ring
+
+    neither = caption("2026-08-18", "52", MODEL, set(),
+                      compare=strip_traces.COMPARE_NONE)
+    assert "weeks ago" not in neither
+    assert "dollars at risk" not in neither
+
+
+def test_the_summary_says_which_comparison_is_on():
+    """It is a filter on what the board shows, so it belongs on the one line that
+    survives the controls being folded away."""
+    assert "vs Dollars" in _summary(compare=strip_traces.COMPARE_DOLLARS)
+    assert "vs 6w ago" in _summary(compare=strip_traces.COMPARE_PRIOR)
