@@ -1053,3 +1053,53 @@ What was NOT taken, beyond what the two earlier evaluations already rejected: th
 of commercials" labelling, which folds Small Traders into the speculator leg, and their choice to
 give each market its own page, which the contributions table answers in one row per market without
 five lines of history in one panel.
+
+
+## The Lookback control reaches the table (2026-08-24)
+
+The section above records a pre-registered defect and declines to fix it: the contract
+percentile follows `contribution_table`'s expanding rank, `contribution_table` ranks
+against all history whatever the Lookback control says, and the headline three lines
+above it follows the control. So on "52 weeks" the page said "higher than 97% of the last
+52 weeks" directly over a column headed "%ile" measured against twenty years, both on
+screen at once, with nothing on either saying they were answering different questions.
+
+**Two options, and only one of them is a fix.** Either thread the window through to the
+per-member ranks, or keep the table expanding on purpose and say so in the label and the
+tooltips. The second was tempting because the expanding percentile has a real claim on
+this page: the seventh review calls it "the only thing on the page that answers 'is this
+a lot'", since no unit here is stationary through time. But that is an argument for
+keeping "All history" as the DEFAULT, which it is, and not for ignoring a control after
+the reader has moved it. Copy can describe two bases; it cannot make them comparable, and
+the reader's question is "which market is driving the number in the headline", which is
+only answerable when the two were ranked over the same weeks.
+
+So the window is threaded through, and the copy is fixed as well rather than instead.
+
+**What had to move together.** Three columns, not one. `contribution_table` gained a
+`window` parameter in cotmetrics (the page computes no metrics of its own, and hand
+rolling the per-member ranking here would have been the first exception). The
+`Contracts %ile` column from the section above follows it in the same change: it was
+written to match whatever the dollar columns did, so moving one without the other would
+have put the row back to mixing histories by the other route. What changed there is the
+basis, not the invariant.
+
+**Three sentences of copy went false the moment it landed**, and they are the reason this
+is one change rather than two:
+
+- the dollar column's header tooltip, "Against all of it, whatever the Lookback control
+  says", which was written a commit earlier and was true when written
+- the table's label, "Percentiles are each market against its own history"
+- the standing explanation, which told a reader who moved the control that the band
+  moved with it and said nothing about the table
+
+The label also absorbed the OTHER imprecision the section above left for whoever next
+edited it. A percentile in this table is bounded twice over, and a reader checking one
+against a published figure is off by both: `aggregate_exposure` restricts every member to
+the weeks the TOTAL can price, so gold reads 88 alone and 81 in a set that starts in 2002
+because Russell does. The label now names both restrictions, and the set clause is dropped
+on a single market, where it has nothing to qualify.
+
+**The floor.** `cotmetrics>=0.9.0`, and it is a correctness floor of the loudest kind:
+against 0.8.0 the keyword does not exist, so the call raises `TypeError` on every render
+of the page and no setting of the control avoids it.
