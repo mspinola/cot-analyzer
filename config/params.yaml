@@ -4,12 +4,13 @@
 # universe and untuned 52-week lookbacks. Point COT_VIZ_CONFIG (and cotmetrics'
 # COTMETRICS_PARAMS) at your own file to supply a real universe / tuning.
 
-# Price type to use for daily estimations ("close" or "settlement").
-price_type: "settlement"
-
-# flow_caps was removed 2026-08-23: its only consumer, the intra-week gap
-# estimator estimate_current_gap_positions, was deleted in cotmetrics 734bbc6
-# (an ADR-0006 prerequisite), and the key was read by nothing thereafter.
+# price_type and flow_caps were both removed 2026-08-23, along with the
+# cotmetrics CotIndexer.load_price_config method that was the only reader of
+# either. flow_caps had one consumer, the intra-week gap estimator
+# estimate_current_gap_positions, deleted in cotmetrics 734bbc6 as an ADR-0006
+# prerequisite. price_type had no consumer in any surviving checkout, and since
+# ADR-0007 it has nothing to select between: stored bars carry no settlement
+# column, because both futures providers already put settlement IN Close.
 
 # Lookback windows (weeks) computed for every COT report.
 lookbacks:
