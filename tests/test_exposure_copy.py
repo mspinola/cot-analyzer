@@ -249,10 +249,11 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 15
+    assert len(titles) == 17
     joined = " ".join(titles).lower()
     for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
-                  "gold is here", "crowding switch", "crowding does not help",
+                  "gold is here", "inflation switch", "answers the drift",
+                  "crowding switch", "crowding does not help",
                   "dotted line", "lookback switch", "scale switch",
                   "volatility panel", "third panel", "not"):
         assert topic in joined
@@ -719,12 +720,24 @@ def test_the_aggregate_tuple_is_built_by_keyword_in_these_tests():
 def test_the_explanation_calls_gold_a_benchmark_and_never_an_inflation_adjustment():
     """Hard money, full stop. Gold beats consumer prices over five decades and misses
     them badly over two, so an inflation framing would invite reading a rise as real
-    growth. The page says what gold is, a second asset with its own trend, and leaves
-    price indices out of it entirely."""
+    growth. The page says what gold is, a second asset with its own trend.
+
+    Scoped to the GOLD entries rather than the whole body, and that narrowing is the
+    point rather than a loosening. This asserted that "inflation" and "cpi" appeared
+    nowhere on the page at all, which was a proxy for the real rule while the page had
+    nothing to say about either. It now does: the study behind the Crowding switch built
+    a CPI arm and found it inert, and the page says so. A blanket word ban would have
+    forced the page to stay silent about the one measurement that settles the question a
+    dollar chart provokes. The rule is that GOLD is never sold as an inflation
+    adjustment, and that is what is tested.
+    """
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
     assert "hard money" in body or "hard-money" in body
+    gold = " ".join(b for t, b in how_to_read(et.UNIT_RISK)
+                    if "gold" in t.lower()).lower()
+    assert gold, "no gold entries found, so this test is passing vacuously"
     for word in ("inflation", "consumer price", "cpi", "real terms"):
-        assert word not in body
+        assert word not in gold
 
 
 def test_the_explanation_credits_the_idea_it_borrows():
@@ -1081,16 +1094,47 @@ def test_the_crowding_copy_says_where_it_does_not_help():
     assert "Softs and Currencies" in body
 
 
+def test_the_page_says_why_there_is_no_inflation_switch():
+    """The DOCUMENT outcome of the study that produced the Crowding switch.
+
+    A twenty-year chart of dollars invites "shouldn't this be inflation adjusted", and
+    the honest answer is that it was tried and it is inert: CPI cleared on 0 of 9 asset
+    classes where gold cleared 8. Saying so on the page beats leaving each reader to
+    ask, and beats a silence that reads as an oversight.
+    `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md`.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "deflate by CPI" in body
+    assert "percentile" in body
+
+
+def test_the_page_does_not_claim_no_deflator_could_work():
+    """The frozen gate forbids the generalisation, and the reason is a gap in evidence.
+
+    The study tested CPI and gold. It ran no placebo divisor and no trade-weighted
+    dollar, and the trade-weighted dollar is the one numeraire the adjacent returns work
+    found to do anything at all. So "CPI does not displace this" is supported and "no
+    deflator is the answer" is not, and the copy has to keep them apart.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "trade-weighted dollar was never tested" in body
+    assert "result about CPI rather than about deflators in general" in body
+
+
 def test_the_crowding_copy_does_not_promise_a_deflator():
     """It removes market growth, not the price level, and those are different claims.
 
     The same study found CPI clears on 0 of 9 classes, so the page must not let a reader
     take this control for an inflation adjustment, which is the framing `cotmetrics`
-    already refuses for the Gold switch.
+    already refuses for the Gold switch. Scoped to the Crowding entries for the reason
+    given on the gold test above: the page now discusses CPI deliberately elsewhere, and
+    a whole-body word ban would forbid the sentence that reports the measurement.
     """
-    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
+    crowding = " ".join(b for t, b in how_to_read(et.UNIT_RISK)
+                        if "crowding" in t.lower()).lower()
+    assert crowding, "no crowding entries found, so this test is passing vacuously"
     for word in ("inflation", "consumer price", "cpi", "real terms", "deflated"):
-        assert word not in body
+        assert word not in crowding
 
 
 def test_the_crowding_copy_warns_the_table_stays_in_dollars():

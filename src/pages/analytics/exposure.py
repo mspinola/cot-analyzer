@@ -634,6 +634,23 @@ def how_to_read(unit):
          "whole history of this composite the switch moves the percentile by about 6 "
          "points in the median week, 14 at the ninetieth, and into the mid-20s at its "
          "widest."),
+        ("Why there is no inflation switch",
+         "Because it was built, measured and it did nothing. A twenty-year chart of "
+         "dollars invites the question, so the obvious answer was tested: deflate by CPI "
+         "and read the series in today's money. Across 43 markets it moved the "
+         "percentile by one or two points and changed the headline on at most 6% of "
+         "weeks, clearing on none of the nine asset classes where gold clears eight. The "
+         "drift you can see here is mostly the market getting bigger, and consumer "
+         "prices have not quite doubled while some of these markets grew twenty-fold, so "
+         "there was never enough in CPI to remove it."),
+        ("What answers the drift instead",
+         "The percentile, which is why it is on every reading here rather than left to "
+         "the axis: it asks where this week sits in this set's own history, and a "
+         "history that drifts upward does not fool a rank the way it fools an eye. Then "
+         "the Crowding switch below, which removes the growth itself. Neither is a "
+         "deflator, and this is a result about CPI rather than about deflators in "
+         "general: a trade-weighted dollar was never tested here and would be the next "
+         "thing to try if you wanted one."),
         ("The Crowding switch",
          "Divides by the same set's own open interest, so the line is the share of the "
          "market this group holds rather than the money it has at stake. It is the only "
