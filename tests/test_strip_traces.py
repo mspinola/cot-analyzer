@@ -883,14 +883,14 @@ def test_the_legend_names_the_comparison_actually_on_screen():
                 for label, _, _ in entries]
 
     assert any(label.endswith("w ago") for label in labels(st.COMPARE_PRIOR))
-    assert "Same, in $ at risk" not in labels(st.COMPARE_PRIOR)
+    assert "Same index, in $ at risk" not in labels(st.COMPARE_PRIOR)
 
     money = labels(st.COMPARE_DOLLARS)
-    assert "Same, in $ at risk" in money
+    assert "Same index, in $ at risk" in money
     assert not any(label.endswith("w ago") for label in money)
 
     none = labels(st.COMPARE_NONE)
-    assert "Same, in $ at risk" not in none
+    assert "Same index, in $ at risk" not in none
     assert not any(label.endswith("w ago") for label in none)
 
 
@@ -902,15 +902,15 @@ def test_the_hover_carries_the_dollar_figures_only_when_they_are_drawn():
     market = [r for r in rows if r.kind == "market"][0]
 
     money = st._hover(market, models.RAW_PF, st.COMPARE_DOLLARS)
-    assert "In dollars at risk (24w): 96" in money
+    assert "Same index in $ at risk (24w): 96" in money
     assert "-$384.8m" in money
     # The notional reading is hover-only: over a rolling window it is very nearly the
     # contract count again, so a second mark for it would sit on the first and say
     # nothing, but it is what the printed reports plot.
-    assert "Same, on notional: 58" in money
+    assert "Same index on notional: 58" in money
     assert "Daily vol: 2.7%" in money
 
-    assert "dollars at risk" not in st._hover(market, models.RAW_PF, st.COMPARE_PRIOR)
+    assert "in $ at risk" not in st._hover(market, models.RAW_PF, st.COMPARE_PRIOR)
 
 
 def test_an_unpriceable_market_says_so_on_its_own_hover():

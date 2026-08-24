@@ -247,12 +247,13 @@ def caption(report_date, lookback, model, skipped, hidden=0,
                          f"multiplier or no bars) and carry no diamond."
                          if unpriced else "")
         money = (
-            f" The hollow diamond is the SAME leg over the SAME window measured in "
-            f"dollars at risk (contracts x point value x price x daily volatility) "
-            f"rather than in contracts, with a line back to the contract reading: "
-            f"where the two part, the crowd's money and its contract count disagree "
-            f"about how extreme this market is. {disagree} of the drawn markets "
-            f"disagree about being through a gate band this week.{unpriced_note}")
+            f" The hollow diamond is this SAME 0-100 index, over the same window and "
+            f"on the same leg, computed on dollars at risk (contracts x point value x "
+            f"price x daily volatility) instead of on contracts: a range position like "
+            f"the lollipop, not a percentile. The line runs back to the contract "
+            f"reading, and where the two part, the crowd's money and its contract "
+            f"count disagree about how extreme this market is. {disagree} of the drawn "
+            f"markets disagree about which band they are in this week.{unpriced_note}")
     elif compare == strip_traces.COMPARE_PRIOR:
         money = (f" The hollow ring is where the same index stood "
                  f"{const.MOMENTUM_PERIOD} weeks ago.")

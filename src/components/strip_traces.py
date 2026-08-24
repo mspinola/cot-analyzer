@@ -687,10 +687,15 @@ def _dollar_hover(row):
         return "<br><i>No dollar reading: no contract multiplier or no bars.</i>"
     window = f" ({d.weeks}w)" if d.weeks else ""
     notional = ("" if d.notional_index is None
-                else f"<br>Same, on notional: {d.notional_index:.0f}")
+                else f"<br>Same index on notional: {d.notional_index:.0f}")
     sigma = ("" if d.sigma_daily is None
              else f"<br>Daily vol: {d.sigma_daily * 100:.1f}%")
-    return (f"<br><br>In dollars at risk{window}: {d.index:.0f}"
+    # "Index", named every time it appears. This is the SAME range index the head
+    # carries (position between the window's min and max), computed on a dollar series;
+    # it is not a percentile rank, which is what /exposure draws and what the printed
+    # reports print. The first reader of this mark asked which one it was, so the word
+    # goes on the mark rather than only in the caption.
+    return (f"<br><br>Same index in $ at risk{window}: {d.index:.0f}"
             f"<br>Level: {_money(d.risk_usd)}{notional}{sigma}")
 
 
@@ -750,7 +755,7 @@ def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
     # one place a reader goes to find out what they are looking at.
     reference = {
         COMPARE_PRIOR: [(f"{const.MOMENTUM_PERIOD}w ago", colors.dim, GLYPH_CIRCLE)],
-        COMPARE_DOLLARS: [("Same, in $ at risk", colors.dim, GLYPH_DIAMOND)],
+        COMPARE_DOLLARS: [("Same index, in $ at risk", colors.dim, GLYPH_DIAMOND)],
     }.get(compare, [])
     # The neutral keys are as dim as the marks they stand for: a full-strength
     # "No setup" swatch would promise a colour the plot never draws.

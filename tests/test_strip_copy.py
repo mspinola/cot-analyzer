@@ -91,6 +91,9 @@ def test_the_caption_explains_the_diamond_and_counts_the_disagreement():
     text = caption("2026-08-18", "52", MODEL, set(),
                    compare=strip_traces.COMPARE_DOLLARS, disagree=12, unpriced=2)
     assert "dollars at risk" in text
+    # The statistic, named in the caption too: the first reader of this mark asked
+    # whether the diamond was a percentile. It is a range position, like the lollipop.
+    assert "not a percentile" in text
     assert "12 of the drawn markets disagree" in text
     assert "2 market(s) cannot be priced" in text
 

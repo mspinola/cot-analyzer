@@ -910,6 +910,19 @@ ENTIRE history, where notional carries the price level and therefore says a grea
 ranks against a rolling window, which renormalizes exactly that away. The all-history version of
 the question already has a home on `/exposure`, and its expanding percentile is what answers it.
 
+**A range index, not a percentile, and the difference is the whole reason the two marks
+can share an axis.** The dollar mark is `calculate_range_index` on the dollar series: position
+between the window's min and max, which is exactly what the lollipop beside it measures on
+contracts. A percentile rank over the same window is a different statistic, set by the whole
+distribution rather than by two observations, and drawing one against the other would vary the
+STATISTIC and the UNIT at once, leaving a reader unable to say which difference they were looking
+at. This document already warns about that confusion in the other direction ("Whichever we draw,
+label it as what it is") and the page had to learn it again the hard way: the first reader of the
+new mark asked whether the diamond was a percentile, so the word "index" now appears on the hover,
+in the legend key and in the caption rather than only here. The percentile version of this question
+is the `/exposure` page's, where the rank is expanding or windowed and the units are dollars
+throughout.
+
 **One reference mark per row, chosen by a control, rather than a fifth mark.** A row already
 carries the head, its stem and a tick per gated leg. The two comparisons worth putting beside them
 are the same shape of question, "this leg measured differently", and they compete for the same few
