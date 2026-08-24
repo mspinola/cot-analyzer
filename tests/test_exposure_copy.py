@@ -249,10 +249,11 @@ def test_the_explanation_says_what_the_page_does_NOT_tell_you():
 
 def test_the_explanation_covers_each_thing_a_reader_meets():
     titles = [t for t, _ in how_to_read(et.UNIT_RISK)]
-    assert len(titles) == 13
+    assert len(titles) == 15
     joined = " ".join(titles).lower()
     for topic in ("number", "one market", "band", "panels", "made of", "gold switch",
-                  "gold is here", "dotted line", "lookback switch", "scale switch",
+                  "gold is here", "crowding switch", "crowding does not help",
+                  "dotted line", "lookback switch", "scale switch",
                   "volatility panel", "third panel", "not"):
         assert topic in joined
 
@@ -1064,3 +1065,60 @@ def test_the_headline_does_not_say_weeks_twice():
     # and without a window it is still a percentage OF WEEKS, not of a history
     plain, _ = headline(ranked(97.0), et.UNIT_RISK, LEG_SPEC)
     assert "of the weeks in this set's own history" in plain
+
+
+# ── the crowding control ──────────────────────────────────────────────────────
+
+
+def test_the_crowding_copy_says_where_it_does_not_help():
+    """A control offered without its failing cases reads as a strict improvement.
+
+    It is not one: `npf/docs/analysis/2026-08-24-exposure-numeraire-levels.md` measured
+    it clearing on 7 of 9 asset classes, and the two it misses are named here so a reader
+    on a Softs or Currencies view is not left wondering why nothing moved.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "Softs and Currencies" in body
+
+
+def test_the_crowding_copy_does_not_promise_a_deflator():
+    """It removes market growth, not the price level, and those are different claims.
+
+    The same study found CPI clears on 0 of 9 classes, so the page must not let a reader
+    take this control for an inflation adjustment, which is the framing `cotmetrics`
+    already refuses for the Gold switch.
+    """
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK)).lower()
+    for word in ("inflation", "consumer price", "cpi", "real terms", "deflated"):
+        assert word not in body
+
+
+def test_the_crowding_copy_warns_the_table_stays_in_dollars():
+    """Shares do not add across markets, so the contribution table cannot follow the
+    chart into share units. Two panels in different units with nothing saying so is the
+    kind of thing a reader discovers by misreading it."""
+    body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
+    assert "stays in dollars" in body
+
+
+def test_a_share_prints_as_a_percentage_not_as_money():
+    """A share is a ratio of two quantities in the same unit, so it has no currency and
+    no ounces. Stamping it with either claims a denomination it does not have."""
+    from pages.analytics.exposure import money
+    out = money(0.532, "", unit=et.UNIT_NOTIONAL_SHARE)
+    assert out == "53.2% of open interest"
+    assert "$" not in out
+
+
+def test_a_share_reads_the_same_under_either_numeraire():
+    from pages.analytics.exposure import money
+    assert (money(0.532, "", numeraire="gold", unit=et.UNIT_RISK_SHARE)
+            == money(0.532, "", numeraire="usd", unit=et.UNIT_RISK_SHARE))
+
+
+def test_a_share_axis_is_never_rescaled_into_thousands():
+    """`unit_scale` exists so an axis reads $55bn rather than 55,387,601,984. A half is
+    not "0.5k", so a share opts out."""
+    import pandas as pd
+    share = pd.Series([0.1, 0.53], name=et.UNIT_NOTIONAL_SHARE)
+    assert et.unit_scale(share) == (1.0, "")

@@ -42,7 +42,12 @@ dependencies = [
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
     "crucible-marketdata>=0.2.0",
-    # Floor is 0.7.0 because the heatmap's Offside column imports
+    # Floor is 0.8.0 because the Crowding switch reads `notional_oi_share`,
+    # `risk_oi_share` and their percentile columns. Against 0.7.0 those columns
+    # are absent, so the switch produces a KeyError on the frame rather than a
+    # degraded chart, and it does so on the first render after anyone flips it.
+    #
+    # 0.7.0 was the floor because the heatmap's Offside column imports
     # `cotmetrics.offside`. Against 0.6.0 the module does not exist, and since
     # `use_pages` imports every page module at startup, that ImportError takes
     # down the whole route registry rather than one column.
@@ -56,7 +61,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.7.0",
+    "cotmetrics[options]>=0.8.0",
 ]
 
 [project.optional-dependencies]
