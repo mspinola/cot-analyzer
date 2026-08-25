@@ -9,6 +9,7 @@ from dash import Dash, Input, Output, State, dcc, html, no_update
 from flask import request
 from flask_compress import Compress
 
+import routing
 import viz_constants as vc
 
 utils.launch_logger.warning("Launch app_cot")
@@ -33,6 +34,27 @@ app = Dash(
 server = app.server
 Compress(server)
 
+
+@app.server.before_request
+def reject_unknown_paths():
+    """Answer 404 for paths that match no page, instead of 200 with the app shell.
+
+    The membership test and the body live in `routing`; see that module for why the
+    catch-all makes every url a 200 by default. What belongs here is the ordering:
+    registered BEFORE `record_visit` deliberately. Flask runs before_request handlers in
+    registration order and stops at the first that returns a response, so this position
+    is what keeps a probe out of the visitor DB and, more to the point, out of the
+    third-party geolocation lookup `record_visit` performs on every logged request.
+
+    The registry and route list are read per request rather than captured at import, so
+    a page added later is served without touching this function.
+    """
+    page_paths = [page.get('path') for page in dash.page_registry.values()]
+    if routing.is_known_path(request.path, page_paths, app.routes):
+        return None
+    body = routing.not_found_page(
+        vc.BACKGROUND_COLOR, vc.TEXT_COLOR, vc.BRIGHTER_TEXT_COLOR)
+    return body, 404, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.server.before_request
