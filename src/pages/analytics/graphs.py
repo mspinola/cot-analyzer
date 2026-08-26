@@ -13,12 +13,17 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
+from components import class_filter
 
 # Register this file as a page
 dash.register_page(
     __name__,
     path='/graphs'
 )
+
+# Layout runs per request; the wiring must not.
+class_filter.register('graphs_asset_class_selector',
+                      classes=lambda: sorted(get_indexer().get_asset_classes()))
 
 # Which panels this page offers, in picker order. Everything else about them comes
 # from the registry.
@@ -49,18 +54,12 @@ def layout(**kwargs):
                     dbc.Row([
                         dbc.Col([
                             html.H6("Asset Classes", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
-                            dbc.Checklist(
-                                id='graphs_asset_class_selector',
-                                persistence='session',
-                                options=[{'label': c, 'value': c} for c in asset_classes],
-                                value=[get_indexer().get_default_asset_class()],
-                                inline=True,
-                                switch=True,
-                                className="mb-3 p-1 rounded text-white",
-                                style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
-                                labelStyle={'color': 'white', 'marginRight': '0px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
-                                inputStyle={'opacity': '0.6'}
-                            )
+                            # Same nine switches, collapsed. This page defaults to one
+                            # class rather than all of them, so the toggle usually
+                            # names it outright.
+                            class_filter.control(
+                                'graphs_asset_class_selector', asset_classes,
+                                value=[get_indexer().get_default_asset_class()])
                         ], xs=12, md="auto"),
 
                         dbc.Col([

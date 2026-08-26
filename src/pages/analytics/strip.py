@@ -38,9 +38,13 @@ import app_utils
 import components.strip_traces as strip_traces
 import viz_config
 import viz_constants as vc
+from components import class_filter
 from components.plot_colors import grid_colors
 
 dash.register_page(__name__, path='/strip')
+
+# Layout runs per request; the wiring must not.
+class_filter.register('strip_class_selector')
 
 SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
@@ -468,16 +472,13 @@ def layout(**kwargs):
 
                                 dbc.Col([
                                     html.Label("Asset Classes", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Checklist(
-                                        persistence='session',
-                                        id='strip_class_selector',
-                                        options=[{"label": x, "value": x} for x in get_indexer().get_asset_classes()],
-                                        value=get_indexer().get_asset_classes(),
-                                        inline=True,
-                                        switch=True,
-                                        style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"}
-                                    ),
-                                ], xs=12, md=True, className="px-md-2 mt-2"),
+                                    # Was nine inline switches at md=True, so it took
+                                    # whatever the other six controls left and wrapped
+                                    # to a second line. Same switches, collapsed.
+                                    class_filter.control(
+                                        'strip_class_selector',
+                                        get_indexer().get_asset_classes()),
+                                ], xs=12, md=2, className="px-md-2"),
 
                             ], align="center")
                             ]),
