@@ -27,9 +27,43 @@ from dash import (
 import viz_config
 import viz_constants as vc
 from app_utils import next_date_selection
+from components import class_filter
 from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
 dash.register_page(__name__, path="/heatmap")
+
+# Layout runs per request; the wiring must not.
+class_filter.register('page_heatmap_selector')
+
+# The Setups filter. Values are stored in a session-persisted control, so they are a
+# wire format: renaming one silently resets a returning reader's filter to the default.
+SETUP_FILTER_ALL = "all"
+SETUP_FILTER_GATE = "gate"
+SETUP_FILTER_NEAR = "near"
+
+# UNION ACROSS THE TWO MODELS, deliberately. This grid reports Raw CLS 95/5 and NPF CS
+# 80/20 side by side and has no model selector, so a filter that picked one would hide
+# rows the other half of the same row is lit up about. The two bands are independent
+# rather than nested -- Coffee has been an NPF setup while its CLS legs were only close
+# -- so "either" is the only rule that cannot contradict the grid it filters.
+_FILTER_STATES = {
+    SETUP_FILTER_GATE: frozenset(const.SETUP_FULL_STATES),
+    SETUP_FILTER_NEAR: frozenset(const.SETUP_FULL_STATES + const.SETUP_NEAR_STATES),
+}
+
+
+def filter_by_setup(df, mode):
+    """Matrix rows narrowed to those at (or approaching) a gate under either model.
+
+    Applied before the risk and offside passes rather than after, because those walk
+    per-asset history and there is no reason to compute it for a row about to be
+    dropped.
+    """
+    wanted = _FILTER_STATES.get(mode)
+    if wanted is None or df.empty:
+        return df
+    return df[df[const.SETUP_CLS_COL].isin(wanted)
+              | df[const.SETUP_NPF_COL].isin(wanted)]
 
 
 def snapshot_caption(report_date):
@@ -107,20 +141,43 @@ def layout(**kwargs):
                                         clearable=False,
                                         style={'borderRadius': '8px'}
                                     )
-                                ], xs=12, md=3, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
 
                                 dbc.Col([
                                     html.Label("Asset Classes", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Checklist(
+                                    # Collapsed behind one toggle that states the
+                                    # current answer. The switches inside keep this
+                                    # page's own element id, so every callback reading
+                                    # `page_heatmap_selector` is untouched.
+                                    class_filter.control(
+                                        'page_heatmap_selector',
+                                        get_indexer().get_asset_classes()),
+                                ], xs=12, md=3, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
+
+                                dbc.Col([
+                                    html.Label(
+                                        "Setups",
+                                        title="Either model. A row survives if it is at "
+                                              "the gate under Raw CLS 95/5 OR NPF CS "
+                                              "80/20, because this grid reports both "
+                                              "and hiding a row one of them fired on "
+                                              "would contradict the block beside it.",
+                                        style={**vc.label_style, "fontSize": "0.8rem",
+                                               "textTransform": "uppercase",
+                                               "cursor": "help"}),
+                                    dbc.Select(
+                                        id='heatmap_setup_filter',
                                         persistence='session',
-                                        id='page_heatmap_selector',
-                                        options=[{"label": x, "value": x} for x in get_indexer().get_asset_classes()],
-                                        value=get_indexer().get_asset_classes(),
-                                        inline=True,
-                                        switch=True,
-                                        style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.95rem"}
-                                    ),
-                                ], xs=12, md=5, className="mb-3 mb-md-0 px-md-4"),
+                                        options=[
+                                            {"label": "All markets", "value": SETUP_FILTER_ALL},
+                                            {"label": "At a gate", "value": SETUP_FILTER_GATE},
+                                            {"label": "At or approaching", "value": SETUP_FILTER_NEAR},
+                                        ],
+                                        value=SETUP_FILTER_ALL,
+                                        className="bg-dark text-white border-secondary",
+                                        style={'borderRadius': '8px'},
+                                    )
+                                ], xs=12, md=3, className="mb-3 mb-md-0 px-md-3"),
 
                                 dbc.Col([
                                     dbc.Button(
@@ -473,9 +530,11 @@ def risk_rank_styles_for(colors, highlight=None):
     [Input('page_heatmap_selector', 'value'),
      Input('global_lookback_store', 'data'),
      Input('session_palette_theme_asset_store', 'data'),
-     Input('heatmap_date_selector', 'value')]
+     Input('heatmap_date_selector', 'value'),
+     Input('heatmap_setup_filter', 'value')]
 )
-def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
+def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
+                          setup_filter=SETUP_FILTER_ALL):
     utils.cot_logger.info(f"Rendering matrix with Asset Classes: {assest_classes}, Lookback: {lookback}, Palette: {palette_name}, Date: {target_date}")
 
     if not assest_classes:
@@ -486,6 +545,16 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date):
     df = get_matrix_data(assest_classes, lookback, target_date)
     if df.empty:
         return html.P("No data available.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
+
+    matched = filter_by_setup(df, setup_filter)
+    if matched.empty:
+        wording = ("at a gate" if setup_filter == SETUP_FILTER_GATE
+                   else "at or approaching a gate")
+        return html.P(
+            f"No market in the selected asset classes is {wording} under either model "
+            f"on this date.",
+            style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
+    df = matched
 
     available = get_indexer().get_available_dates()
     df = attach_spec_risk(df, available[0] if available else None)
