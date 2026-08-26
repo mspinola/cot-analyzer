@@ -1,0 +1,283 @@
+{
+  "weeks": 52,
+  "lookback": "Custom",
+  "newest_data": "2026-08-18",
+  "asset_classes": 9,
+  "markets": 42,
+  "models": [
+    {
+      "model": "Raw CLS 95/5",
+      "gate_market_weeks": 541,
+      "readings": {
+        "tape": {
+          "agree": 502,
+          "conflict": 0,
+          "flat": 39
+        },
+        "willco": {
+          "agree": 504,
+          "conflict": 3,
+          "flat": 34
+        },
+        "lw": {
+          "agree": 466,
+          "conflict": 0,
+          "flat": 75
+        },
+        "move": {
+          "agree": 139,
+          "conflict": 0,
+          "flat": 402
+        },
+        "trend": {
+          "agree": 1,
+          "conflict": 1,
+          "flat": 539
+        }
+      },
+      "conflicts": [
+        {
+          "asset": "Swiss Franc",
+          "reading": "willco",
+          "date": "2026-06-16"
+        },
+        {
+          "asset": "Silver",
+          "reading": "willco",
+          "date": "2026-04-28"
+        },
+        {
+          "asset": "Silver",
+          "reading": "willco",
+          "date": "2026-05-05"
+        },
+        {
+          "asset": "Cocoa",
+          "reading": "trend",
+          "date": "2025-09-16"
+        }
+      ],
+      "age_today": {
+        "Cocoa": {
+          "state": "near_bear",
+          "weeks": 7
+        },
+        "DOW": {
+          "state": "bear",
+          "weeks": 6
+        },
+        "Cotton": {
+          "state": "near_bear",
+          "weeks": 6
+        },
+        "US Dollar": {
+          "state": "near_bear",
+          "weeks": 5
+        },
+        "Copper": {
+          "state": "near_bear",
+          "weeks": 3
+        },
+        "Russell": {
+          "state": "bull",
+          "weeks": 2
+        },
+        "Gold": {
+          "state": "near_bear",
+          "weeks": 2
+        },
+        "Coffee": {
+          "state": "bear",
+          "weeks": 2
+        },
+        "30-Year Note": {
+          "state": "bull",
+          "weeks": 1
+        },
+        "Lean Hogs": {
+          "state": "near_bull",
+          "weeks": 1
+        },
+        "Lumber": {
+          "state": "near_bull",
+          "weeks": 1
+        },
+        "Sugar": {
+          "state": "near_bear",
+          "weeks": 1
+        }
+      },
+      "longest_run_ever": {
+        "New Zealand": 38,
+        "Copper": 35,
+        "Palladium": 33,
+        "Euro": 29,
+        "Sugar": 29,
+        "Soybean": 28,
+        "Swiss Franc": 26,
+        "Soybean Oil": 26,
+        "Cotton": 26,
+        "Australian Dollar": 22
+      }
+    },
+    {
+      "model": "NPF CS 80/20",
+      "gate_market_weeks": 551,
+      "readings": {
+        "tape": {
+          "agree": 449,
+          "conflict": 0,
+          "flat": 102
+        },
+        "willco": {
+          "agree": 491,
+          "conflict": 0,
+          "flat": 60
+        },
+        "lw": {
+          "agree": 392,
+          "conflict": 11,
+          "flat": 148
+        },
+        "move": {
+          "agree": 127,
+          "conflict": 0,
+          "flat": 424
+        },
+        "trend": {
+          "agree": 1,
+          "conflict": 1,
+          "flat": 549
+        }
+      },
+      "conflicts": [
+        {
+          "asset": "Ethereum",
+          "reading": "lw",
+          "date": "2026-05-12"
+        },
+        {
+          "asset": "Mexican Peso",
+          "reading": "lw",
+          "date": "2026-03-17"
+        },
+        {
+          "asset": "New Zealand",
+          "reading": "trend",
+          "date": "2026-05-19"
+        },
+        {
+          "asset": "Gasoline",
+          "reading": "lw",
+          "date": "2026-03-31"
+        },
+        {
+          "asset": "Heating Oil",
+          "reading": "lw",
+          "date": "2026-03-17"
+        },
+        {
+          "asset": "Soybean Oil",
+          "reading": "lw",
+          "date": "2026-06-30"
+        },
+        {
+          "asset": "Soybean Oil",
+          "reading": "lw",
+          "date": "2026-07-14"
+        },
+        {
+          "asset": "Soybean Oil",
+          "reading": "lw",
+          "date": "2026-07-28"
+        },
+        {
+          "asset": "Copper",
+          "reading": "lw",
+          "date": "2026-03-17"
+        },
+        {
+          "asset": "Palladium",
+          "reading": "lw",
+          "date": "2026-03-24"
+        },
+        {
+          "asset": "Silver",
+          "reading": "lw",
+          "date": "2026-05-26"
+        },
+        {
+          "asset": "Silver",
+          "reading": "lw",
+          "date": "2026-06-09"
+        }
+      ],
+      "age_today": {
+        "US Dollar": {
+          "state": "near_bear",
+          "weeks": 10
+        },
+        "DOW": {
+          "state": "bear",
+          "weeks": 10
+        },
+        "S&P 500": {
+          "state": "bear",
+          "weeks": 9
+        },
+        "Coffee": {
+          "state": "bear",
+          "weeks": 7
+        },
+        "Russell": {
+          "state": "bull",
+          "weeks": 3
+        },
+        "Cocoa": {
+          "state": "bear",
+          "weeks": 3
+        },
+        "30-Year Note": {
+          "state": "bull",
+          "weeks": 2
+        },
+        "10-Year Note": {
+          "state": "near_bull",
+          "weeks": 1
+        },
+        "Soybean Meal": {
+          "state": "bear",
+          "weeks": 1
+        },
+        "Soybean Oil": {
+          "state": "bear",
+          "weeks": 1
+        },
+        "Wheat": {
+          "state": "bear",
+          "weeks": 1
+        },
+        "Cotton": {
+          "state": "near_bear",
+          "weeks": 1
+        },
+        "Sugar": {
+          "state": "near_bear",
+          "weeks": 1
+        }
+      },
+      "longest_run_ever": {
+        "Palladium": 51,
+        "Euro": 50,
+        "Corn": 44,
+        "Soybean Oil": 40,
+        "S&P 500": 39,
+        "5-Year Note": 39,
+        "US Dollar": 38,
+        "New Zealand": 37,
+        "Soybean": 37,
+        "Sugar": 36
+      }
+    }
+  ]
+}
