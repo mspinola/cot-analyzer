@@ -104,3 +104,27 @@ def _flatten(node, out=None):
         return out
     out.append(node)
     return _flatten(getattr(node, "children", None), out)
+
+
+# ── it must not read the store to be imported ─────────────────────────────────
+
+def test_registering_never_touches_the_indexer(monkeypatch):
+    """register() runs at import of the page module, and building a CotIndexer reads
+    COTDATA_STORE. Resolving the class list here makes the page unimportable without a
+    populated store, which took six unrelated test modules down at collection: four of
+    them only import a page that happens to mount this control.
+
+    The store is read when a shortcut is clicked, which is the only time it is needed.
+    """
+    def _explode():
+        raise AssertionError("register() read the store at import time")
+
+    monkeypatch.setattr(class_filter, "get_indexer", _explode)
+    class_filter.register("test_only_lazy_selector")
+
+
+def test_a_page_may_still_pass_its_own_class_list(monkeypatch):
+    """graphs sorts its classes, so the shortcut has to write the page's order rather
+    than the indexer's. A caller-supplied callable is left alone."""
+    monkeypatch.setattr(class_filter, "get_indexer", lambda: 1 / 0)
+    class_filter.register("test_only_explicit_selector", classes=lambda: EVERY)

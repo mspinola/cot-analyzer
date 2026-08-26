@@ -109,9 +109,20 @@ def register(checklist_id, classes=None):
     `classes` may be a list or a callable. A callable is the safer form for the
     shortcut, which writes the value rather than reading it: a list captured at import
     would keep writing a universe the store has since changed.
+
+    NOTHING HERE MAY TOUCH THE INDEXER. This runs at import of the page module, and
+    building a CotIndexer reads COTDATA_STORE, so resolving the class list here makes
+    the page unimportable without a populated store. That is not a hypothetical: the
+    default used to be `get_indexer().get_asset_classes`, which evaluates the call and
+    keeps the bound method, and it took six unrelated test modules down at COLLECTION
+    with "No COT data in the cotdata store" -- including four that had nothing to do
+    with this control and merely import a page that mounts it. The default is a lambda
+    so the store is read when a shortcut is clicked, which is the only time it is
+    needed.
     """
     if classes is None:
-        classes = get_indexer().get_asset_classes
+        def classes():
+            return get_indexer().get_asset_classes()
 
     def every():
         return list(classes() if callable(classes) else classes)
