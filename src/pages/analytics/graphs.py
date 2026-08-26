@@ -51,6 +51,10 @@ def layout(**kwargs):
         dbc.Container([
             dbc.Card([
                 dbc.CardBody([
+                    # One row, six controls. It was two rows of two and four, which cost
+                    # a strip of vertical space on a page whose whole subject is a tall
+                    # stack of charts. `g-2` supplies the vertical gutter when they wrap
+                    # on a narrow viewport, so nothing needs a bottom margin of its own.
                     dbc.Row([
                         dbc.Col([
                             html.H6("Asset Classes", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
@@ -69,16 +73,13 @@ def layout(**kwargs):
                                 id='graphs_multi_equity_selector_input',
                                 options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
                                 multi=True,
-                                className="mb-3 dash-dropdown bg-dark text-white",
+                                className="dash-dropdown bg-dark text-white",
                                 searchable=True,
                                 clearable=True,
                                 style={'width': '200px'}
                             ),
                         ], xs=12, md="auto"),
 
-                    ]),
-
-                    dbc.Row([
                         dbc.Col([
                             html.H6("Plot Selector", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
                             dbc.Select(
@@ -86,7 +87,7 @@ def layout(**kwargs):
                                 id='graphs_plot_selector_input',
                                 options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
                                 value="net_pos",
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary",
                                 style={'width': '200px'}
                             ),
                         ], xs=12, md="auto"),
@@ -101,7 +102,7 @@ def layout(**kwargs):
                                     {"label": "Custom", "value": "Custom"},
                                 ],
                                 value="Custom",
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary",
                                 style={'width': '120px'}
                             )
                         ], xs=12, md="auto"),
@@ -116,12 +117,17 @@ def layout(**kwargs):
                                     for v in vc.MODEL_VIEW_CHOICES
                                 ],
                                 value=models.DEFAULT_MODEL.key,
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary",
                                 style={'width': '110px'}
                             ),
+                            # Sits under its select rather than pulled up into it:
+                            # the -10px was clawing back the mb-3 that is now gone. In
+                            # flow rather than absolute, so the card reserves height for
+                            # it: out of flow it would have painted over whatever came
+                            # next on the page, and it is only present for some plots.
                             html.Div(id='graphs_model_note',
                                      className="text-muted",
-                                     style={'fontSize': '0.7rem', 'marginTop': '-10px'}),
+                                     style={'fontSize': '0.7rem', 'marginTop': '2px'}),
                         ], xs=12, md="auto"),
 
                         dbc.Col([
@@ -135,11 +141,11 @@ def layout(**kwargs):
                                     {"label": "3", "value": "3"},
                                 ],
                                 value="1",
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary",
                                 style={'width': '70px'}
                             )
                         ], xs=12, md="auto"),
-                    ]),
+                    ], className="g-2 align-items-start"),
                 ])
             ], style={'backgroundColor': 'var(--card-color)', 'borderColor': vc.GRID_COLOR}, className="mb-4 mt-2"),
 

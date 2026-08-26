@@ -1273,3 +1273,20 @@ a.setup-card:focus-visible {
 @media (min-width: 768px)  { .setup-grid { grid-template-columns: repeat(var(--cols-md, 3), minmax(0, 1fr)); } }
 @media (min-width: 992px)  { .setup-grid { grid-template-columns: repeat(var(--cols-lg, 4), minmax(0, 1fr)); } }
 @media (min-width: 1200px) { .setup-grid { grid-template-columns: repeat(var(--cols-xl, 6), minmax(0, 1fr)); } }
+
+/* An open asset-class menu has to paint over the content below its card.
+
+   Nothing clips it -- every ancestor is overflow: visible -- so this is stacking,
+   not clipping. The control cards carry backdrop-filter, which makes each one a
+   stacking context, and they sit at z-index: auto. The menu's own z-index: 1000 is
+   therefore sealed inside its card and cannot lift it past a LATER sibling, so on
+   the strip page the board painted straight over the switches. The heatmap never
+   showed it only because its control row is position: sticky with a z-index of its
+   own, which is a layout decision that happens to fix a paint order.
+
+   Raising the card is the level the fix belongs at, and only while the menu is open:
+   a card that outranks the page permanently is a trap for the next thing dropped
+   into it. 1000 is Bootstrap's dropdown level and stays under the 1030 navbar. */
+.card:has(.class-filter-menu.show) {
+    z-index: 1000;
+}
