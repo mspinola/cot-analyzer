@@ -40,10 +40,16 @@ dash.register_page(
 
 
 
-# Shared by both board panels so they cannot drift apart visually.
-_PANEL_STYLE = {
-    "backgroundColor": "rgba(20,20,20,0.4)",
-    "border": "1px solid rgba(255,255,255,0.05)",
+# The two board panels are deliberately NOT the same weight any more. They used to
+# share one style, and the result was that Biggest Commercial Moves won the page: it
+# sits second, but its cards carry big saturated deltas and multiple badges, so on an
+# identical panel it out-shouted the strip above it. A setup is what a reader came for
+# and a mover is the context for it, so the chrome now says which is which instead of
+# leaving the card contents to fight it out.
+_SETUPS_PANEL_STYLE = {
+    "backgroundColor": "rgba(28,28,28,0.55)",
+    "border": "1px solid rgba(255,255,255,0.10)",
+    "boxShadow": "0 1px 12px rgba(0,0,0,0.35)",
 }
 
 # The Active Setups box, with its chrome and its switch static rather than rebuilt by
@@ -59,7 +65,13 @@ active_setups_panel = html.Div(
                 dbc.Switch(
                     id="home_setups_show_near",
                     label="Approaching",
-                    value=False,
+                    # On by default now. It was off while the approaching tier was
+                    # interleaved among the full setups at the same size, where it
+                    # doubled the length of the strip and diluted it. The tier is
+                    # its own smaller block below the featured cards now, so showing
+                    # it costs a fraction of the room and the switch goes back to
+                    # being a way to get rid of it rather than a way to find it.
+                    value=True,
                     # Session-persisted like every other control on this page, so the
                     # choice survives a navigation away and back.
                     persistence=True,
@@ -76,48 +88,7 @@ active_setups_panel = html.Div(
         html.Div(id="home_active_setups"),
     ],
     className="w-100 px-3 pt-3 pb-2 mb-3 rounded",
-    style=_PANEL_STYLE,
-)
-
-# Weekly Movers, collapsible. Deliberately NOT an accordion like the screener below:
-# that one is start_collapsed, and hiding a strip by default is the discovery cost the
-# Active Setups panel exists to remove. This opens by default and only closes if the
-# reader asks, which is why Active Setups has no equivalent toggle -- it answers the
-# page's main question and should never need a click to appear.
-#
-# Open state rides a session Store because dbc.Collapse has no persistence prop of its
-# own, so is_open would otherwise reset on every navigation back to this page.
-weekly_movers_panel = html.Div(
-    [
-        dcc.Store(id="home_movers_open", storage_type="session", data=True),
-        html.Div(
-            [
-                html.Div(id="home_movers_header",
-                         className="d-flex align-items-center flex-wrap"),
-                # A word, not a chevron. This app never loads the Bootstrap Icons
-                # stylesheet, so every `bi bi-*` in it renders as nothing -- a bare
-                # chevron button measured 18x6px and was invisible. "Hide"/"Show" also
-                # says which way the control goes, and cannot be confused with the
-                # up/down delta arrows the cards below already use for direction.
-                dbc.Button(
-                    "Hide",
-                    id="home_movers_toggle",
-                    size="sm",
-                    color="secondary",
-                    outline=True,
-                    title="Show or hide the weekly movers",
-                    style={"fontSize": "0.7rem", "padding": "2px 10px",
-                           "flex": "0 0 auto"},
-                ),
-            ],
-            className=("d-flex flex-wrap align-items-center justify-content-between "
-                       "mb-2 gap-2"),
-        ),
-        dbc.Collapse(html.Div(id="home_weekly_movers"), id="home_movers_collapse",
-                     is_open=True),
-    ],
-    className="w-100 px-3 pt-3 pb-2 mb-3 rounded",
-    style=_PANEL_STYLE,
+    style=_SETUPS_PANEL_STYLE,
 )
 
 def layout(**kwargs):
@@ -173,35 +144,16 @@ def layout(**kwargs):
 
     return html.Div([
         dbc.Container([
-            # 1. Hero Banner (Glassmorphism)
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card(
-                        dbc.CardBody([
-                            html.H4(
-                                [html.I(className="bi bi-bar-chart-steps me-2"), "Market Tape Overview"],
-                                className="card-title text-center mb-3",
-                                style={"color": vc.BRIGHTER_TEXT_COLOR, "fontWeight": "600", "letterSpacing": "1px"}
-                            ),
-                            html.P(
-                                f"All data on this page reflects the official Commitments of Traders reporting snapshot as of Tuesday market close "
-                                f"({datetime.strptime(get_indexer().get_available_dates()[0], '%Y-%m-%d').strftime('%B %d, %Y') if get_indexer().get_available_dates() else 'Unknown Date'}).",
-                                className="text-center mb-0",
-                                style={'color': vc.TEXT_COLOR, 'fontSize': '0.95rem'}
-                            )
-                        ]),
-                        className="mb-4 mt-4 shadow-sm",
-                        style={
-                            "backgroundColor": "rgba(30, 30, 30, 0.4)",
-                            "border": "1px solid rgba(255, 255, 255, 0.1)",
-                            "borderRadius": "12px",
-                            "backdropFilter": "blur(12px)"
-                        }
-                    )
-                ], width=12)
-            ]),
-
-            # 2. Command Center (Glassmorphism Control Panel)
+            # One header row, not three. The navbar above already carries the app
+            # name and the release date, and this page used to restate both in a
+            # "Market Tape Overview" hero card: a title naming the page you are
+            # already on, over a sentence repeating the navbar's badge in longer
+            # words. Between the navbar, that card and the control row below, a
+            # reader spent the whole first screen on chrome before reaching a
+            # setup. The one thing the card said that the navbar does not -- that
+            # the snapshot is Tuesday's close, not today's -- now rides in the
+            # control row as a caption, where it sits beside the controls that
+            # scope it rather than in a band of its own.
             dbc.Row([
                 dbc.Col([
                     html.Div(
@@ -247,7 +199,22 @@ def layout(**kwargs):
                                 ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md"),
 
                                 dbc.Col([
-                                    html.Label("Signal Filters", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
+                                    # The label row carries the snapshot caption on its
+                                    # right, in the whitespace this column already had.
+                                    # It is what the deleted hero card was actually for:
+                                    # the reader has to know these readings are Tuesday's
+                                    # close and not today's, and the navbar's release
+                                    # badge does not say that. Costing it zero height is
+                                    # the point -- as its own band it was a third header
+                                    # row for one clause.
+                                    html.Div([
+                                        html.Label("Signal Filters", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase", "marginBottom": 0}),
+                                        html.Span(
+                                            f"COT snapshot \u00b7 Tuesday close, "
+                                            f"{datetime.strptime(get_indexer().get_available_dates()[0], '%Y-%m-%d').strftime('%B %d, %Y') if get_indexer().get_available_dates() else 'date unknown'}",
+                                            style={"color": vc.TEXT_COLOR, "fontSize": "0.72rem"},
+                                        ),
+                                    ], className="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-1"),
                                     dbc.Checklist(
                                         options=[
                                             {"label": "📈 Bullish Tape Bias", "value": "TAPE_BIAS_BULL"},
@@ -267,7 +234,7 @@ def layout(**kwargs):
                                 ], xs=12, md=6, lg=8, className="mb-3 mb-md-0 px-md-4"),
                             ], align="center", className="g-3")
                         ]),
-                        className="mb-4 shadow",
+                        className="mt-3 mb-3 shadow",
                         style={
                             "backgroundColor": "rgba(20, 20, 20, 0.6)",
                             "border": "1px solid rgba(255, 255, 255, 0.05)",
@@ -278,18 +245,22 @@ def layout(**kwargs):
                 ], width=12)
             ]),
 
-            html.Hr(style=vc.hr_style),
+            # No rule between the control row and the board. The control card is
+            # already a bounded panel and each board panel below is another, so the
+            # <hr> was a divider between two things nothing was running together.
 
-            # Setups above movers: a setup is state you can act on, a mover is context for
-            # it. It also makes the SETUP/NEAR badges further down the movers strip read as
-            # a cross-reference rather than as the place you were meant to discover them.
+            # The board is the setups panel and nothing else now. "Biggest Commercial
+            # Moves This Week" used to sit under it, and it is gone rather than
+            # demoted: a large move on a market that is not at or near a gate is not
+            # a thing anyone can act on, so the strip spent eight cards and a
+            # panel-width heading answering a question with no follow-up. The
+            # movement that DOES matter -- a setup that arrived this week versus one
+            # that has been sitting there -- was already on the setup cards as the
+            # delta beside the index, and it stays there.
             dcc.Loading(
                 id="loading-home-board",
                 type="dot",
-                children=[
-                    active_setups_panel,
-                    weekly_movers_panel,
-                ],
+                children=[active_setups_panel],
                 color=vc.BRIGHTER_TEXT_COLOR,
             ),
 
@@ -511,14 +482,14 @@ def toggle_all_accordions(expand_clicks, collapse_clicks):
     return no_update
 
 
-# Both strips in one callback, off one sweep. Splitting them would walk all 42
-# instruments twice per input change -- and worse, would compute each row's setup state
-# twice, which is the one thing the shared board exists to prevent.
+# The setups strip and every accordion title off ONE sweep. They must not be split:
+# a second pass would walk all 42 instruments again per input change and, worse, would
+# compute each row's setup state twice, which is how a class tally came to disagree
+# with the strip above it. This mattered more when there were two strips here; it still
+# matters, because the accordion titles carry the same tallies.
 @callback(
     Output('home_setups_header', 'children'),
     Output('home_active_setups', 'children'),
-    Output('home_movers_header', 'children'),
-    Output('home_weekly_movers', 'children'),
     Output({"type": "accordion-item", "index": ALL}, 'title'),
     Input('global_lookback_store', 'data'),
     Input('session_palette_theme_asset_store', 'data'),
@@ -544,44 +515,9 @@ def update_home_board(lookback, palette_name, filter_types, model_key, show_near
     setups = signal_cards.build_active_setups_strip(
         rows, palette, model=model, filter_types=filter_types, show_near=show_near,
     )
-    # Built even while the movers panel is collapsed. The cards are the cheap half of
-    # this callback -- the sweep above is the cost, and it is already paid for the setups
-    # panel -- so making the build conditional would buy nothing and would leave stale
-    # cards behind the toggle the moment a filter changed.
-    movers = signal_cards.build_weekly_movers_strip(rows, palette,
-                                                    filter_types=filter_types)
-
     # Accordion headers off the same sweep, so a class tally can never disagree with the
     # setups strip above it. Built in the order Dash handed back the ids rather than in
     # get_asset_classes() order, which is what keeps each title on its own item.
     titles = [signal_cards.build_accordion_title(i["index"], rows) for i in item_ids]
 
-    return setups.header, setups.body, movers.header, movers.body, titles
-
-
-# ── the movers collapse ───────────────────────────────────────────────────────
-# Two callbacks rather than one: the click *writes* the session store and the store
-# *drives* the panel. Toggling dbc.Collapse directly from n_clicks would leave the
-# stored value and the rendered state as two sources of truth that disagree the moment
-# the page is reloaded with the store already set.
-
-@callback(
-    Output('home_movers_open', 'data'),
-    Input('home_movers_toggle', 'n_clicks'),
-    State('home_movers_open', 'data'),
-    prevent_initial_call=True,
-)
-def toggle_movers_open(n_clicks, is_open):
-    return not (True if is_open is None else is_open)
-
-
-@callback(
-    Output('home_movers_collapse', 'is_open'),
-    Output('home_movers_toggle', 'children'),
-    Input('home_movers_open', 'data'),
-)
-def apply_movers_open(is_open):
-    # None means the session store has nothing yet, which is a first visit, not a
-    # collapsed panel. Same reasoning as the Approaching switch: default to showing.
-    is_open = True if is_open is None else bool(is_open)
-    return is_open, ("Hide" if is_open else "Show")
+    return setups.header, setups.body, titles
