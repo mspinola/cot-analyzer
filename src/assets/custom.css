@@ -1222,3 +1222,54 @@ input.dash-input-container { display: none !important; }
 @media (max-width: 767.98px) {
     .hide-border-below-md { border-right: 0 !important; }
 }
+
+/* The Active Setups cards. The whole card is a link to the market's OI Alignment
+   page, so it needs to look like one: the name alone used to be the only anchor,
+   which made most of the card a dead click on a card that has no other action.
+   Nothing here colours the text -- the card sets its own colours inline and an
+   anchor's default blue would fight them -- so the affordance is the surface
+   lifting under the cursor, plus the name brightening to confirm which card the
+   pointer is on. */
+a.setup-card { color: inherit; }
+a.setup-card > div {
+    transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+a.setup-card:hover > div,
+a.setup-card:focus-visible > div {
+    background-color: rgba(255, 255, 255, 0.07) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    transform: translateY(-1px);
+}
+/* The approaching tier sits at reduced opacity. Bringing it to full on hover is
+   what tells a reader it is as clickable as the featured cards above it, which a
+   dimmed card otherwise reads as not being. */
+a.setup-card:hover > div { opacity: 1 !important; }
+a.setup-card:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.45);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+    a.setup-card > div { transition: none; }
+    a.setup-card:hover > div { transform: none; }
+}
+
+/* The Active Setups grids. Card counts per row come from the component as
+   --cols-xs .. --cols-xl, because how many cards there are is Python's fact while
+   which breakpoint is live is CSS's; see _balanced() in components/signal_cards.py
+   for how the numbers are picked. A custom property is substituted before the
+   declaration is parsed, so repeat() accepts one as its count.
+
+   This is a grid and not a Bootstrap row because twelve columns cannot express five
+   across, and five across is exactly what nine cards want. Breakpoints match
+   Bootstrap's so the two systems agree about where a layout changes. */
+.setup-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(var(--cols-xs, 1), minmax(0, 1fr));
+    align-items: stretch;
+}
+@media (min-width: 576px)  { .setup-grid { grid-template-columns: repeat(var(--cols-sm, 2), minmax(0, 1fr)); } }
+@media (min-width: 768px)  { .setup-grid { grid-template-columns: repeat(var(--cols-md, 3), minmax(0, 1fr)); } }
+@media (min-width: 992px)  { .setup-grid { grid-template-columns: repeat(var(--cols-lg, 4), minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .setup-grid { grid-template-columns: repeat(var(--cols-xl, 6), minmax(0, 1fr)); } }

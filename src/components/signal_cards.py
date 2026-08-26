@@ -531,103 +531,48 @@ def build_signal_panel(df, asset, color_palette, target_date=None, is_equity=Fal
 
 
 def build_mobile_asset_card(df, asset, color_palette, lookback,
-                             model=None, is_equity=False, filter_types=[]):
-    from datetime import datetime
+                            model=None, is_equity=False, filter_types=[]):
+    """One screener card: the SAME card the setups strip draws, plus a footer.
 
+    This used to be its own layout -- a two-column table of nine readings under a
+    tape-bias badge, with an "Analyze Charts" button on the bottom. The two halves of
+    the home page therefore said the same things in two vocabularies: an "Index:
+    16/83/57" row here against a lollipop strip above, a border tinted by tape bias
+    here against a badge tinted by setup state above, and a market name that linked
+    from a button here and from the whole card above. Nothing about a market changes
+    between the top of the page and the bottom, so nothing about its card should
+    either.
 
+    It now assembles a board-row-shaped dict off the frame and hands it to
+    `positioning_card`. Three consequences worth knowing:
+
+    * The setup verdict comes from `model.setup_state_from`, the same call
+      `get_board` makes, so a market cannot be badged SETUP in the strip above and
+      show a bare card down here. It used to derive its own via `setup_masks`, which
+      is exactly the duplication that let the two disagree.
+    * Max Pain Pull and OI Z-Score are gone. Neither bears on a positioning setup,
+      and the max-pain read they needed was the only reason this function touched the
+      options store at all -- so the card no longer opens it.
+    * Tape bias moved from the card's border into the first badge. On this card it is
+      one signal among several, not the headline; the headline is the setup state,
+      top right, the way it is everywhere else on the page now.
+    """
     model = model if isinstance(model, models.PositioningModel) else models.resolve(model)
-    min_idx, max_idx = model.low, model.high
-    # Equities gate on Commercials alone, and the CS gate drops Large Specs, so whether
-    # a leg is worth colouring depends on both.
-    gates_large = not is_equity and models.LEG_LARGE in model.spec_legs
-    gates_small = not is_equity and models.LEG_SMALL in model.spec_legs
 
     if df is None or df.empty:
         return None
 
     latest = df.iloc[-1]
-
     safe_get = _safe_getter(latest, f"build_mobile_asset_card({asset})")
 
-    # ---- Extract metrics ----
-    comm_idx      = safe_get(const.COMMS_IDX, 50)
-    lrg_idx       = safe_get(const.LRG_IDX, 50)
-    sml_idx       = safe_get(const.SML_IDX, 50)
-    comm_z        = safe_get(const.COMMS_ZSCORE, 0)
-    lrg_z         = safe_get(const.LRG_ZSCORE, 0)
-    sml_z         = safe_get(const.SML_ZSCORE, 0)
     comm_momentum = safe_get(const.COMM_MOMENTUM, 0)
     lrg_momentum  = safe_get(const.LRG_MOMENTUM, 0)
     sml_momentum  = safe_get(const.SML_MOMENTUM, 0)
     willco        = safe_get(const.WILLCO_ALIAS, 50)
     lrg_sentiment = safe_get(const.LW_LRG_SENTIMENT, None)
-    oi_z          = safe_get(const.OI_ZSCORE, 0)
-    comm_spr      = safe_get(const.COMMS_SPEARMAN, 0)
-    lrg_spr       = safe_get(const.LRG_SPEARMAN, 0)
-    sml_spr       = safe_get(const.SML_SPEARMAN, 0)
 
     instrument = get_indexer().get_instrument_from_name(asset)
     symbol_str = instrument.symbol if instrument else asset
-
-    from cotmetrics.options_data import get_max_pain_for_symbol
-    try:
-        report_date_str = pd.to_datetime(latest.name).strftime('%Y-%m-%d')
-        res = get_max_pain_for_symbol(symbol_str, report_date_str)
-        max_pain, delta_iv, current_price = (res["max_pain"], res["delta_iv"], res.get("current_price")) if res else (None, None, None)
-    except Exception:
-        max_pain, delta_iv, current_price = None, None, None
-
-    if max_pain is not None and current_price is not None and current_price > 0:
-        max_pain_pull = ((max_pain - current_price) / current_price) * 100
-    else:
-        max_pain_pull = None
-
-    def fmt_mp(val):
-        if val is None:
-            return "N/A"
-        if val < 10:
-            return f"{val:,.4f}"
-        if val < 100:
-            return f"{val:,.2f}"
-        return f"{val:,.0f}"
-
-    def fmt_div(val):
-        if val is None:
-            return "N/A"
-        val_k = val * 1000
-        if abs(val_k) < 1.0:
-            return f"{val_k:,.1f}K"
-        return f"{val_k:,.0f}K"
-
-    # ---- Signals ----
-    bullish_setup, bearish_setup, _, _ = model.setup_masks(
-        comm_idx, lrg_idx, sml_idx, is_equity
-    )
-
-    active_bull_signals: list[str] = []
-    active_bear_signals: list[str] = []
-
-    if bullish_setup:
-        active_bull_signals.append("BULLISH POSITIONING")
-    if bearish_setup:
-        active_bear_signals.append("BEARISH POSITIONING")
-
-    # Core algo signals (no accumulation signals on the compact mobile card)
-    _bull, _bear, _debug, _ = _collect_active_signals(latest, include_accumulation=False)
-    active_bull_signals.extend(_bull)
-    active_bear_signals.extend(_bear)
-
-    # Spearman is shown as a badge on mobile rather than a separate card
-    if latest.get(const.COMMS_SPEARMAN_REGIME_SHIFT, False):
-        if comm_momentum > 0:
-            active_bull_signals.append("SPEARMAN BULL")
-        else:
-            active_bear_signals.append("SPEARMAN BEAR")
-
-    instrument = get_indexer().get_instrument_from_name(asset)
-    symbol_str = instrument.symbol if instrument else asset
-
-    bearish_setup or (len(active_bear_signals) > len(active_bull_signals))
 
     synthesis = generate_exhaustive_tape_synthesis(latest, symbol_str, df=df)
     tape_bias = synthesis.get("tape_bias", "neutral").upper()
@@ -642,171 +587,108 @@ def build_mobile_asset_card(df, asset, color_palette, lookback,
         if tape_bias.lower() != "bearish":
             return None
 
-    # ---- Colors ----
     BULL_COLOR = color_palette[3]
     BEAR_COLOR = color_palette[0]
-
-    # Use a brighter red for readability
     if BEAR_COLOR.lower() in ("#f87171", "#dc322f", "#ff453a", "#e70307", "#ff007f"):
         BEAR_COLOR = "#FF4D4D"
 
-    if tape_bias == "BULLISH":
-        border_color = BULL_COLOR
-    elif tape_bias == "BEARISH":
-        border_color = BEAR_COLOR
-    elif len(active_bull_signals) > len(active_bear_signals):
-        border_color = BULL_COLOR
-    elif len(active_bear_signals) > len(active_bull_signals):
-        border_color = BEAR_COLOR
-    else:
-        border_color = color_palette[1]
+    # The board row this card renders through. `_leg` mirrors cotmetrics.movers so a
+    # frame read here and a frame read there produce the same fields; the WoW aliases
+    # are the ones get_board uses, so the delta gutter means the same thing on both
+    # halves of the page.
+    def _num(value):
+        return None if value is None or pd.isna(value) else round(float(value))
 
-    # ---- Badges ----
-    badges = (
-        [dbc.Badge(s, className="me-1 mb-1 py-0.5 px-1.5",
-                   style={'fontSize': '0.55rem', 'whiteSpace': 'nowrap', 'backgroundColor': f'{BULL_COLOR}15', 'color': BULL_COLOR, 'border': f'1px solid {BULL_COLOR}40', 'fontWeight': 'normal'}) for s in active_bull_signals]
-        + [dbc.Badge(s, className="me-1 mb-1 py-0.5 px-1.5",
-                     style={'fontSize': '0.55rem', 'whiteSpace': 'nowrap', 'backgroundColor': f'{BEAR_COLOR}15', 'color': BEAR_COLOR, 'border': f'1px solid {BEAR_COLOR}40', 'fontWeight': 'normal'}) for s in active_bear_signals]
-    )
+    comm_col, lrg_col, sml_col = model.leg_columns(lookback)
+    row = {
+        "asset": asset,
+        "index": _num(latest.get(comm_col)),
+        "lrg_index": _num(latest.get(lrg_col)),
+        "sml_index": _num(latest.get(sml_col)),
+        "delta": _num(latest.get(const.COMM_WOW)),
+        "lrg_delta": _num(latest.get(const.LRG_WOW)),
+        "sml_delta": _num(latest.get(const.SML_WOW)),
+        # The SAME call get_board makes. Deriving it here with setup_masks is what let
+        # this card and the strip above it disagree about a market.
+        "setup": model.setup_state_from(latest, lookback, is_equity),
+        # Same reason as `setup` above: the strip and this card must not compute a
+        # market's age two ways. One call, on the model that owns the gate.
+        "setup_weeks": model.setup_age_from(df, lookback, is_equity),
+        "is_equity": is_equity,
+    }
+    if row["index"] is None:
+        return None
 
-    cftc_date = latest.name
-    if isinstance(cftc_date, (datetime, pd.Timestamp)):
-        cftc_date = cftc_date.strftime('%Y-%m-%d')
-    else:
-        cftc_date = str(cftc_date)
+    # ---- the fired signals ----
+    active_bull, active_bear = [], []
+    _bull, _bear, _debug, _ = _collect_active_signals(latest, include_accumulation=False)
+    active_bull.extend(_bull)
+    active_bear.extend(_bear)
 
-    instrument = get_indexer().get_instrument_from_name(asset)
-    symbol_str = instrument.symbol if instrument else asset
+    # Spearman rides as a badge rather than as three coefficients: the fired regime
+    # shift is the part anyone acts on.
+    if latest.get(const.COMMS_SPEARMAN_REGIME_SHIFT, False):
+        (active_bull if comm_momentum > 0 else active_bear).append(
+            "SPEARMAN BULL" if comm_momentum > 0 else "SPEARMAN BEAR")
 
-    def _colored_span_mobile(value, bull_cond, bear_cond, fmt=".0f"):
-        color = BULL_COLOR if bull_cond else (BEAR_COLOR if bear_cond else vc.BRIGHTER_TEXT_COLOR)
-        return html.Span(f"{value:{fmt}}", style={'color': color, 'fontSize': '0.85rem',
-                                                   'fontWeight': 'bold', 'whiteSpace': 'nowrap'})
+    def _chip(label, colour):
+        return html.Span(label, style={
+            "fontSize": "0.55rem", "whiteSpace": "nowrap", "fontWeight": "normal",
+            "backgroundColor": f"{colour}15", "color": colour,
+            "border": f"1px solid {colour}40", "borderRadius": "3px",
+            "padding": "1px 4px"})
 
+    badges = []
+    if tape_bias in ("BULLISH", "BEARISH"):
+        badges.append(_chip(
+            f"{tape_bias} TAPE",
+            BULL_COLOR if tape_bias == "BULLISH" else BEAR_COLOR))
+    badges += [_chip(x, BULL_COLOR) for x in active_bull]
+    badges += [_chip(x, BEAR_COLOR) for x in active_bear]
 
+    # ---- the footer: what this card knows that the strip above it does not ----
+    # WillCo, then LW Sentiment, then Movement, which is their order of usefulness.
+    # Movement is NOT the delta gutter restated: that is the one-week change in the
+    # index, this is the six-week momentum of the underlying position.
+    def _lit(value, bull_cond, bear_cond, fmt=".0f"):
+        colour = (BULL_COLOR if bull_cond else
+                  BEAR_COLOR if bear_cond else vc.BRIGHTER_TEXT_COLOR)
+        return html.Span(f"{value:{fmt}}", style={"color": colour,
+                                                  "fontWeight": "bold"})
 
-    card = dbc.Card([
-        dbc.CardBody([
-            html.Div([
-                html.H5([
-                    html.Span(asset, id='oi_alignment_signal_card_title', style={'fontWeight': 'bold', 'color': vc.BRIGHTER_TEXT_COLOR}),
-                    html.Span(f" ({symbol_str})", className="text-muted",
-                              style={'fontSize': '0.72rem', 'marginLeft': '6px', 'fontWeight': 'normal'}),
-                ], className="card-title mb-0 text-truncate",
-                   style={'fontSize': '0.9rem', 'maxWidth': '65%'}),
+    sep = html.Span(" · ", style={"opacity": 0.45})
+    footer = [
+        html.Span("WillCo ", title="Larry Williams Commercial proxy index. How fully "
+                                   "deployed Commercials are against total open interest.",
+                  style={"cursor": "help"}),
+        _lit(willco, willco >= const.WILLCO_MAX_THRESHOLD,
+             willco <= const.WILLCO_MIN_THRESHOLD),
+        sep,
+        html.Span("LW ", title="Larry Williams Large Speculator Sentiment Index "
+                               "(15-week). A contrarian reading.",
+                  style={"cursor": "help"}),
+        (_lit(lrg_sentiment,
+              lrg_sentiment <= const.LW_LRG_SENTIMENT_MIN_THRESHOLD,
+              lrg_sentiment >= const.LW_LRG_SENTIMENT_MAX_THRESHOLD)
+         if pd.notna(lrg_sentiment)
+         else html.Span("\u2013", style={"opacity": 0.6})),
+        html.Br(),
+        html.Span("Move ", title="Six-week momentum of positioning, Comm / Large / "
+                                 "Small. Not the one-week index change beside the "
+                                 "strip above.",
+                  style={"cursor": "help"}),
+        _lit(comm_momentum, comm_momentum >= const.MOMENTUM_MAX_THRESHOLD,
+             comm_momentum <= const.MOMENTUM_MIN_THRESHOLD),
+        html.Span("/", style={"opacity": 0.45}),
+        _lit(lrg_momentum, lrg_momentum >= const.MOMENTUM_MAX_THRESHOLD,
+             lrg_momentum <= const.MOMENTUM_MIN_THRESHOLD),
+        html.Span("/", style={"opacity": 0.45}),
+        _lit(sml_momentum, sml_momentum >= const.MOMENTUM_MAX_THRESHOLD,
+             sml_momentum <= const.MOMENTUM_MIN_THRESHOLD),
+    ]
 
-                html.Div([
-                    html.Span(f"{tape_bias}", style={
-                        'fontSize': '0.65rem',
-                        'color': '#000' if tape_bias in ("BULLISH", "BEARISH") else '#fff',
-                        'backgroundColor': BULL_COLOR if tape_bias == "BULLISH" else (BEAR_COLOR if tape_bias == "BEARISH" else "#444"),
-                        'padding': '2px 5px',
-                        'borderRadius': '3px',
-                        'fontWeight': 'bold',
-                        'letterSpacing': '0.5px',
-                        'whiteSpace': 'nowrap'
-                    })
-                ], className="d-flex align-items-center")
-            ], className="d-flex justify-content-between align-items-center mb-2"),
-            dbc.Row([
-                dbc.Col([
-                    html.Div([
-                        html.Span("Index: ", className="text-muted", title="0-100 stochastic index of net positioning over the lookback period. Format: Comm / Large / Small.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span([
-                            _colored_span_mobile(comm_idx, comm_idx >= max_idx, comm_idx <= min_idx),
-                            "/",
-                            html.Span(f"{lrg_idx:.0f}", style={
-                                # Only coloured while the model's gate actually uses this
-                                # leg. Under the CS gate Large Specs do not participate,
-                                # so lighting the cell would claim a role it has lost.
-                                'color': BULL_COLOR if (gates_large and lrg_idx <= min_idx)
-                                         else BEAR_COLOR if (gates_large and lrg_idx >= max_idx)
-                                         else vc.BRIGHTER_TEXT_COLOR,
-                                'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                            "/",
-                            html.Span(f"{sml_idx:.0f}", style={
-                                'color': BULL_COLOR if (gates_small and sml_idx <= min_idx)
-                                         else BEAR_COLOR if (gates_small and sml_idx >= max_idx)
-                                         else vc.BRIGHTER_TEXT_COLOR,
-                                'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                        ], style={'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("Pos Z-Score: ", className="text-muted", title="Statistical z-score of net positioning over the lookback period. Format: Comm / Large / Small.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{comm_z:.1f}/{lrg_z:.1f}/{sml_z:.1f}", className="text-white", style={'fontSize': '0.85rem', 'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("Movement: ", className="text-muted", title="Momentum (6-week lookback) measuring the velocity of positioning changes. Format: Comm / Large / Small.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span([
-                            _colored_span_mobile(comm_momentum, comm_momentum >= const.MOMENTUM_MAX_THRESHOLD, comm_momentum <= const.MOMENTUM_MIN_THRESHOLD),
-                            "/",
-                            _colored_span_mobile(lrg_momentum, lrg_momentum >= const.MOMENTUM_MAX_THRESHOLD, lrg_momentum <= const.MOMENTUM_MIN_THRESHOLD),
-                            "/",
-                            _colored_span_mobile(sml_momentum, sml_momentum >= const.MOMENTUM_MAX_THRESHOLD, sml_momentum <= const.MOMENTUM_MIN_THRESHOLD),
-                        ], style={'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("LW Sentiment: ", className="text-muted", title="Larry Williams Large Speculator Sentiment Index (15-week lookback). Used as a contrarian indicator.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(
-                            f"{lrg_sentiment:.0f}" if pd.notna(lrg_sentiment) else "N/A",
-                            style={
-                                'color': BEAR_COLOR if (pd.notna(lrg_sentiment) and lrg_sentiment >= const.LW_LRG_SENTIMENT_MAX_THRESHOLD)
-                                         else BULL_COLOR if (pd.notna(lrg_sentiment) and lrg_sentiment <= const.LW_LRG_SENTIMENT_MIN_THRESHOLD)
-                                         else vc.BRIGHTER_TEXT_COLOR,
-                                'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap',
-                            }
-                        ),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("Spearman: ", className="text-muted", title="Spearman rank correlation coefficient between net positioning and price. Detects hedging regime shifts.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{comm_spr:.1f}/{lrg_spr:.1f}/{sml_spr:.1f}", className="text-white", style={'fontSize': '0.85rem', 'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("Max Pain Pull: ", className="text-muted", title="The percentage distance from the current price to the Max Pain strike. Positive means the strike is above the price (magnetic pull upwards).", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{max_pain_pull:+.1f}%" if max_pain_pull is not None else "N/A", style={
-                            'color': BULL_COLOR if (max_pain_pull is not None and max_pain_pull > 0) else BEAR_COLOR if (max_pain_pull is not None and max_pain_pull < 0) else vc.BRIGHTER_TEXT_COLOR,
-                            'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                    ]),
-                ], xs=7),
-
-                dbc.Col([
-                    html.Div([
-                        html.Span("WILLCO: ", className="text-muted", title="Larry Williams Commercial proxy index. Measures how fully deployed Commercials are relative to total open interest.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{willco:.0f}", style={
-                            'color': BULL_COLOR if willco >= const.WILLCO_MAX_THRESHOLD else BEAR_COLOR if willco <= const.WILLCO_MIN_THRESHOLD else vc.BRIGHTER_TEXT_COLOR,
-                            'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("OI Z-Score: ", className="text-muted", title="Open Interest Z-Score. Measures how extreme the current amount of open contracts is.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{oi_z:.1f}", style={
-                            'color': BULL_COLOR if oi_z >= const.OI_ZSCORE_MAX_THRESHOLD else BEAR_COLOR if oi_z <= const.OI_ZSCORE_MIN_THRESHOLD else vc.BRIGHTER_TEXT_COLOR,
-                            'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                    ], style={'marginBottom': '2px'}),
-                    html.Div([
-                        html.Span("Delta IV: ", className="text-muted", title="Delta Intrinsic Value. The magnitude of 'excess pain' (in Millions) market makers are experiencing compared to the Max Pain strike.", style={'fontSize': '0.62rem', 'whiteSpace': 'nowrap', 'cursor': 'help'}),
-                        html.Span(f"{fmt_div(delta_iv)}" if delta_iv is not None else "N/A", style={
-                            'color': vc.BRIGHTER_TEXT_COLOR,
-                            'fontSize': '0.85rem', 'fontWeight': 'bold', 'whiteSpace': 'nowrap'}),
-                    ]),
-                ], xs=5),
-            ], className="mb-2 p-1.5 rounded", style={'backgroundColor': 'rgba(255, 255, 255, 0.03)'}),
-
-            html.Div(badges, className="mt-2 mb-1"),
-
-            html.A(
-                dbc.Button("Analyze Charts →", color="primary", outline=True, size="sm",
-                           className="w-100 mt-1 py-1", style={'fontSize': '0.75rem'}),
-                href=f"/oi_alignment?asset={urllib.parse.quote(asset)}",
-                target="_blank"
-            ),
-        ], style={'padding': '12px 14px'}),
-    ], style={
-        'backgroundColor': 'var(--card-color)',
-        'border': f'1.5px solid {border_color}70',
-        'boxShadow': f'0 4px 15px {border_color}10',
-    }, className="h-100 signal-card-hover")
-
-    return card
+    return positioning_card(row, model, color_palette, weight="screener",
+                            subtitle=symbol_str, footer=footer, badges=badges or None)
 
 
 def build_accordion_title(ac, rows):
@@ -889,15 +771,20 @@ def build_asset_class_cards(cot_indexer, ac, lookback, color_palette, model=None
     ac_cards = []
     for name in instruments:
         df = cot_indexer.get_symbols_data(name, lookback, model.basis)
-        code = cot_indexer.get_instrument_symbol_from_name(name)
-        symbol = cot_indexer.instruments[code].symbol if code in cot_indexer.instruments else name
         is_equity = cot_indexer.is_equity(name)
+        # The asset NAME, explicitly. This used to compute a `symbol` here and pass
+        # that instead, and it only ever worked by falling through its own ternary:
+        # `instruments` is not keyed by the exchange code, so `code in instruments`
+        # was False for every market and `symbol` resolved to `name` anyway. The card
+        # builds its OI Alignment link out of this value and looks the exchange code
+        # up for itself, so a day when that lookup started succeeding would have sent
+        # every card on the page to /oi_alignment?asset=None.
         card = build_mobile_asset_card(
-            df, symbol, color_palette, lookback, model=model,
+            df, name, color_palette, lookback, model=model,
             is_equity=is_equity, filter_types=filter_types
         )
         if card is not None:
-            ac_cards.append(dbc.Col(card, xs=12, sm=6, md=4, lg=3, xl=2))
+            ac_cards.append(card)
 
     if not ac_cards:
         # A card is only ever withheld by the tape-bias filter -- setup state does not
@@ -917,26 +804,595 @@ def build_asset_class_cards(cot_indexer, ac, lookback, color_palette, model=None
             className="p-3"
         )
 
-    return dbc.Row(ac_cards, className="g-2 p-1")
+    # The same balanced grid the setups strip uses, at the screener's own widths.
+    # Two things came out of sharing it. The cards are wider here (four across at xl,
+    # not six) because they carry a footer and a badge row the strip's do not, and at
+    # six the name ellipsised to "Soybean ... (ZM)" -- the exchange code surviving
+    # while the word identifying the market was cut. And a five-market class now lays
+    # out 3 + 2 rather than 4 + 1, which is the offcut the strip above was fixed for;
+    # there is no reason the same class of market should read as a ragged list down
+    # here and as a group up there.
+    return card_grid(ac_cards, MAX_PER_ROW["screener"])
 
 
-def _setup_leg_readout(row, model):
-    """The gated legs and their index values, e.g. "Comm 100 · Small 12".
+def _strip_hover(row, model):
+    """The exact readings the gate strip draws, for its hover.
 
-    Shows the gate's working rather than restating the verdict the badge already gives.
-    Only the legs this model actually consulted appear, so an NPF card never implies a
-    Large Spec condition its CS gate never checked, and an equity card says so outright
-    instead of listing legs that did not gate it.
+    The strip is a position, not a number, so dropping the leg text only works if the
+    numbers stay one hover away. This is the one place Commercials and the spec legs
+    are printed together, which is why it keeps the "Comm" prefix the card's headline
+    number also carries rather than leading with a bare figure.
     """
-    parts = [f"Comm {row['index']}"]
+    def _with_move(label, value, delta):
+        if delta is None:
+            return f"{label} {value}"
+        return f"{label} {value} ({'no change' if delta == 0 else f'{delta:+d}'})"
+
+    parts = [_with_move("Comm", row["index"], row.get("delta"))]
     if row["is_equity"]:
         parts.append("specs not gated")
     else:
-        for leg, short, key in ((models.LEG_LARGE, "Large", "lrg_index"),
-                                (models.LEG_SMALL, "Small", "sml_index")):
+        for leg, short, key, dkey in (
+                (models.LEG_LARGE, "Large", "lrg_index", "lrg_delta"),
+                (models.LEG_SMALL, "Small", "sml_index", "sml_delta")):
             if leg in model.spec_legs and row[key] is not None:
-                parts.append(f"{short} {row[key]}")
-    return " · ".join(parts)
+                parts.append(_with_move(short, row[key], row.get(dkey)))
+    return " · ".join(parts) + " this week"
+
+
+# ── the gate strip ────────────────────────────────────────────────────────────
+# The /strip chart's row, shrunk onto a card and then given one LANE PER LEG rather
+# than the single lane it has there. /strip can afford one lane because it is 42 rows
+# tall and a reader compares DOWN the column; a card is read on its own, and the
+# question it has to answer is not "where are Commercials" but "where is the whole
+# gate", which is Commercials plus whichever speculator legs this model reads. So the
+# lane count is the gate's own notation: three lanes under Raw PF's CLS gate, two
+# under NPF's CS, and one for an equity index contract, whose setup reads Commercials
+# alone under either model.
+#
+# Colour is the LEG, not the verdict, which is the one place this departs from /strip
+# and is a deliberate reversal of that page's rule. /strip colours its lollipop by the
+# row's setup state because a lone lane has no other way to say it, and the page has
+# 42 rows in which one convention has to hold. A card says its verdict twice already,
+# in the badge and in the border down its left edge, so spending colour on it a third
+# time buys nothing -- while three lanes with no colour distinction cannot be told
+# apart at all. The slots are the app's own (plot_traces draws Commercials from 0,
+# Large Specs from 1 and Small Traders from 2 on every stacked panel), so a reader
+# arriving from the Graphs or OI Alignment pages already knows which is which.
+#
+# Plain divs, not SVG and emphatically not Plotly. Thirteen dcc.Graphs on the home
+# page would each drag in a plotly instance for thirty pixels of picture; the marks
+# here are absolutely-positioned rectangles. Percentage lefts also mean the strip
+# rescales with the card at every breakpoint with no measurement, which the SVG
+# version could not do without either distorting the dots into ellipses
+# (preserveAspectRatio="none") or giving up edge padding.
+LANE_PX = 9            # one leg's lane, dot included
+LANE_GAP = 3
+# /strip uses 0.09 over 700px of row. On a card the axis is ~150px, which needed more
+# alpha to resolve as a band at all -- but the zone is now as tall as the whole strip
+# rather than one 8px lane, so the area went up with the lane count and the alpha comes
+# back down. Calibrated on screen at two and three lanes, not derived.
+_ZONE_ALPHA = 0.11
+_DOT_PX = 7
+_COMM_DOT_PX = 9       # Commercials are the gated leg; the others are context for it
+
+
+def _abs(**kw):
+    return {"position": "absolute", **kw}
+
+
+def strip_legs(row, model):
+    """The legs a gate strip draws, top to bottom.
+
+    Each entry is `(palette slot, index value, week-over-week delta, is_commercial)`.
+    The delta rides along here rather than being looked up beside the strip so that
+    the gutter of numbers and the lanes they annotate are built from ONE list: any
+    other arrangement lets a card grow a lane the gutter has no row for, or print a
+    delta against the wrong leg, and both failures look plausible.
+
+    Commercials first and always: every gate in the app reads them. The speculator
+    legs are exactly `model.spec_legs`, so an NPF card has no Large Spec lane because
+    NPF's CS gate never reads that leg, and an equity index card has none at all
+    because those gate on Commercials alone. Drawing a lane the gate does not read
+    would put a condition on the card that the verdict above it never checked, which
+    is the same rule `_strip_hover` and the /strip figure already follow.
+    """
+    from components.strip_traces import LEG_PALETTE_SLOT
+
+    lanes = [(LEG_PALETTE_SLOT["comm"], row["index"], row.get("delta"), True)]
+    if not row["is_equity"]:
+        for leg, key, dkey in ((models.LEG_LARGE, "lrg_index", "lrg_delta"),
+                               (models.LEG_SMALL, "sml_index", "sml_delta")):
+            if leg in model.spec_legs and row[key] is not None:
+                lanes.append((LEG_PALETTE_SLOT[leg], row[key], row.get(dkey), False))
+    return lanes
+
+
+# Whether the Commercial lane takes the app's leg colour (palette slot 0) like the
+# speculator lanes, or the row's verdict colour.
+#
+# Slot 0 was tried first and is wrong for a reason only visible on screen: slot 0 IS
+# the bear red. So Russell, a BULLISH setup with a green badge and a green border,
+# drew a red dot sitting inside the green bull zone, and every bull setup on the board
+# did the same. Three signals said bull and the loudest mark on the card said bear.
+#
+# The verdict colour is also the more honest of the two. Commercials are the leg every
+# gate actually reads, so their mark is the one entitled to carry the verdict, and it
+# keeps /strip's rule (position is the level, colour is the verdict) for the mark that
+# rule was written about. The speculator lanes keep their identity colours, which is
+# what the three lanes needed to be told apart in the first place -- so both things
+# the palette was wanted for still hold. Flip this to True to see the alternative.
+COMM_LANE_TAKES_LEG_COLOUR = False
+
+
+# Whether the speculator lanes get a stem back to neutral as well as a mark. On, but
+# at a HAIRLINE against the Commercial stem's 2px -- #60A5FA for Large Specs and
+# #FBBF24 for Small Traders, the app's slot 1 and slot 2.
+#
+# /strip draws its bar for Commercials only, and copying that exactly left the spec
+# lanes as a bare tick on an empty track: it says where the leg is and takes away the
+# thing the lollipop was wanted for, which is reading how far from neutral a leg got
+# without stopping to measure it. Restoring the stem at half the width keeps that
+# reading and still ranks the lanes, because the Commercial lollipop remains the
+# heaviest mark in the picture by both stem weight and head shape. The ink worry that
+# turned these off is answered by the width rather than by the absence.
+SPEC_LEGS_GET_STEMS = True
+_SPEC_STEM_PX = 1
+
+# The stem, restored from /strip. A bare dot says WHERE a leg is; the lollipop says
+# how far from neutral it got and which way it went, which is the quantity the gate is
+# actually about. It costs almost nothing on a card because the run is short and the
+# alpha is low, and it does one thing a dot cannot: with several lanes stacked, the
+# stems make the card readable as a shape rather than as three positions to be located
+# and then compared. A market with everything pushed one way and a market with its legs
+# opposed are the two cases that matter, and they now differ at a glance.
+# Fainter than strip_traces.STEM_ALPHA's 0.55, which is the right number THERE and
+# was too much here. /strip spends that alpha on one stem per row across 42 thin rows,
+# where the stems never sit near each other; a card stacks two or three of them inside
+# 20px, so the same alpha lands as a block of colour rather than as separate
+# measurements. The heads and ticks are unchanged and still read at full strength --
+# it is the runs of pixels that had to come down, which is the same argument
+# strip_traces makes for knocking its own stem back below its head.
+_STEM_ALPHA = 0.38
+_SPEC_STEM_ALPHA = 0.26   # a hairline supporting a tick, under a 2px stem and a head
+_STEM_PX = 2
+
+
+def gate_strip(row, model, palette, colour=None, lane_px=LANE_PX, gap=LANE_GAP,
+               dot_px=None, stem_px=_STEM_PX):
+    """The card's 0-100 gate picture: gate zones behind one lollipop per gated leg.
+
+    `colour` is the row's verdict colour, passed in rather than re-derived so the
+    Commercial dot cannot disagree with the badge above it about which way the setup
+    goes. Ignored when COMM_LANE_TAKES_LEG_COLOUR is on.
+
+    `dot_px` shrinks every mark for the approaching tier, which draws the same strip
+    at reduced weight rather than a different one. `stem_px` of 0 drops the stems and
+    leaves bare dots.
+    """
+    from components.plot_colors import hex_to_rgba
+
+    lanes = strip_legs(row, model)
+    height = len(lanes) * lane_px + max(len(lanes) - 1, 0) * gap
+    bull, bear = palette[3], palette[0]
+
+    # Zones and the neutral rule run the full height, behind every lane. Painted once
+    # rather than per lane so the gate reads as one region a leg is inside or outside
+    # of, which is the thing the card is actually asking about.
+    marks = [
+        html.Div(style=_abs(left=0, width=f"{model.low}%", top=0, bottom=0,
+                            backgroundColor=hex_to_rgba(bear, _ZONE_ALPHA),
+                            borderRadius="2px")),
+        html.Div(style=_abs(left=f"{model.high}%", right=0, top=0, bottom=0,
+                            backgroundColor=hex_to_rgba(bull, _ZONE_ALPHA),
+                            borderRadius="2px")),
+        # NOT vc.GRID_COLOR. That is SOLARIZED_DARK_BASE03, a near-black that /strip
+        # draws against a plot background several shades lighter than a card; on the
+        # card it was invisible, which left every dot measured from nothing.
+        html.Div(style=_abs(left="50%", top=0, bottom=0, width="1px",
+                            backgroundColor="rgba(255,255,255,0.22)")),
+    ]
+
+    for i, (slot, value, _delta, is_comm) in enumerate(lanes):
+        if is_comm and colour and not COMM_LANE_TAKES_LEG_COLOUR:
+            dot_colour = colour
+        else:
+            dot_colour = palette[slot]
+        size = dot_px or (_COMM_DOT_PX if is_comm else _DOT_PX)
+        mid = i * (lane_px + gap) + lane_px / 2
+        value = max(0, min(100, value))
+        draw_stem = stem_px and (is_comm or SPEC_LEGS_GET_STEMS)
+        marks.append(html.Div(style=_abs(
+            left=0, right=0, top=f"{mid - 0.5:.1f}px", height="1px",
+            backgroundColor="rgba(255,255,255,0.07)")))
+        # The stem, from the neutral rule out to the reading. Knocked back from the
+        # dot for the reason /strip knocks its own back: the dot is the datum and the
+        # stem is context for it, and a run of pixels at full strength reads as glare
+        # where a single dot does not.
+        if draw_stem and abs(value - const.INDEX_NEUTRAL) > 0.5:
+            run = stem_px if is_comm else min(_SPEC_STEM_PX, stem_px)
+            run_alpha = _STEM_ALPHA if is_comm else _SPEC_STEM_ALPHA
+            marks.append(html.Div(style=_abs(
+                left=f"{min(value, const.INDEX_NEUTRAL)}%",
+                width=f"{abs(value - const.INDEX_NEUTRAL)}%",
+                top=f"{mid - run / 2:.1f}px", height=f"{run}px",
+                backgroundColor=hex_to_rgba(dot_colour, run_alpha),
+                borderRadius="1px")))
+        if is_comm:
+            # The lollipop head: a filled circle at the end of its stem.
+            marks.append(html.Div(style=_abs(
+                left=f"{value}%", transform="translateX(-50%)",
+                top=f"{mid - size / 2:.1f}px",
+                width=f"{size}px", height=f"{size}px", borderRadius="50%",
+                backgroundColor=dot_colour,
+                # A hairline ring, so a head sitting on the neutral rule or on the
+                # edge of a zone still separates from it.
+                boxShadow="0 0 0 1px rgba(0,0,0,0.45)")))
+        else:
+            # A TICK, not a dot, and this is the whole answer to why the Commercial
+            # lane may be verdict-coloured while these are not.
+            #
+            # All three lanes were the same filled dot for a while, which left colour
+            # carrying two different variables in one 20px picture: leg identity on
+            # the speculator lanes and the verdict on the Commercial one. A reader who
+            # learned "amber is Small Traders" would reasonably read "green is
+            # Commercials", and then meet a red Commercial dot on the next card.
+            #
+            # /strip had already solved this and the fix was to stop ignoring it. Its
+            # speculator legs are `line-ns` ticks against a lollipop head, and the
+            # reason its comment gives is exactly this one: "a dot would read as a
+            # second measure". Shape says these are different KINDS of mark, so colour
+            # is free to mean a different thing on each without ambiguity. The head is
+            # the gated leg and carries the verdict; a tick marks where another leg
+            # sits, and its colour says which leg.
+            tick_h = lane_px + 2
+            marks.append(html.Div(style=_abs(
+                left=f"{value}%", transform="translateX(-50%)",
+                top=f"{mid - tick_h / 2:.1f}px",
+                width="3px", height=f"{tick_h}px", borderRadius="1px",
+                backgroundColor=dot_colour,
+                boxShadow="0 0 0 1px rgba(0,0,0,0.45)")))
+
+    return html.Div(marks, style={"position": "relative", "height": f"{height}px"})
+
+
+def index_triplet(row, model, size="0.85rem"):
+    """The positioning index for all three legs: Comm / Large / Small.
+
+    ALL THREE, whichever legs the model gates on, because this is the precise readout
+    the strip below it cannot give -- position says roughly 100, only a number says
+    100 -- and a reader comparing two cards wants the same three slots in the same
+    order on both. It is the format `build_mobile_asset_card` already prints on the
+    screener cards, so the two agree.
+
+    The GATED legs are lit and the rest are muted, which is also that card's rule. The
+    distinction matters here because the strip directly below draws a lane only for
+    the gated legs, so without it a card would show three numbers over two lanes with
+    nothing saying why. Muting is as far as it goes: a bare index value is a reading,
+    not a claim that the gate consulted it, which is the line viz_constants' setup
+    copy draws and the reason equity cards may print speculator numbers at all while
+    never asserting anything about them.
+    """
+    gated = {
+        "comm": True,
+        models.LEG_LARGE: (not row["is_equity"]
+                           and models.LEG_LARGE in model.spec_legs),
+        models.LEG_SMALL: (not row["is_equity"]
+                           and models.LEG_SMALL in model.spec_legs),
+    }
+    values = (("comm", row["index"]),
+              (models.LEG_LARGE, row.get("lrg_index")),
+              (models.LEG_SMALL, row.get("sml_index")))
+
+    parts = []
+    for i, (leg, value) in enumerate(values):
+        if i:
+            parts.append(html.Span("/", style={"color": vc.TEXT_COLOR, "opacity": 0.4,
+                                               "margin": "0 2px"}))
+        lit = gated[leg]
+        parts.append(html.Span(
+            "\u2013" if value is None else f"{value}",
+            style={"color": vc.BRIGHTER_TEXT_COLOR if lit else vc.TEXT_COLOR,
+                   "fontWeight": "bold" if lit else "normal",
+                   "opacity": 1.0 if lit else 0.7}))
+
+    reads = "Commercials alone" if row["is_equity"] else _gate_leg_names(model)
+    return html.Span(
+        parts,
+        title=(f"0-100 positioning index: Commercials / Large Specs / Small Traders. "
+               f"{model.title} gates on {reads}; the other legs are shown but not lit."),
+        style={"fontSize": size, "whiteSpace": "nowrap",
+               "fontVariantNumeric": "tabular-nums", "cursor": "help"},
+    )
+
+
+def _gate_leg_names(model):
+    """"Commercials and Small Traders", for the triplet's hover."""
+    names = ["Commercials"] + [LEG_HOVER_NAMES[leg] for leg in model.spec_legs]
+    return " and ".join(names) if len(names) < 3 else \
+        ", ".join(names[:-1]) + " and " + names[-1]
+
+
+LEG_HOVER_NAMES = {
+    models.LEG_LARGE: "Large Specs",
+    models.LEG_SMALL: "Small Traders",
+}
+
+
+# The delta column that sits beside the strip. Wide enough for "-12" and no wider:
+# every pixel here is taken off the 0-100 axis, which is the thing being measured.
+GUTTER_PX = 26
+
+
+def gate_strip_row(row, model, palette, colour=None, lane_px=LANE_PX, gap=LANE_GAP,
+                   dot_px=None, stem_px=_STEM_PX, size="0.58rem"):
+    """The gate strip with each leg's week-over-week move beside its own lane.
+
+    The card used to carry ONE delta, on the "Comm 100/100" line, and it was
+    necessarily the Commercial one -- so a card could show Small Traders sitting at
+    100 with no hint of whether they arrived this week or had been there a year. Now
+    every lane the strip draws gets its own number on the same row, which is the
+    reading the single delta was standing in for.
+
+    A dash, not a blank, where there is no reading. `get_board` now distinguishes a
+    genuine zero from a missing one, so a blank would be throwing that away again --
+    and 0 next to a market pinned at an extreme is the interesting case, not the
+    absent one.
+    """
+    lanes = strip_legs(row, model)
+    height = len(lanes) * lane_px + max(len(lanes) - 1, 0) * gap
+
+    def _fmt(d):
+        if d is None:
+            return "\u2013"       # en dash: no reading at all
+        return "0" if d == 0 else f"{d:+d}"
+
+    gutter = []
+    for i, (_slot, _value, delta, _is_comm) in enumerate(lanes):
+        mid = i * (lane_px + gap) + lane_px / 2
+        gutter.append(html.Div(
+            _fmt(delta),
+            style=_abs(left=0, right=0, top=f"{mid - 6:.1f}px",
+                       fontSize=size, lineHeight="12px", textAlign="right",
+                       color=vc.TEXT_COLOR,
+                       # Tabular figures, so a column of "+3" over "-12" lines up on
+                       # the digits rather than drifting with glyph width.
+                       fontVariantNumeric="tabular-nums",
+                       opacity=1.0 if delta else 0.55,
+                       whiteSpace="nowrap")))
+
+    return html.Div([
+        html.Div(gate_strip(row, model, palette, colour=colour, lane_px=lane_px,
+                            gap=gap, dot_px=dot_px, stem_px=stem_px),
+                 style={"flex": "1 1 auto", "minWidth": 0}),
+        html.Div(gutter, style={"flex": "0 0 auto", "width": f"{GUTTER_PX}px",
+                                "position": "relative", "height": f"{height}px"}),
+    ], style={"display": "flex", "alignItems": "flex-start", "gap": "7px"})
+
+
+# Which setup states are the long side. Both tiers of it, so a NEAR bull groups with
+# the bulls rather than with whatever it is near.
+_BULL_STATES = (const.SETUP_BULL, const.SETUP_NEAR_BULL)
+
+# The most cards a row may hold, per view, per breakpoint. The approaching tier packs
+# tighter than the featured one everywhere it can; it matches only at xl, where six
+# across is already as narrow as a column can get and still hold a market name. The
+# screener is widest of the three because its cards carry a footer and a badge row.
+MAX_PER_ROW = {
+    "featured": dict(xs=1, sm=2, md=4, lg=4, xl=6),
+    "near":     dict(xs=2, sm=3, md=4, lg=6, xl=6),
+    "screener": dict(xs=1, sm=2, md=2, lg=3, xl=4),
+}
+
+
+def balanced_columns(n, most):
+    """Cards per row that fills the fewest rows, then spreads them evenly.
+
+    Nine cards in rows of at most six is 6 + 3, which reads as a full row and an
+    offcut rather than as one group -- and the eye takes the ragged second row for a
+    separate section. Two rows are needed either way, so they may as well be 5 + 4.
+
+    Fewest rows first, evenness second: 13 cards at six across goes to three rows of
+    five rather than four rows of four, because dropping a card per row to buy a whole
+    extra row of vertical space is not a trade these panels want.
+    """
+    if n <= 0:
+        return 1
+    rows = -(-n // most)                 # ceil, without importing math
+    return -(-n // rows)
+
+
+def card_grid(cards, most):
+    """Cards in a CSS grid, balanced per breakpoint.
+
+    A grid rather than the Bootstrap row it replaced. Bootstrap's twelve columns
+    cannot express five across at all (12/5 is not an integer), so a balanced row
+    count is simply not available through `dbc.Col` -- 6 + 3 was not a choice, it was
+    the closest that grid could get. The per-breakpoint counts ride as CSS custom
+    properties because how many cards there are is Python's fact while which
+    breakpoint is live is CSS's; the media queries that consume them are in
+    assets/custom.css under `.setup-grid`.
+    """
+    return html.Div(
+        cards,
+        className="setup-grid",
+        style={f"--cols-{bp}": balanced_columns(len(cards), most[bp]) for bp in most},
+    )
+
+
+def tier_of(setup, palette):
+    """A setup state as `(badge text or None, mark colour)`.
+
+    SETUP_NONE gets no badge and a NEUTRAL mark, which is what lets the screener
+    render every market in a class through the same card as the setups strip. /strip
+    settled the colour: red and green belong to the VERDICTS, so a row the model has
+    nothing to say about must not borrow one, and a dim mark is texture rather than a
+    third opinion.
+    """
+    return {
+        const.SETUP_BULL: ("SETUP", palette[3]),
+        const.SETUP_BEAR: ("SETUP", palette[0]),
+        const.SETUP_NEAR_BULL: ("NEAR", palette[3]),
+        const.SETUP_NEAR_BEAR: ("NEAR", palette[0]),
+    }.get(setup, (None, vc.SOLARIZED_DARK_BASE00))
+
+
+# One card at three weights, not three card designs. Every difference between them
+# lives in this table, so they cannot drift into looking like different things that
+# happen to share a page -- which is what a second hand-written layout becomes the
+# first time only one of them is edited.
+#
+# "featured" is a market at the gate, "near" one approaching it, and "screener" is the
+# accordion below, which is the featured weight plus a footer. The screener sits at
+# featured weight rather than between the two on purpose: its cards are not a lesser
+# tier of the same list, they are a different list, and shrinking them would read as
+# ranking them under the approaching tier.
+CARD_WEIGHTS = {
+    "featured": dict(name="0.95rem", name_weight="700", badge="0.60rem", idx="0.88rem",
+                     delta="0.62rem", lane=LANE_PX, gap=LANE_GAP, dot=None,
+                     pad="8px 10px", radius="6px", opacity=1.0,
+                     bg="rgba(255,255,255,0.03)", border="rgba(255,255,255,0.06)",
+                     badge_fill=True, gutter="6px", outline="59"),
+    "near":     dict(name="0.78rem", name_weight="600", badge="0.52rem", idx="0.74rem",
+                     delta="0.56rem", lane=7, gap=2, dot=5,
+                     pad="5px 8px", radius="5px", opacity=0.72,
+                     bg="rgba(255,255,255,0.015)", border="rgba(255,255,255,0.04)",
+                     badge_fill=False, gutter="4px", outline=None),
+    "screener": dict(name="0.92rem", name_weight="700", badge="0.58rem", idx="0.86rem",
+                     delta="0.60rem", lane=LANE_PX, gap=LANE_GAP, dot=None,
+                     pad="9px 11px", radius="6px", opacity=1.0,
+                     bg="rgba(255,255,255,0.03)", border="rgba(255,255,255,0.06)",
+                     badge_fill=True, gutter="6px", outline=None),
+}
+
+
+def positioning_card(row, model, palette, *, weight="featured", subtitle=None,
+                     footer=None, badges=None):
+    """THE card. One market's positioning, as the whole app draws it.
+
+    `row` is a board row from `cotmetrics.movers.get_board`, or anything shaped like
+    one -- `build_mobile_asset_card` assembles the same keys off a frame so the
+    screener below renders through this function rather than through a second layout
+    that says the same things differently.
+
+    `subtitle` is the exchange symbol on screener cards. `footer` is a muted metrics
+    line, and `badges` the fired signals; both are None on the setups strip, which is
+    the only difference between the two views of this card.
+
+    Always a link, always to the market's OI Alignment page, always in a new tab. The
+    board is a list you work THROUGH, so following a market must not cost you the
+    list. A nested <a> would be invalid HTML, which is why the name is a plain span
+    and takes its appearance from the card's hover rule in assets/custom.css.
+    """
+    w = CARD_WEIGHTS[weight]
+    text, colour = tier_of(row["setup"], palette)
+
+    badge = None
+    if text:
+        style = {
+            "color": colour, "border": f"1px solid {colour}66",
+            "borderRadius": "3px", "padding": "1px 5px", "fontSize": w["badge"],
+            "fontWeight": "bold", "marginLeft": "8px", "whiteSpace": "nowrap",
+            "flex": "0 0 auto",
+        }
+        if w["badge_fill"]:
+            style["backgroundColor"] = f"{colour}1a"
+        # Age rides INSIDE the badge rather than as a fifth element on the card. It is
+        # the only reading tested that this card does not already imply -- over 551 gate
+        # market-weeks, tape bias, WillCo and the six-week move never once pointed
+        # against the positioning beside them, so drawing those here would restate the
+        # strip -- and it is one number, so it does not need a row of its own. Quieter
+        # than the tier because the tier is still the headline: this answers the second
+        # question, not the first.
+        weeks = row.get("setup_weeks") or 0
+        content = [text]
+        if weeks:
+            capped = weeks >= const.SETUP_AGE_CAP
+            content.append(html.Span(
+                f" \u00b7 {weeks}w{'+' if capped else ''}",
+                style={"opacity": 0.72, "fontWeight": "normal"}))
+        badge = html.Span(content, style=style, title=(
+            f"At or approaching this gate for {weeks}"
+            f"{'+' if weeks >= const.SETUP_AGE_CAP else ''} "
+            f"consecutive week{'' if weeks == 1 else 's'}, in this direction. "
+            "A run ends on a neutral week or a change of direction."
+        ) if weeks else None)
+
+    # Market name first and largest. The card used to lead with the index and drop the
+    # market underneath, which put the least identifying thing on it in the most
+    # prominent slot: a board is navigated by market, and "100" tells a reader nothing
+    # until they have read the name to find out what is at 100.
+    name = [html.Span(row["asset"],
+                      style={"color": vc.BRIGHTER_TEXT_COLOR,
+                             "fontWeight": w["name_weight"], "fontSize": w["name"],
+                             "overflow": "hidden", "textOverflow": "ellipsis",
+                             "whiteSpace": "nowrap"})]
+    if subtitle:
+        name.append(html.Span(f" ({subtitle})",
+                              style={"color": vc.TEXT_COLOR, "fontSize": "0.68rem",
+                                     "marginLeft": "5px", "whiteSpace": "nowrap"}))
+
+    body = [
+        html.Div([
+            html.Div(name, style={"display": "flex", "alignItems": "baseline",
+                                  "minWidth": 0, "overflow": "hidden"}),
+            badge,
+        ], style={"display": "flex", "alignItems": "baseline",
+                  "justifyContent": "space-between", "gap": "4px"}),
+        # Row two: the exact index, all three legs. The strip below gives position,
+        # which is the shape; this gives the figures, which is what you compare
+        # between two cards.
+        html.Div(index_triplet(row, model, size=w["idx"]), style={"marginTop": "2px"}),
+        html.Div(
+            gate_strip_row(row, model, palette, colour=colour, lane_px=w["lane"],
+                           gap=w["gap"], dot_px=w["dot"], size=w["delta"]),
+            title=(f"{_strip_hover(row, model)}. "
+                   f"{vc.positioning_tooltip(row['setup'], model, row['is_equity'])}"),
+            style={"marginTop": w["gutter"], "cursor": "help"},
+        ),
+    ]
+    if footer:
+        body.append(html.Div(footer, style={
+            "marginTop": "7px", "paddingTop": "6px",
+            "borderTop": "1px solid rgba(255,255,255,0.06)",
+            "fontSize": "0.64rem", "color": vc.TEXT_COLOR,
+            "lineHeight": "1.5"}))
+    if badges:
+        body.append(html.Div(badges, style={"marginTop": "6px", "display": "flex",
+                                            "flexWrap": "wrap", "gap": "3px"}))
+
+    # A thin tinted OUTLINE on the featured tier, and nothing on the other two.
+    #
+    # This is not the 3px bar down the left edge that was removed earlier, and the
+    # difference is the point. That bar was a saturated slab on every card in both
+    # tiers, so the panel read as a field of red and green before a reader had got to
+    # a market name. A hairline at ~35% around the card's existing border is a tint
+    # rather than a mark: it does not compete for attention with the dot or the badge,
+    # and it lets a whole row of cards be sorted by eye without reading any of them,
+    # which is what the direction grouping is for.
+    #
+    # Featured only, so it carries TWO facts at once: colour is the direction and the
+    # mere presence of the tint is "this one is at the gate". The approaching tier
+    # keeps a neutral border and so cannot be mistaken for a setup at a glance, and
+    # the screener cards below stay neutral because most of them have no verdict at
+    # all and a row of grey outlines among a few tinted ones would read as broken.
+    edge = w["border"]
+    if w["outline"] and text:
+        edge = f"{colour}{w['outline']}"
+
+    return html.A(
+        html.Div(body, style={
+            "backgroundColor": w["bg"],
+            "border": f"1px solid {edge}",
+            "borderRadius": w["radius"], "padding": w["pad"], "height": "100%",
+            "opacity": w["opacity"],
+        }),
+        href=f"/oi_alignment?asset={urllib.parse.quote(row['asset'])}",
+        target="_blank",
+        rel="noopener noreferrer",
+        className="setup-card",
+        style={"textDecoration": "none", "display": "block", "height": "100%"},
+    )
 
 
 ActiveSetups = namedtuple("ActiveSetups", "header body")
@@ -969,21 +1425,38 @@ def build_active_setups_strip(rows, color_palette, model=None, filter_types=None
     from cotmetrics import movers as movers_mod
 
     model = model if isinstance(model, models.PositioningModel) else models.resolve(model)
-    BULL_COLOR = color_palette[3]
-    BEAR_COLOR = color_palette[0]
-
+    # Larger and brighter than the movers header below it, deliberately. This strip is
+    # the answer to the page's question and that one is the context around it, so the
+    # two headings are ranked rather than matched.
     def _header(tally):
         return [
             html.Span(f"Active Setups · {model.title}",
                       style={"fontWeight": "bold", "color": vc.BRIGHTER_TEXT_COLOR,
-                             "fontSize": "0.9rem"}),
-            html.Span(tally, style={"fontSize": "0.7rem", "color": vc.TEXT_COLOR,
-                                    "marginLeft": "8px"}),
+                             "fontSize": "1.05rem", "letterSpacing": "0.2px"}),
+            html.Span(tally, style={"fontSize": "0.72rem", "color": vc.TEXT_COLOR,
+                                    "marginLeft": "10px"}),
         ]
 
+    def _grouped(items):
+        """Bull setups first, then bear, each keeping the order it arrived in.
+
+        `select_setups` ranks by conviction -- tier, then distance from neutral -- and
+        that stays the contract, because it is the right general answer and other
+        callers depend on it. This is a VIEW decision layered on top: alternating
+        directions down a grid makes a reader re-read the badge on every card, where
+        two blocks let them find the side they care about once and then scan within
+        it. A long and a short are not competing for the same slot in a portfolio, so
+        interleaving them by extremity was ranking across a boundary that matters.
+
+        The sort is stable and keys on direction alone, so within each block the
+        conviction order survives untouched -- the most extreme bull is still the
+        first card on the strip.
+        """
+        return sorted(items, key=lambda r: 0 if r["setup"] in _BULL_STATES else 1)
+
     setups = movers_mod.select_setups(rows)
-    full = [s for s in setups if s["setup"] in const.SETUP_FULL_STATES]
-    near = [s for s in setups if s["setup"] in const.SETUP_NEAR_STATES]
+    full = _grouped(s for s in setups if s["setup"] in const.SETUP_FULL_STATES)
+    near = _grouped(s for s in setups if s["setup"] in const.SETUP_NEAR_STATES)
 
     # The empty state has to distinguish "no setups" from "your filter hid them", because
     # a bias filter on a quiet board can empty this strip while the board itself is fine.
@@ -1015,80 +1488,33 @@ def build_active_setups_strip(rows, color_palette, model=None, filter_types=None
             ),
         )
 
-    _TIERS = {
-        const.SETUP_BULL: ("SETUP", BULL_COLOR, 1.0),
-        const.SETUP_BEAR: ("SETUP", BEAR_COLOR, 1.0),
-        const.SETUP_NEAR_BULL: ("NEAR", BULL_COLOR, vc.INDEX_RAMP_ALPHA_APPROACH),
-        const.SETUP_NEAR_BEAR: ("NEAR", BEAR_COLOR, vc.INDEX_RAMP_ALPHA_APPROACH),
-    }
+    def _card(s, featured):
+        return positioning_card(s, model, color_palette,
+                                weight="featured" if featured else "near")
 
-    cards = []
-    for s in setups:
-        text, colour, strength = _TIERS[s["setup"]]
-        s["setup"] in const.SETUP_FULL_STATES
+    def _grid(items, featured):
+        tier = "featured" if featured else "near"
+        return card_grid([_card(s, featured) for s in items], MAX_PER_ROW[tier])
 
-        # The delta rides along where there is one, so a reader can tell a setup that
-        # arrived this week from one that has been sitting there. It is deliberately
-        # secondary: this strip ranks on level, not on movement.
-        #
-        # It sits on the index line rather than beside the market name, and drops the
-        # "this week" suffix, because that line was what set the card's width. At the
-        # previous 4-per-row the widest row measured 168px inside a 298px card, and
-        # "Canadian Dollar ▲ +7 this week" was the row setting it. The index line had
-        # room to spare. The header already scopes the strip to this release, so the
-        # suffix was restating it on every card.
-        move = None
-        if s["delta"]:
-            move = html.Span(
-                f"{'▲' if s['delta'] > 0 else '▼'}{s['delta']:+d}",
-                title=f"{abs(s['delta'])} point Commercial move at this release",
-                style={"fontSize": "0.62rem", "color": vc.TEXT_COLOR,
-                       "marginLeft": "6px", "whiteSpace": "nowrap", "cursor": "help"},
-            )
+    body = []
+    if full:
+        body.append(_grid(full, True))
 
-        cards.append(dbc.Col(
-            html.Div([
-                html.Div([
-                    html.Span(f"{s['index']}", style={
-                        "fontSize": "1.25rem", "fontWeight": "bold",
-                        "color": vc.BRIGHTER_TEXT_COLOR}),
-                    html.Span("/100", style={
-                        "fontSize": "0.7rem", "color": vc.TEXT_COLOR, "marginLeft": "1px"}),
-                    html.Span(text, style={
-                        "color": colour, "border": f"1px solid {colour}66",
-                        "backgroundColor": f"{colour}1a", "borderRadius": "3px",
-                        "padding": "1px 5px", "fontSize": "0.6rem", "fontWeight": "bold",
-                        "marginLeft": "8px", "whiteSpace": "nowrap"}),
-                    move,
-                ], style={"display": "flex", "alignItems": "baseline"}),
-                html.Div(
-                    dcc.Link(s["asset"],
-                             href=f"/oi_alignment?asset={urllib.parse.quote(s['asset'])}",
-                             style={"color": vc.BRIGHTER_TEXT_COLOR, "fontWeight": "600",
-                                    "fontSize": "0.85rem", "textDecoration": "none"}),
-                    style={"marginTop": "2px", "whiteSpace": "nowrap",
-                           "overflow": "hidden", "textOverflow": "ellipsis"},
-                ),
-                html.Div(_setup_leg_readout(s, model),
-                         title=vc.positioning_tooltip(s["setup"], model, s["is_equity"]),
-                         style={"fontSize": "0.68rem", "color": vc.TEXT_COLOR,
-                                "marginTop": "3px", "lineHeight": "1.25",
-                                "cursor": "help", "whiteSpace": "nowrap"}),
-            ], style={
-                "backgroundColor": "rgba(255,255,255,0.03)",
-                "border": "1px solid rgba(255,255,255,0.06)",
-                "borderLeft": f"3px solid {colour}",
-                "borderRadius": "6px", "padding": "8px 10px", "height": "100%",
-                "opacity": strength,
-            }),
-            # Six across at xl, where the index row (widest at ~145px with the delta on
-            # it) clears the ~171px a column gives. At lg the column drops to ~118px of
-            # content and that row overflows, so lg stays at four. Measured, not guessed:
-            # six-up at the bottom of the lg range clipped the delta off four cards.
-            # Ten cards still go from three rows to two at xl, thirteen from four to
-            # three, which is the density this was for on a desktop viewport.
-            xs=12, sm=6, md=3, lg=3, xl=2, className="mb-2",
-        ))
+    if show_near and near:
+        # A real gap, not a rule with a line of text on it. At 10px above and 6px
+        # below, the label sat closer to the featured row it was separating FROM than
+        # to the cards it introduces, so the two tiers read as one list with a caption
+        # dropped into it. Whitespace is what says "different group" -- the rule only
+        # marks where, and it is kept faint so the eye reads the gap rather than the
+        # line.
+        body.append(html.Div(
+            f"Approaching · within {const.SETUP_NEAR_WIDTH} points of the gate",
+            style={"fontSize": "0.66rem", "color": vc.TEXT_COLOR,
+                   "textTransform": "uppercase", "letterSpacing": "0.6px",
+                   "marginTop": "26px", "marginBottom": "10px",
+                   "paddingTop": "14px",
+                   "borderTop": "1px solid rgba(255,255,255,0.06)"}))
+        body.append(_grid(near, False))
 
     # Counts in the subtitle rather than a bare list: the split is the thing a reader
     # wants at a glance, and it changes with the model selector in a way that makes the
@@ -1101,137 +1527,4 @@ def build_active_setups_strip(rows, color_palette, model=None, filter_types=None
     if near:
         tally += f", {len(near)} approaching" + ("" if show_near else ", hidden")
 
-    return ActiveSetups(_header(tally), dbc.Row(cards, className="g-2"))
-
-
-WeeklyMovers = namedtuple("WeeklyMovers", "header body")
-
-
-# No `model` parameter: everything model-dependent here (the ranking basis, the setup
-# badge) was decided when the rows were swept. Accepting one again would let a caller
-# label this strip with a model that did not produce it.
-def build_weekly_movers_strip(rows, color_palette, limit=8, filter_types=None):
-    """Ranked strip of the largest Commercial repositioning at this CFTC release.
-
-    Answers "what changed this week", which nothing else on the dashboard does: the
-    heatmap shows levels and the Signal Matrix's Move column is a six-week trend.
-
-    Each card carries the index level, the week's point delta, and the row's setup
-    state as a separate badge. The badge is deliberately not folded into the caption:
-    the leg that moved is not always the leg that advances the setup, so stating them
-    together would imply a causation that is often backwards.
-
-    Takes already-swept board rows, so this and the Active Setups strip above it share
-    one pass over the board rather than walking all 42 instruments twice.
-
-    Returns header and body separately, for the same reason build_active_setups_strip
-    does: the collapse toggle that hides this strip is static in the page layout, and a
-    control rendered into a callback's own output cannot be read by that callback.
-    """
-    from cotmetrics import movers as movers_mod
-    from cotmetrics.movers import MOVER_GROUP_ADJ
-
-    BULL_COLOR = color_palette[3]
-    BEAR_COLOR = color_palette[0]
-
-    def _header(scope, note):
-        return [
-            html.Span(f"Biggest {MOVER_GROUP_ADJ} Moves This Week{scope}",
-                      style={"fontWeight": "bold", "color": vc.BRIGHTER_TEXT_COLOR,
-                             "fontSize": "0.9rem"}),
-            html.Span(note, style={"fontSize": "0.7rem", "color": vc.TEXT_COLOR,
-                                   "marginLeft": "8px"}),
-        ]
-
-    movers = movers_mod.rank_movers(rows, limit)
-    if not movers:
-        msg = ("No markets match the active tape-bias filter."
-               if movers_mod._wanted_biases(filter_types)
-               else "No markets moved at this release.")
-        return WeeklyMovers(
-            _header("", "nothing to rank"),
-            html.Div(msg, className="text-muted text-center py-3",
-                     style={"fontSize": "0.8rem"}),
-        )
-
-    # The strip is filtered *before* ranking, so a filtered heading that still claimed
-    # to be the biggest moves outright would be false. Name the filter instead.
-    scope = {
-        frozenset({movers_mod.FILTER_BULL}): " \u00b7 Bullish Tape Bias",
-        frozenset({movers_mod.FILTER_BEAR}): " \u00b7 Bearish Tape Bias",
-        frozenset({movers_mod.FILTER_BULL, movers_mod.FILTER_BEAR}): " \u00b7 Biased Markets",
-    }.get(frozenset(filter_types or []), "")
-
-    _SETUP_LABELS = {
-        const.SETUP_BULL: ("SETUP", BULL_COLOR),
-        const.SETUP_BEAR: ("SETUP", BEAR_COLOR),
-        const.SETUP_NEAR_BULL: ("NEAR", BULL_COLOR),
-        const.SETUP_NEAR_BEAR: ("NEAR", BEAR_COLOR),
-    }
-
-    cards = []
-    for m in movers:
-        colour = BULL_COLOR if m["delta"] > 0 else BEAR_COLOR
-        arrow = "▲" if m["delta"] > 0 else "▼"
-
-        badges = []
-        if m["unusual"]:
-            # Palette slot 2 is the attention/energy colour used for OI extremes, so the
-            # flag reads as "look here" without competing with the bull/bear setup badge.
-            attn = color_palette[2]
-            badges.append(html.Span(
-                f"{m['multiple']:.1f}\u00d7",
-                title=(f"{abs(m['delta'])} points is {m['multiple']:.1f}x this market's "
-                       f"typical weekly Commercial move. Ranking is by raw points, so a "
-                       f"card can be unusual without being at the top."),
-                style={
-                    "color": attn, "border": f"1px solid {attn}66",
-                    "backgroundColor": f"{attn}1a", "borderRadius": "3px",
-                    "padding": "1px 5px", "fontSize": "0.6rem", "fontWeight": "bold",
-                    "marginLeft": "6px", "whiteSpace": "nowrap", "cursor": "help",
-                }))
-
-        badge = None
-        if m["setup"] in _SETUP_LABELS:
-            text, badge_colour = _SETUP_LABELS[m["setup"]]
-            badge = html.Span(text, style={
-                "color": badge_colour, "border": f"1px solid {badge_colour}66",
-                "backgroundColor": f"{badge_colour}1a", "borderRadius": "3px",
-                "padding": "1px 5px", "fontSize": "0.6rem", "fontWeight": "bold",
-                "marginLeft": "6px", "whiteSpace": "nowrap",
-            })
-
-        cards.append(dbc.Col(
-            html.Div([
-                html.Div([
-                    html.Span(f"{m['index']}", style={
-                        "fontSize": "1.25rem", "fontWeight": "bold",
-                        "color": vc.BRIGHTER_TEXT_COLOR}),
-                    html.Span("/100", style={
-                        "fontSize": "0.7rem", "color": vc.TEXT_COLOR, "marginLeft": "1px"}),
-                    html.Span(f"{arrow} {m['delta']:+d}", style={
-                        "fontSize": "0.85rem", "fontWeight": "bold",
-                        "color": colour, "marginLeft": "8px"}),
-                ], style={"display": "flex", "alignItems": "baseline"}),
-                html.Div([
-                    dcc.Link(m["asset"], href=f"/oi_alignment?asset={urllib.parse.quote(m['asset'])}",
-                             style={"color": vc.BRIGHTER_TEXT_COLOR, "fontWeight": "600",
-                                    "fontSize": "0.85rem", "textDecoration": "none"}),
-                    badge, *badges,
-                ], style={"display": "flex", "alignItems": "center", "marginTop": "2px"}),
-                html.Div(m["caption"], style={
-                    "fontSize": "0.68rem", "color": vc.TEXT_COLOR,
-                    "marginTop": "3px", "lineHeight": "1.25"}),
-            ], style={
-                "backgroundColor": "rgba(255,255,255,0.03)",
-                "border": "1px solid rgba(255,255,255,0.06)",
-                "borderLeft": f"3px solid {colour}",
-                "borderRadius": "6px", "padding": "8px 10px", "height": "100%",
-            }),
-            xs=12, sm=6, md=4, lg=3, xl=3, className="mb-2",
-        ))
-
-    return WeeklyMovers(
-        _header(scope, "week-over-week change in the 0-100 positioning index"),
-        dbc.Row(cards, className="g-2"),
-    )
+    return ActiveSetups(_header(tally), html.Div(body))
