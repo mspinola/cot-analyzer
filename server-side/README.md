@@ -373,17 +373,31 @@ if this step is skipped. [GoatCounter](https://www.goatcounter.com/) adds the po
 dashboard, and it is the tool chosen because it matches this box's ops style: one
 static Go binary, SQLite storage, a systemd unit, no Docker and no Postgres.
 
-```bash
-# 1. Binary (check github.com/arp242/goatcounter/releases for the current version)
-wget -O /usr/local/bin/goatcounter \
-  https://github.com/arp242/goatcounter/releases/download/v2.6.0/goatcounter-v2.6.0-linux-amd64
-chmod +x /usr/local/bin/goatcounter
+**The release assets are gzipped, and the download must be verified.** Check
+[the releases page](https://github.com/arp242/goatcounter/releases) for the current
+version and pick your architecture (`uname -m`: `x86_64` is amd64, `aarch64` is arm64).
 
-# 2. Data dir + site. The site's "code" becomes the subdomain path; self-hosted
-#    single-site setups serve it on whatever vhost you give it.
+```bash
+# 1. Binary. Note the .gz: there is no un-gzipped asset, and `wget -O` CREATES the
+#    target file even when the server answers 404, so a wrong url leaves an empty
+#    file behind that chmod +x will happily mark executable. That failure surfaces
+#    much later as `Exec format error` (systemd status 203/EXEC) from the service,
+#    which reads like a broken unit rather than a bad download.
+wget -O /tmp/gc.gz \
+  https://github.com/arp242/goatcounter/releases/download/v2.7.0/goatcounter-v2.7.0-linux-amd64.gz
+gunzip -f /tmp/gc.gz
+install -m755 /tmp/gc /usr/local/bin/goatcounter
+
+# 2. Prove it runs before anything depends on it.
+goatcounter version
+
+# 3. Data dir + site. -createdb is required the first time: GoatCounter refuses to
+#    create a database that does not exist unless asked, so without it every command
+#    here fails and the service later starts with nothing to serve. Prompts for a
+#    login password. -vhost must equal the nginx server_name below.
 mkdir -p /var/lib/goatcounter
 goatcounter db create site -vhost stats.yourdomain.com -user.email you@example.com \
-  -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
+  -createdb -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
 ```
 
 Give `stats.yourdomain.com` a DNS A record pointing at this server before going
@@ -401,15 +415,30 @@ After=network.target
 ExecStart=/usr/local/bin/goatcounter serve -listen 127.0.0.1:8081 -tls http \
   -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
 Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+`-tls http` means "serve no TLS", which is right here because nginx terminates it.
+`RestartSec` is worth the line: without it a binary that fails instantly burns
+systemd's five restarts inside one second and lands in `Start request repeated too
+quickly`, which hides the real error behind a rate-limit message.
+
 ```bash
 systemctl daemon-reload
 systemctl enable --now goatcounter
 ```
+
+```bash
+systemctl status goatcounter --no-pager
+```
+
+Check that status now rather than at the end. A dead upstream here is what an nginx
+`502 Bad Gateway` means three steps later, and by then it looks like a proxy problem.
+If the unit has already failed a few times, `systemctl reset-failed goatcounter`
+before starting it again.
 
 GoatCounter listens on loopback only, so nginx publishes it. Unlike step 8, where the
 site already existed and only needed a certificate, this vhost is new: write
