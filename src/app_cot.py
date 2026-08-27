@@ -58,17 +58,34 @@ def reject_unknown_paths():
 
 
 @app.server.before_request
+def decline_vendor_sourcemaps():
+    """Answer 404 for source-map requests Dash would 500 on; see `is_vendor_sourcemap`.
+
+    Registered after `reject_unknown_paths` (the prefix admits these paths) and before
+    `record_visit`, though the ignore list below also covers them: a devtools asset
+    fetch should never reach the geolocation lookup.
+    """
+    if routing.is_vendor_sourcemap(request.path):
+        return '', 404
+    return None
+
+
+@app.server.before_request
 def record_visit():
-    # Define internal Dash and asset paths to ignore
+    # Ignore internal Dash endpoints and per-page-load asset fetches. The component
+    # suites matter beyond log noise: a single page load requests over a dozen of them,
+    # and logging each one costs a visit-DB row and an ip-api.com lookup against that
+    # service's 45/min limit, starving the lookups for the page views the log is for.
     ignored_paths = [
         '/_dash-layout',
         '/_dash-dependencies',
         '/_dash-update-component',
+        '/_dash-component-suites/',
         '/assets/',
-        '/favicon.ico'
+        '/favicon.ico',
+        '/_favicon.ico'
     ]
 
-    # Ignore internal Dash updates and assets to keep logs clean
     if not any(request.path.startswith(path) for path in ignored_paths):
         ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
 
