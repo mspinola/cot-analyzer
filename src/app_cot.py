@@ -134,6 +134,7 @@ navbar = dbc.Navbar(
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="exact")),
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
+                    dbc.NavItem(dbc.NavLink("Crowd", href="/crowd", active="exact")),
                     dbc.NavItem(dbc.NavLink("Exposure", href="/exposure", active="exact")),
                     dbc.DropdownMenu(
                         children=[
