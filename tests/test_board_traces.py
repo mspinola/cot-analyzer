@@ -165,9 +165,10 @@ def test_unreadable_market_is_dropped_and_counted():
 # ── the figure ────────────────────────────────────────────────────────────────
 
 def _cell_rects(fig):
-    """The cell fills: data-referenced rects (header bands are paper-referenced)."""
+    """The cell fills: data-referenced rounded paths (header bands are
+    paper-referenced rects, spark midlines are lines)."""
     return [s for s in fig.layout.shapes
-            if s.type == "rect" and s.xref == "x"]
+            if s.type == "path" and s.xref == "x"]
 
 
 def test_one_rect_per_filled_cell():
@@ -194,20 +195,31 @@ def test_y_axis_runs_top_down_and_labels_live_in_plot():
 
     text_traces = {tuple(t.text) for t in fig.data if t.mode == "text"}
     assert ("<b>GC</b>", "<b>SI</b>") in text_traces
-    assert ("Gold", "Silver") in text_traces
-    assert ("'00", "'00") in text_traces
+    names = [t for t in fig.data if t.mode == "text"
+             and t.text and t.text[0].startswith("Gold")]
+    assert len(names) == 1
+    # The inception tag rides inside the name string as a styled span, so it hugs
+    # the name rather than sitting in a fixed column against the cells.
+    assert all("'00" in text for text in names[0].text)
     heading = [t for t in fig.data
                if t.mode == "text" and tuple(t.text) == ("<b>METALS</b>",)]
     assert len(heading) == 1
     market_text_sizes = [t.textfont.size for t in fig.data
                          if t.mode == "text" and t.text
-                         and t.text[0] in ("<b>GC</b>", "Gold")]
+                         and t.text[0] in ("<b>GC</b>", names[0].text[0])]
     assert heading[0].textfont.size > max(market_text_sizes)
 
 
 def test_since_tag_is_a_two_digit_year_or_nothing():
     assert bt.since_tag(read(start="2000-03-14")) == "'00"
     assert bt.since_tag(read(start=None)) == ""
+
+
+def test_name_label_carries_the_tag_as_a_styled_span():
+    label = bt.name_label(read(asset="Gold", start="2000-03-14"))
+    assert label.startswith("Gold <span style=")
+    assert "'00</span>" in label
+    assert bt.name_label(read(asset="Gold", start=None)) == "Gold"
 
 
 def test_spark_maps_high_values_above_the_midline():
