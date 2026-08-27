@@ -120,6 +120,13 @@ def _clean(value):
     return None if value is None or value != value else float(value)
 
 
+def _symbol_for(asset):
+    """The ticker beside the name. Blank rather than raising for a market the
+    registry cannot resolve: the symbol is a scanning aid, not a join key."""
+    instrument = get_indexer().get_instrument_from_name(asset)
+    return getattr(instrument, "symbol", "") or ""
+
+
 def _read_for(asset, record, basis, model, newest_date, target_date):
     """A MarketRead at the week the board is showing, or None.
 
@@ -140,6 +147,7 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
     return board_traces.MarketRead(
         asset=asset,
         asset_class=record.get("Asset Class"),
+        symbol=_symbol_for(asset),
         windows=tuple(_clean(latest[label]) for label in board_traces.WINDOW_LABELS),
         history_weeks=frame.attrs.get("history_weeks"),
         start=frame.attrs.get("start"),

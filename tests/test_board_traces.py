@@ -30,10 +30,10 @@ BG = "#1a1a1a"
 
 def read(asset="Gold", asset_class="Metals", windows=(80, 70, 60, 55),
          state=const.SETUP_NONE, move=4.0, path=(40, 55, 60),
-         history_weeks=400, start="2000-03-14"):
+         history_weeks=400, start="2000-03-14", symbol="GC"):
     return bt.MarketRead(asset=asset, asset_class=asset_class, windows=windows,
-                         history_weeks=history_weeks, start=start, move=move,
-                         path=path, state=state, date="2026-08-18")
+                         symbol=symbol, history_weeks=history_weeks, start=start,
+                         move=move, path=path, state=state, date="2026-08-18")
 
 
 # ── the window vocabulary ─────────────────────────────────────────────────────
@@ -179,13 +179,35 @@ def test_one_rect_per_filled_cell():
     assert len(_cell_rects(fig)) == 6  # 4 filled windows + 2 filled windows
 
 
-def test_y_axis_runs_top_down_and_names_every_row():
-    rows, _ = bt.build_rows([read(asset="Gold"), read(asset="Silver",
-                                                      windows=(20, 20, 20, 20))])
+def test_y_axis_runs_top_down_and_labels_live_in_plot():
+    """Identity is three in-plot columns (bold symbol, muted name, dim inception
+    tag) plus a heading row larger than any market text, not y tick labels. The
+    tick route capped the class headings at market-row size, which is the
+    too-small-to-orient-by failure this replaced."""
+    rows, _ = bt.build_rows([read(asset="Gold", symbol="GC"),
+                             read(asset="Silver", symbol="SI",
+                                  windows=(20, 20, 20, 20))])
     fig = bt.build_figure(rows, models.DEFAULT_MODEL, COLORS)
     lo, hi = fig.layout.yaxis.range
     assert lo > hi  # reversed: row 0 at the top
-    assert list(fig.layout.yaxis.ticktext) == [r.label for r in rows]
+    assert fig.layout.yaxis.showticklabels is False
+
+    text_traces = {tuple(t.text) for t in fig.data if t.mode == "text"}
+    assert ("<b>GC</b>", "<b>SI</b>") in text_traces
+    assert ("Gold", "Silver") in text_traces
+    assert ("'00", "'00") in text_traces
+    heading = [t for t in fig.data
+               if t.mode == "text" and tuple(t.text) == ("<b>METALS</b>",)]
+    assert len(heading) == 1
+    market_text_sizes = [t.textfont.size for t in fig.data
+                         if t.mode == "text" and t.text
+                         and t.text[0] in ("<b>GC</b>", "Gold")]
+    assert heading[0].textfont.size > max(market_text_sizes)
+
+
+def test_since_tag_is_a_two_digit_year_or_nothing():
+    assert bt.since_tag(read(start="2000-03-14")) == "'00"
+    assert bt.since_tag(read(start=None)) == ""
 
 
 def test_spark_maps_high_values_above_the_midline():
