@@ -210,6 +210,8 @@ COT_SKIP_BOOT_FETCH=1        # skip the synchronous CFTC fetch at boot
 COTMETRICS_LOG_DIR=...       # defaults to ~/.cache/cotmetrics/logs
 COTMETRICS_DATA=...          # legacy raw_cot_data.parquet + real_test_data exports;
                              # defaults beside COTMETRICS_CACHE, rarely needs setting
+GOATCOUNTER_URL=...          # origin of a GoatCounter instance (no trailing path);
+                             # unset, no analytics script is served. See step 9
 ```
 
 **Set for you by `launch-cot-analyzer.sh`, override only if you mean to:**
@@ -362,6 +364,57 @@ seen the header will refuse plain http to the domain, so a future lapse becomes 
 block rather than a warning. Only enable it once renewal is dependable: single apex A
 record, `certbot renew --dry-run` passing, `certbot.timer` active. Shorten `max-age` to
 something like `300` while testing if you want an easy way back.
+
+## 9. GoatCounter analytics (optional)
+
+Client-side analytics beside the app's own visit log, not replacing it: the built-in
+tracker (visitor_logs, the /admin charts) works with no browser JS and keeps working
+if this step is skipped. [GoatCounter](https://www.goatcounter.com/) adds the polished
+dashboard, and it is the tool chosen because it matches this box's ops style: one
+static Go binary, SQLite storage, a systemd unit, no Docker and no Postgres.
+
+```bash
+# 1. Binary (check github.com/arp242/goatcounter/releases for the current version)
+wget -O /usr/local/bin/goatcounter \
+  https://github.com/arp242/goatcounter/releases/download/v2.6.0/goatcounter-v2.6.0-linux-amd64
+chmod +x /usr/local/bin/goatcounter
+
+# 2. Data dir + site. The site's "code" becomes the subdomain path; self-hosted
+#    single-site setups serve it on whatever vhost you give it.
+mkdir -p /var/lib/goatcounter
+goatcounter db create site -vhost stats.yourdomain.com -user.email you@example.com \
+  -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
+```
+
+Unit, `/etc/systemd/system/goatcounter.service` (same shape as `cot-analyzer.service`):
+
+```ini
+[Unit]
+Description=GoatCounter analytics
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/goatcounter serve -listen 127.0.0.1:8081 -tls http \
+  -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then an nginx server block for `stats.yourdomain.com` proxying to `127.0.0.1:8081`
+(certbot it like step 8), and finally point the app at it in `.env`:
+
+```bash
+GOATCOUNTER_URL=https://stats.yourdomain.com
+```
+
+Restart `cot-analyzer` and every served page carries the tracker plus a pushState hook
+(`goatcounter_index_string` in `src/app_cot.py`): GoatCounter's own script counts only
+document loads, and Dash navigates by pushState, so without the hook it would record
+entry pages and nothing else, the same blind spot the server-side pageview rows fix.
+With the variable unset the served page is byte-identical to stock, which is why dev
+machines need no opt-out.
 
 ## Upgrading
 

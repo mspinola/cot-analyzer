@@ -1,9 +1,21 @@
 import os
+import tempfile
 
 # Prevent the CotIndexer boot-time options/price fetch (live network I/O) from
 # running when modules are imported during test collection. See CotIndexer.__init__.
 os.environ.setdefault("COT_SKIP_BOOT_FETCH", "1")
 os.environ.setdefault("APP_ENV", "test")
+
+# Point the visit/predictions database at a scratch file. Without this, cotmetrics'
+# module-level cotDatabase resolves to the REAL per-user database (COTMETRICS_DB,
+# else the XDG data dir), and any test that exercises visit capture would write rows
+# into the deployment's own visitor log on a developer machine. CI never noticed
+# because its filesystem is disposable; a laptop's is not. setdefault, so an
+# explicitly exported COTMETRICS_DB still wins.
+os.environ.setdefault(
+    "COTMETRICS_DB",
+    os.path.join(tempfile.mkdtemp(prefix="cot_analyzer_test_db_"), "test.db"),
+)
 
 # This file used to reach into cotmetrics and replace five CotIndexer methods
 # (populate_instruments, calculate_weekly_data and the three exporters) with no-ops for the

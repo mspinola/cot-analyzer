@@ -65,6 +65,27 @@ def admin_content():
         ], justify="between", align="start"),
         html.Hr(style=vc.hr_style),
 
+        # Traffic filter + headline. Humans is the default because bots are most of
+        # raw traffic and the question this page answers is "who is using the app";
+        # the Bots view exists so a scraper burst is diagnosable rather than merely
+        # excluded. Rows logged before the is_bot column existed count as human.
+        dbc.Row([
+            dbc.Col(dbc.RadioItems(
+                id='admin-traffic-filter',
+                options=[
+                    {'label': 'Humans', 'value': 'humans'},
+                    {'label': 'Bots', 'value': 'bots'},
+                    {'label': 'All', 'value': 'all'},
+                ],
+                value='humans',
+                inline=True,
+            ), width="auto"),
+            dbc.Col(html.Div(
+                id='admin-visit-summary',
+                style={'color': vc.TEXT_COLOR, 'fontSize': '0.9rem'}
+            ), width="auto"),
+        ], justify="between", align="center", className="mb-2"),
+
         # Graphs Section
         dbc.Row([
             dbc.Col(dcc.Graph(id='visit-time-chart'), width=6),
@@ -277,33 +298,67 @@ def _failure_line(result):
     return lines[-1]
 
 
+def split_visit_rows(df, traffic):
+    """(page views, filtered events) for one setting of the traffic filter.
+
+    Pure so the reading of the columns is testable without a Dash app. Two rules the
+    charts rely on:
+
+    - `is_bot` outside {1} counts as human, so rows logged before the column existed
+      (NULL) land in the default view rather than vanishing from every one.
+    - Page views are the 'pageview' rows PLUS the NULL-kind legacy rows: before the
+      kind column, one row per document GET was the only record of a view, and those
+      remain the whole history for old weeks. 'landing' rows are excluded because
+      each one coexists with a pageview row for the same load, and summing the two
+      kinds would double-count every entry page.
+    """
+    bots = pd.to_numeric(df['is_bot'], errors='coerce').fillna(0).astype(int)
+    if traffic == 'humans':
+        df = df[bots != 1]
+    elif traffic == 'bots':
+        df = df[bots == 1]
+    views = df[df['kind'].isna() | (df['kind'] == 'pageview')]
+    return views, df
+
+
 @callback(
     [Output('visit-time-chart', 'figure'),
      Output('visitor-geo-chart', 'figure'),
+     Output('admin-visit-summary', 'children'),
      Output('admin-log-table', 'children'),
      Output('server-log-viewer', 'children')],
     Input('admin-refresh', 'n_intervals'),
     Input('session_admin_auth', 'data'),
+    Input('admin-traffic-filter', 'value'),
     prevent_initial_call=True
 )
-def update_admin_stats(n, auth_data):
+def update_admin_stats(n, auth_data, traffic):
     if auth_data != "AUTHORIZED":
         raise PreventUpdate
 
     df = cotDatabase.get_visitor_stats()
     if df.empty:
-        return px.scatter(title="No Data"), px.scatter(title="No Data"), html.P("No logs found."), html.P("No logs found.")
+        return (px.scatter(title="No Data"), px.scatter(title="No Data"), "",
+                html.P("No logs found."), html.P("No logs found."))
 
     # Fetch raw log content from the same dir the logger writes to (utils.LOG_DIR,
     # i.e. COTMETRICS_LOG_DIR). A hardcoded relative "logs/" only matched the
     # pre-split layout and read nothing once the log dir became configurable.
     log_content = get_log_tail(os.path.join(utils.LOG_DIR, utils.main_cot_logger_file), n=100)
 
-    # Time Chart
     df['timestamp'] = pd.to_datetime(df['timestamp'])
+    views, events = split_visit_rows(df, traffic)
+
+    # The window is the last 500 logged events, not all history, which is why the
+    # summary says so instead of implying totals.
+    uniques = views['visitor_id'].dropna().nunique()
+    summary = (f"{len(views)} page views | {uniques} unique visitors "
+               f"(daily-rotating ids) | window: last {len(df)} events")
+
+    # Time Chart
     time_fig = px.histogram(
-        df, x="timestamp",
-        title="Access Frequency",
+        views, x="timestamp",
+        title="Page Views",
         template="plotly_dark",
         color_discrete_sequence=[vc.BLUE_BACKGROUND]
     )
@@ -314,7 +369,7 @@ def update_admin_stats(n, auth_data):
 
     # Geo Chart
     geo_fig = px.bar(
-        df['country'].value_counts().reset_index(),
+        views['country'].value_counts().reset_index(),
         x='count', y='country', orientation='h',
         title="Visitor Geography",
         template="plotly_dark",
@@ -326,14 +381,15 @@ def update_admin_stats(n, auth_data):
     )
 
     # Table: Raw logs (using your established dense-table style)
+    table_cols = ['timestamp', 'visitor_id', 'kind', 'ip_address', 'city', 'country', 'path']
     table = dbc.Table.from_dataframe(
-        df[['timestamp', 'ip_address', 'city', 'country', 'path']].head(15),
+        events[table_cols].head(15).fillna(''),
         striped=True, bordered=True, hover=True,
         className="dense-table",
         style={'fontSize': '0.85rem'}
     )
 
-    return time_fig, geo_fig, table, log_content
+    return time_fig, geo_fig, summary, table, log_content
 
 # Helper to efficiently read the end of a file
 def get_log_tail(filename, n=100):

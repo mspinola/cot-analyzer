@@ -1,3 +1,7 @@
+import os
+import queue
+import threading
+
 import cotmetrics.models as models
 import cotmetrics.utils as utils
 import dash
@@ -10,6 +14,7 @@ from flask import request
 from flask_compress import Compress
 
 import routing
+import visitors
 import viz_constants as vc
 
 utils.launch_logger.warning("Launch app_cot")
@@ -33,6 +38,62 @@ app = Dash(
 )
 server = app.server
 Compress(server)
+
+
+def goatcounter_index_string(origin):
+    """Dash's default index template with a self-hosted GoatCounter tracker appended.
+
+    Two scripts, and the first exists because Dash is a single-page app: count.js on
+    its own counts the document load and then never again, since navigation is
+    pushState. The hook disables the onload count, counts once when the page settles,
+    and re-counts on every pushState and popstate, which is exactly the set of
+    transitions the client-side router makes. Everything else is Dash's stock
+    template, spelled out because `index_string` replaces the whole thing.
+    """
+    return '''<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+        <script>
+            window.goatcounter = {no_onload: true};
+            (function () {
+                var count = function () {
+                    if (window.goatcounter.count) {
+                        window.goatcounter.count({path: location.pathname});
+                    }
+                };
+                window.addEventListener('load', function () { setTimeout(count, 1); });
+                var push = history.pushState;
+                history.pushState = function () {
+                    push.apply(history, arguments);
+                    count();
+                };
+                window.addEventListener('popstate', count);
+            })();
+        </script>
+        <script data-goatcounter="__GC_ORIGIN__/count" async src="__GC_ORIGIN__/count.js"></script>
+    </body>
+</html>'''.replace('__GC_ORIGIN__', origin)
+
+
+# Client-side analytics are opt-in per deployment: set GOATCOUNTER_URL to the origin
+# of a GoatCounter instance (e.g. https://stats.example.com, no trailing path) in .env
+# and every served page reports to it. Unset, the page is byte-identical to stock and
+# nothing loads. run-local.sh does not set it, so local work stays untracked.
+_goatcounter_origin = os.getenv('GOATCOUNTER_URL')
+if _goatcounter_origin:
+    app.index_string = goatcounter_index_string(_goatcounter_origin.rstrip('/'))
 
 
 @app.server.before_request
@@ -70,6 +131,104 @@ def decline_vendor_sourcemaps():
     return None
 
 
+# ── visit capture ─────────────────────────────────────────────────────────────
+#
+# Two kinds of row, written through one queue:
+#
+# - 'landing': a document GET, captured by the before_request hook below. The only
+#   moment the EXTERNAL referrer exists, and for a single-page app also the only
+#   HTTP-visible page event: after this, navigation is client-side.
+# - 'pageview': every page the client-side router shows, captured by the callback on
+#   the `url` Location further down. It fires on the initial load too, so the pageview
+#   stream alone is the complete view count and a landing row is never added to it.
+#
+# Nothing slow runs in the request: the hook and the callback only derive the visitor
+# hash and enqueue, and a single daemon thread does the geolocation (cached per IP in
+# the database, so ip-api.com is asked about an address once, not per request) and the
+# sqlite insert. The old inline version cost every logged request a blocking lookup
+# against ip-api's 45/min limit.
+
+_visit_queue = queue.Queue()
+_visit_worker_lock = threading.Lock()
+_visit_worker_started = False
+
+
+def _fetch_geo(ip_addr):
+    """One ip-api.com lookup. ('Lookup', 'Error') means failed, and is NOT cached,
+    so a later event for the same address retries."""
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=2).json()
+        if response.get('status') == 'success':
+            return response.get('city'), response.get('country')
+    except Exception:
+        pass
+    return "Lookup", "Error"
+
+
+def _process_visit(row, db=None, fetch=None):
+    """Resolve geography (cache first) and write one visitor_logs row.
+
+    `db` and `fetch` are injectable for tests; production passes neither.
+    """
+    db = db if db is not None else cotDatabase
+    fetch = fetch if fetch is not None else _fetch_geo
+    ip_addr = row['ip']
+    if ip_addr in ('', '127.0.0.1', 'localhost', '::1'):
+        city, country = "Internal", "Local"
+    else:
+        cached = db.get_cached_geo(ip_addr)
+        if cached is not None:
+            city, country = cached
+        else:
+            city, country = fetch(ip_addr)
+            if (city, country) != ("Lookup", "Error"):
+                db.cache_geo(ip_addr, city, country)
+    db.log_visit(ip_addr, row['path'], row['ua'], city, country,
+                 kind=row['kind'], visitor_id=row['visitor_id'],
+                 is_bot=row['is_bot'], referrer=row['referrer'])
+
+
+def _visit_worker():
+    while True:
+        row = _visit_queue.get()
+        try:
+            _process_visit(row)
+        except Exception as e:
+            utils.cot_logger.error(f"visit worker failed on {row.get('path')}: {e}")
+
+
+def _enqueue_visit(kind, path):
+    """Build a visit row from the CURRENT flask request and hand it to the worker.
+
+    Must run inside a request context (a before_request hook or a callback, both
+    qualify). The worker is started lazily rather than at import so importing this
+    module (tests, tooling) starts no thread and writes nothing.
+    """
+    global _visit_worker_started
+    ip_addr = visitors.client_ip(request.headers.get('X-Forwarded-For'),
+                                 request.remote_addr)
+    ua = request.headers.get('User-Agent')
+    bot = visitors.is_bot(ua)
+    _visit_queue.put({
+        'kind': kind,
+        'path': path,
+        'ip': ip_addr,
+        'ua': ua,
+        'visitor_id': visitors.visitor_id(ip_addr, ua),
+        'is_bot': bot,
+        # The referrer on a callback POST is just our own page url; only the
+        # document load carries where the visitor actually came from.
+        'referrer': request.referrer if kind == 'landing' else None,
+    })
+    with _visit_worker_lock:
+        if not _visit_worker_started:
+            threading.Thread(target=_visit_worker, daemon=True,
+                             name='visit-worker').start()
+            _visit_worker_started = True
+    utils.cot_logger.info(
+        f"IP: {ip_addr} | Path: {path}" + (" | bot" if bot else ""))
+
+
 @app.server.before_request
 def record_visit():
     # Ignore internal Dash endpoints and per-page-load asset fetches. The component
@@ -87,32 +246,7 @@ def record_visit():
     ]
 
     if not any(request.path.startswith(path) for path in ignored_paths):
-        ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
-
-        # Default values
-        city, country = "Internal", "Local"
-
-        # Skip lookup for localhost/internal IPs
-        if ip_addr not in ['127.0.0.1', 'localhost']:
-            try:
-                # Use ip-api.com (Limit: 45 requests per minute)
-                response = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=0.5).json()
-                if response.get('status') == 'success':
-                    city = response.get('city')
-                    country = response.get('country')
-            except Exception:
-                city, country = "Lookup", "Error"
-
-        cotDatabase.log_visit(
-            ip_addr,
-            request.path,
-            request.headers.get('User-Agent'),
-            city,
-            country
-        )
-
-        msg = f"IP: {ip_addr} | Path: {request.path}"
-        utils.cot_logger.info(msg)
+        _enqueue_visit('landing', request.path)
 
 
 navbar = dbc.Navbar(
@@ -212,6 +346,8 @@ app.layout = html.Div(
                 # now, and a value restored from sessionStorage would be a claim about
                 # a previous one.
                 dcc.Store(id='cot_release_store'),
+                # Sink for the pageview logger below; never read.
+                dcc.Store(id='pageview_logged'),
                 dcc.Location(id='url', refresh=False),
                 navbar,
                 dash.page_container
@@ -220,6 +356,29 @@ app.layout = html.Div(
         )
     ]
 )
+
+@app.callback(
+    Output('pageview_logged', 'data'),
+    Input('url', 'pathname'),
+)
+def record_pageview(pathname):
+    """Log every page the client-side router shows, the initial one included.
+
+    This is the half of tracking the HTTP layer cannot see: Dash is a single-page
+    app, so after the first document load, moving Home -> Heatmap -> Crowd is a
+    pushState plus a callback POST, and `record_visit` above never fires again. Until
+    this callback existed the visit log recorded which page people ARRIVED on and
+    nothing after, and any per-page popularity read off it was wrong.
+
+    It deliberately fires on the initial load too (no prevent_initial_call), so the
+    'pageview' rows are the complete view count on their own; 'landing' rows carry
+    the referrer and are never summed with them. Runs in a request context, which is
+    what lets `_enqueue_visit` read the caller's IP and user agent off the POST.
+    """
+    if pathname:
+        _enqueue_visit('pageview', pathname)
+    return no_update
+
 
 # Callback to toggle the collapse on small screens
 @app.callback(
