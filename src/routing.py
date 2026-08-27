@@ -15,7 +15,8 @@ separate a page view from a probe, and advertises the host as a live PHP target.
 
 #: Prefixes under which Dash serves generated or static content. Everything below them
 #: is Dash's to answer for, including its own errors, so membership stops here rather
-#: than trying to enumerate fingerprinted asset filenames.
+#: than trying to enumerate fingerprinted asset filenames. The one carve-out is vendor
+#: source maps, which Dash answers for badly; see `is_vendor_sourcemap`.
 SERVED_PREFIXES = (
     '/_dash-component-suites/',
     '/assets/',
@@ -54,6 +55,24 @@ def is_known_path(path: str, page_paths, dash_routes) -> bool:
     if normalized in {_normalize(route) for route in dash_routes}:
         return True
     return normalized in {_normalize(p) for p in page_paths if p}
+
+
+def is_vendor_sourcemap(path: str) -> bool:
+    """Is `path` a devtools request for a source map of a Dash vendor bundle?
+
+    Any browser with devtools open asks for these by appending `.map` to every
+    fingerprinted bundle url it loaded. Dash cannot answer them cleanly: for maps it
+    never registered (all of `deps/`, dash-bootstrap-components) `serve_component_suites`
+    raises `DependencyException`, and a registered map missing from the installed wheel
+    (`dash_renderer.min.js.map`) fails the package read instead. Either way the reply is
+    a 500 with a full traceback in the server log, one per bundle per devtools session.
+
+    So the app declines ALL vendor maps with a quiet 404 rather than replicating Dash's
+    fingerprint parsing to predict which few would succeed. The cost is that devtools
+    cannot pretty-print minified vendor bundles; the app's own scripts live under
+    `/assets/` and are unaffected.
+    """
+    return path.startswith('/_dash-component-suites/') and path.endswith('.map')
 
 
 def not_found_page(background: str, text: str, bright: str) -> str:

@@ -11,7 +11,7 @@ are passed in, so nothing here needs a Dash app or a store.
 """
 import pytest
 
-from routing import is_known_path, not_found_page
+from routing import is_known_path, is_vendor_sourcemap, not_found_page
 
 # What the live app carries, as of the page registry at the time of writing. The nested
 # and the underscored ones are the interesting entries: a naive "one path segment"
@@ -92,6 +92,33 @@ def test_an_empty_page_path_is_ignored():
     """`page_registry` entries can carry `path=None`. Such an entry must not collapse
     to '/' and quietly make the root match for the wrong reason."""
     assert not is_known_path('/nope', [None, ''], [])
+
+
+# ── vendor source maps ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("path", [
+    # Real paths from the deployment's log, each of which drew a 500 with a full
+    # traceback: never registered (deps/, dbc) and registered-but-not-shipped
+    # (dash_renderer). Both fingerprinted and bare spellings arrive.
+    '/_dash-component-suites/dash/deps/react@18.v4_3_0m1784676627.3.1.min.js.map',
+    '/_dash-component-suites/dash/deps/polyfill@7.12.1.min.js.map',
+    '/_dash-component-suites/dash_bootstrap_components/_components/dash_bootstrap_components.min.js.map',
+    '/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_3_0m1784676627.min.js.map',
+    '/_dash-component-suites/dash/dash_table/bundle.js.map',
+])
+def test_vendor_sourcemaps_are_declined(path):
+    assert is_vendor_sourcemap(path)
+
+
+@pytest.mark.parametrize("path", [
+    # The bundles themselves must keep flowing, and a map under /assets/ is the app's
+    # own, not a vendor's.
+    '/_dash-component-suites/dash/deps/react@18.v4_3_0m1784676627.3.1.min.js',
+    '/_dash-component-suites/plotly/package_data/plotly.min.js',
+    '/assets/clientside.js.map',
+])
+def test_only_vendor_maps_are_declined(path):
+    assert not is_vendor_sourcemap(path)
 
 
 # ── the body ──────────────────────────────────────────────────────────────────
