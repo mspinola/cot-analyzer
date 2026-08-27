@@ -104,13 +104,23 @@ def test_delta_direction_colours():
 
 # ── the verdict bridge ────────────────────────────────────────────────────────
 
-def test_only_full_setups_get_a_marker():
-    assert bt._verdict_marker(const.SETUP_BULL, COLORS) == (COLORS.bull,
-                                                           "triangle-up")
-    assert bt._verdict_marker(const.SETUP_BEAR, COLORS) == (COLORS.bear,
-                                                           "triangle-down")
-    for state in (const.SETUP_NEAR_BULL, const.SETUP_NEAR_BEAR, const.SETUP_NONE):
-        assert bt._verdict_marker(state, COLORS) is None
+def _alpha(rgba):
+    return float(rgba.rstrip(")").rsplit(",", 1)[1])
+
+
+def test_chip_tiers_differ_by_weight_alone():
+    """Same words as the Active Setups strip, same hue per side, and the NEAR tier
+    separated from SETUP by alpha only: anything louder would out-shout the cells."""
+    full = bt.verdict_chip(const.SETUP_BULL, COLORS)
+    near = bt.verdict_chip(const.SETUP_NEAR_BULL, COLORS)
+    assert full[0] == "SETUP" and near[0] == "NEAR"
+    assert full[3] == COLORS.bull            # full tier's ink is the pole itself
+    assert near[3] == COLORS.bull_near
+    assert _alpha(near[1]) < _alpha(full[1])  # fill: near is the fainter one
+    assert _alpha(near[2]) < _alpha(full[2])  # border too
+    bear = bt.verdict_chip(const.SETUP_BEAR, COLORS)
+    assert bear[0] == "SETUP" and bear[3] == COLORS.bear
+    assert bt.verdict_chip(const.SETUP_NONE, COLORS) is None
 
 
 # ── ordering ──────────────────────────────────────────────────────────────────
@@ -165,10 +175,10 @@ def test_unreadable_market_is_dropped_and_counted():
 # ── the figure ────────────────────────────────────────────────────────────────
 
 def _cell_rects(fig):
-    """The cell fills: data-referenced rounded paths (header bands are
-    paper-referenced rects, spark midlines are lines)."""
+    """The cell fills: data-referenced rounded paths with no border (chips are
+    paths too, but carry a 1px border; header bands are paper-referenced rects)."""
     return [s for s in fig.layout.shapes
-            if s.type == "path" and s.xref == "x"]
+            if s.type == "path" and s.xref == "x" and not s.line.width]
 
 
 def test_one_rect_per_filled_cell():
@@ -234,17 +244,19 @@ def test_spark_maps_high_values_above_the_midline():
     assert ys[-1] > row_y
 
 
-def test_verdict_trace_only_when_a_full_setup_exists():
-    quiet, _ = bt.build_rows([read(state=const.SETUP_NEAR_BULL)])
-    lit, _ = bt.build_rows([read(state=const.SETUP_BULL)])
+def test_both_chip_tiers_draw_and_a_quiet_row_draws_neither():
     model = models.DEFAULT_MODEL
+    chip_x = (bt.CHIP_X0 + bt.CHIP_X1) / 2
 
-    def verdict_points(fig):
-        return [t for t in fig.data
-                if t.mode == "markers" and t.x and t.x[0] == bt.VERDICT_X]
+    def chip_words(state):
+        rows, _ = bt.build_rows([read(state=state)])
+        fig = bt.build_figure(rows, model, COLORS)
+        return [t.text[0] for t in fig.data
+                if t.mode == "text" and t.x and t.x[0] == chip_x]
 
-    assert verdict_points(bt.build_figure(quiet, model, COLORS)) == []
-    assert len(verdict_points(bt.build_figure(lit, model, COLORS))) == 1
+    assert chip_words(const.SETUP_BULL) == ["SETUP"]
+    assert chip_words(const.SETUP_NEAR_BEAR) == ["NEAR"]
+    assert chip_words(const.SETUP_NONE) == []
 
 
 def test_full_history_hover_names_the_span():
