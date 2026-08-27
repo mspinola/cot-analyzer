@@ -22,11 +22,15 @@ state) exists because a single positioning index only means something in the com
 of the other legs the gate reads. This board is not drawing the gate's question: all
 four cells are the same leg, and the object of interest is the multi-window shape,
 which dies if three of four cells are washed to neutral because the model's one
-window has no verdict. The bridge back to the app's vocabulary is the small verdict
-marker at the row's left edge, drawn only when the selected model has a full setup on
-its own window, in the same bull/bear colours the Strip uses. The two encodings can
-disagree on one row, and that is the interesting case: a market crowded on every
-window with no verdict marker is a market whose OTHER legs are blocking the gate.
+window has no verdict. The bridge back to the app's vocabulary is the verdict CHIP
+at the row's left edge: the same two words the Active Setups strip uses (SETUP,
+NEAR), in the verdict's own hue, with the tier carried by weight alone. A full setup
+is a quiet wash with full-strength text; a near setup is the same chip two steps
+fainter, so the ordering reads without a legend. Weight is the only difference on
+purpose: two tiers distinguished by anything louder would out-shout the cells the
+page is about. The two encodings can disagree on one row, and that is the
+interesting case: a market crowded on every window with no chip is a market whose
+OTHER legs are blocking the gate.
 
 The poles reuse the app's bull/bear palette slots rather than a new pair, because the
 axis is the same one every other page draws: high index = Commercials accumulated =
@@ -45,6 +49,10 @@ import plotly.graph_objects as go
 
 import viz_constants as vc
 from components.plot_colors import hex_to_rgba, relative_luminance
+
+# The chip says the same two words the Active Setups strip says, imported rather
+# than restated so the app keeps one vocabulary for a verdict's tiers.
+from components.strip_traces import STATE_LABELS
 
 # The four windows, in weeks. None means the full history the store holds for that
 # market, which differs per market (stitched CFTC codes included), so the actual
@@ -93,7 +101,20 @@ DELTA_TEXT_X = 4.75       # the signed number
 SPARK_X0, SPARK_X1 = 5.35, 8.35
 SPARK_AMPLITUDE = 0.36    # half-height of the path, in row units
 X_RANGE = (-4.75, 8.55)
-VERDICT_X = -0.62         # the model-verdict marker, between the tag and the cells
+# The verdict chip, in the gap between the name column and the first cell. Wide
+# enough for "SETUP" at CHIP_TEXT_SIZE with air on both sides; shorter than a cell
+# so the cells stay the biggest objects on the row.
+CHIP_X0, CHIP_X1 = -1.46, -0.58
+CHIP_HALF_ROW = 0.29
+CHIP_TEXT_SIZE = 8
+# The two tiers, by weight alone: same hue, same words, different alphas. The full
+# tier's wash matches the app's INDEX_WASH register (~19%); the near tier sits at a
+# fraction of it, the same faint-but-never-invisible reasoning as the Strip's
+# near-tier INDEX_RAMP_ALPHA_APPROACH.
+CHIP_FILL_ALPHA = 0.18
+CHIP_LINE_ALPHA = 0.50
+CHIP_NEAR_FILL_ALPHA = 0.06
+CHIP_NEAR_LINE_ALPHA = 0.22
 
 # The three label weights. The symbol is the thing a reader sweeps for, so it is the
 # bright bold one; the name confirms it and sits a step back; the inception tag is
@@ -302,18 +323,32 @@ def delta_colour(move, colors):
     return colors.bull if move > 0 else colors.bear
 
 
-def _verdict_marker(state, colors):
-    """(colour, symbol) for the model-verdict marker, or None off a full setup.
+def verdict_chip(state, colors):
+    """(label, fill, border, ink) for the verdict chip, or None with no verdict.
 
-    Full setups only, no NEAR tier: the marker is a bridge to the model's vocabulary,
-    not a reproduction of the Strip, and two tiers of marker at the left edge would
-    out-shout the cells the page is about.
+    Both tiers draw, and WEIGHT is the only thing separating them: same hue, same
+    words, a full setup at the app's wash register with full-strength ink, a near
+    setup a fraction of it with the near-tier ink the Strip already uses. Anything
+    louder than an alpha step between the tiers would out-shout the cells.
     """
-    if state == const.SETUP_BULL:
-        return colors.bull, "triangle-up"
-    if state == const.SETUP_BEAR:
-        return colors.bear, "triangle-down"
-    return None
+    if state in (const.SETUP_BULL, const.SETUP_NEAR_BULL):
+        pole, near_ink = colors.bull, colors.bull_near
+    elif state in (const.SETUP_BEAR, const.SETUP_NEAR_BEAR):
+        pole, near_ink = colors.bear, colors.bear_near
+    else:
+        return None
+    if state in const.SETUP_FULL_STATES:
+        return (STATE_LABELS[state], hex_to_rgba(pole, CHIP_FILL_ALPHA),
+                hex_to_rgba(pole, CHIP_LINE_ALPHA), pole)
+    return (STATE_LABELS[state], hex_to_rgba(pole, CHIP_NEAR_FILL_ALPHA),
+            hex_to_rgba(pole, CHIP_NEAR_LINE_ALPHA), near_ink)
+
+
+def chip_hover(read, model):
+    side = ("bullish" if read.state in (const.SETUP_BULL, const.SETUP_NEAR_BULL)
+            else "bearish")
+    tier = "setup" if read.state in const.SETUP_FULL_STATES else "near setup"
+    return f"<b>{read.asset}</b> · {model.title}: {side} {tier} on its own window"
 
 
 # ── hovers ────────────────────────────────────────────────────────────────────
@@ -430,6 +465,19 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                                    i - CELL_HALF_ROW, i + CELL_HALF_ROW),
                 fillcolor=fill, line_width=0, layer="below"))
 
+    # The verdict chips' bodies. Shapes here beside the cells they answer to; the
+    # words ride in the trace block below, where text lives.
+    for i, read in markets:
+        chip = verdict_chip(read.state, colors)
+        if chip is None:
+            continue
+        shapes.append(dict(
+            type="path", xref="x", yref="y",
+            path=_rounded_rect(CHIP_X0, CHIP_X1,
+                               i - CHIP_HALF_ROW, i + CHIP_HALF_ROW,
+                               rx=0.07, ry=0.12),
+            fillcolor=chip[1], line=dict(color=chip[2], width=1), layer="below"))
+
     # The heading bar, the Strip's treatment for the Strip's reason.
     shapes += [
         dict(type="rect", xref="paper", yref="y", x0=0, x1=1,
@@ -522,20 +570,23 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             textfont=dict(size=TEXT_SIZE, color=vc.TEXT_COLOR),
             hoverinfo="skip", showlegend=False))
 
-        # The verdict bridge: the selected model's full setups, at the left edge.
-        verdicts = [(i, r, _verdict_marker(r.state, colors))
-                    for i, r in markets]
-        verdicts = [(i, r, mark) for i, r, mark in verdicts if mark]
-        if verdicts:
+        # The chips' words, bucketed by ink the way the cell numbers are: one trace
+        # per colour, because a text trace carries one font.
+        chip_buckets = {}
+        for i, r in markets:
+            chip = verdict_chip(r.state, colors)
+            if chip is None:
+                continue
+            chip_buckets.setdefault(chip[3], []).append(
+                (i, chip[0], chip_hover(r, model)))
+        for ink, points in chip_buckets.items():
             fig.add_trace(go.Scatter(
-                x=[VERDICT_X] * len(verdicts), y=[i for i, _, _ in verdicts],
-                mode="markers",
-                marker=dict(symbol=[mark[1] for _, _, mark in verdicts],
-                            size=7,
-                            color=[mark[0] for _, _, mark in verdicts]),
-                hovertext=[f"<b>{r.asset}</b> · {model.title} verdict this week"
-                           for _, r, _ in verdicts],
-                hoverinfo="text", showlegend=False))
+                x=[(CHIP_X0 + CHIP_X1) / 2] * len(points),
+                y=[p[0] for p in points],
+                mode="text", text=[p[1] for p in points],
+                textfont=dict(size=CHIP_TEXT_SIZE, color=ink),
+                hovertext=[p[2] for p in points], hoverinfo="text",
+                showlegend=False))
 
         # The sparklines: one line per market, one shared endpoint trace so the dots
         # can carry per-point colour without a trace apiece.
