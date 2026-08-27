@@ -66,14 +66,24 @@ HEADER_BAND_ALPHA = 0.07
 ROW_RULE_ALPHA = 0.10
 TOP_CHROME_PX = 34
 BOTTOM_CHROME_PX = 24
-# Same measurement and reasoning as the Strip's LEFT_MARGIN_PX: sized to the widest
-# instrument name in the universe, not the widest one currently drawn.
-LEFT_MARGIN_PX = 124
+# Nearly nothing: the label column lives INSIDE the axis as text traces (see the
+# label block in build_figure), not in the tick margin the Strip uses.
+LEFT_MARGIN_PX = 12
 
 # ── the x layout, in cell units ───────────────────────────────────────────────
-# One abstract axis: four cell slots, a change column, then the sparkline lane. All
-# fixed numbers live here so the header ticks, the shapes and the traces cannot
-# disagree about where a column is.
+# One abstract axis: the label columns, four cell slots, a change column, then the
+# sparkline lane. All fixed numbers live here so the header ticks, the shapes and
+# the traces cannot disagree about where a column is.
+#
+# The labels are drawn in-plot rather than as y tick labels, which is a departure
+# from the Strip worth a sentence: a tick label is ONE run of text in one font, and
+# this row's identity is three things with three weights (the symbol you scan for,
+# the name you confirm with, the inception tag you only need when reading the Full
+# column). Tick labels also cap the class headings at the same 10px as every market
+# row, which made the group structure invisible at arm's length.
+SYM_X = -4.55             # symbol column, left-anchored
+NAME_X = -3.80            # name column, left-anchored
+SINCE_X = -0.98           # inception tag, right-anchored just before the marker
 CELL_XS = (0.0, 1.0, 2.0, 3.0)
 CELL_HALF = 0.46          # half-width of a cell; 0.5 would butt neighbours together
 CELL_HALF_ROW = 0.38      # half-height in row units; the gap is the lane separator
@@ -81,8 +91,17 @@ DELTA_TRI_X = 4.35        # the direction triangle
 DELTA_TEXT_X = 4.75       # the signed number
 SPARK_X0, SPARK_X1 = 5.35, 8.35
 SPARK_AMPLITUDE = 0.36    # half-height of the path, in row units
-X_RANGE = (-0.85, 8.55)
-VERDICT_X = -0.68         # the model-verdict marker at the row's left edge
+X_RANGE = (-4.75, 8.55)
+VERDICT_X = -0.62         # the model-verdict marker, between the tag and the cells
+
+# The three label weights. The symbol is the thing a reader sweeps for, so it is the
+# bright bold one; the name confirms it and sits a step back; the inception tag is
+# reference material for the Full column and sits two steps back and smaller.
+SYM_FONT = dict(size=10, family="Menlo, Consolas, monospace")
+NAME_SIZE = 10
+SINCE_SIZE = 9
+SINCE_ALPHA = 0.45
+CLASS_SIZE = 12
 
 # Ticks over the columns. The spark gets one centred label rather than an axis of its
 # own; its y scale is the same 0-100 the cells carry and the hover on the endpoint
@@ -124,6 +143,7 @@ class MarketRead:
     asset: str
     asset_class: str
     windows: tuple
+    symbol: str = ""
     history_weeks: int = None
     start: str = None
     move: float = None
@@ -312,6 +332,14 @@ def delta_hover(read):
             f"<i>{vc.MOMENTUM_UNIT_PHRASE}</i>")
 
 
+def since_tag(read):
+    """The inception tag beside the name: a two-digit year the mockup style of
+    printed reports uses, or nothing when the start is unknown."""
+    if not read.start or len(read.start) < 4:
+        return ""
+    return f"'{read.start[2:4]}"
+
+
 def spark_hover(read):
     latest = read.path[-1] if read.path else None
     return (f"<b>{read.asset}</b> · 52-week index over the trailing year<br>"
@@ -380,6 +408,39 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
         for i, _ in markets
     ]
     fig.update_layout(shapes=shapes)
+
+    # The label columns, in-plot (see the x-layout note above). Three traces rather
+    # than one, because a text trace carries one font and the three columns carry
+    # three weights. The class heading gets its own trace at a size a tick label
+    # could never have: the group structure is the first thing a reader orients by.
+    if markets:
+        ys = [i for i, _ in markets]
+        fig.add_trace(go.Scatter(
+            x=[SYM_X] * len(markets), y=ys, mode="text",
+            text=[f"<b>{r.symbol}</b>" if r.symbol else "" for _, r in markets],
+            textposition="middle right",
+            textfont={**SYM_FONT, "color": vc.BRIGHTER_TEXT_COLOR},
+            hoverinfo="skip", showlegend=False))
+        fig.add_trace(go.Scatter(
+            x=[NAME_X] * len(markets), y=ys, mode="text",
+            text=[r.asset for _, r in markets],
+            textposition="middle right",
+            textfont=dict(size=NAME_SIZE, color=vc.TEXT_COLOR),
+            hoverinfo="skip", showlegend=False))
+        fig.add_trace(go.Scatter(
+            x=[SINCE_X] * len(markets), y=ys, mode="text",
+            text=[since_tag(r) for _, r in markets],
+            textposition="middle left",
+            textfont=dict(size=SINCE_SIZE,
+                          color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, SINCE_ALPHA)),
+            hoverinfo="skip", showlegend=False))
+    if headers:
+        fig.add_trace(go.Scatter(
+            x=[SYM_X] * len(headers), y=headers, mode="text",
+            text=[f"<b>{rows[i].label.upper()}</b>" for i in headers],
+            textposition="middle right",
+            textfont=dict(size=CLASS_SIZE, color=vc.BRIGHTER_TEXT_COLOR),
+            hoverinfo="skip", showlegend=False))
 
     if markets:
         # The numbers on the cells. Split into two traces by the ink `cell_text_colour`
@@ -480,9 +541,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             showgrid=False, zeroline=False, fixedrange=True),
         yaxis=dict(
             range=[n - 0.5, -0.5],
-            tickvals=list(range(n)),
-            ticktext=[r.label for r in rows],
-            tickfont=dict(size=10, color=vc.BRIGHTER_TEXT_COLOR),
+            showticklabels=False,
             showgrid=False, zeroline=False, fixedrange=True),
         hoverlabel=dict(bgcolor="#0e1116", font=dict(color=vc.HOVER_TEXT_COLOR)),
     )
