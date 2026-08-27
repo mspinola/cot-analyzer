@@ -159,6 +159,35 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
     )
 
 
+def warm_caches():
+    """Fill the board's per-market caches so no visitor pays the cold render.
+
+    Called from main.py in a daemon thread at boot and again by the store poller
+    when a new week lands, the same reasoning as the poller itself: `newest_date`
+    keys every entry, so a release invalidates the lot by construction, and without
+    this the first visitor afterwards pays it all. Measured 2026-08-27 on the
+    42-market universe: ~2.3s for the Signal Matrix (also the Heatmap's and the
+    Strip's first-render cost, so they ride along) plus ~2.2s per basis for the
+    window indices, against ~0.2s for a warm render. Both bases, so the first model
+    switch is warm too. Failures are logged and swallowed: a warmer that can take
+    the server down is worse than a slow first visitor.
+    """
+    try:
+        indexer = get_indexer()
+        available = indexer.get_available_dates()
+        if not available:
+            return
+        newest = available[0]
+        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        for record in df.to_dict("records"):
+            for model in models.MODELS:
+                _market_indices(record.get("Asset"), model.basis, newest)
+        utils.cot_logger.info(
+            f"crowd: warmed window indices for {len(df)} markets ({newest}).")
+    except Exception as e:
+        utils.cot_logger.warning(f"crowd: cache warm failed, first render pays: {e}")
+
+
 def caption(report_date, model, skipped):
     """The paragraph under the board. Every sentence is a fact the picture cannot
     carry: what the series is, what a cell means, how the windows line up with the
