@@ -82,8 +82,9 @@ LEFT_MARGIN_PX = 12
 # column). Tick labels also cap the class headings at the same 10px as every market
 # row, which made the group structure invisible at arm's length.
 SYM_X = -4.55             # symbol column, left-anchored
-NAME_X = -3.80            # name column, left-anchored
-SINCE_X = -0.98           # inception tag, right-anchored just before the marker
+NAME_X = -3.80            # name column, left-anchored; the inception tag rides
+                          # INSIDE this trace as a styled span, so it hugs each
+                          # name instead of sitting in a fixed column of its own
 CELL_XS = (0.0, 1.0, 2.0, 3.0)
 CELL_HALF = 0.46          # half-width of a cell; 0.5 would butt neighbours together
 CELL_HALF_ROW = 0.38      # half-height in row units; the gap is the lane separator
@@ -114,7 +115,17 @@ DELTA_FLAT = 1.0
 # How hard a cell at the pole leans into the pole colour. 1.0 would paint the full
 # verdict hue, which grid_colors picks hot enough for text ON the background; a slab
 # of it per cell reads as glare, the same observation that set the Strip's STEM_ALPHA.
-CELL_MAX_BLEND = 0.82
+# 0.66 rather than the 0.82 it started at: at 0.82 a board with a crowded class was
+# a wall of near-verdict colour and the numbers fought their own fills. Two thirds
+# of the pole over the dark ground is the muted register the layout mockup used, it
+# keeps every cell under the ink's luminance threshold so the numbers stay one
+# bright colour throughout, and the monotonic ramp still separates 80 from 100.
+CELL_MAX_BLEND = 0.66
+# Corner rounding, in axis units (x and y are different units, so two radii). ~3px
+# at the board's usual rendered size; a shape, not a style, because Plotly rects
+# have no corner radius and these cells are drawn as path shapes for exactly this.
+CELL_RX = 0.045
+CELL_RY = 0.10
 # Inside this distance of neutral a cell keeps the resting fill: a 47-row board where
 # every 53 carries a wash has no quiet majority left to make the extremes loud.
 CELL_DEADBAND = 6.0
@@ -340,6 +351,22 @@ def since_tag(read):
     return f"'{read.start[2:4]}"
 
 
+def name_label(read):
+    """The name column's text: the market name with the inception tag riding
+    inside it as a styled span, so the tag hugs the name whatever its width.
+
+    A separate fixed column was tried first and read as belonging to the CELLS
+    (right-aligned against them), when the tag is a fact about the market. Plotly's
+    text engine renders `<span style='fill:...;font-size:...'>` as a styled tspan,
+    which is what lets one trace carry two weights."""
+    tag = since_tag(read)
+    if not tag:
+        return read.asset
+    ink = hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, SINCE_ALPHA)
+    return (f"{read.asset} <span style='fill:{ink};"
+            f"font-size:{SINCE_SIZE}px'>{tag}</span>")
+
+
 def spark_hover(read):
     latest = read.path[-1] if read.path else None
     return (f"<b>{read.asset}</b> · 52-week index over the trailing year<br>"
@@ -367,6 +394,18 @@ def _spark_points(read, row_y):
     return xs, ys
 
 
+def _rounded_rect(x0, x1, y0, y1, rx=CELL_RX, ry=CELL_RY):
+    """An SVG path for a rectangle with quadratic corners, in data coordinates.
+
+    Two radii because the axes are two different units; the caller's constants keep
+    the rendered corner roughly square. Direction-agnostic over the reversed y axis,
+    since the path visits the same four corners either way round."""
+    return (f"M{x0 + rx},{y0} L{x1 - rx},{y0} Q{x1},{y0} {x1},{y0 + ry} "
+            f"L{x1},{y1 - ry} Q{x1},{y1} {x1 - rx},{y1} "
+            f"L{x0 + rx},{y1} Q{x0},{y1} {x0},{y1 - ry} "
+            f"L{x0},{y0 + ry} Q{x0},{y0} {x0 + rx},{y0} Z")
+
+
 def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
     """The board, as one figure. Pure over `rows`, exactly as the Strip's is."""
     fig = go.Figure()
@@ -377,16 +416,18 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
 
     # The cells. Painted as shapes rather than a heatmap trace so the per-cell fill
     # and the per-cell text colour come from ONE function, `cell_fill`, instead of a
-    # colorscale that would have to replicate it.
+    # colorscale that would have to replicate it. Path shapes rather than rects for
+    # the corners: Plotly rects have no radius, and the rounding is doing real work
+    # at this density, separating forty rows of adjacent slabs into forty pills.
     for i, read in markets:
         for w, x in enumerate(CELL_XS):
             fill = cell_fill(read.windows[w], colors, background)
             if fill is None:
                 continue
             shapes.append(dict(
-                type="rect", xref="x", yref="y",
-                x0=x - CELL_HALF, x1=x + CELL_HALF,
-                y0=i - CELL_HALF_ROW, y1=i + CELL_HALF_ROW,
+                type="path", xref="x", yref="y",
+                path=_rounded_rect(x - CELL_HALF, x + CELL_HALF,
+                                   i - CELL_HALF_ROW, i + CELL_HALF_ROW),
                 fillcolor=fill, line_width=0, layer="below"))
 
     # The heading bar, the Strip's treatment for the Strip's reason.
@@ -409,10 +450,11 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
     ]
     fig.update_layout(shapes=shapes)
 
-    # The label columns, in-plot (see the x-layout note above). Three traces rather
-    # than one, because a text trace carries one font and the three columns carry
-    # three weights. The class heading gets its own trace at a size a tick label
-    # could never have: the group structure is the first thing a reader orients by.
+    # The label columns, in-plot (see the x-layout note above). The symbol and the
+    # name are separate traces because a text trace carries one font; the inception
+    # tag rides inside the name via `name_label`'s styled span. The class heading
+    # gets its own trace at a size a tick label could never have: the group
+    # structure is the first thing a reader orients by.
     if markets:
         ys = [i for i, _ in markets]
         fig.add_trace(go.Scatter(
@@ -423,16 +465,9 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             hoverinfo="skip", showlegend=False))
         fig.add_trace(go.Scatter(
             x=[NAME_X] * len(markets), y=ys, mode="text",
-            text=[r.asset for _, r in markets],
+            text=[name_label(r) for _, r in markets],
             textposition="middle right",
             textfont=dict(size=NAME_SIZE, color=vc.TEXT_COLOR),
-            hoverinfo="skip", showlegend=False))
-        fig.add_trace(go.Scatter(
-            x=[SINCE_X] * len(markets), y=ys, mode="text",
-            text=[since_tag(r) for _, r in markets],
-            textposition="middle left",
-            textfont=dict(size=SINCE_SIZE,
-                          color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, SINCE_ALPHA)),
             hoverinfo="skip", showlegend=False))
     if headers:
         fig.add_trace(go.Scatter(
