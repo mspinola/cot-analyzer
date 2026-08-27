@@ -386,6 +386,10 @@ goatcounter db create site -vhost stats.yourdomain.com -user.email you@example.c
   -db sqlite+/var/lib/goatcounter/goatcounter.sqlite3
 ```
 
+Give `stats.yourdomain.com` a DNS A record pointing at this server before going
+further, and exactly one: certbot validates against whatever the name resolves to, so a
+second record makes issuance a coin flip, the same trap the apex has under step 8.
+
 Unit, `/etc/systemd/system/goatcounter.service` (same shape as `cot-analyzer.service`):
 
 ```ini
@@ -402,14 +406,61 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-Then an nginx server block for `stats.yourdomain.com` proxying to `127.0.0.1:8081`
-(certbot it like step 8), and finally point the app at it in `.env`:
+```bash
+systemctl daemon-reload
+systemctl enable --now goatcounter
+```
+
+GoatCounter listens on loopback only, so nginx publishes it. Unlike step 8, where the
+site already existed and only needed a certificate, this vhost is new: write
+`/etc/nginx/sites-available/goatcounter`,
+
+```nginx
+server {
+    listen 80;
+    server_name stats.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**`X-Forwarded-For` is load-bearing here, not boilerplate.** Every hit reaches
+GoatCounter from 127.0.0.1 (nginx), and its visitor counting reads that header for the
+real address, exactly as `visitors.client_ip` does for the app's own log. Omit it and
+every visitor collapses into one.
+
+Then enable it, and let certbot rewrite the block for TLS (it adds the 443 listener and
+the http redirect itself):
+
+```bash
+ln -s /etc/nginx/sites-available/goatcounter /etc/nginx/sites-enabled/goatcounter
+```
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+```bash
+certbot --nginx -d stats.yourdomain.com
+```
+
+Browsing to `https://stats.yourdomain.com` should now offer the GoatCounter login, for
+the email given to `db create site` above. The `-vhost` passed there must match this
+`server_name`, or the site is served but no site matches the request.
+
+Finally point the app at it in `.env`:
 
 ```bash
 GOATCOUNTER_URL=https://stats.yourdomain.com
 ```
 
-Restart `cot-analyzer` and every served page carries the tracker plus a pushState hook
+Restart `cot-analyzer` (`systemctl restart cot-analyzer`, or the Admin page's Restart
+button) and every served page carries the tracker plus a pushState hook
 (`goatcounter_index_string` in `src/app_cot.py`): GoatCounter's own script counts only
 document loads, and Dash navigates by pushState, so without the hook it would record
 entry pages and nothing else, the same blind spot the server-side pageview rows fix.
