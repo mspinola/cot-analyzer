@@ -187,8 +187,9 @@ def build_rows(reads, order=ORDER_CLASS):
         by_class.setdefault(read.asset_class, []).append((score, read))
 
     rows = []
-    for asset_class in sorted(by_class):
-        markets = by_class[asset_class]
+    # Insertion order, not alphabetical: the reads arrive in the Signal Matrix's
+    # class order, which is the order every other page presents the book in.
+    for asset_class, markets in by_class.items():
         if order == ORDER_ALPHA:
             markets.sort(key=lambda pair: pair[1].asset)
         else:

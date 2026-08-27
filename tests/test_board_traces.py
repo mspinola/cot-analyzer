@@ -128,10 +128,11 @@ def test_class_order_groups_and_sorts_by_score():
     ], order=bt.ORDER_CLASS)
     assert skipped == []
     kinds = [r.kind for r in rows]
-    assert kinds == ["class", "market", "spacer", "class", "market", "market"]
-    # Classes alphabetical, markets descending by score inside each.
-    assert [r.label for r in rows] == ["Grains", "Corn", "",
-                                      "Metals", "Gold", "Silver"]
+    assert kinds == ["class", "market", "market", "spacer", "class", "market"]
+    # Classes in ARRIVAL order (the Signal Matrix's class order, which is how every
+    # other page presents the book), markets descending by score inside each.
+    assert [r.label for r in rows] == ["Metals", "Gold", "Silver",
+                                      "", "Grains", "Corn"]
 
 
 def test_flat_order_is_one_gradient():
