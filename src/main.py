@@ -89,6 +89,14 @@ def store_poll_loop():
         try:
             if get_indexer().refresh_if_stale():
                 utils.cot_logger.info("Store poller: picked up a new COT week.")
+                # The new week keys every entry in the crowd board's caches, so the
+                # refresh just invalidated them all; re-warm in the background so
+                # the first visitor of the new week does not pay the cold render.
+                # A thread rather than inline, to keep this loop's tick short.
+                from pages.analytics.crowd import warm_caches as warm_crowd_caches
+                threading.Thread(
+                    target=warm_crowd_caches, name="crowd-warmer", daemon=True
+                ).start()
 
             # After the refresh, never before: refresh_if_stale blocks until the index
             # matches the store, so by here the matrix the email builds is the new
@@ -373,6 +381,17 @@ if __name__ == "__main__":
             ).start()
 
         from app_cot import app
+
+        # After the app import, never before: importing the page needs the Dash app
+        # instantiated (register_page raises otherwise). Same process rule as the
+        # poller above, and for the same reason: the caches being warmed live on
+        # module objects in whichever process serves HTTP. See crowd.warm_caches for
+        # what is warmed and what it measured.
+        if serves_requests:
+            from pages.analytics.crowd import warm_caches as warm_crowd_caches
+            threading.Thread(
+                target=warm_crowd_caches, name="crowd-warmer", daemon=True
+            ).start()
 
         try:
             start_time = time.time()
