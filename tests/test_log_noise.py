@@ -10,6 +10,8 @@ sees it, so suppression is a display decision, not a data one.
 """
 import logging
 
+from cotmetrics.CotDatabase import CotDatabase
+
 import app_cot
 import main
 
@@ -89,24 +91,61 @@ class _StubLogger:
         self.calls.append(('debug', msg))
 
 
-def _visit(monkeypatch, user_agent):
+def _visit(monkeypatch, tmp_path, user_agent, hosting=False, ip='8.8.8.8'):
+    """Drive one visit end to end: the request hook, then the worker that logs it.
+
+    The line is emitted by `_process_visit`, not by `_enqueue_visit`, because the
+    datacenter flag it decides on costs a lookup. So the queue is drained by hand here
+    rather than the hook being asserted on directly.
+    """
     stub = _StubLogger()
     monkeypatch.setattr(app_cot.utils, 'cot_logger', stub)
     monkeypatch.setattr(app_cot, '_visit_worker_started', True)  # no thread
     with app_cot.app.server.test_request_context(
-            '/', headers={'X-Forwarded-For': '8.8.8.8',
+            '/', headers={'X-Forwarded-For': ip,
                           'User-Agent': user_agent}):
         app_cot._enqueue_visit('landing', '/')
-    return stub.calls, app_cot._visit_queue.get_nowait()
+    row = app_cot._visit_queue.get_nowait()
+    assert stub.calls == [], 'the hook must not log; the worker does'
+    db = CotDatabase(db_name=str(tmp_path / 'v.db'))
+    app_cot._process_visit(row, db=db,
+                           fetch=lambda ip: ('Lisbon', 'Portugal', hosting))
+    return stub.calls, db.get_visitor_stats().iloc[0]
 
 
-def test_a_bot_visit_logs_at_debug_but_still_reaches_the_queue(monkeypatch):
-    calls, row = _visit(monkeypatch, 'Mozilla/5.0 (compatible; AhrefsBot/7.0)')
+def test_a_bot_visit_logs_at_debug_but_is_still_recorded(monkeypatch, tmp_path):
+    calls, stored = _visit(monkeypatch, tmp_path,
+                           'Mozilla/5.0 (compatible; AhrefsBot/7.0)')
     assert calls == [('debug', 'IP: 8.8.8.8 | Path: / | bot')]
-    assert row['is_bot'] is True
+    assert stored['is_bot'] == 1
 
 
-def test_a_human_visit_still_logs_at_info(monkeypatch):
-    calls, row = _visit(monkeypatch, 'Mozilla/5.0 (X11; Linux x86_64)')
+def test_a_human_visit_still_logs_at_info(monkeypatch, tmp_path):
+    calls, stored = _visit(monkeypatch, tmp_path, 'Mozilla/5.0 (X11; Linux x86_64)')
     assert calls == [('info', 'IP: 8.8.8.8 | Path: /')]
-    assert row['is_bot'] is False
+    assert stored['is_bot'] == 0
+
+
+def test_a_datacenter_visit_logs_at_debug_despite_a_browser_agent(monkeypatch, tmp_path):
+    """The case neither the user-agent list nor the nginx rules can reach: a real 200
+    on a real route, from a client claiming to be Chrome. The five `GET /` hits that
+    prompted this were exactly this shape."""
+    calls, stored = _visit(monkeypatch, tmp_path,
+                           'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', hosting=True)
+    assert calls == [('debug', 'IP: 8.8.8.8 | Path: / | datacenter')]
+    assert stored['is_bot'] == 1
+
+
+def test_the_two_suppression_reasons_are_distinguishable_in_the_line(monkeypatch,
+                                                                     tmp_path):
+    """`| bot` and `| datacenter` say which signal caught it, so a DEBUG-level look at
+    the journal answers why a line was demoted without re-deriving it."""
+    by_ua, _ = _visit(monkeypatch, tmp_path, 'curl/8.4.0')
+    # A DIFFERENT address, because the two calls share tmp_path and therefore the geo
+    # cache: one IP gets one hosting verdict, which is the cache doing its job.
+    by_ip, _ = _visit(monkeypatch, tmp_path,
+                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                      hosting=True, ip='170.106.180.153')
+    assert by_ua[0][1].endswith('| bot')
+    assert by_ip[0][1].endswith('| datacenter')
+    assert '170.106.180.153' in by_ip[0][1]

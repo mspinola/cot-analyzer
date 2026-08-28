@@ -144,9 +144,13 @@ def decline_vendor_sourcemaps():
 #
 # Nothing slow runs in the request: the hook and the callback only derive the visitor
 # hash and enqueue, and a single daemon thread does the geolocation (cached per IP in
-# the database, so ip-api.com is asked about an address once, not per request) and the
-# sqlite insert. The old inline version cost every logged request a blocking lookup
-# against ip-api's 45/min limit.
+# the database, so ip-api.com is asked about an address once, not per request), the
+# sqlite insert AND the journal line. The old inline version cost every logged request
+# a blocking lookup against ip-api's 45/min limit.
+#
+# The journal line is on that list because the lookup is what decides whether the visit
+# was automated at all: two of the three signals (a datacenter address, and geography)
+# only exist once it has returned. Only the user-agent test is free.
 
 _visit_queue = queue.Queue()
 _visit_worker_lock = threading.Lock()
@@ -154,38 +158,84 @@ _visit_worker_started = False
 
 
 def _fetch_geo(ip_addr):
-    """One ip-api.com lookup. ('Lookup', 'Error') means failed, and is NOT cached,
-    so a later event for the same address retries."""
+    """One ip-api.com lookup: (city, country, hosting).
+
+    ('Lookup', 'Error', False) means failed, and is NOT cached, so a later event for
+    the same address retries.
+
+    `hosting` is ip-api's datacenter/proxy flag, free-tier and returned beside city and
+    country for no extra request. `fields` is explicit because the flag is not in the
+    default response; naming the fields also keeps the reply small.
+
+    It is coerced to a real bool rather than passed through, because None would mean
+    "unknown" to the cache and be refetched forever. An absent field means ip-api
+    answered and did not call this address hosting, which is a False, not a mystery.
+    """
     try:
-        response = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=2).json()
+        response = requests.get(
+            f"http://ip-api.com/json/{ip_addr}"
+            "?fields=status,message,city,country,hosting",
+            timeout=2).json()
         if response.get('status') == 'success':
-            return response.get('city'), response.get('country')
+            return (response.get('city'), response.get('country'),
+                    bool(response.get('hosting')))
     except Exception:
         pass
-    return "Lookup", "Error"
+    return "Lookup", "Error", False
 
 
 def _process_visit(row, db=None, fetch=None):
-    """Resolve geography (cache first) and write one visitor_logs row.
+    """Resolve geography, decide whether the visit was automated, write the row, log it.
 
     `db` and `fetch` are injectable for tests; production passes neither.
+
+    THE LOG LINE IS EMITTED HERE, not at enqueue time, and that is the whole point of
+    this function's shape. A scanner sending a browser-shaped user agent is invisible to
+    `visitors.is_bot`, and the only thing that separates it from a visitor is the
+    address it came from, which costs a network lookup to learn. Logging at enqueue time
+    would mean logging before the answer exists.
+
+    The cost is that the line arrives a few hundred milliseconds late on a cache miss
+    and out of order with werkzeug's access line for the same request. That is a journal,
+    so ordering buys nothing; being right about which lines are worth reading does.
+
+    Suppression stays a display decision. Every visit still gets its row, and `is_bot`
+    still records the verdict, so the admin page's filter sees these exactly as it sees
+    a self-described crawler.
     """
     db = db if db is not None else cotDatabase
     fetch = fetch if fetch is not None else _fetch_geo
     ip_addr = row['ip']
     if ip_addr in ('', '127.0.0.1', 'localhost', '::1'):
-        city, country = "Internal", "Local"
+        city, country, hosting = "Internal", "Local", False
     else:
         cached = db.get_cached_geo(ip_addr)
-        if cached is not None:
+        hosting = db.get_cached_hosting(ip_addr)
+        # Both, not either: a row cached before `hosting` existed has the geography and
+        # not the flag, and refetching once is what fills it in. `cache_geo` never
+        # writes NULL for an answered lookup, so that refetch happens once per address
+        # rather than on every visit it makes.
+        if cached is not None and hosting is not None:
             city, country = cached
         else:
-            city, country = fetch(ip_addr)
+            city, country, hosting = fetch(ip_addr)
             if (city, country) != ("Lookup", "Error"):
-                db.cache_geo(ip_addr, city, country)
+                db.cache_geo(ip_addr, city, country, hosting)
+
+    # A datacenter address is automated traffic whatever its user agent claims. OR-ing
+    # into the one flag rather than adding a second column loses nothing recoverable:
+    # the row keeps both `user_agent` and `ip_address`, so which signal caught a given
+    # visit is still derivable after the fact.
+    bot = bool(row['is_bot'] or hosting)
     db.log_visit(ip_addr, row['path'], row['ua'], city, country,
                  kind=row['kind'], visitor_id=row['visitor_id'],
-                 is_bot=row['is_bot'], referrer=row['referrer'])
+                 is_bot=bot, referrer=row['referrer'])
+
+    line = f"IP: {ip_addr} | Path: {row['path']}"
+    if bot:
+        utils.cot_logger.debug(line + (" | datacenter" if hosting else " | bot"))
+    else:
+        utils.cot_logger.info(line)
 
 
 def _visit_worker():
@@ -225,14 +275,8 @@ def _enqueue_visit(kind, path):
             threading.Thread(target=_visit_worker, daemon=True,
                              name='visit-worker').start()
             _visit_worker_started = True
-    # Bots log at DEBUG, below the deployment's INFO threshold: their DB row above
-    # is the record (the admin page filters on is_bot), and at INFO a scanner sweep
-    # buries the human visits this line exists to surface.
-    line = f"IP: {ip_addr} | Path: {path}"
-    if bot:
-        utils.cot_logger.debug(line + " | bot")
-    else:
-        utils.cot_logger.info(line)
+    # No logging here. The line moved to `_process_visit`, which is the first place
+    # that knows whether the address is a datacenter one; see the note there.
 
 
 @app.server.before_request
