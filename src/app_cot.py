@@ -342,6 +342,7 @@ navbar = dbc.Navbar(
                             dbc.DropdownMenuItem("Asset Graphs", href="/graphs"),
                             dbc.DropdownMenuItem("Asset Analysis", href="/analysis"),
                             dbc.DropdownMenuItem("OI Alignment", href="/oi_alignment"),
+                            dbc.DropdownMenuItem("Divergence", href="/divergence"),
                             dbc.DropdownMenuItem("Aggregation", href="/aggregation"),
                             dbc.DropdownMenuItem("Disagg / TFF", href="/categories"),
                             dbc.DropdownMenuItem("Table", href="/positioning"),

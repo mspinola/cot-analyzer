@@ -68,6 +68,7 @@ NAVBAR_PX = 96
 ORDER_LABELS = {SORT_BY_INDEX: "Crowding", SORT_ALPHA: "A-Z"}
 COMPARE_LABELS = {strip_traces.COMPARE_PRIOR: f"{const.MOMENTUM_PERIOD}w ago",
                   strip_traces.COMPARE_DOLLARS: "Dollars",
+                  strip_traces.COMPARE_BASIS: "Other basis",
                   strip_traces.COMPARE_NONE: "None"}
 SHOW_LABELS = {strip_traces.SHOW_ALL: "All",
                strip_traces.SHOW_SETUPS: "Setups",
@@ -258,6 +259,18 @@ def caption(report_date, lookback, model, skipped, hidden=0,
             f"reading, and where the two part, the crowd's money and its contract "
             f"count disagree about how extreme this market is. {disagree} of the drawn "
             f"markets disagree about which band they are in this week.{unpriced_note}")
+    elif compare == strip_traces.COMPARE_BASIS:
+        other_name = strip_traces._other_basis_name(model)
+        own_name = ("net contracts" if other_name != "net contracts"
+                    else "share of open interest")
+        money = (
+            f" The hollow square is this SAME index computed on {other_name} instead "
+            f"of on {own_name}, with a line back to the reading the gate actually "
+            f"uses. The gap on a row is the contract-size drift the OI normalization "
+            f"removes, so the widest lines mark the markets where the two bases tell "
+            f"different stories. The square carries no verdict: only the model's own "
+            f"basis is gated, and the Divergence page compares all three models' "
+            f"verdicts side by side.")
     elif compare == strip_traces.COMPARE_PRIOR:
         money = (f" The hollow ring is where the same index stood "
                  f"{const.MOMENTUM_PERIOD} weeks ago.")
@@ -286,6 +299,7 @@ def legend(model, colors, palette, compare=strip_traces.COMPARE_PRIOR):
         strip_traces.GLYPH_TICK: "│",
         strip_traces.GLYPH_CIRCLE: "○",
         strip_traces.GLYPH_DIAMOND: "◇",
+        strip_traces.GLYPH_SQUARE: "□",
     }
     groups = []
     for title, entries in strip_traces.legend_items(model, colors, palette, compare):
