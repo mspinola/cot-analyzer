@@ -351,19 +351,37 @@ requests, and exploit attempts against software this box does not run.
 cp /root/trading_workspace/cot-analyzer/server-side/nginx-scanner-block.conf /etc/nginx/snippets/
 ```
 
-Then add one line inside the `listen 443 ssl` server block, above `location / {`:
+Then add one line inside the server block that proxies to the app, above its
+`location / {`:
 
 ```nginx
 include snippets/nginx-scanner-block.conf;
 ```
+
+Which block that is depends on how the site was built, so find it rather than assuming.
+`nginx -T` prints the whole resolved configuration with a `# configuration file` header
+before each file, which is the only reliable way to see where a directive actually
+lives (the site may be inline in `nginx.conf`, in `sites-enabled/`, or in `conf.d/`, and
+`grep` alone will not tell you which):
+
+```bash
+nginx -T | grep -nE "^# configuration file|listen |server_name |proxy_pass "
+```
+
+The app's block is the one containing `proxy_pass http://127.0.0.1:5001`. Put the
+include in that block. TLS is irrelevant to it: the snippet works the same in a `listen
+80` block as in a `listen 443 ssl` one, and if the site has both, it belongs in whichever
+one carries the `proxy_pass` (a plain `:80` block that only issues a redirect to https
+does not need it, since a redirected scanner comes back to the TLS block anyway).
 
 ```bash
 nginx -t && systemctl reload nginx
 curl -si -X POST 'https://yourdomain.com/?%ADd+auto_prepend_file=php://input' | head -1
 ```
 
-An empty reply is the pass. A `405` means the include is not in the block that serves
-the request, which `nginx -T | grep -n scanner-block` will show.
+An empty reply is the pass. A `405` means the include is not in the block that served
+the request; `nginx -T | grep -n scanner-block` shows where it did land. Use `http://`
+in that curl if the site has no certificate.
 
 It is a snippet rather than a full site block because `certbot --nginx` writes and
 rewrites the site block itself. A committed copy of that file would be a fork of one
