@@ -25,12 +25,17 @@ MODEL_BOTH = "both"
 MODEL_CHOICES = tuple(m.key for m in models.MODELS)
 MODEL_VIEW_CHOICES = MODEL_CHOICES + (MODEL_BOTH,)
 
-# Short enough for a 130px select. The band is in the tooltip rather than the label:
-# "NPF CS 80/20" does not fit and the numbers are not what you pick on.
+# The full identity on the label: legs and band, not just the family. With three
+# models, two of them one gate or one band apart, a bare "NPF" no longer says which
+# rule is deciding the verdicts on screen (requested 2026-08-28; the labels were short
+# forms before that). Built from the models so the numbers cannot drift from the gates;
+# Raw PF is the one whose title ("Raw CLS 95/5") is not the app's name for it, so its
+# label is assembled rather than taken.
 MODEL_LABELS = {
-    models.RAW_PF.key: "Raw PF",
-    models.NPF.key: "NPF",
-    models.NPF_CLS_95_5.key: "NPF CLS",
+    models.RAW_PF.key:
+        f"Raw PF {models.RAW_PF.gate} {models.RAW_PF.high}/{models.RAW_PF.low}",
+    models.NPF.key: models.NPF.title,
+    models.NPF_CLS_95_5.key: models.NPF_CLS_95_5.title,
     MODEL_BOTH: "Both",
 }
 
