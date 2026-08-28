@@ -327,7 +327,7 @@ def update_local_model_home(value, current_local_val):
 
 
 # 128 rather than 32: the key is (db_time, class, lookback, palette, filters, model), and
-# 9 classes x 3 lookbacks x 2 models is already 54 combinations before palettes or filter
+# 9 classes x 3 lookbacks x 3 models is already 81 combinations before palettes or filter
 # selections multiply it. At 32 the cache could not even hold one full Expand All across
 # two models, so switching model and back rebuilt everything. Unlike the indexer's frame
 # cache this is cheap to raise: the entries are rendered card trees, not DataFrames.

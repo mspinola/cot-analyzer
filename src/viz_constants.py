@@ -11,9 +11,10 @@ import cotmetrics.models as models
 
 # ── the app-wide positioning model ────────────────────────────────────────────
 #
-# There is one knob here, not two. A model binds a basis to a gate and each basis
-# belongs to exactly one model, so "which basis do I plot" and "which rule decides a
-# setup" are the same question asked from two ends. Offering them as separate controls
+# There is one knob here, not two. A model binds a basis to a gate, so "which basis do
+# I plot" and "which rule decides a setup" are the same question asked from two ends
+# (two models share the OI-normalized basis now, and the basis still follows the model
+# rather than being chosen on its own). Offering them as separate controls
 # would let the Home page call something a setup while the Analysis page disagreed,
 # which is the inconsistency this whole line of work set out to remove.
 #
@@ -29,12 +30,14 @@ MODEL_VIEW_CHOICES = MODEL_CHOICES + (MODEL_BOTH,)
 MODEL_LABELS = {
     models.RAW_PF.key: "Raw PF",
     models.NPF.key: "NPF",
+    models.NPF_CLS_95_5.key: "NPF CLS",
     MODEL_BOTH: "Both",
 }
 
 MODEL_TOOLTIPS = {
     models.RAW_PF.key: f"{models.RAW_PF.title} — net contracts, all three legs",
     models.NPF.key: f"{models.NPF.title} — net / open interest, Commercials and Small only",
+    models.NPF_CLS_95_5.key: f"{models.NPF_CLS_95_5.title} — net / open interest, all three legs, tight band",
     MODEL_BOTH: "Draws both bases on one axis. Verdicts fall back to Raw PF.",
 }
 

@@ -41,11 +41,17 @@ SETUP_FILTER_ALL = "all"
 SETUP_FILTER_GATE = "gate"
 SETUP_FILTER_NEAR = "near"
 
-# UNION ACROSS THE TWO MODELS, deliberately. This grid reports Raw CLS 95/5 and NPF CS
-# 80/20 side by side and has no model selector, so a filter that picked one would hide
-# rows the other half of the same row is lit up about. The two bands are independent
-# rather than nested -- Coffee has been an NPF setup while its CLS legs were only close
-# -- so "either" is the only rule that cannot contradict the grid it filters.
+# UNION ACROSS THE TWO MODELS THIS GRID SHOWS, deliberately. It reports Raw CLS 95/5
+# and NPF CS 80/20 side by side and has no model selector, so a filter that picked one
+# would hide rows the other half of the same row is lit up about. The two bands are
+# independent rather than nested -- Coffee has been an NPF setup while its CLS legs
+# were only close -- so "either" is the only rule that cannot contradict the grid it
+# filters. NPF CLS 95/5 is deliberately absent on both counts, from the columns and
+# from this union: the grid has no block for it (its legs are the normalized columns
+# already shown, under a tighter band), and a verdict the grid does not display must
+# not decide which rows survive the filter. Full CLS setups are CS setups anyway (95/5
+# sits inside 80/20 and the extra Large-leg clause only narrows), so what the union
+# forgoes is only the CLS near tier, which can fire off the Large leg alone.
 _FILTER_STATES = {
     SETUP_FILTER_GATE: frozenset(const.SETUP_FULL_STATES),
     SETUP_FILTER_NEAR: frozenset(const.SETUP_FULL_STATES + const.SETUP_NEAR_STATES),

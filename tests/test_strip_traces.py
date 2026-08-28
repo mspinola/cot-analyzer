@@ -31,15 +31,17 @@ PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
 
 
 def matrix_row(asset, asset_class, comm, lrg, sml, state_cls=const.SETUP_NONE,
-               state_npf=const.SETUP_NONE, is_equity=False, move=None):
+               state_npf=const.SETUP_NONE, state_npf_cls=const.SETUP_NONE,
+               is_equity=False, move=None):
     """One `get_matrix_data` record, named the way that function names its columns."""
     return {
         "Asset Class": asset_class, "Asset": asset,
         "Comm Index": comm, "Lrg Index": lrg, "Sml Index": sml,
         # The normalized twins carry their own values in the real frame. Same numbers
         # here keeps the fixtures readable; no test compares the two bases.
-        "Comm Index Norm": comm, "Sml Index Norm": sml,
+        "Comm Index Norm": comm, "Lrg Index Norm": lrg, "Sml Index Norm": sml,
         const.SETUP_CLS_COL: state_cls, const.SETUP_NPF_COL: state_npf,
+        const.SETUP_NPF_CLS_COL: state_npf_cls,
         const.IS_EQUITY_COL: is_equity, "Date": "2026-08-18",
         "Comm Move": move, "Comm Move Norm": move,
     }
@@ -76,6 +78,30 @@ def test_raw_pf_draws_both_spec_legs():
         frame(matrix_row("Gold", "Metals", 90, 10, 12)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
     assert [leg for leg, _, _ in market.legs] == [models.LEG_LARGE, models.LEG_SMALL]
+
+
+def test_npf_cls_draws_all_three_legs_from_the_normalized_family():
+    """The CLS gate reads Large Specs, so unlike NPF the strip must draw that leg,
+    and off "Lrg Index Norm" rather than the raw column: reading the raw twin under
+    a normalized model is the movers.py defect the LEG_COLUMNS table exists to stop."""
+    assert st.LEG_COLUMNS[models.NPF_CLS_95_5.key][models.LEG_LARGE] == "Lrg Index Norm"
+    rows, _ = st.build_rows(
+        frame(matrix_row("Gold", "Metals", 90, 10, 12)), models.NPF_CLS_95_5)
+    market = [r for r in rows if r.kind == "market"][0]
+    assert [leg for leg, _, _ in market.legs] == [models.LEG_LARGE, models.LEG_SMALL]
+
+
+def test_npf_cls_reads_its_own_verdict_column():
+    """A full NPF CS setup can be no NPF CLS setup (the Large leg blocks at 95/5), so
+    the CLS strip must not borrow the CS verdict."""
+    df = frame(matrix_row("Coffee", "Softs", 96, 40, 4,
+                          state_npf=const.SETUP_BULL,
+                          state_npf_cls=const.SETUP_NONE))
+    cls_row = [r for r in st.build_rows(df, models.NPF_CLS_95_5)[0]
+               if r.kind == "market"][0]
+    npf_row = [r for r in st.build_rows(df, models.NPF)[0] if r.kind == "market"][0]
+    assert st._verdict_colour(cls_row, COLORS) is None
+    assert st._mark_colour(npf_row, COLORS, PALETTE) == COLORS.bull
 
 
 # ── which legs count as helping the gate ──────────────────────────────────────

@@ -67,8 +67,9 @@ from components.plot_colors import hex_to_rgba
 # frame columns, and this draws from the Signal Matrix, which has already renamed and
 # rounded them.
 #
-# NPF has no Large Spec entry because its CS gate does not read that leg and the matrix
-# does not carry the column. test_strip_traces holds this table to `models.MODELS` so a
+# NPF has no Large Spec entry because its CS gate does not read that leg. NPF CLS 95/5
+# reads all three on the same normalized family, which is why the matrix carries
+# "Lrg Index Norm" at all. test_strip_traces holds this table to `models.MODELS` so a
 # new model fails loudly here rather than silently drawing a leg short.
 LEG_COLUMNS = {
     models.RAW_PF.key: {
@@ -80,6 +81,11 @@ LEG_COLUMNS = {
         "comm": "Comm Index Norm",
         models.LEG_SMALL: "Sml Index Norm",
     },
+    models.NPF_CLS_95_5.key: {
+        "comm": "Comm Index Norm",
+        models.LEG_LARGE: "Lrg Index Norm",
+        models.LEG_SMALL: "Sml Index Norm",
+    },
 }
 
 # Where the index stood MOMENTUM_PERIOD weeks ago, per basis. The generic "Comm Move"
@@ -89,12 +95,14 @@ LEG_COLUMNS = {
 MOVE_COLUMN = {
     models.RAW_PF.key: "Comm Move",
     models.NPF.key: "Comm Move Norm",
+    models.NPF_CLS_95_5.key: "Comm Move Norm",
 }
 
 # The setup verdict each model resolved onto the row, back in get_matrix_data.
 SETUP_COLUMN = {
     models.RAW_PF.key: const.SETUP_CLS_COL,
     models.NPF.key: const.SETUP_NPF_COL,
+    models.NPF_CLS_95_5.key: const.SETUP_NPF_CLS_COL,
 }
 
 LEG_LABELS = {

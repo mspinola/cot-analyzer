@@ -42,7 +42,14 @@ dependencies = [
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
     "crucible-marketdata>=0.2.0",
-    # Floor is 0.11.0 because the geolocation worker calls `get_cached_hosting` and
+    # Floor is 0.12.0 because the model selectors offer `models.NPF_CLS_95_5` and the
+    # Crowding Strip reads its verdict off the matrix at `const.SETUP_NPF_CLS_COL`
+    # (plus the "Lrg Index Norm" column that gate draws). Against 0.11.0 the model
+    # does not exist, so viz_constants raises AttributeError at import and, because
+    # `use_pages` imports every page module at startup, that takes down the whole
+    # route registry rather than one selector.
+    #
+    # 0.11.0 was the floor because the geolocation worker calls `get_cached_hosting` and
     # passes `hosting=` to `cache_geo`, which is how a datacenter client sending a
     # browser user agent gets recognised at all. Against 0.10.0 the method does not
     # exist, so the worker thread dies on its first event and visitor tracking stops
@@ -82,7 +89,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.11.0",
+    "cotmetrics[options]>=0.12.0",
 ]
 
 [project.optional-dependencies]
