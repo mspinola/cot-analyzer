@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import sys
 import threading
@@ -35,6 +36,26 @@ class SuppressSourceMapErrors(logging.Filter):
                 return False
         return ".map" not in record.getMessage()
 
+class DropScannerNoise(logging.Filter):
+    """Drop werkzeug's echo of vulnerability-scanner traffic.
+
+    Two shapes, both constant background noise on the public internet: probe sweeps
+    for paths that do not exist here (/.env and friends, answered 404 by
+    `reject_unknown_paths` before they reach the visitor DB), and raw non-HTTP
+    payloads (TLS handshakes, nmap probes) that werkzeug answers 400 and logs
+    bytes-and-all, once as an ERROR ("code 400, message ...") and again as the
+    access line. Only 400 and 404 are dropped: 200s and 500s still log, so neither
+    real traffic nor a real failure disappears with the noise.
+    """
+    _CLIENT_ERROR_LINE = re.compile(r'" 40[04] \S+$')
+
+    def filter(self, record):
+        message = record.getMessage()
+        if 'code 400, message' in message:
+            return False
+        return not self._CLIENT_ERROR_LINE.search(message)
+
+
 # If you are also using Werkzeug's default logger, filter that too
 logging.getLogger('werkzeug').addFilter(SuppressSourceMapErrors())
 
@@ -42,6 +63,7 @@ logging.getLogger('werkzeug').addFilter(SuppressSourceMapErrors())
 log = logging.getLogger('werkzeug')
 log.addFilter(NoDashComponentFilter())
 log.addFilter(SuppressSourceMapErrors())
+log.addFilter(DropScannerNoise())
 
 STORE_POLL_SECONDS = 5 * 60
 
@@ -396,7 +418,12 @@ if __name__ == "__main__":
         try:
             start_time = time.time()
             port = os.getenv('PORT', '5001')
-            app.run(host="0.0.0.0", port=port, debug=dash_debug)
+            # Default stays 0.0.0.0 so a dev run is reachable from other devices on
+            # the LAN. The deployment sets HOST=127.0.0.1 in .env: nginx proxies
+            # from loopback there, so a public bind only serves the scanners that
+            # bypass nginx and talk to the port directly.
+            host = os.getenv('HOST', '0.0.0.0')
+            app.run(host=host, port=port, debug=dash_debug)
             utils.cot_logger.info(f"app.run took: {time.time() - start_time:.2f}s")
         except KeyboardInterrupt:
             utils.cot_logger.warning(
