@@ -225,8 +225,14 @@ def _enqueue_visit(kind, path):
             threading.Thread(target=_visit_worker, daemon=True,
                              name='visit-worker').start()
             _visit_worker_started = True
-    utils.cot_logger.info(
-        f"IP: {ip_addr} | Path: {path}" + (" | bot" if bot else ""))
+    # Bots log at DEBUG, below the deployment's INFO threshold: their DB row above
+    # is the record (the admin page filters on is_bot), and at INFO a scanner sweep
+    # buries the human visits this line exists to surface.
+    line = f"IP: {ip_addr} | Path: {path}"
+    if bot:
+        utils.cot_logger.debug(line + " | bot")
+    else:
+        utils.cot_logger.info(line)
 
 
 @app.server.before_request

@@ -206,6 +206,11 @@ week is the first one mailed. Use the Admin button if you want one immediately.
 ```bash
 COT_ADMIN_PASSWORD=...       # gates the Admin page; that page is unusable without it
 PORT=5001                    # defaults to 5001
+HOST=127.0.0.1               # set this on the server. Defaults to 0.0.0.0 for LAN
+                             # dev use; here nginx proxies from loopback, so a
+                             # public bind only serves the scanners that talk to
+                             # the port directly (the binary-garbage 400s in the
+                             # journal)
 COT_SKIP_BOOT_FETCH=1        # skip the synchronous CFTC fetch at boot
 COTMETRICS_LOG_DIR=...       # defaults to ~/.cache/cotmetrics/logs
 COTMETRICS_DATA=...          # legacy raw_cot_data.parquet + real_test_data exports;
@@ -306,7 +311,8 @@ systemctl enable --now cot-analyzer
 systemctl status cot-analyzer
 ```
 
-The app binds `0.0.0.0:$PORT` (5001 by default).
+The app binds `$HOST:$PORT` (`0.0.0.0:5001` by default; set `HOST=127.0.0.1` in `.env`
+on the server, per step 5, since only nginx needs to reach it there).
 
 **First start is slow.** `CotIndexer` validates the parquet cache at import, and any
 schema change invalidates it and recomputes every instrument. Expect several minutes
