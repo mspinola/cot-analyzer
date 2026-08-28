@@ -67,8 +67,9 @@ from components.plot_colors import hex_to_rgba
 # frame columns, and this draws from the Signal Matrix, which has already renamed and
 # rounded them.
 #
-# NPF has no Large Spec entry because its CS gate does not read that leg and the matrix
-# does not carry the column. test_strip_traces holds this table to `models.MODELS` so a
+# NPF has no Large Spec entry because its CS gate does not read that leg. NPF CLS 95/5
+# reads all three on the same normalized family, which is why the matrix carries
+# "Lrg Index Norm" at all. test_strip_traces holds this table to `models.MODELS` so a
 # new model fails loudly here rather than silently drawing a leg short.
 LEG_COLUMNS = {
     models.RAW_PF.key: {
@@ -80,6 +81,11 @@ LEG_COLUMNS = {
         "comm": "Comm Index Norm",
         models.LEG_SMALL: "Sml Index Norm",
     },
+    models.NPF_CLS_95_5.key: {
+        "comm": "Comm Index Norm",
+        models.LEG_LARGE: "Lrg Index Norm",
+        models.LEG_SMALL: "Sml Index Norm",
+    },
 }
 
 # Where the index stood MOMENTUM_PERIOD weeks ago, per basis. The generic "Comm Move"
@@ -89,12 +95,25 @@ LEG_COLUMNS = {
 MOVE_COLUMN = {
     models.RAW_PF.key: "Comm Move",
     models.NPF.key: "Comm Move Norm",
+    models.NPF_CLS_95_5.key: "Comm Move Norm",
 }
 
 # The setup verdict each model resolved onto the row, back in get_matrix_data.
 SETUP_COLUMN = {
     models.RAW_PF.key: const.SETUP_CLS_COL,
     models.NPF.key: const.SETUP_NPF_COL,
+    models.NPF_CLS_95_5.key: const.SETUP_NPF_CLS_COL,
+}
+
+# The SAME leg (Commercials) measured on the OTHER basis, for COMPARE_BASIS. Under a
+# raw model the second mark is the OI-normalized reading and vice versa, so the gap on
+# a row is exactly the contract-size drift the normalization exists to remove. Both
+# normalized models point at the raw column because they share one series; /divergence
+# is the page that puts all three side by side.
+OTHER_BASIS_COLUMN = {
+    models.RAW_PF.key: "Comm Index Norm",
+    models.NPF.key: "Comm Index",
+    models.NPF_CLS_95_5.key: "Comm Index",
 }
 
 LEG_LABELS = {
@@ -278,6 +297,13 @@ SIDE_BEAR = "bear"
 # multiplier or no bars has no dollar reading at all, and the caption has to say so.
 COMPARE_PRIOR = "prior"
 COMPARE_DOLLARS = "dollars"
+# The same leg measured on the other BASIS (see OTHER_BASIS_COLUMN): a third answer to
+# the same "measured differently" question the other two comparisons ask, in UNIT like
+# dollars rather than in time, and it needs no price store because both readings are
+# already on the matrix row. It borrows the dollar mark's whole grammar (a hollow mark
+# plus a connector back to the head) because the GAP is again the subject; only the
+# glyph differs, so a reader can tell which comparison a saved PNG was drawn with.
+COMPARE_BASIS = "basis"
 COMPARE_NONE = "none"
 
 # The dollar mark and the line back to the head.
@@ -298,6 +324,13 @@ DOLLAR_SYMBOL = "diamond-open"
 DOLLAR_SIZE = 8
 WEDGE_ALPHA = 0.45
 WEDGE_WIDTH = 1
+
+# The other-basis mark: a hollow square, against the dollar mark's hollow diamond and
+# the prior mark's hollow ring. Shape is the only channel free to say which comparison
+# is on screen, for the reason the dollar mark documents: colour here already means
+# the row's tier.
+BASIS_SYMBOL = "square-open"
+BASIS_SIZE = 7
 
 # How the Commercial index is drawn: ONE form, a lollipop — a thin stem from the
 # neutral midpoint with a full-strength head at the value.
@@ -341,6 +374,7 @@ class StripRow:
     is_equity: bool = False
     prior: float = None  # where the index stood MOMENTUM_PERIOD weeks ago
     dollar: DollarRead = None   # the same reading in dollars at risk, or None
+    other: float = None  # the same leg's index on the other basis (OTHER_BASIS_COLUMN)
 
 
 def _num(value):
@@ -475,7 +509,10 @@ def build_rows(df, model, sort_by_index=True, show=SHOW_ALL, side=SIDE_BOTH,
                           # caller's dollar table both use. A market absent from that
                           # table is one that cannot be priced, which is a state the
                           # row has to carry rather than a lookup that may fail.
-                          dollar=(dollars or {}).get(asset))
+                          dollar=(dollars or {}).get(asset),
+                          # Carried whatever the compare setting, like `prior`: it is
+                          # already on the record, and the figure decides what to draw.
+                          other=_num(record.get(OTHER_BASIS_COLUMN[model.key])))
         if not keeps(market, show, side):
             continue
         by_class.setdefault(market.asset_class, []).append(market)
@@ -699,6 +736,12 @@ def _dollar_hover(row):
             f"<br>Level: {_money(d.risk_usd)}{notional}{sigma}")
 
 
+def _other_basis_name(model):
+    """What the second mark is measured on, for hovers and captions."""
+    return ("share of open interest" if model.basis == const.BASIS_RAW
+            else "net contracts")
+
+
 def _hover(row, model, compare=COMPARE_PRIOR):
     legs = "".join(
         f"<br>{LEG_LABELS[leg]}: {value:.0f}"
@@ -710,6 +753,9 @@ def _hover(row, model, compare=COMPARE_PRIOR):
     # Only when the mark is on screen. A hover naming a dollar reading with no mark
     # beside it is a claim about a comparison the reader cannot see.
     money = _dollar_hover(row) if compare == COMPARE_DOLLARS else ""
+    if compare == COMPARE_BASIS and row.other is not None:
+        money = (f"<br><br>Same index on {_other_basis_name(model)}: {row.other:.0f}"
+                 f"<br>Gap: {abs(row.comm - row.other):.0f} points")
     return (f"<b>{row.label}</b><br>{row.asset_class}"
             f"<br>{LEG_LABELS['comm']}: {row.comm:.0f}{legs}{money}{tail}{equity}")
 
@@ -731,6 +777,7 @@ GLYPH_MARK = "mark"        # the lollipop head
 GLYPH_TICK = "tick"        # the line-ns symbol: the speculator legs
 GLYPH_CIRCLE = "circle"    # the hollow prior-position circle
 GLYPH_DIAMOND = "diamond"  # the hollow dollar mark
+GLYPH_SQUARE = "square"    # the hollow other-basis mark
 
 
 def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
@@ -756,6 +803,8 @@ def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
     reference = {
         COMPARE_PRIOR: [(f"{const.MOMENTUM_PERIOD}w ago", colors.dim, GLYPH_CIRCLE)],
         COMPARE_DOLLARS: [("Same index, in $ at risk", colors.dim, GLYPH_DIAMOND)],
+        COMPARE_BASIS: [(f"Same index, on {_other_basis_name(model)}",
+                         colors.dim, GLYPH_SQUARE)],
     }.get(compare, [])
     # The neutral keys are as dim as the marks they stand for: a full-strength
     # "No setup" swatch would promise a colour the plot never draws.
@@ -945,6 +994,34 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
             marker=dict(symbol=DOLLAR_SYMBOL, size=DOLLAR_SIZE,
                         color=dollar_colours,
                         line=dict(width=1.4, color=dollar_colours)),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+    # The same leg on the OTHER basis: the dollar comparison's grammar exactly (see
+    # COMPARE_BASIS), drawn from a column the row already carries rather than from a
+    # price store, so no row can be missing its mark.
+    basis = [(i, r) for i, r in markets if r.other is not None]
+    if compare == COMPARE_BASIS and basis:
+        xs, ys = [], []
+        for i, r in basis:
+            xs += [r.comm, r.other, None]
+            ys += [i, i, None]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines",
+            line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, WEDGE_ALPHA),
+                      width=WEDGE_WIDTH),
+            marker=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR, WEDGE_ALPHA)),
+            hoverinfo="skip", showlegend=False,
+        ))
+        # `color` and `line.color` both, the same open-symbol trap the other two
+        # hollow marks document.
+        basis_colours = [_mark_colour(r, colors, palette) for _, r in basis]
+        fig.add_trace(go.Scatter(
+            x=[r.other for _, r in basis], y=[i for i, _ in basis],
+            mode="markers",
+            marker=dict(symbol=BASIS_SYMBOL, size=BASIS_SIZE,
+                        color=basis_colours,
+                        line=dict(width=1.4, color=basis_colours)),
             hoverinfo="skip", showlegend=False,
         ))
 

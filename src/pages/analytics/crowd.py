@@ -179,9 +179,11 @@ def warm_caches():
             return
         newest = available[0]
         df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        # Distinct bases, not one per model: the cache is keyed on the basis, and two
+        # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
         for record in df.to_dict("records"):
-            for model in models.MODELS:
-                _market_indices(record.get("Asset"), model.basis, newest)
+            for basis in dict.fromkeys(m.basis for m in models.MODELS):
+                _market_indices(record.get("Asset"), basis, newest)
         utils.cot_logger.info(
             f"crowd: warmed window indices for {len(df)} markets ({newest}).")
     except Exception as e:

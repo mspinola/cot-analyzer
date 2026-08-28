@@ -31,15 +31,19 @@ PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
 
 
 def matrix_row(asset, asset_class, comm, lrg, sml, state_cls=const.SETUP_NONE,
-               state_npf=const.SETUP_NONE, is_equity=False, move=None):
+               state_npf=const.SETUP_NONE, state_npf_cls=const.SETUP_NONE,
+               is_equity=False, move=None, comm_norm=None):
     """One `get_matrix_data` record, named the way that function names its columns."""
     return {
         "Asset Class": asset_class, "Asset": asset,
         "Comm Index": comm, "Lrg Index": lrg, "Sml Index": sml,
         # The normalized twins carry their own values in the real frame. Same numbers
-        # here keeps the fixtures readable; no test compares the two bases.
-        "Comm Index Norm": comm, "Sml Index Norm": sml,
+        # by default keeps the fixtures readable; the basis-comparison tests pass
+        # `comm_norm` because for them the two bases differing IS the subject.
+        "Comm Index Norm": comm if comm_norm is None else comm_norm,
+        "Lrg Index Norm": lrg, "Sml Index Norm": sml,
         const.SETUP_CLS_COL: state_cls, const.SETUP_NPF_COL: state_npf,
+        const.SETUP_NPF_CLS_COL: state_npf_cls,
         const.IS_EQUITY_COL: is_equity, "Date": "2026-08-18",
         "Comm Move": move, "Comm Move Norm": move,
     }
@@ -76,6 +80,30 @@ def test_raw_pf_draws_both_spec_legs():
         frame(matrix_row("Gold", "Metals", 90, 10, 12)), models.RAW_PF)
     market = [r for r in rows if r.kind == "market"][0]
     assert [leg for leg, _, _ in market.legs] == [models.LEG_LARGE, models.LEG_SMALL]
+
+
+def test_npf_cls_draws_all_three_legs_from_the_normalized_family():
+    """The CLS gate reads Large Specs, so unlike NPF the strip must draw that leg,
+    and off "Lrg Index Norm" rather than the raw column: reading the raw twin under
+    a normalized model is the movers.py defect the LEG_COLUMNS table exists to stop."""
+    assert st.LEG_COLUMNS[models.NPF_CLS_95_5.key][models.LEG_LARGE] == "Lrg Index Norm"
+    rows, _ = st.build_rows(
+        frame(matrix_row("Gold", "Metals", 90, 10, 12)), models.NPF_CLS_95_5)
+    market = [r for r in rows if r.kind == "market"][0]
+    assert [leg for leg, _, _ in market.legs] == [models.LEG_LARGE, models.LEG_SMALL]
+
+
+def test_npf_cls_reads_its_own_verdict_column():
+    """A full NPF CS setup can be no NPF CLS setup (the Large leg blocks at 95/5), so
+    the CLS strip must not borrow the CS verdict."""
+    df = frame(matrix_row("Coffee", "Softs", 96, 40, 4,
+                          state_npf=const.SETUP_BULL,
+                          state_npf_cls=const.SETUP_NONE))
+    cls_row = [r for r in st.build_rows(df, models.NPF_CLS_95_5)[0]
+               if r.kind == "market"][0]
+    npf_row = [r for r in st.build_rows(df, models.NPF)[0] if r.kind == "market"][0]
+    assert st._verdict_colour(cls_row, COLORS) is None
+    assert st._mark_colour(npf_row, COLORS, PALETTE) == COLORS.bull
 
 
 # ── which legs count as helping the gate ──────────────────────────────────────
@@ -918,3 +946,64 @@ def test_an_unpriceable_market_says_so_on_its_own_hover():
     rows, _ = st.build_rows(df, models.RAW_PF, dollars=None)
     market = [r for r in rows if r.kind == "market"][0]
     assert "No dollar reading" in st._hover(market, models.RAW_PF, st.COMPARE_DOLLARS)
+
+
+# ── the other-basis comparison ────────────────────────────────────────────────
+
+def test_every_model_names_its_other_basis_column():
+    """The table is held to MODELS like LEG_COLUMNS: a model added without an entry
+    would draw the comparison with no second mark and no error."""
+    for m in models.MODELS:
+        assert m.key in st.OTHER_BASIS_COLUMN
+
+
+def test_the_other_mark_reads_the_opposite_family():
+    """Under a raw model the square is the normalized reading and vice versa. Reading
+    the same family twice would draw every connector at zero length and the view
+    would look like universal agreement."""
+    df = frame(matrix_row("Silver", "Metals", 96, 50, 50, comm_norm=62))
+    raw_row = [r for r in st.build_rows(df, models.RAW_PF)[0]
+               if r.kind == "market"][0]
+    npf_row = [r for r in st.build_rows(df, models.NPF)[0] if r.kind == "market"][0]
+    assert (raw_row.comm, raw_row.other) == (96, 62)
+    assert (npf_row.comm, npf_row.other) == (62, 96)
+
+
+def test_the_basis_mark_draws_only_when_selected():
+    df = frame(matrix_row("Silver", "Metals", 96, 50, 50, comm_norm=62))
+    rows, _ = st.build_rows(df, models.RAW_PF)
+
+    def squares(compare):
+        fig = st.build_figure(rows, models.RAW_PF, COLORS, PALETTE, compare=compare)
+        return [t for t in fig.data
+                if t.type == "scatter" and t.marker.symbol == st.BASIS_SYMBOL]
+
+    drawn = squares(st.COMPARE_BASIS)
+    assert len(drawn) == 1
+    assert list(drawn[0].x) == [62]
+    assert not squares(st.COMPARE_PRIOR)
+    assert not squares(st.COMPARE_DOLLARS)
+
+
+def test_the_basis_hover_names_the_other_basis_and_the_gap():
+    df = frame(matrix_row("Silver", "Metals", 96, 50, 50, comm_norm=62))
+    market = [r for r in st.build_rows(df, models.RAW_PF)[0]
+              if r.kind == "market"][0]
+    text = st._hover(market, models.RAW_PF, st.COMPARE_BASIS)
+    assert "share of open interest" in text
+    assert "Gap: 34" in text
+    npf_market = [r for r in st.build_rows(df, models.NPF)[0]
+                  if r.kind == "market"][0]
+    assert "net contracts" in st._hover(npf_market, models.NPF, st.COMPARE_BASIS)
+    # And nothing about the other basis when the mark is not on screen.
+    assert "Same index on" not in st._hover(market, models.RAW_PF, st.COMPARE_PRIOR)
+
+
+def test_the_basis_legend_entry_follows_the_model():
+    def reference_labels(model):
+        return [label
+                for _, entries in st.legend_items(model, COLORS, PALETTE,
+                                                  st.COMPARE_BASIS)
+                for label, _, _ in entries]
+    assert "Same index, on share of open interest" in reference_labels(models.RAW_PF)
+    assert "Same index, on net contracts" in reference_labels(models.NPF)
