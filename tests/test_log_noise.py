@@ -41,6 +41,24 @@ def test_bad_request_error_lines_are_dropped():
         level=logging.ERROR)
 
 
+def test_php_cgi_exploit_405_lines_are_dropped():
+    """CVE-2024-4577: `%AD` is a soft hyphen the Windows codepage folds into `-`, so
+    the query string is `-d allow_url_include=1 -d auto_prepend_file=php://input`.
+    It reaches a real route (`/`) with the wrong method, so it is a 405 rather than
+    the 404 a nonexistent path would give."""
+    assert not _passes(
+        '127.0.0.1 - - [28/Aug/2026 12:35:49] '
+        '"POST /?%ADd+allow_url_include%3d1+%ADd+auto_prepend_file%3dphp://input '
+        'HTTP/1.1" 405 -')
+
+
+def test_the_whole_4xx_range_is_dropped():
+    """A code list would need extending for every new probe shape; the range does not."""
+    for code in (401, 403, 405, 413, 429):
+        assert not _passes(
+            f'127.0.0.1 - - [28/Aug/2026 12:35:49] "GET / HTTP/1.1" {code} -')
+
+
 def test_successful_requests_still_log():
     assert _passes(
         '127.0.0.1 - - [28/Aug/2026 08:19:12] "GET /heatmap HTTP/1.1" 200 -')

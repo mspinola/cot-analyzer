@@ -340,6 +340,62 @@ bitten this domain once already.
 dig +short A yourdomain.com        # want exactly one line, this server's IP
 ```
 
+### Refusing scanner traffic (recommended)
+
+Most of what arrives at a public address is probe sweeps: `/.env` and `/wp-login.php`
+requests, and exploit attempts against software this box does not run.
+`server-side/nginx-scanner-block.conf` answers them at the proxy with nginx's 444
+(close the connection, send nothing).
+
+```bash
+cp /root/trading_workspace/cot-analyzer/server-side/nginx-scanner-block.conf /etc/nginx/snippets/
+```
+
+Then add one line inside the server block that proxies to the app, above its
+`location / {`:
+
+```nginx
+include snippets/nginx-scanner-block.conf;
+```
+
+Which block that is depends on how the site was built, so find it rather than assuming.
+`nginx -T` prints the whole resolved configuration with a `# configuration file` header
+before each file, which is the only reliable way to see where a directive actually
+lives (the site may be inline in `nginx.conf`, in `sites-enabled/`, or in `conf.d/`, and
+`grep` alone will not tell you which):
+
+```bash
+nginx -T | grep -nE "^# configuration file|listen |server_name |proxy_pass "
+```
+
+The app's block is the one containing `proxy_pass http://127.0.0.1:5001`. Put the
+include in that block. TLS is irrelevant to it: the snippet works the same in a `listen
+80` block as in a `listen 443 ssl` one, and if the site has both, it belongs in whichever
+one carries the `proxy_pass` (a plain `:80` block that only issues a redirect to https
+does not need it, since a redirected scanner comes back to the TLS block anyway).
+
+```bash
+nginx -t && systemctl reload nginx
+curl -si -X POST 'https://yourdomain.com/?%ADd+auto_prepend_file=php://input' | head -1
+```
+
+An empty reply is the pass. A `405` means the include is not in the block that served
+the request; `nginx -T | grep -n scanner-block` shows where it did land. Use `http://`
+in that curl if the site has no certificate.
+
+It is a snippet rather than a full site block because `certbot --nginx` writes and
+rewrites the site block itself. A committed copy of that file would be a fork of one
+certbot edits; a single include line inside it survives a reissue. Renewal does not
+touch it either way, but re-running `certbot --nginx` to add a domain can reorganise the
+file, so check the include is still there afterwards.
+
+The app filters the same traffic out of its own journal (`DropScannerNoise` in
+`src/main.py`), which is a different job: that hides the log line after the request was
+served. This stops the request, so it also costs no visitor_logs row and no ip-api.com
+geolocation lookup, and the free tier's 45/min is worth spending on real visitors.
+Neither one blocks anything the app serves; the patterns are anchored to path segments
+and to extensions no page or asset here uses.
+
 ### HSTS (optional, and sticky)
 
 Once the certificate is confirmed good **in a clean browser**, add HSTS to the `443`

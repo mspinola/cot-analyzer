@@ -39,15 +39,23 @@ class SuppressSourceMapErrors(logging.Filter):
 class DropScannerNoise(logging.Filter):
     """Drop werkzeug's echo of vulnerability-scanner traffic.
 
-    Two shapes, both constant background noise on the public internet: probe sweeps
+    Three shapes, all constant background noise on the public internet: probe sweeps
     for paths that do not exist here (/.env and friends, answered 404 by
-    `reject_unknown_paths` before they reach the visitor DB), and raw non-HTTP
+    `reject_unknown_paths` before they reach the visitor DB), raw non-HTTP
     payloads (TLS handshakes, nmap probes) that werkzeug answers 400 and logs
     bytes-and-all, once as an ERROR ("code 400, message ...") and again as the
-    access line. Only 400 and 404 are dropped: 200s and 500s still log, so neither
-    real traffic nor a real failure disappears with the noise.
+    access line, and exploit attempts aimed at software that does not run here,
+    which land on a real route with the wrong method (the CVE-2024-4577 PHP-CGI
+    probe POSTs `?-d auto_prepend_file=php://input` to `/` and gets a 405).
+
+    The whole 4xx range is dropped, not a list of codes: nothing here answers a
+    client error on purpose, so every one of them is someone else's mistake or
+    someone else's scanner. 200s and 500s still log, so neither real traffic nor a
+    real failure disappears with the noise. The cost is that a broken internal link
+    stops announcing itself in the journal; the visitor DB still has the row, and
+    that was already true of 404 before 405 joined it.
     """
-    _CLIENT_ERROR_LINE = re.compile(r'" 40[04] \S+$')
+    _CLIENT_ERROR_LINE = re.compile(r'" 4\d\d \S+$')
 
     def filter(self, record):
         message = record.getMessage()
