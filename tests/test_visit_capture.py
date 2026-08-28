@@ -2,7 +2,7 @@
 
 `_enqueue_visit` is monkeypatched where the subject is the hook/callback plumbing, so
 no thread starts and nothing is written; `_process_visit` is tested directly against a
-temporary CotDatabase, which is the real consumer of the cotmetrics 0.10.0 surface and
+temporary CotDatabase, which is the real consumer of the cotmetrics 0.11.0 surface and
 therefore the test that would catch a floor violation.
 """
 import pandas as pd
@@ -94,7 +94,7 @@ def test_geo_is_looked_up_once_per_ip(tmp_path):
 
     def fetch(ip):
         fetches.append(ip)
-        return 'Lisbon', 'Portugal'
+        return 'Lisbon', 'Portugal', False
 
     app_cot._process_visit(_row(), db=db, fetch=fetch)
     app_cot._process_visit(_row(), db=db, fetch=fetch)
@@ -103,13 +103,64 @@ def test_geo_is_looked_up_once_per_ip(tmp_path):
     assert list(df['country']) == ['Portugal', 'Portugal']
 
 
+def test_a_residential_address_is_not_refetched_on_every_visit(tmp_path):
+    """hosting=False must cache as False rather than as unknown. If it read back as
+    None the row would look unanswered, and every visit a real person made would spend
+    another lookup against ip-api's 45/min."""
+    db = CotDatabase(db_name=str(tmp_path / 'v.db'))
+    fetches = []
+
+    def fetch(ip):
+        fetches.append(ip)
+        return 'Verona', 'Italy', False
+
+    for _ in range(3):
+        app_cot._process_visit(_row(), db=db, fetch=fetch)
+    assert fetches == ['8.8.8.8']
+
+
+def test_a_datacenter_address_is_a_bot_whatever_its_user_agent_says(tmp_path):
+    """The whole point: `visitors.is_bot` sees a browser here and the address is a
+    Tencent Cloud one. Measured against the real thing, not invented."""
+    db = CotDatabase(db_name=str(tmp_path / 'v.db'))
+    app_cot._process_visit(_row(ip='170.106.180.153'), db=db,
+                           fetch=lambda ip: ('Santa Clara', 'United States', True))
+    assert db.get_visitor_stats().iloc[0]['is_bot'] == 1
+
+
+def test_a_residential_address_with_a_browser_agent_stays_human(tmp_path):
+    db = CotDatabase(db_name=str(tmp_path / 'v.db'))
+    app_cot._process_visit(_row(ip='93.70.66.30'), db=db,
+                           fetch=lambda ip: ('Verona', 'Italy', False))
+    assert db.get_visitor_stats().iloc[0]['is_bot'] == 0
+
+
+def test_a_row_cached_before_hosting_existed_is_refetched_once(tmp_path):
+    """The deployed database has geography for thousands of addresses and the flag for
+    none of them. Each must cost exactly one more lookup, not one per visit."""
+    db = CotDatabase(db_name=str(tmp_path / 'v.db'))
+    db.cache_geo('8.8.8.8', 'Lisbon', 'Portugal')      # the pre-0.11.0 shape
+    fetches = []
+
+    def fetch(ip):
+        fetches.append(ip)
+        return 'Lisbon', 'Portugal', True
+
+    app_cot._process_visit(_row(), db=db, fetch=fetch)
+    app_cot._process_visit(_row(), db=db, fetch=fetch)
+    assert fetches == ['8.8.8.8']
+    assert db.get_cached_hosting('8.8.8.8') is True
+
+
 def test_a_failed_lookup_is_not_cached(tmp_path):
     """('Lookup', 'Error') must stay retryable, or one rate-limited minute pins an
     address to Error forever."""
     db = CotDatabase(db_name=str(tmp_path / 'v.db'))
-    app_cot._process_visit(_row(), db=db, fetch=lambda ip: ('Lookup', 'Error'))
+    app_cot._process_visit(_row(), db=db,
+                           fetch=lambda ip: ('Lookup', 'Error', False))
     assert db.get_cached_geo('8.8.8.8') is None
-    app_cot._process_visit(_row(), db=db, fetch=lambda ip: ('Lisbon', 'Portugal'))
+    app_cot._process_visit(_row(), db=db,
+                           fetch=lambda ip: ('Lisbon', 'Portugal', False))
     assert db.get_cached_geo('8.8.8.8') == ('Lisbon', 'Portugal')
 
 

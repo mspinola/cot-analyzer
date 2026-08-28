@@ -42,7 +42,13 @@ dependencies = [
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
     "crucible-marketdata>=0.2.0",
-    # Floor is 0.10.0 because visit capture calls `log_visit` with the `kind` /
+    # Floor is 0.11.0 because the geolocation worker calls `get_cached_hosting` and
+    # passes `hosting=` to `cache_geo`, which is how a datacenter client sending a
+    # browser user agent gets recognised at all. Against 0.10.0 the method does not
+    # exist, so the worker thread dies on its first event and visitor tracking stops
+    # entirely without taking anything visible down, exactly as below.
+    #
+    # 0.10.0 was the floor because visit capture calls `log_visit` with the `kind` /
     # `visitor_id` / `is_bot` / `referrer` keywords and the geolocation worker
     # calls `get_cached_geo` / `cache_geo`. Against 0.9.0 the keywords raise
     # TypeError on every logged request and the worker thread dies on its first
@@ -76,7 +82,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.10.0",
+    "cotmetrics[options]>=0.11.0",
 ]
 
 [project.optional-dependencies]
