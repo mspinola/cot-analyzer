@@ -45,8 +45,10 @@ from components.strip_traces import LEG_COLUMNS, SETUP_COLUMN, _num
 # here rather than on a model.
 GAP_TOLERANCE = 5
 
-# The order the columns render in: the baseline first, then the deployable headline,
-# then the tight-band variant, which is MODELS' own order and the heatmap's.
+# The default column order: the baseline first, then the deployable headline, then
+# the tight-band variant, which is MODELS' own order and the heatmap's. The page lets
+# the reader recompose the columns (see build_rows), including down to one; the basis
+# gap is unaffected because it is a fact about the frame, not about the columns.
 MODEL_ORDER = models.MODELS
 
 
@@ -94,23 +96,31 @@ def _read_for(record, model, is_equity):
     )
 
 
-def build_rows(df, show_all=False):
+def build_rows(df, show_all=False, compare=None):
     """`(rows, hidden, unplaced)` for one Signal Matrix frame.
+
+    `compare` is the models to put side by side, defaulting to all of MODEL_ORDER.
+    Splits and dimming follow the DISPLAYED models only: a market that disagrees only
+    with a model the reader has switched off is an agreement on this view of the
+    page, exactly as the Strip's filters count hidden markets against what is drawn.
 
     `hidden` counts agreeing markets the differences-only view dropped, so the caption
     can say "34 markets agree and are hidden" rather than presenting three rows as the
     whole book. `unplaced` names markets missing a Commercial reading on either basis:
-    they cannot be compared at all, which is a different fact from agreeing.
+    they cannot be compared at all, which is a different fact from agreeing. The basis
+    gap keeps its meaning at any width, because it is raw against the one normalized
+    series both NPF models share.
 
     Sorting inside a class puts verdict splits first, then the widest basis gaps, so
     the eye meets the strongest disagreements at the top of every block. Classes keep
     the frame's own order, which is the order every other page presents the book in.
     """
+    compare = tuple(compare) if compare else MODEL_ORDER
     by_class, hidden, unplaced = {}, 0, []
     for record in df.to_dict("records"):
         asset = record.get("Asset")
         is_equity = bool(record.get(const.IS_EQUITY_COL))
-        reads = tuple(_read_for(record, m, is_equity) for m in MODEL_ORDER)
+        reads = tuple(_read_for(record, m, is_equity) for m in compare)
 
         raw_comm = _num(record.get("Comm Index"))
         norm_comm = _num(record.get("Comm Index Norm"))

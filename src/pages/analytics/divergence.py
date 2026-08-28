@@ -38,6 +38,34 @@ SHOW_DIFFERENCES = "differences"
 SHOW_ALL = "all"
 SHOW_LABELS = {SHOW_DIFFERENCES: "Differences only", SHOW_ALL: "All markets"}
 
+# The column selectors. Each of the three columns picks any model or nothing, so the
+# page can be the full three-way comparison (the default), any pair, or one model
+# alone (where no split is possible and only the basis gap differentiates). "None" is
+# a real option rather than an absent model key so a stored selection and a stale one
+# stay distinguishable: an unknown key falls back to that column's default, "none" is
+# a choice and is honoured.
+COLUMN_NONE = "none"
+COLUMN_IDS = ('divergence_col1_selector', 'divergence_col2_selector',
+              'divergence_col3_selector')
+COLUMN_DEFAULTS = tuple(m.key for m in divergence_rows.MODEL_ORDER)
+_MODELS_BY_KEY = {m.key: m for m in divergence_rows.MODEL_ORDER}
+
+
+def compared_models(*keys):
+    """The models the three selectors resolve to, in column order.
+
+    A stale key (a model renamed or removed while a browser session held it) falls
+    back to that column's default rather than vanishing, because a silently missing
+    column looks exactly like a deliberate None. Duplicates are allowed: two columns
+    showing one model draw the same thing twice, which is harmless and self-evident.
+    """
+    out = []
+    for key, default in zip(keys, COLUMN_DEFAULTS):
+        if key == COLUMN_NONE:
+            continue
+        out.append(_MODELS_BY_KEY.get(key, _MODELS_BY_KEY[default]))
+    return out
+
 # Cell text tiers. The page dims whole rows, so these are deliberately the same two
 # colours every other surface uses for "speaks" and "background".
 _BRIGHT = vc.BRIGHTER_TEXT_COLOR
@@ -104,26 +132,28 @@ def _market_tr(row, palette):
                                  "opacity": 0.55 if row.dim else 1.0})
 
 
-def _class_tr(row):
+def _class_tr(row, span):
     return html.Tr(
-        html.Td(row.label.upper(), colSpan=5,
+        html.Td(row.label.upper(), colSpan=span,
                 style={"padding": "10px 10px 3px", "fontSize": "0.68rem",
                        "letterSpacing": "0.05em", "color": _DIM}),
     )
 
 
-def build_table(rows, palette):
-    """The board, as one plain table. No grid library: five columns, no sorting UI
-    (the rows arrive sorted by disagreement), and every cell is text plus a badge the
-    app already knows how to draw."""
+def build_table(rows, palette, compare):
+    """The board, as one plain table. No grid library: a name column, one column per
+    selected model, and the gap, with no sorting UI (the rows arrive sorted by
+    disagreement). Every cell is text plus a badge the app already knows how to
+    draw."""
+    span = len(compare) + 2
     header = html.Tr(
         [html.Th("Market", style={**_CELL, "textAlign": "left"})]
         + [html.Th(vc.MODEL_LABELS[m.key], style={**_CELL, "textAlign": "left"})
-           for m in divergence_rows.MODEL_ORDER]
+           for m in compare]
         + [html.Th("Basis gap", style={**_CELL, "textAlign": "right"})],
         style={"fontSize": "0.68rem", "color": _DIM,
                "borderBottom": "1px solid rgba(255,255,255,0.15)"})
-    body = [(_class_tr(r) if r.kind == "class" else _market_tr(r, palette))
+    body = [(_class_tr(r, span) if r.kind == "class" else _market_tr(r, palette))
             for r in rows]
     return html.Table([html.Thead(header), html.Tbody(body)],
                       style={"width": "100%", "maxWidth": "1100px",
@@ -131,33 +161,59 @@ def build_table(rows, palette):
                              "fontSize": "0.8rem"})
 
 
-def caption(report_date, show, hidden, unplaced):
+def caption(report_date, show, hidden, unplaced, compare):
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
     except (TypeError, ValueError):
         pretty = "an unknown date"
+    agree_under = ("all three models" if len(compare) == len(divergence_rows.MODEL_ORDER)
+                   else "the selected models" if len(compare) > 1
+                   else "the one selected model")
     if show == SHOW_ALL:
         visibility = (" Agreeing markets are dimmed rather than hidden; a dimmed row "
-                      "is one where every verdict matches and the two bases read "
-                      "within a few points of each other.")
+                      "is one where every shown verdict matches and the two bases "
+                      "read within a few points of each other.")
     else:
-        visibility = (f" {hidden} market(s) agree under all three models and are "
+        visibility = (f" {hidden} market(s) agree under {agree_under} and are "
                       f"hidden; switch to All markets to see them dimmed in place."
                       if hidden else "")
     dropped = ""
     if unplaced:
         dropped = (f" {len(unplaced)} market(s) have no reading on one of the bases "
                    f"this week and cannot be compared: {', '.join(sorted(unplaced))}.")
+    # Splits are a property of the columns on screen, so a one-column view says so
+    # rather than leaving a reader to wonder why nothing ever splits.
+    solo = (" With a single model column, no verdict split is possible and only the "
+            "basis gap differentiates rows." if len(compare) == 1 else "")
+    both_npf = ""
+    if models.NPF in compare and models.NPF_CLS_95_5 in compare:
+        both_npf = (f" {models.NPF.title} and {models.NPF_CLS_95_5.title} share one "
+                    f"OI-normalized series by construction, so they can only differ "
+                    f"in verdict, never in value.")
     return (
-        f"Each model's Commercials / Large Specs / Small Traders on its own basis, "
-        f"with its verdict, as of Tuesday {pretty}. A dash is a leg that model's "
-        f"gate does not read. {models.NPF.title} and {models.NPF_CLS_95_5.title} "
-        f"share one OI-normalized series by construction, so they can only differ "
-        f"in verdict, never in value; the Basis gap column is |raw − normalized| on "
-        f"the Commercial index, which is the contract-size drift the normalization "
-        f"removes and the same gap the Strip's Other basis view draws as a "
-        f"connector. Rows sort by disagreement inside each class: verdict splits "
-        f"first, then the widest gaps.{visibility}{dropped}")
+        f"Each column is one model's Commercials / Large Specs / Small Traders on "
+        f"its own basis, with its verdict, as of Tuesday {pretty}. A dash is a leg "
+        f"that model's gate does not read.{both_npf} The Basis gap column is "
+        f"|raw − normalized| on the Commercial index, which is the contract-size "
+        f"drift the normalization removes and the same gap the Strip's Other basis "
+        f"view draws as a connector; it does not depend on which columns are "
+        f"shown. Rows sort by disagreement inside each class: verdict splits "
+        f"first, then the widest gaps.{solo}{visibility}{dropped}")
+
+
+def _column_select(column_id, default):
+    """One column's model picker. dbc.Select rather than a radio because three radio
+    groups of four options each would dwarf the board they configure."""
+    return dbc.Select(
+        id=column_id,
+        options=[{"label": vc.MODEL_LABELS[m.key], "value": m.key}
+                 for m in divergence_rows.MODEL_ORDER]
+                + [{"label": "None", "value": COLUMN_NONE}],
+        value=default,
+        persistence='session',
+        size="sm",
+        className="bg-dark text-white border-secondary",
+    )
 
 
 def layout(**kwargs):
@@ -187,6 +243,19 @@ def layout(**kwargs):
                                 ], xs=12, md=3, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
+                                    html.Label("Columns",
+                                               style={**vc.label_style,
+                                                      "fontSize": "0.8rem",
+                                                      "textTransform": "uppercase"}),
+                                    html.Div(
+                                        [_column_select(cid, default)
+                                         for cid, default in zip(COLUMN_IDS,
+                                                                 COLUMN_DEFAULTS)],
+                                        style={"display": "flex", "gap": "6px"},
+                                    ),
+                                ], xs=12, md=4, className="mb-3 mb-md-0 px-md-2"),
+
+                                dbc.Col([
                                     html.Label("Show",
                                                style={**vc.label_style,
                                                       "fontSize": "0.8rem",
@@ -201,7 +270,7 @@ def layout(**kwargs):
                                         style={"color": vc.BRIGHTER_TEXT_COLOR,
                                                "fontSize": "0.85rem"},
                                     ),
-                                ], xs=12, md=4, className="mb-3 mb-md-0 px-md-2"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
                                     html.Label("Asset Classes",
@@ -211,7 +280,7 @@ def layout(**kwargs):
                                     class_filter.control(
                                         'divergence_class_selector',
                                         get_indexer().get_asset_classes()),
-                                ], xs=12, md=5, className="px-md-2"),
+                                ], xs=12, md=3, className="px-md-2"),
                             ], align="center"),
                         ]),
                         className="mb-2 shadow-sm",
@@ -266,14 +335,24 @@ def follow_the_store(_release, current_options, current_value):
     Output('divergence_caption', 'children'),
     [Input('divergence_class_selector', 'value'),
      Input('divergence_show_selector', 'value'),
+     Input(COLUMN_IDS[0], 'value'),
+     Input(COLUMN_IDS[1], 'value'),
+     Input(COLUMN_IDS[2], 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('divergence_date_selector', 'value')],
 )
-def render_board(asset_classes, show, palette_name, target_date):
+def render_board(asset_classes, show, col1, col2, col3, palette_name, target_date):
     empty = html.P("Select an asset class to draw the board.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     if not asset_classes:
         return empty, ""
+
+    compare = compared_models(col1, col2, col3)
+    if not compare:
+        return (html.P("Every column is set to None. Pick at least one model.",
+                       style={'textAlign': 'center', 'color': vc.TEXT_COLOR,
+                              'padding': '2rem 0'}),
+                "")
 
     show = show if show in SHOW_LABELS else SHOW_DIFFERENCES
     # The models' own window, the same Custom lookback every verdict surface gates on.
@@ -284,16 +363,16 @@ def render_board(asset_classes, show, palette_name, target_date):
                 "")
 
     rows, hidden, unplaced = divergence_rows.build_rows(
-        df, show_all=(show == SHOW_ALL))
+        df, show_all=(show == SHOW_ALL), compare=compare)
     palette = viz_config.get_palette(palette_name)
     report_date = target_date or (df.iloc[0]["Date"] if not df.empty else None)
 
     if not rows:
         board = html.P(
             "No disagreements this week: every drawn market reads the same under "
-            "all three models.",
+            "the selected models.",
             style={'textAlign': 'center', 'color': vc.TEXT_COLOR,
                    'padding': '2rem 0'})
     else:
-        board = build_table(rows, palette)
-    return board, caption(report_date, show, hidden, unplaced)
+        board = build_table(rows, palette, compare)
+    return board, caption(report_date, show, hidden, unplaced, compare)

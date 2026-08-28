@@ -123,3 +123,53 @@ def test_splits_sort_above_wide_gaps_inside_a_class():
     ))
     assert [r.label for r in markets(rows)] == ["Split", "WiderGap", "WideGap"]
     assert rows[0].kind == "class" and rows[0].label == "Metals"
+
+
+# ── the columns are selectable ────────────────────────────────────────────────
+
+def test_a_split_against_an_excluded_model_does_not_count():
+    """Disagreement is a property of the columns on screen: a market that splits only
+    against a model the reader switched off is an agreement on this view."""
+    rec = record(comm=50, comm_norm=52, state_npf_cls=const.SETUP_BULL)
+    full_rows, _, _ = dr.build_rows(frame(rec))
+    assert markets(full_rows)[0].split
+    narrowed, hidden, _ = dr.build_rows(
+        frame(rec), compare=(models.RAW_PF, models.NPF))
+    assert markets(narrowed) == []
+    assert hidden == 1
+
+
+def test_a_narrowed_view_reads_only_the_selected_models():
+    rows, _, _ = dr.build_rows(frame(record(comm=96, comm_norm=62)),
+                               show_all=True,
+                               compare=(models.RAW_PF, models.NPF_CLS_95_5))
+    row = markets(rows)[0]
+    assert [r.key for r in row.reads] == [models.RAW_PF.key,
+                                          models.NPF_CLS_95_5.key]
+
+
+def test_one_column_alone_differentiates_on_the_gap_only():
+    """A single model cannot split with itself, so the dim rule reduces to the gap,
+    and the gap keeps its meaning because it is a fact about the frame."""
+    rows, hidden, _ = dr.build_rows(
+        frame(record(asset="Wide", comm=96, comm_norm=62),
+              record(asset="Tight", comm=50, comm_norm=52,
+                     state_cls=const.SETUP_BULL, state_npf=const.SETUP_BULL,
+                     state_npf_cls=const.SETUP_BULL)),
+        compare=(models.NPF,))
+    assert [r.label for r in markets(rows)] == ["Wide"]
+    assert not markets(rows)[0].split
+    assert hidden == 1
+
+
+def test_the_selectors_resolve_stale_keys_to_that_columns_default():
+    """A browser session can hold a key for a model that no longer exists; the column
+    falls back to its own default rather than silently vanishing, because a missing
+    column looks exactly like a deliberate None. "none" IS the deliberate one."""
+    from pages.analytics.divergence import COLUMN_NONE, compared_models
+
+    assert compared_models("raw_pf", "npf", "npf_cls_95_5") == list(models.MODELS)
+    assert compared_models("raw_pf", COLUMN_NONE, COLUMN_NONE) == [models.RAW_PF]
+    assert compared_models(COLUMN_NONE, COLUMN_NONE, COLUMN_NONE) == []
+    assert compared_models("raw_pf", "retired_model", COLUMN_NONE) == [
+        models.RAW_PF, models.NPF]
