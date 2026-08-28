@@ -866,8 +866,14 @@ def _strip_hover(row, model):
 # rescales with the card at every breakpoint with no measurement, which the SVG
 # version could not do without either distorting the dots into ellipses
 # (preserveAspectRatio="none") or giving up edge padding.
-LANE_PX = 9            # one leg's lane, dot included
-LANE_GAP = 3
+# Sized for THREE lanes, which is what the default model now draws. These were 9/3
+# while the app opened on NPF and most cards carried two lanes; with Raw PF's CLS gate
+# (and NPF CLS 95/5) every non-equity card stacks three, and at the old pitch the
+# lanes read as one smudge while the delta gutter's 12px lines sat touching. The
+# gutter is the hard floor: gate_strip_row positions one 12px line per lane at the
+# lane's midpoint, so the pitch (lane + gap) must stay at or above 12 in every tier.
+LANE_PX = 11           # one leg's lane, dot included
+LANE_GAP = 5
 # /strip uses 0.09 over 700px of row. On a card the axis is ~150px, which needed more
 # alpha to resolve as a band at all -- but the zone is now as tall as the whole strip
 # rather than one 8px lane, so the area went up with the lane count and the alpha comes
@@ -1253,8 +1259,11 @@ CARD_WEIGHTS = {
                      pad="8px 10px", radius="6px", opacity=1.0,
                      bg="rgba(255,255,255,0.03)", border="rgba(255,255,255,0.06)",
                      badge_fill=True, gutter="6px", outline="59"),
+    # lane 9 / gap 3, up from 7 / 2 with the move to three-lane defaults: the pitch
+    # has to clear the delta gutter's 12px lines (see LANE_PX), which at 9px it did
+    # not, so a three-leg near card printed its middle delta on top of its neighbours.
     "near":     dict(name="0.78rem", name_weight="600", badge="0.52rem", idx="0.74rem",
-                     delta="0.56rem", lane=7, gap=2, dot=5,
+                     delta="0.56rem", lane=9, gap=3, dot=5,
                      pad="5px 8px", radius="5px", opacity=0.72,
                      bg="rgba(255,255,255,0.015)", border="rgba(255,255,255,0.04)",
                      badge_fill=False, gutter="4px", outline=None),
