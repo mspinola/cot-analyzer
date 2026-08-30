@@ -165,11 +165,45 @@ def test_one_column_alone_differentiates_on_the_gap_only():
 def test_the_selectors_resolve_stale_keys_to_that_columns_default():
     """A browser session can hold a key for a model that no longer exists; the column
     falls back to its own default rather than silently vanishing, because a missing
-    column looks exactly like a deliberate None. "none" IS the deliberate one."""
+    column looks exactly like a deliberate None. "none" IS the deliberate one, and a
+    column whose own DEFAULT is none resolves a stale key all the way to none."""
     from pages.analytics.divergence import COLUMN_NONE, compared_models
 
     assert compared_models("raw_pf", "npf", "npf_cls_95_5") == list(models.MODELS)
     assert compared_models("raw_pf", COLUMN_NONE, COLUMN_NONE) == [models.RAW_PF]
     assert compared_models(COLUMN_NONE, COLUMN_NONE, COLUMN_NONE) == []
     assert compared_models("raw_pf", "retired_model", COLUMN_NONE) == [
+        models.RAW_PF, models.NPF_CLS_95_5]
+    assert compared_models("raw_pf", "npf", "retired_model") == [
         models.RAW_PF, models.NPF]
+
+
+def test_the_default_view_is_the_two_cls_models():
+    """Raw CLS 95/5 against NPF CLS 95/5: the same gate and band on the two bases,
+    so every default-view disagreement is the normalization and nothing else. The
+    three-way comparison stays one selection away."""
+    from pages.analytics.divergence import COLUMN_DEFAULTS, COLUMN_NONE, compared_models
+
+    assert COLUMN_DEFAULTS == (models.RAW_PF.key, models.NPF_CLS_95_5.key,
+                               COLUMN_NONE)
+    assert compared_models(*COLUMN_DEFAULTS) == [models.RAW_PF,
+                                                 models.NPF_CLS_95_5]
+
+
+def test_comm_spread_is_about_the_displayed_columns_not_the_frame():
+    """The C emphasis threshold reads this, never `gap`: two normalized columns
+    share one series, so their spread is zero however wide the basis gap is."""
+    read = dr.ModelRead
+    assert dr.comm_spread(
+        (read(key="a", comm=80.0), read(key="b", comm=71.0))) == 9.0
+    assert dr.comm_spread(
+        (read(key="a", comm=64.0), read(key="b", comm=64.0))) == 0.0
+    # One column, or one reading plus a market missing the other basis: no pair,
+    # no spread, no emphasis.
+    assert dr.comm_spread((read(key="a", comm=64.0),)) is None
+    assert dr.comm_spread(
+        (read(key="a", comm=64.0), read(key="b", comm=None))) is None
+    # Three columns: the WIDEST pair decides.
+    assert dr.comm_spread(
+        (read(key="a", comm=60.0), read(key="b", comm=64.0),
+         read(key="c", comm=52.0))) == 12.0

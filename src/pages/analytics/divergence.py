@@ -47,7 +47,12 @@ SHOW_LABELS = {SHOW_DIFFERENCES: "Differences only", SHOW_ALL: "All markets"}
 COLUMN_NONE = "none"
 COLUMN_IDS = ('divergence_col1_selector', 'divergence_col2_selector',
               'divergence_col3_selector')
-COLUMN_DEFAULTS = tuple(m.key for m in divergence_rows.MODEL_ORDER)
+# The default view is the two CLS 95/5 models: the SAME gate and band on the two
+# bases, so every default-view disagreement is the normalization and nothing
+# else, and the C emphasis below coincides exactly with the Basis gap column.
+# The three-way comparison (adding NPF CS 80/20, where a split can also come
+# from the band or the dropped Large Spec leg) is one selection away, not gone.
+COLUMN_DEFAULTS = (models.RAW_PF.key, models.NPF_CLS_95_5.key, COLUMN_NONE)
 _MODELS_BY_KEY = {m.key: m for m in divergence_rows.MODEL_ORDER}
 
 
@@ -58,12 +63,18 @@ def compared_models(*keys):
     back to that column's default rather than vanishing, because a silently missing
     column looks exactly like a deliberate None. Duplicates are allowed: two columns
     showing one model draw the same thing twice, which is harmless and self-evident.
+    A column whose own default is None resolves a stale key to None too, for the
+    same reason the fallback exists at all: it restores the column's shipped state.
     """
     out = []
     for key, default in zip(keys, COLUMN_DEFAULTS):
         if key == COLUMN_NONE:
             continue
-        out.append(_MODELS_BY_KEY.get(key, _MODELS_BY_KEY[default]))
+        if key not in _MODELS_BY_KEY:
+            key = default
+            if key == COLUMN_NONE:
+                continue
+        out.append(_MODELS_BY_KEY[key])
     return out
 
 # Cell text tiers. The page dims whole rows, so these are deliberately the same two
@@ -95,21 +106,37 @@ def _chip(state, palette):
     return html.Span(text, style=style)
 
 
-def _triplet(read, is_equity, bright):
+def _triplet(read, is_equity, bright, comm_hot=False):
     """C / L / S on the model's own basis, with a dash for a leg its gate does not
     read. Equities print the Commercial leg alone, because that is all any gate
-    consults for them."""
+    consults for them.
+
+    The Commercial value carries its own two-state emphasis, decided per ROW
+    (`comm_spread` against GAP_TOLERANCE) and applied to every column's C so the
+    disagreeing PAIR lights up, not one arbitrary side of it: heavy and bright
+    where the shown columns actually read the market differently, dim where they
+    print the same number twice. The C column then scans like the Basis gap
+    column already does, but in place, on the values themselves. L and S keep
+    the row's weight: the disagreement this page measures is on the Commercial
+    leg, and lighting three numbers marks nothing.
+    """
     def fmt(v):
         return "–" if v is None else f"{v:.0f}"
     colour = _BRIGHT if bright else _DIM
+    comm = html.Span(fmt(read.comm),
+                     style=({"color": _BRIGHT, "fontWeight": "600"}
+                            if comm_hot and bright else {"color": _DIM}))
     if is_equity:
-        return html.Span(fmt(read.comm), style={"color": colour})
-    return html.Span(f"{fmt(read.comm)} / {fmt(read.lrg)} / {fmt(read.sml)}",
-                     style={"color": colour})
+        return comm
+    return html.Span([comm,
+                      html.Span(f" / {fmt(read.lrg)} / {fmt(read.sml)}",
+                                style={"color": colour})])
 
 
 def _market_tr(row, palette):
     bright = not row.dim
+    spread = divergence_rows.comm_spread(row.reads)
+    comm_hot = spread is not None and spread >= divergence_rows.GAP_TOLERANCE
     name = html.A(row.label,
                   href=f"/oi_alignment?asset={urllib.parse.quote(row.label)}",
                   target="_blank",
@@ -118,7 +145,8 @@ def _market_tr(row, palette):
                          "fontWeight": "600" if row.split else "normal"})
     cells = [html.Td(name, style={**_CELL})]
     for read in row.reads:
-        cells.append(html.Td([_triplet(read, row.is_equity, bright),
+        cells.append(html.Td([_triplet(read, row.is_equity, bright,
+                                       comm_hot=comm_hot),
                               _chip(read.state, palette)],
                              style={**_CELL}))
     # The gap brightens with the disagreement it measures, so the column can be
@@ -200,7 +228,10 @@ def caption(report_date, show, hidden, unplaced, compare):
     return (
         f"Each column is one model's Commercials / Large Specs / Small Traders on "
         f"its own basis, with its verdict, as of Tuesday {pretty}. A dash is a leg "
-        f"that model's gate does not read.{both_npf} The Basis gap column is "
+        f"that model's gate does not read. Commercial values print heavy only "
+        f"where the shown columns disagree on them by "
+        f"{divergence_rows.GAP_TOLERANCE} index points or more; a dim C is the "
+        f"same reading twice.{both_npf} The Basis gap column is "
         f"|raw − normalized| on the Commercial index, which is the contract-size "
         f"drift the normalization removes and the same gap the Strip's Other basis "
         f"view draws as a connector; it does not depend on which columns are "
