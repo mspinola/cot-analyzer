@@ -382,7 +382,9 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
 
                 plot_idx += 1
 
-    fig = helpers.add_open_interest_legend(fig, color_palette)
+    # After the loop, because it is a question about the whole stack: the panel that
+    # owns the legend is not necessarily the one drawing price or open interest.
+    fig = helpers.reconcile_legend_entries(fig, color_palette)
     exclude_xaxes = [i for i, p in enumerate(selected_plots) if p in ["max_pain", "max_pain_historical"]]
     fig = helpers.get_update_xaxes_for_plots(fig, df, exclude_plot_indices=exclude_xaxes)
 

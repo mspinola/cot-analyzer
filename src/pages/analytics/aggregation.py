@@ -293,6 +293,10 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
 
                 plot_idx += 1
 
+    # After the loop, because it is a question about the whole stack: the panel that
+    # owns the legend is not necessarily the one drawing price or open interest.
+    fig = helpers.reconcile_legend_entries(fig, color_palette)
+
     helpers.get_update_xaxes_for_plots(fig, agg_df)
     helpers.get_update_layout_for_plots(fig, num_rows, num_cols, "Custom Aggregation")
 

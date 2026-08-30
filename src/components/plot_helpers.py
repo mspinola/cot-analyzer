@@ -59,6 +59,7 @@ from components.plot_traces import (  # noqa: F401
     get_spearman_plot,
     get_willco_plot,
     get_zscore_plot,
+    reconcile_legend_entries,
     update_legend,
 )
 

@@ -402,6 +402,10 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback, model
 
                 plot_idx += 1
 
+    # After the loop, because it is a question about the whole stack: the panel that
+    # owns the legend is not necessarily the one drawing price or open interest.
+    fig = helpers.reconcile_legend_entries(fig, color_palette)
+
     if selected_plots[0] not in ["max_pain", "max_pain_historical"]:
         fig = helpers.get_update_xaxes_for_plots(fig, df)
 

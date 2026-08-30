@@ -732,7 +732,6 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
 
     plot_idx = 0
-    oi_legend_added = False
     decorator_targets = []
     price_delta_targets = []
     setup_comms_only = get_indexer().is_equity(asset)
@@ -764,16 +763,14 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
                     ctx.fig = fig
                     fig = spec.decorate(ctx) or fig
 
-                # Panel-specific follow-ups the registry has no business knowing about:
-                # this page decorates its price panel with the tape-reading markers, and
-                # Open Interest earns a legend entry only once however many panels use it.
+                # A panel-specific follow-up the registry has no business knowing
+                # about: this page decorates its price panel with the tape-reading
+                # markers. The Open Interest entry is settled after the loop instead,
+                # by reconcile_legend_entries, which counts however many panels drew it.
                 if p == "oi_alignment":
                     decorator_targets.append((r, c))
                     if price_overlay == "On":
                         price_delta_targets.append([r, c, False])
-                elif p == "net_pos" and not oi_legend_added:
-                    fig = helpers.add_open_interest_legend(fig, color_palette)
-                    oi_legend_added = True
 
                 plot_idx += 1
 
@@ -782,7 +779,6 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
             fig, df, decorator_targets, color_palette,
             offset_pct=0.06,
             show_legend=True,
-            show_oi_legend=(not oi_legend_added)
         )
 
     if price_delta_targets:
@@ -792,6 +788,10 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
         uptrend_mask = (df[const.CLOSING_PRICE] >= ma)
         downtrend_mask = (df[const.CLOSING_PRICE] < ma)
         fig = helpers.add_trend_regime_highlighting(fig, df, ma, uptrend_mask, downtrend_mask, price_delta_targets)
+
+    # After the loop, because it is a question about the whole stack: the panel that
+    # owns the legend is not necessarily the one drawing price or open interest.
+    fig = helpers.reconcile_legend_entries(fig, color_palette)
 
     exclude_xaxes = [i for i, p in enumerate(selected_plots) if p in ["max_pain", "max_pain_historical"]]
     fig = helpers.get_update_xaxes_for_plots(fig, df, exclude_plot_indices=exclude_xaxes)
