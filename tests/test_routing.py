@@ -15,7 +15,10 @@ from routing import is_known_path, is_vendor_sourcemap, not_found_page
 
 # What the live app carries, as of the page registry at the time of writing. The nested
 # and the underscored ones are the interesting entries: a naive "one path segment"
-# guard passes the flat ones and breaks these.
+# guard passes the flat ones and breaks these. '/graphs' is a `redirect_from`
+# alias of /analysis rather than a page, but app_cot folds redirect aliases into
+# the same list it hands this function, so it belongs here: an old bookmark must
+# reach the shell for the client router to forward it.
 PAGES = ['/', '/aggregation', '/analysis', '/categories', '/exposure', '/graphs',
          '/heatmap', '/oi_alignment', '/positioning', '/strip', '/citpy',
          '/citpy/view', '/about', '/admin', '/options', '/raw_data']

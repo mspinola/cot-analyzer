@@ -24,10 +24,12 @@ SERVED_PREFIXES = (
 )
 
 #: Real paths belonging to no page: the browser's automatic favicon request, Dash's
-#: own copy of it, and the two email-link endpoints (plain Flask routes in app_cot,
-#: which `app.routes` does not list because it only knows Dash's own). All legitimate.
+#: own copy of it, the two email-link endpoints (plain Flask routes in app_cot,
+#: which `app.routes` does not list because it only knows Dash's own), and the old
+#: /graphs address (a `redirect_from` alias of /analysis: Dash registers it as a
+#: real 301 route on the Flask server, invisible to `app.routes` the same way).
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
-                         '/confirm', '/unsubscribe'})
+                         '/confirm', '/unsubscribe', '/graphs'})
 
 
 def _normalize(path: str) -> str:

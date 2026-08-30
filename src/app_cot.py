@@ -132,6 +132,19 @@ def _link_page(title, body, status=200):
     return page, status, {'Content-Type': 'text/html; charset=utf-8'}
 
 
+@app.server.route('/graphs')
+def graphs_redirect():
+    """The market grid's old address, from before it merged into /analysis.
+
+    An explicit 301 rather than Dash's `redirect_from`, because that mechanism
+    redirects to the bare page path and cannot say WHICH view the old address
+    meant: a /graphs bookmark is a request for the market grid, not for
+    whatever /analysis opens on.
+    """
+    from flask import redirect
+    return redirect('/analysis?view=grid', code=301)
+
+
 @app.server.route('/confirm')
 def confirm_subscription():
     import subscribers
@@ -351,7 +364,6 @@ def record_visit():
 # can never disagree about what is in the menus. OI Alignment and About are
 # absent on purpose: both were promoted to top-level links.
 _ANALYTICS_PAGES = (
-    ("Asset Graphs", "/graphs"),
     ("Asset Analysis", "/analysis"),
     ("Divergence", "/divergence"),
     ("Aggregation", "/aggregation"),
