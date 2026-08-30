@@ -127,8 +127,13 @@ def _triplet(read, is_equity, bright, hot):
         text = "–" if value is None else f"{value:.0f}"
         if hot.get(leg) and bright and value is not None:
             return html.Span(text, style={"color": _BRIGHT, "fontWeight": "600"})
-        return html.Span(text, style={"color": _DIM})
-    sep = html.Span(" / ", style={"color": _DIM})
+        # Opacity, not just the dim colour: _BRIGHT and _DIM are two nearly
+        # identical creams under the shipped palettes, so a "dim" leg rendered
+        # in _DIM read as bright and the emphasis looked like nothing had
+        # happened (reported from the live board). Receding is the point, so
+        # recede visibly.
+        return html.Span(text, style={"color": _DIM, "opacity": 0.45})
+    sep = html.Span(" / ", style={"color": _DIM, "opacity": 0.45})
     if is_equity:
         return piece(read.comm, "comm")
     return html.Span([piece(read.comm, "comm"), sep,
