@@ -128,9 +128,9 @@ def _oi_pct(ctx):
 def _net_pos(ctx):
     h = _helpers()
     comm, lrg, sml = ctx.net_cols
+    # No show_price: this panel's second axis is Open Interest, never price.
     return h.get_net_pos_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
-                              ctx.palette, show_price=ctx.show_price,
-                              y_title=ctx.y_title)
+                              ctx.palette, y_title=ctx.y_title)
 
 
 def _index(ctx):

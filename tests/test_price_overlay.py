@@ -34,11 +34,26 @@ def _frame(n=60, seed=5):
     df[const.LOW_PRICE] = close - rng.uniform(0, 3, n)
     for col in ("comms_idx", "lrg_idx", "sml_idx"):
         df[col] = rng.uniform(0, 100, n)
+    # Net Positions draws these three plus Open Interest, and no price at all.
+    for col in (const.COMM_NET, const.LARGE_NET, const.SMALL_NET):
+        df[col] = rng.uniform(-50_000, 50_000, n)
+    df[const.OPEN_INTEREST] = rng.uniform(100_000, 200_000, n)
     return df
 
 
-def _figure():
-    return make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
+def _figure(rows=1):
+    return make_subplots(rows=rows, cols=1,
+                         specs=[[{"secondary_y": True}] for _ in range(rows)])
+
+
+def _net_pos(fig, df, row=1):
+    return pt.get_net_pos_plot(fig, df, const.COMM_NET, const.LARGE_NET,
+                               const.SMALL_NET, row, 1, PALETTE)
+
+
+def _index(fig, df, row=1, show_price=True):
+    return pt.get_index_plot(fig, df, "comms_idx", "lrg_idx", "sml_idx", row, 1,
+                             PALETTE, show_price=show_price)
 
 
 def _named(fig, name):
@@ -127,3 +142,99 @@ def test_a_flat_price_series_still_gets_a_band():
     df[const.CLOSING_PRICE] = 100.0
     lo, hi = pt.price_window_range(df)
     assert lo < 100.0 < hi
+
+
+# --- the legend describes what the figure drew -----------------------------------
+#
+# Entries are added by ONE panel (row 1, col 1), which is the wrong scope for the two
+# series only some panels draw. `reconcile_legend_entries` settles it against the
+# assembled figure, in both directions.
+
+
+def test_net_positions_labels_open_interest_and_claims_no_price():
+    """The panel's second axis carries Open Interest, and it draws no price.
+
+    Measured before this was fixed: the legend showed a Price entry that controlled
+    nothing, and the white line under it -- the one the reader can actually see --
+    was Open Interest, with no entry of its own.
+    """
+    df = _frame()
+    fig = _net_pos(_figure(), df)
+
+    assert not _named(fig, "Price")
+    assert _drawn(fig, "Open Interest")
+    assert len(_entry(fig, "Open Interest")) == 1
+
+
+def test_a_stack_led_by_net_positions_keeps_its_price_entry():
+    """The stranding case. Net Positions draws no price, so it adds no entry; the
+    panels below it do, and since PR #86 their overlays start hidden. Without an
+    entry to click they would be unreachable rather than opt-in."""
+    df = _frame()
+    fig = _figure(rows=2)
+    fig = _net_pos(fig, df, row=1)
+    fig = _index(fig, df, row=2)
+
+    assert not _entry(fig, "Price"), "the precondition this guards"
+    pt.reconcile_legend_entries(fig, PALETTE)
+
+    added = _entry(fig, "Price")
+    assert len(added) == 1
+    assert added[0].visible == "legendonly"
+    assert added[0].legendgroup == "price"
+
+
+def test_the_price_entry_is_not_duplicated_when_one_already_exists():
+    df = _frame()
+    fig = _index(_figure(), df)
+
+    before = len(_named(fig, "Price"))
+    pt.reconcile_legend_entries(fig, PALETTE)
+    assert len(_named(fig, "Price")) == before
+
+
+def test_no_price_entry_is_invented_when_nothing_drew_one():
+    df = _frame()
+    fig = _net_pos(_figure(), df)
+
+    pt.reconcile_legend_entries(fig, PALETTE)
+    assert not _named(fig, "Price")
+
+
+def test_a_price_entry_over_a_figure_drawing_no_price_is_dropped():
+    """The candlestick panel adds one whatever the overlay setting, and its candles
+    are their own trace in no legendgroup, so the entry reaches nothing."""
+    df = _frame()
+    fig = pt.get_price_plot(_figure(), df, 1, 1, PALETTE)
+    assert _entry(fig, "Price"), "the precondition this guards"
+
+    pt.reconcile_legend_entries(fig, PALETTE)
+    assert not _named(fig, "Price")
+    assert [t for t in fig.data if t.type == "candlestick"]
+
+
+def test_an_open_interest_entry_is_added_for_a_panel_that_is_not_the_first():
+    """Same stranding, other series: only row 1 draws the legend, so a Net Positions
+    panel further down the stack labelled nothing."""
+    df = _frame()
+    fig = _figure(rows=2)
+    fig = _index(fig, df, row=1)
+    fig = _net_pos(fig, df, row=2)
+
+    assert not _entry(fig, "Open Interest"), "the precondition this guards"
+    pt.reconcile_legend_entries(fig, PALETTE)
+    assert len(_entry(fig, "Open Interest")) == 1
+
+
+def test_the_open_interest_entry_is_not_duplicated():
+    """Two panels drawing it, one entry. The z-score panel draws it too."""
+    df = _frame(seed=7)
+    for col in (const.COMMS_ZSCORE, const.LRG_ZSCORE, const.SML_ZSCORE,
+                const.OI_ZSCORE):
+        df[col] = 0.5
+    fig = _figure(rows=2)
+    fig = _net_pos(fig, df, row=1)
+    fig = pt.get_zscore_plot(fig, df, 2, 1, PALETTE, show_price=False)
+
+    pt.reconcile_legend_entries(fig, PALETTE)
+    assert len(_entry(fig, "Open Interest")) == 1

@@ -120,6 +120,63 @@ def add_open_interest_legend(fig, color_palette):
     return fig
 
 
+def _is_legend_stub(trace):
+    """An entry drawn by `add_legend_lines`: one point at x=[None], no data."""
+    x = getattr(trace, "x", None)
+    return x is not None and len(x) == 1 and x[0] is None
+
+
+def _legend_state(fig, name):
+    """(drawn, labelled, stubs) for one series name across the whole figure.
+
+    `labelled` covers the one case where a real trace carries its own entry rather
+    than delegating to a stub: the basis-overlay panel draws Open Interest with
+    `showlegend=True`.
+    """
+    drawn = labelled = False
+    stubs = []
+    for trace in fig.data:
+        if trace.name != name:
+            continue
+        if _is_legend_stub(trace):
+            stubs.append(trace)
+        else:
+            drawn = True
+            labelled = labelled or bool(trace.showlegend)
+    return drawn, labelled, stubs
+
+
+def reconcile_legend_entries(fig, color_palette):
+    """Make the legend describe what the assembled figure actually drew.
+
+    Legend entries are added by ONE panel (row 1, col 1), which is the wrong scope
+    for the two series that only some panels draw. Both directions went wrong:
+
+    - A stack led by Net Positions drew price overlays on every later panel and no
+      entry for them. That was invisible while the overlays drew themselves, costing
+      only the ability to switch them off; with price opt-in it strands them, hidden
+      with nothing in the legend to click. The MACD panel never adds entries at all,
+      so leading with it stranded them the same way.
+    - The reverse: a "Price" entry over a figure that draws no price, controlling
+      nothing while claiming a line the reader can see (on Net Positions that line
+      was Open Interest).
+
+    Derived from the traces on the figure rather than from re-deriving which panel
+    draws what, because the figure is the thing that has to be consistent. Same
+    argument, and same shape, as `category_traces.ensure_price_legend_entry`.
+    """
+    for name, color, visible in (
+            ("Price", color_palette[3], PRICE_OVERLAY_VISIBILITY),
+            ("Open Interest", color_palette[4], True)):
+        drawn, labelled, stubs = _legend_state(fig, name)
+        if drawn and not labelled and not stubs:
+            add_legend_lines(fig, name, color, visible=visible)
+        elif not drawn and stubs:
+            stale = {id(t) for t in stubs}
+            fig.data = [t for t in fig.data if id(t) not in stale]
+    return fig
+
+
 def add_trace_to_all(fig, df, col_name, row, col, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False, opacity=1, dash=None):
     """ Global Legend Toggle Logic: Show legend only once, but use legendgroups to link all 5 plots"""
     if is_bar:
@@ -314,7 +371,15 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
     return fig
 
 
-def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_price=False, show_flips=False, y_title="net position"):
+def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_flips=False, y_title="net position"):
+    """Three net-position bar series, with Open Interest on the secondary axis.
+
+    No price here, at either scale: the second axis carries Open Interest, which is
+    why the registry marks this panel SECONDARY_ALWAYS rather than SECONDARY_WITH_PRICE.
+    That is also why it takes no `show_price` -- it drew none whatever it was passed,
+    while its legend claimed one. `reconcile_legend_entries` settles the figure-wide
+    question of whether a stack containing this panel needs a Price entry.
+    """
     weeks_to_view = 52 if app_utils.is_mobile() else const.DEFAULT_WEEKS_TO_VIEW
     start_idx = max(0, len(df) - weeks_to_view)
 
@@ -423,7 +488,11 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
             )
 
     showlegend = row == 1 and col == 1
-    fig = update_legend(fig, showlegend, color_palette, show_price)
+    fig = update_legend(fig, showlegend, color_palette, show_price=False)
+    if showlegend:
+        # The line this panel really draws on its second axis. Duplicate entries are
+        # not a risk: a later `reconcile_legend_entries` adds one only if none exists.
+        fig = add_open_interest_legend(fig, color_palette)
 
     return fig
 
@@ -683,7 +752,7 @@ def get_cot_macd_subplot(fig, df, row, col, color_palette, show_price=True):
     return fig
 
 
-def get_oi_alignment_decorators(fig, df, target_subplots, color_palette, offset_pct=0, show_legend=True, show_oi_legend=False):
+def get_oi_alignment_decorators(fig, df, target_subplots, color_palette, offset_pct=0, show_legend=True):
     if not target_subplots:
         return fig
 
@@ -703,8 +772,6 @@ def get_oi_alignment_decorators(fig, df, target_subplots, color_palette, offset_
     debug_group = "debug"
 
     if show_legend:
-        if show_oi_legend:
-            add_legend_lines(fig, "Open Interest", color_palette[4])
         add_legend_markers(fig, "Bull Trend", bullish_group, bullish_color, "triangle-up", marker_size)
         add_legend_markers(fig, "Bull Bottom", bullish_group, bullish_color, "asterisk-open", marker_size)
         add_legend_markers(fig, "Short Sqz", bullish_group, bullish_color, "bowtie", marker_size)
