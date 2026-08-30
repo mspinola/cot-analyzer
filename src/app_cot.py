@@ -388,6 +388,18 @@ app.layout = html.Div(
                 dcc.Store(id='session_palette_theme_asset_store', storage_type='session'),
                 dcc.Store(id='global_lookback_store', storage_type='session', data='Custom'),
                 dcc.Store(id='global_model_store', storage_type='session', data=models.DEFAULT_MODEL.key),
+                # The as-of week, shared by every page with a Target Date the way
+                # model and lookback already are: park the Heatmap on an old week
+                # and the Strip, Crowd, Divergence and Positioning show the same
+                # week when you arrive. None means "tracking the newest week",
+                # and only an explicitly chosen OLDER week is ever stored -- the
+                # distinction is what lets a Friday release move every tracking
+                # page forward while a parked one stays parked (the same split
+                # next_date_selection used to make per control, now made once).
+                # Session, not local, for Exposure's reason: which week you are
+                # reading is a fact about this visit, and a page reopened weeks
+                # later still describing a stale week would be lying by default.
+                dcc.Store(id='global_week_store', storage_type='session'),
                 dcc.Store(id='theme_store', storage_type='local', data='solarized_dark'),
                 # The COT week the server currently serves, republished by the navbar
                 # poller below whenever it changes. Pages whose contents are pinned to

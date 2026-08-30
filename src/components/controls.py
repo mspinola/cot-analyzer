@@ -160,25 +160,79 @@ def target_date_dropdown(control_id, **overrides):
     ), overrides))
 
 
-def register_target_date(control_id):
-    """Re-offer the available weeks when the server takes a new one.
+def week_for_store(value, dates):
+    """What a selection is WORTH REMEMBERING as, for `global_week_store`.
 
-    The arithmetic lives in `app_utils.next_date_selection`: a tab sitting on the
-    newest week follows a release, one parked on an older week stays put. Every
-    page with a Target Date gets this by construction now; Positioning shipped
-    without it and stranded open tabs on release day.
+    None means "tracking the newest week": picking the current newest is the
+    default nobody chose, and storing its concrete date would pin every page to
+    it the moment a release made it old. Only a deliberately chosen OLDER week
+    is stored as itself. This is `next_date_selection`'s was-on-newest test,
+    moved from per-control arithmetic into the stored value, which is what lets
+    five pages share one answer.
+    """
+    if not dates or not value or value == dates[0] or value not in dates:
+        return None
+    return value
+
+
+def resolve_week(stored, dates):
+    """The week a Target Date control should show for a stored value.
+
+    None (tracking) and a stale date (a week list this session has never seen,
+    which full history makes near-impossible but a cleared store does not) both
+    land on the newest week, because "the newest" is the only answer that is
+    never a lie.
+    """
+    if not dates:
+        return None
+    if stored and stored in dates:
+        return stored
+    return dates[0]
+
+
+def register_target_date(control_id):
+    """Sync with `global_week_store`, and re-offer the weeks on a release.
+
+    One as-of week for the whole visit: park the Heatmap on an old week and the
+    Strip shows the same week on arrival, exactly as model and lookback already
+    travel. A tab sitting on the newest week follows a Friday release (the store
+    holds None, which resolves to whatever is newest NOW); one parked on an
+    older week stays put with the new week offered in the dropdown. That split
+    used to live in `next_date_selection` per control and could not be shared;
+    encoding it in the stored value is what makes it global. Every page with a
+    Target Date gets all of this by construction; Positioning shipped without
+    even the release-follow and stranded open tabs on release day.
     """
     from cotmetrics.indexer import get_indexer
-
-    import app_utils
 
     @callback(
         Output(control_id, 'options'),
         Output(control_id, 'value'),
         Input('cot_release_store', 'data'),
+        Input('global_week_store', 'data'),
         State(control_id, 'options'),
         State(control_id, 'value'),
     )
-    def follow_the_store(_release, current_options, current_value):
-        return app_utils.next_date_selection(
-            get_indexer().get_available_dates(), current_options, current_value)
+    def follow(_release, stored, current_options, current_value):
+        dates = get_indexer().get_available_dates()
+        if not dates:
+            return no_update, no_update
+        options = [{'label': d, 'value': d} for d in dates]
+        value = resolve_week(stored, dates)
+        # no_update on the quiet paths, or the five-minute release tick would
+        # re-render the control and re-fire the page's grid callback for every
+        # open tab that changed nothing.
+        return (no_update if options == current_options else options,
+                no_update if value == current_value else value)
+
+    @callback(
+        Output('global_week_store', 'data', allow_duplicate=True),
+        Input(control_id, 'value'),
+        State('global_week_store', 'data'),
+        prevent_initial_call=True,
+    )
+    def to_global(value, stored):
+        if not value:
+            return no_update
+        new_val = week_for_store(value, get_indexer().get_available_dates())
+        return no_update if new_val == stored else new_val
