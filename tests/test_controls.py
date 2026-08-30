@@ -115,3 +115,54 @@ def test_an_empty_index_changes_nothing():
     assert controls.week_for_store("2026-08-11", []) is None
     assert controls.resolve_week("2026-08-11", []) is None
     assert controls.resolve_week(None, []) is None
+
+
+# ── URL deep links ────────────────────────────────────────────────────────────
+
+def test_a_full_deep_link_sets_all_three_stores():
+    params = controls.deep_link_params(
+        "?date=2026-07-28&model=npf&lookback=26", dates=WEEKS)
+    assert params == {'global_week_store': "2026-07-28",
+                      'global_model_store': "npf",
+                      'global_lookback_store': "26"}
+
+
+def test_a_bare_url_touches_nothing():
+    """Navbar navigation produces URLs with no query at all; a click that reset
+    the session's parked week or chosen model would make navigation
+    destructive. Absence means "leave the store alone"."""
+    assert controls.deep_link_params("", dates=WEEKS) == {}
+    assert controls.deep_link_params(None, dates=WEEKS) == {}
+    assert controls.deep_link_params("?asset=Gold", dates=WEEKS) == {}
+
+
+def test_a_link_to_the_newest_week_stores_tracking():
+    """Same normalization as picking it by hand: the URL names a date, but what
+    is worth remembering is "the newest", or the link would pin the session the
+    moment a release made that date old."""
+    params = controls.deep_link_params(f"?date={WEEKS[0]}", dates=WEEKS)
+    assert params == {'global_week_store': None}
+
+
+def test_garbage_params_are_dropped_not_stored():
+    """A week the history does not hold would render as the newest while the
+    URL kept asserting the date, so it is refused at the door; same for an
+    unknown model or lookback."""
+    assert controls.deep_link_params("?date=1999-01-01", dates=WEEKS) == {}
+    assert controls.deep_link_params("?model=alpha_zero", dates=WEEKS) == {}
+    assert controls.deep_link_params("?lookback=13", dates=WEEKS) == {}
+
+
+def test_the_overlay_view_is_a_legal_model_param():
+    """MODEL_BOTH is honoured: the chart pages draw it, and the board pages'
+    own sync resolves it to the baseline model, exactly as when another page
+    writes it to the store."""
+    params = controls.deep_link_params("?model=both", dates=WEEKS)
+    assert params == {'global_model_store': "both"}
+
+
+def test_asset_from_search_decodes_the_name():
+    assert controls.asset_from_search("?asset=Japanese%20Yen") == "Japanese Yen"
+    assert controls.asset_from_search("?asset=Japanese+Yen") == "Japanese Yen"
+    assert controls.asset_from_search("?date=2026-07-28") is None
+    assert controls.asset_from_search("") is None

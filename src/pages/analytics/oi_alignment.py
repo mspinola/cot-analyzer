@@ -1,5 +1,4 @@
 import math
-import urllib.parse
 
 import cotmetrics.constants as const
 import cotmetrics.models as models
@@ -28,6 +27,7 @@ dash.register_page(
 controls.register_lookback('oi_alignment_lookback_selector')
 controls.register_model('oi_alignment_model_selector',
                         choices=vc.MODEL_VIEW_CHOICES)
+controls.register_asset_link('oi_alignment_single_asset_filter_input')
 
 # Which panels this page offers, in stack order. Labels and everything else about them
 # comes from the registry, so a plot is described in one place rather than five.
@@ -773,15 +773,14 @@ def update_oi_alignment_asset_options(search, selected_class, current_asset):
 
     # 1. URL Routing overrides everything on load
     if (is_initial_load or triggered_id == 'url') and search:
-        parsed = urllib.parse.parse_qs(search.lstrip('?'))
-        if 'asset' in parsed:
-            asset_name = parsed['asset'][0]
-            instrument = get_indexer().get_instrument_from_name(asset_name)
-            if instrument:
-                forced_class = instrument.asset_class
-                assets = sorted(get_indexer().get_assets_for_asset_class(forced_class))
-                options = [{'label': m, 'value': m} for m in assets]
-                return forced_class, options, asset_name
+        # controls.forced_asset, the same resolution Analysis and Categories
+        # use now, so a ?asset= link means one thing on all three pages.
+        forced = controls.forced_asset(search)
+        if forced:
+            forced_class, asset_name = forced
+            assets = sorted(get_indexer().get_assets_for_asset_class(forced_class))
+            options = [{'label': m, 'value': m} for m in assets]
+            return forced_class, options, asset_name
 
     # 2. Normal class selector logic
     if not selected_class:
