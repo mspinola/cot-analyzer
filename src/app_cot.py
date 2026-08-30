@@ -119,6 +119,16 @@ def reject_unknown_paths():
     return body, 404, {'Content-Type': 'text/html; charset=utf-8'}
 
 
+@app.server.after_request
+def set_cache_policy(response):
+    """Apply `routing.cache_policy`; see it for what is set and what it measured."""
+    policy = routing.cache_policy(request.path, bool(request.args.get('m')),
+                                  response.content_type or '')
+    if policy:
+        response.headers['Cache-Control'] = policy
+    return response
+
+
 @app.server.before_request
 def decline_vendor_sourcemaps():
     """Answer 404 for source-map requests Dash would 500 on; see `is_vendor_sourcemap`.
