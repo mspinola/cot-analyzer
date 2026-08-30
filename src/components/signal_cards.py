@@ -172,12 +172,15 @@ def build_signal_panel(df, asset, color_palette, target_date=None, is_equity=Fal
 
         card_positioning = _make_signal_card(
             "POSITIONING", pos_text, pos_color,
+            # The letters name the legs in place; the bare "Index: 14, 85, 64"
+            # said nothing a new reader could use, and there is no hover on the
+            # phones this panel is read from.
             html.Small([
-                "Index: ",
+                "Index: C ",
                 _colored_span(comm_idx, comm_idx >= max_idx, comm_idx <= min_idx),
-                ", ",
+                " · L ",
                 _colored_span(lrg_idx, lrg_idx >= max_idx, lrg_idx <= min_idx),
-                ", ",
+                " · S ",
                 _colored_span(sml_idx, sml_idx >= max_idx, sml_idx <= min_idx),
             ], style={"color": vc.TEXT_COLOR}),
             pos_tooltip,
@@ -1090,12 +1093,22 @@ def index_triplet(row, model, size="0.85rem"):
               (models.LEG_LARGE, row.get("lrg_index")),
               (models.LEG_SMALL, row.get("sml_index")))
 
+    # Each value wears its leg's letter, tiny and dim: the triplet was the most
+    # cryptic thing a new visitor met ("0/100/100" with nothing naming the legs),
+    # and the hover below cannot help the phone traffic this board gets, since a
+    # touch screen has no hover. The letters are labels, not readings, so they
+    # stay dim whether or not the leg is lit.
+    letters = {"comm": "C", models.LEG_LARGE: "L", models.LEG_SMALL: "S"}
     parts = []
     for i, (leg, value) in enumerate(values):
         if i:
             parts.append(html.Span("/", style={"color": vc.TEXT_COLOR, "opacity": 0.4,
                                                "margin": "0 2px"}))
         lit = gated[leg]
+        parts.append(html.Span(letters[leg],
+                               style={"color": vc.TEXT_COLOR, "opacity": 0.55,
+                                      "fontSize": "0.68em",
+                                      "marginRight": "1px"}))
         parts.append(html.Span(
             "\u2013" if value is None else f"{value}",
             style={"color": vc.BRIGHTER_TEXT_COLOR if lit else vc.TEXT_COLOR,
