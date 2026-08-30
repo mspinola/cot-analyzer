@@ -25,7 +25,7 @@ from dash import Input, Output, callback, dcc, html
 
 import viz_config
 import viz_constants as vc
-from components import class_filter, config_fold, controls, divergence_rows
+from components import class_filter, config_fold, controls, divergence_rows, help_fold
 from components.signal_cards import tier_of
 
 dash.register_page(__name__, path='/divergence')
@@ -197,6 +197,10 @@ def build_table(rows, palette, compare):
 
 
 def caption(report_date, show, hidden, unplaced, compare):
+    """The FACTS of this render: which week, what was hidden and why, what could
+    not be compared, and the one-column caveat that changes what a reader should
+    expect to see. The teaching moved to `help_text` behind the fold (see
+    components.help_fold for the split)."""
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
     except (TypeError, ValueError):
@@ -220,6 +224,14 @@ def caption(report_date, show, hidden, unplaced, compare):
     # rather than leaving a reader to wonder why nothing ever splits.
     solo = (" With a single model column, no verdict split is possible and only the "
             "basis gap differentiates rows." if len(compare) == 1 else "")
+    return (f"Each shown model's verdict as of Tuesday {pretty}."
+            f"{solo}{visibility}{dropped}")
+
+
+def help_text(compare):
+    """The teaching: what a column and its cells are, the C emphasis rule, the
+    Basis gap, and the sort. Column-aware only for the shared-series note, which
+    is why this renders per callback rather than being baked into the layout."""
     both_npf = ""
     if models.NPF in compare and models.NPF_CLS_95_5 in compare:
         both_npf = (f" {models.NPF.title} and {models.NPF_CLS_95_5.title} share one "
@@ -227,16 +239,15 @@ def caption(report_date, show, hidden, unplaced, compare):
                     f"in verdict, never in value.")
     return (
         f"Each column is one model's Commercials / Large Specs / Small Traders on "
-        f"its own basis, with its verdict, as of Tuesday {pretty}. A dash is a leg "
-        f"that model's gate does not read. Commercial values print heavy only "
-        f"where the shown columns disagree on them by "
-        f"{divergence_rows.GAP_TOLERANCE} index points or more; a dim C is the "
-        f"same reading twice.{both_npf} The Basis gap column is "
-        f"|raw − normalized| on the Commercial index, which is the contract-size "
-        f"drift the normalization removes and the same gap the Strip's Other basis "
-        f"view draws as a connector; it does not depend on which columns are "
-        f"shown. Rows sort by disagreement inside each class: verdict splits "
-        f"first, then the widest gaps.{solo}{visibility}{dropped}")
+        f"its own basis, with its verdict. A dash is a leg that model's gate does "
+        f"not read. Commercial values print heavy only where the shown columns "
+        f"disagree on them by {divergence_rows.GAP_TOLERANCE} index points or "
+        f"more; a dim C is the same reading twice.{both_npf} The Basis gap column "
+        f"is |raw − normalized| on the Commercial index, which is the "
+        f"contract-size drift the normalization removes and the same gap the "
+        f"Strip's Other basis view draws as a connector; it does not depend on "
+        f"which columns are shown. Rows sort by disagreement inside each class: "
+        f"verdict splits first, then the widest gaps.")
 
 
 def _column_select(column_id, default):
@@ -336,6 +347,10 @@ def layout(**kwargs):
                     html.P(id='divergence_caption',
                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                   'fontStyle': 'italic', 'marginBottom': '4px'}),
+                    help_fold.wrap('divergence', html.P(
+                        id='divergence_help',
+                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                               'fontStyle': 'italic', 'marginBottom': '4px'})),
                 ], width=12),
             ]),
 
@@ -356,6 +371,7 @@ def layout(**kwargs):
 @callback(
     Output('divergence_display_container', 'children'),
     Output('divergence_caption', 'children'),
+    Output('divergence_help', 'children'),
     [Input('divergence_class_selector', 'value'),
      Input('divergence_show_selector', 'value'),
      Input(COLUMN_IDS[0], 'value'),
@@ -367,15 +383,17 @@ def layout(**kwargs):
 def render_board(asset_classes, show, col1, col2, col3, palette_name, target_date):
     empty = html.P("Select an asset class to draw the board.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
-    if not asset_classes:
-        return empty, ""
-
+    # Resolved before the early exits so the fold teaches even over an empty
+    # board; the teaching does not depend on the data being present.
     compare = compared_models(col1, col2, col3)
+    if not asset_classes:
+        return empty, "", help_text(compare)
+
     if not compare:
         return (html.P("Every column is set to None. Pick at least one model.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR,
                               'padding': '2rem 0'}),
-                "")
+                "", help_text(compare))
 
     show = show if show in SHOW_LABELS else SHOW_DIFFERENCES
     # The models' own window, the same Custom lookback every verdict surface gates on.
@@ -383,7 +401,7 @@ def render_board(asset_classes, show, col1, col2, col3, palette_name, target_dat
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
-                "")
+                "", help_text(compare))
 
     rows, hidden, unplaced = divergence_rows.build_rows(
         df, show_all=(show == SHOW_ALL), compare=compare)
@@ -398,4 +416,5 @@ def render_board(asset_classes, show, col1, col2, col3, palette_name, target_dat
                    'padding': '2rem 0'})
     else:
         board = build_table(rows, palette, compare)
-    return board, caption(report_date, show, hidden, unplaced, compare)
+    return (board, caption(report_date, show, hidden, unplaced, compare),
+            help_text(compare))
