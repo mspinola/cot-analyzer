@@ -56,7 +56,7 @@ from dash import Input, Output, callback, dcc, html
 import components.board_traces as board_traces
 import viz_config
 import viz_constants as vc
-from components import class_filter, config_fold, controls
+from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
 from components.strip_traces import SETUP_COLUMN
 
@@ -192,9 +192,10 @@ def warm_caches():
 
 
 def caption(report_date, model, skipped):
-    """The paragraph under the board. Every sentence is a fact the picture cannot
-    carry: what the series is, what a cell means, how the windows line up with the
-    rest of the app, and the trailing-window trap."""
+    """The line under the board: the FACTS of this render, and nothing a reader
+    already taught can skip. What the series is measured as and which week, plus
+    what could not be shown; the teaching moved to `help_text` behind the fold
+    (see components.help_fold for the split)."""
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
     except (TypeError, ValueError):
@@ -207,19 +208,29 @@ def caption(report_date, model, skipped):
                    f"not shown: {', '.join(sorted(skipped))}.")
     return (
         f"Commercial positioning as of Tuesday {pretty}, measured as {basis} "
-        f"({model.title}'s basis). Each cell is the range index of that one series "
-        f"within its own window (0 at the window's low, 100 at its high) over 13, "
-        f"26 and 52 weekly reports, then the market's full history (each market's "
-        f"history starts where its data does; hover the Full cell for the span). "
-        f"Colour is the cell's own value, not the model's verdict; the SETUP chip "
+        f"({model.title}'s basis). Colour is the cell's own value, not the "
+        f"model's verdict.{dropped}"
+    )
+
+
+def help_text(model):
+    """The teaching: what a cell means, how the windows line up with the rest of
+    the app, and the trailing-window trap. Model-aware (the chip carries the
+    current model's verdict), which is why this is rendered per callback rather
+    than baked into the layout."""
+    return (
+        f"Each cell is the range index of that one series within its own window "
+        f"(0 at the window's low, 100 at its high) over 13, 26 and 52 weekly "
+        f"reports, then the market's full history (each market's history starts "
+        f"where its data does; hover the Full cell for the span). The SETUP chip "
         f"at the left edge (and its fainter NEAR tier) is {model.title}'s verdict "
-        f"on its own window, and a crowded row with no chip is a market whose other "
-        f"legs block the gate. A trailing window renormalises every week, so a short "
-        f"column says where this week sits in the RECENT range, not whether the "
-        f"market is net long: the 3M column especially moves in coarse steps and "
-        f"pins at 0 or 100 often. The {vc.MOMENTUM_LABEL} column is the "
-        f"{vc.MOMENTUM_UNIT_PHRASE}, on the 12M window; the path is the same "
-        f"12M index over the trailing year.{dropped}"
+        f"on its own window, and a crowded row with no chip is a market whose "
+        f"other legs block the gate. A trailing window renormalises every week, "
+        f"so a short column says where this week sits in the RECENT range, not "
+        f"whether the market is net long: the 3M column especially moves in "
+        f"coarse steps and pins at 0 or 100 often. The {vc.MOMENTUM_LABEL} "
+        f"column is the {vc.MOMENTUM_UNIT_PHRASE}, on the 12M window; the path "
+        f"is the same 12M index over the trailing year."
     )
 
 
@@ -291,6 +302,10 @@ def layout(**kwargs):
                     html.P(id='crowd_caption',
                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                   'fontStyle': 'italic', 'marginBottom': '4px'}),
+                    help_fold.wrap('crowd', html.P(
+                        id='crowd_help',
+                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                               'fontStyle': 'italic', 'marginBottom': '4px'})),
                 ], width=12),
             ]),
 
@@ -311,6 +326,7 @@ def layout(**kwargs):
 @callback(
     Output('crowd_display_container', 'children'),
     Output('crowd_caption', 'children'),
+    Output('crowd_help', 'children'),
     [Input('crowd_class_selector', 'value'),
      Input('global_model_store', 'data'),
      Input('crowd_order_selector', 'value'),
@@ -320,10 +336,12 @@ def layout(**kwargs):
 def render_board(asset_classes, model_key, order, palette_name, target_date):
     empty = html.P("Select an asset class to draw the board.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
-    if not asset_classes:
-        return empty, ""
-
+    # Resolved before the early exits so the fold teaches even over an empty
+    # board; the teaching does not depend on the data being present.
     model = models.resolve(model_key)
+    if not asset_classes:
+        return empty, "", help_text(model)
+
     order = order if order in ORDER_LABELS else board_traces.ORDER_CLASS
 
     # The matrix drives the universe and carries the verdict; the Custom lookback is
@@ -332,7 +350,7 @@ def render_board(asset_classes, model_key, order, palette_name, target_date):
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
-                "")
+                "", help_text(model))
 
     available = get_indexer().get_available_dates()
     newest = available[0] if available else None
@@ -358,4 +376,5 @@ def render_board(asset_classes, model_key, order, palette_name, target_date):
                   style={"width": "100%", "maxWidth": "1100px",
                          "margin": "0 auto"}),
         caption(report_date, model, sorted(set(unreadable) | set(skipped))),
+        help_text(model),
     )
