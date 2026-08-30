@@ -117,6 +117,27 @@ def test_the_candlestick_panel_still_draws():
     assert all(t.visible in (True, None) for t in candles)
 
 
+def test_the_candlestick_skips_priceless_weeks():
+    """COT history routinely predates the price series (and the store skips
+    rather than fails on missing bars), so the frame carries NaN OHLC rows.
+    Plotly draws candles through its box machinery, which does not skip NaN the
+    way scatter does: every NaN row became an invalid SVG path and a console
+    error per candle. The trace must carry only rows that can form a candle."""
+    df = _frame()
+    ohlc = [const.OPEN_PRICE, const.HIGH_PRICE, const.LOW_PRICE,
+            const.CLOSING_PRICE]
+    df.iloc[:10, [df.columns.get_loc(c) for c in ohlc]] = np.nan
+    # A single missing component mid-series breaks that candle too.
+    df.iloc[30, df.columns.get_loc(const.HIGH_PRICE)] = np.nan
+
+    fig = pt.get_price_plot(_figure(), df, 1, 1, PALETTE)
+
+    candle = next(t for t in fig.data if t.type == "candlestick")
+    assert len(candle.x) == len(df) - 11
+    for component in (candle.open, candle.high, candle.low, candle.close):
+        assert not np.isnan(np.asarray(component, dtype=float)).any()
+
+
 def test_the_dollar_axis_reads_correctly_while_the_line_is_hidden():
     """An axis with no visible trace autoranges to Plotly's default.
 

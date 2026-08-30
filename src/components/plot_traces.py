@@ -984,13 +984,19 @@ def get_lrg_sentiment_plot(fig, df, row, col, color_palette, show_price=True):
 
 
 def get_price_plot(fig, df, row, col, color_palette, price_scale='linear'):
+    # Candlesticks render through Plotly's box machinery, which, unlike scatter,
+    # does NOT skip NaN rows: every priceless COT week (history predating the
+    # price series, or a bar the store lacks) becomes an invalid SVG path and a
+    # console error per candle. Draw only the rows that can form a candle.
+    ohlc_cols = [const.OPEN_PRICE, const.HIGH_PRICE, const.LOW_PRICE, const.CLOSING_PRICE]
+    candles = df.loc[df[ohlc_cols].notna().all(axis=1)]
     fig.add_trace(
         go.Candlestick(
-            x=df.index,
-            open=df[const.OPEN_PRICE],
-            high=df[const.HIGH_PRICE],
-            low=df[const.LOW_PRICE],
-            close=df[const.CLOSING_PRICE],
+            x=candles.index,
+            open=candles[const.OPEN_PRICE],
+            high=candles[const.HIGH_PRICE],
+            low=candles[const.LOW_PRICE],
+            close=candles[const.CLOSING_PRICE],
             name="Price Candles",
             whiskerwidth=0.2,
             line=dict(width=1.5),
