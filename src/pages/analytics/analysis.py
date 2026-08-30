@@ -192,7 +192,10 @@ def layout(**kwargs):
                                 persistence=True,
                                 id='analysis_plot_selector',
                                 options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
-                                value=list(BASE_PLOTS.keys()),
+                                # The options-fed panels stay in the picker but out
+                                # of the default stack; see DEFAULT_OFF_PLOTS.
+                                value=[p for p in BASE_PLOTS
+                                       if p not in registry.DEFAULT_OFF_PLOTS],
                                 multi=True,
                                 className="dash-dropdown bg-dark text-white control-mobile-full",
                                 style={'width': '200px'}
@@ -313,9 +316,15 @@ clientside_callback(
             const grid = forced === '{VIEW_GRID}';
             return [forced, grid, !grid];
         }}
-        window.__analysisViewApplied = valid ? forced : null;
         if (view === '{VIEW_GRID}') {{ params.set('view', '{VIEW_GRID}'); }}
         else {{ params.delete('view'); }}
+        // Record what WE just wrote as already applied. The write-back goes via
+        // replaceState, invisible to the router, so nothing else updates the
+        // guard; without this, a radio restored to grid by persistence writes
+        // ?view=grid, and the reader then treated our own parameter as a fresh
+        // link and forced the next manual flip straight back (observed live: a
+        // stack click that would not stick).
+        window.__analysisViewApplied = params.get('view');
         const q = params.toString();
         const next = window.location.pathname + (q ? '?' + q : '');
         if (next !== window.location.pathname + window.location.search) {{

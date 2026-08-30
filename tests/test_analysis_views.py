@@ -118,6 +118,35 @@ def test_the_page_opens_on_the_stack(monkeypatch):
     assert found_hidden.get("analysis_stack_controls") in (None, False)
 
 
+def test_the_options_fed_panels_are_offered_but_not_defaulted(monkeypatch):
+    """max_pain and max_pain_historical read the daily options snapshot, and when
+    it is stale they render an empty curve and a single bar, which reads as the
+    page being broken. They stay in the picker; a fresh session's stack must not
+    vouch for them."""
+    import components.plot_registry as registry
+
+    def find_selector(node):
+        if isinstance(node, (list, tuple)):
+            for child in node:
+                got = find_selector(child)
+                if got is not None:
+                    return got
+            return None
+        if node is None or isinstance(node, str):
+            return None
+        if getattr(node, "id", None) == "analysis_plot_selector":
+            return node
+        return find_selector(getattr(node, "children", None))
+
+    selector = find_selector(_layout(monkeypatch))
+    offered = {opt["value"] for opt in selector.options}
+    assert registry.DEFAULT_OFF_PLOTS <= offered
+    assert not (registry.DEFAULT_OFF_PLOTS & set(selector.value))
+    # The rest of the stack still defaults on: this trims two panels, it does
+    # not empty the page.
+    assert len(selector.value) >= 8
+
+
 def test_the_old_graphs_address_redirects_to_the_grid():
     """A /graphs bookmark is a request for the market grid, so the 301 (an
     explicit route in app_cot; Dash's redirect_from cannot carry a query) must
