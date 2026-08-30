@@ -100,3 +100,38 @@ def not_found_page(background: str, text: str, bright: str) -> str:
   <p>No page is served at this address.</p>
   <a href="/">Back to COT Analyzer</a>
 </div></body></html>"""
+
+
+def cache_policy(path, fingerprinted, content_type):
+    """The Cache-Control one response should carry, or None to leave it alone.
+
+    Lives here beside the other request-boundary policy (`is_known_path`) so it
+    is testable without building the Dash app. Nginx passes origin headers
+    through untouched, so this IS the edge's behaviour. Measured at the origin
+    before it existed:
+
+    * Component suites already shipped `max-age=31536000` on version-and-build
+      fingerprinted URLs (Dash's own doing). `immutable` is added so a refresh
+      does not revalidate a year-cached bundle, and the policy is stated here
+      rather than trusted to stay Dash's default.
+    * `/assets/` files shipped `no-cache` plus an ETag, so every page load spent
+      a conditional round trip per file. Dash fingerprints their URLs with
+      `?m=<mtime>`, which changes when the file does, so WITH the fingerprint
+      they are safe to cache for a year; a bare un-fingerprinted fetch keeps
+      Dash's revalidation, because that URL never changes.
+    * The dash endpoints and the documents shipped no Cache-Control at all,
+      which invites heuristic caching: a heuristically cached /_dash-layout is
+      how a stale layout could serve. `no-store` for the endpoints; `no-cache`
+      for the HTML shell, which is small and whose script URLs carry the
+      fingerprints doing the real caching.
+    """
+    if path.startswith('/_dash-component-suites/'):
+        return 'public, max-age=31536000, immutable'
+    if path.startswith('/assets/'):
+        return 'public, max-age=31536000, immutable' if fingerprinted else None
+    if path.startswith(('/_dash-layout', '/_dash-dependencies',
+                        '/_dash-update-component')):
+        return 'no-store'
+    if content_type.startswith('text/html'):
+        return 'no-cache'
+    return None
