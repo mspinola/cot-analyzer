@@ -1223,6 +1223,21 @@ input.dash-input-container { display: none !important; }
     .hide-border-below-md { border-right: 0 !important; }
 }
 
+/* DARKLY's "secondary" is #444, and an outline-secondary button rests as #444
+   text and border on a transparent fill: on this app's dark cards that is
+   invisible until hover or focus fills it, which is how the graphs page's
+   Configuration fold toggle could be present, clickable, and unseen (reported
+   from a phone, where there is no hover to discover it with; clicking focuses
+   the button, whose focus state paints it, hence "visible once clicked").
+   Every fold and help toggle in the app rests on this class, so rest it at the
+   app's own text colours and keep DARKLY's filled hover/focus states. The
+   overrides are Bootstrap 5's button CSS variables, because that is what .btn
+   actually reads; a bare `color:` on the class loses to them. */
+.btn-outline-secondary {
+    --bs-btn-color: #ABB8C9;
+    --bs-btn-border-color: rgba(171, 184, 201, 0.5);
+}
+
 /* The Strip's whole-page flex column: viewport height minus where the page
    starts (the navbar's bottom edge plus the container's top padding, 96px,
    measured in the browser at the page's own top offset). The ONE number in
