@@ -106,37 +106,42 @@ def _chip(state, palette):
     return html.Span(text, style=style)
 
 
-def _triplet(read, is_equity, bright, comm_hot=False):
+def _triplet(read, is_equity, bright, hot):
     """C / L / S on the model's own basis, with a dash for a leg its gate does not
     read. Equities print the Commercial leg alone, because that is all any gate
     consults for them.
 
-    The Commercial value carries its own two-state emphasis, decided per ROW
-    (`comm_spread` against GAP_TOLERANCE) and applied to every column's C so the
-    disagreeing PAIR lights up, not one arbitrary side of it: heavy and bright
-    where the shown columns actually read the market differently, dim where they
-    print the same number twice. The C column then scans like the Basis gap
-    column already does, but in place, on the values themselves. L and S keep
-    the row's weight: the disagreement this page measures is on the Commercial
-    leg, and lighting three numbers marks nothing.
+    Every leg carries its own two-state emphasis, decided per ROW per LEG
+    (`leg_spread` against GAP_TOLERANCE) and applied to every column's value so
+    the disagreeing PAIR lights up, not one arbitrary side of it: heavy and
+    bright where the shown columns actually read that leg differently, dim where
+    they print the same number twice. Under the default view (the two CLS
+    models) every leg is the same gate on two bases, which is what made this
+    worth extending beyond the Commercial leg it started on; a leg fewer than
+    two shown columns carry never lights, `leg_spread`'s doing, so the mixed
+    three-column view cannot light a value against a dash. Achromatic on
+    purpose: colour on this page belongs to the verdict chips, and a coloured
+    pair would read as a directional claim the numbers do not make.
     """
-    def fmt(v):
-        return "–" if v is None else f"{v:.0f}"
-    colour = _BRIGHT if bright else _DIM
-    comm = html.Span(fmt(read.comm),
-                     style=({"color": _BRIGHT, "fontWeight": "600"}
-                            if comm_hot and bright else {"color": _DIM}))
+    def piece(value, leg):
+        text = "–" if value is None else f"{value:.0f}"
+        if hot.get(leg) and bright and value is not None:
+            return html.Span(text, style={"color": _BRIGHT, "fontWeight": "600"})
+        return html.Span(text, style={"color": _DIM})
+    sep = html.Span(" / ", style={"color": _DIM})
     if is_equity:
-        return comm
-    return html.Span([comm,
-                      html.Span(f" / {fmt(read.lrg)} / {fmt(read.sml)}",
-                                style={"color": colour})])
+        return piece(read.comm, "comm")
+    return html.Span([piece(read.comm, "comm"), sep,
+                      piece(read.lrg, "lrg"), sep,
+                      piece(read.sml, "sml")])
 
 
 def _market_tr(row, palette):
     bright = not row.dim
-    spread = divergence_rows.comm_spread(row.reads)
-    comm_hot = spread is not None and spread >= divergence_rows.GAP_TOLERANCE
+    hot = {}
+    for leg in ("comm", "lrg", "sml"):
+        spread = divergence_rows.leg_spread(row.reads, leg)
+        hot[leg] = spread is not None and spread >= divergence_rows.GAP_TOLERANCE
     name = html.A(row.label,
                   href=f"/oi_alignment?asset={urllib.parse.quote(row.label)}",
                   target="_blank",
@@ -145,8 +150,7 @@ def _market_tr(row, palette):
                          "fontWeight": "600" if row.split else "normal"})
     cells = [html.Td(name, style={**_CELL})]
     for read in row.reads:
-        cells.append(html.Td([_triplet(read, row.is_equity, bright,
-                                       comm_hot=comm_hot),
+        cells.append(html.Td([_triplet(read, row.is_equity, bright, hot),
                               _chip(read.state, palette)],
                              style={**_CELL}))
     # The gap brightens with the disagreement it measures, so the column can be
@@ -240,9 +244,10 @@ def help_text(compare):
     return (
         f"Each column is one model's Commercials / Large Specs / Small Traders on "
         f"its own basis, with its verdict. A dash is a leg that model's gate does "
-        f"not read. Commercial values print heavy only where the shown columns "
-        f"disagree on them by {divergence_rows.GAP_TOLERANCE} index points or "
-        f"more; a dim C is the same reading twice.{both_npf} The Basis gap column "
+        f"not read. A leg's values print heavy only where the shown columns "
+        f"disagree on that leg by {divergence_rows.GAP_TOLERANCE} index points "
+        f"or more; a dim value is the same reading twice, and a leg only one "
+        f"column carries never lights.{both_npf} The Basis gap column "
         f"is |raw − normalized| on the Commercial index, which is the "
         f"contract-size drift the normalization removes and the same gap the "
         f"Strip's Other basis view draws as a connector; it does not depend on "

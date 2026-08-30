@@ -80,21 +80,28 @@ class DivergenceRow:
     is_equity: bool = False
 
 
-def comm_spread(reads):
-    """The widest disagreement among the DISPLAYED columns' Commercial readings.
+def leg_spread(reads, leg):
+    """The widest disagreement among the DISPLAYED columns' readings of one leg.
 
     None with fewer than two readings, because one column cannot disagree with
-    itself. Deliberately distinct from `gap`: gap is the raw-vs-normalized fact
+    itself; that is also what keeps the emphasis honest on legs some columns do
+    not carry (NPF CS drops Large Specs, equities carry Commercials alone). It
+    is deliberately distinct from `gap`: gap is the raw-vs-normalized fact
     about the FRAME, this is a fact about the columns on screen, and the two
-    coincide exactly when the columns are one raw and one normalized model (the
-    default view). Two normalized columns share a series, so their spread is
-    zero however wide the basis gap is, which is why the Commercial emphasis in
-    the renderer must not borrow the gap.
+    coincide on the Commercial leg exactly when the columns are one raw and one
+    normalized model (the default view). Two normalized columns share a series,
+    so their spread is zero however wide the basis gap is, which is why the
+    emphasis in the renderer must not borrow the gap.
     """
-    values = [r.comm for r in reads if r.comm is not None]
+    values = [getattr(r, leg) for r in reads if getattr(r, leg) is not None]
     if len(values) < 2:
         return None
     return max(values) - min(values)
+
+
+def comm_spread(reads):
+    """The Commercial shorthand the renderer and its tests grew up on."""
+    return leg_spread(reads, "comm")
 
 
 def _read_for(record, model, is_equity):
