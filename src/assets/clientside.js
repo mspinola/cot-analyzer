@@ -467,10 +467,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
  * stretched figure, not the container as laid out). What this does, and why, in
  * the order it happens:
  *
- * One, boards live in fixed-height boxes that scroll, so a screenshot of the
- * container is the visible rows only, the opposite of what an export is for. The
- * clone gets height:auto and overflow:visible, so the PNG is the WHOLE board even
- * when the reader can only see a third of it.
+ * One, a board may sit in a scroll box (the Strip's did for a while), and a
+ * screenshot of a scroll box is the visible rows only, the opposite of what an
+ * export is for. The clone gets height:auto and overflow:visible, so the PNG is
+ * the WHOLE board whatever the page's scroll construction is.
  *
  * Two, the plots are collected rather than named, since a page may draw one
  * column or two. Each is snapshotted at its own on-screen size: a strip figure's

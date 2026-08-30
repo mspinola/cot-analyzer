@@ -52,15 +52,6 @@ controls.register_target_date('strip_date_selector')
 SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
 
-# Where this page starts (the navbar's bottom edge plus the container's top
-# padding) is 96px, and it lives in custom.css as `.vh-minus-navbar` rather than
-# here: the CSS layer is what lets the same rule say `100vh` for old browsers and
-# `100dvh` where it is supported, which a Dash inline style dict cannot (one
-# `height` key). The dvh half is the mobile fix: `100vh` on a phone includes the
-# space behind the retracting URL bar, so the board's bottom row hid under it.
-# The number's provenance and the reason it is ONE number, not four, are with the
-# rule in custom.css.
-
 # The word for each filter value, in one place because two things need it now: the
 # radio that sets it and the summary line that reports it while the controls are
 # folded away. Written twice they would drift, and the summary is exactly the thing
@@ -318,15 +309,15 @@ def legend(model, colors, palette, compare=strip_traces.COMPARE_PRIOR):
 def layout(**kwargs):
     # Built per request, not at import, so importing this page needs no store.
     #
-    # One flex column at viewport height, with the board as the only part that
-    # scrolls. This replaces a `calc(100vh - 290px)` on the board, a number that had to
-    # be re-measured every time anything above it changed height, and which the
-    # collapsing control card would have broken outright: the card is ~150px open and
-    # ~40px shut, so one constant cannot be right in both states. `flex: 1` asks for
-    # "whatever is left" instead, which is the same answer without the arithmetic.
+    # The page scrolls; the board does NOT scroll inside its own box. It used to
+    # (a viewport-height flex column with the board as the only scrolling part),
+    # which kept the controls and legend put, but it meant the page's scrollbar
+    # never moved while two thirds of the board sat off screen: reported as "I
+    # can't scroll the main page to see the remaining strips". A board is a page
+    # of content, so it flows like one, and the control card goes sticky instead
+    # (the heatmap's pattern), which keeps the controls reachable without taking
+    # the page's scroll away.
     return html.Div(
-        className="vh-minus-navbar",
-        style={"display": "flex", "flexDirection": "column"},
         children=[
         # `local`, not `session`: folding is a standing preference about how this page
         # should look, not a fact about this visit. The filters below use session
@@ -339,10 +330,11 @@ def layout(**kwargs):
         # line that says what you are looking at, and the board itself.
         dcc.Store(id='strip_controls_open', storage_type='local', data=False),
         dcc.Store(id='strip_key_open', storage_type='local', data=False),
-        dbc.Container(style={"display": "flex", "flexDirection": "column",
-                             "flex": "1 1 auto", "minHeight": 0},
-                      children=[
-            dbc.Row([
+        dbc.Container(children=[
+            # Sticky, the heatmap's pattern: now that the page scrolls, the card
+            # would otherwise scroll away with two thirds of the board below it.
+            dbc.Row(style={'position': 'sticky', 'top': '10px', 'zIndex': 1000},
+                    children=[
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
@@ -488,18 +480,12 @@ def layout(**kwargs):
                         }
                     )
                 ], width=12)
-            # No `position: sticky` any more. It was there because the page scrolled
-            # under a card that had to stay put; in a flex column at viewport height the
-            # page does not scroll at all, so the card is fixed by construction.
             ]),
 
             # Everything the PNG export captures lives inside this div: the legend,
             # the caption and the board. The export button does NOT, since a button in
             # the picture is the one thing on it that cannot be acted on.
-            html.Div(id='strip_export_container',
-                     style={"display": "flex", "flexDirection": "column",
-                            "flex": "1 1 auto", "minHeight": 0},
-                     children=[
+            html.Div(id='strip_export_container', children=[
                 # The key: what the marks mean and what the board was measured over.
                 # Folded by default like the controls, and INSIDE the export container
                 # rather than beside it, because the PNG must carry both whatever the
@@ -531,20 +517,12 @@ def layout(**kwargs):
                 dcc.Loading(
                         id="loading-strip",
                         type="dot",
-                        # The spinner's own wrapper is a link in the flex chain, so it
-                        # gets the same treatment. Miss it and the box below reverts to
-                        # its content height and the page scrolls.
-                        parent_style={"display": "flex", "flexDirection": "column",
-                                      "flex": "1 1 auto", "minHeight": 0},
-                        # The strip scrolls inside its own box rather than scrolling the
-                        # page, so the controls, the legend and the caption stay put
-                        # while the board moves under them. `minHeight: 0` is what makes
-                        # that work: a flex item defaults to min-height:auto, which means
-                        # "at least my content", so without it the box grows to the full
-                        # board and the whole page scrolls instead.
+                        # Natural height: the board flows and the PAGE scrolls. It
+                        # used to scroll inside this box (flex chain + overflowY),
+                        # which kept the chrome put but left the page's own
+                        # scrollbar dead over a mostly off-screen board.
                         children=html.Div(id='strip_display_container',
-                                          style={"flex": "1 1 auto", "minHeight": 0,
-                                                 "overflowY": "auto", "width": "100%"}),
+                                          style={"width": "100%"}),
                         color=vc.BRIGHTER_TEXT_COLOR
                 )
             ])

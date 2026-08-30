@@ -262,6 +262,15 @@ BASIS_AWARE_PLOTS = {s.id for s in _SPECS if s.basis_aware}
 
 BASIS_OVERLAY_SPEC = {s.id: s.overlay for s in _SPECS if s.overlay is not None}
 
+# Offered but not selected by default. These are the two options-fed panels: they
+# read the daily options snapshot (ETF proxy chains, a separate producer from the
+# COT store), and when that snapshot is stale or absent they do not fail, they
+# render an empty curve and a single bar, which reads as the page being broken
+# rather than the pipeline being behind. A panel whose empty state cannot explain
+# itself is one the reader opts into, not one the default stack vouches for.
+# Registry-level so the stack pages that offer them cannot disagree about it.
+DEFAULT_OFF_PLOTS = frozenset({"max_pain", "max_pain_historical"})
+
 BASIS_INVARIANT_NOTE = {s.id: s.invariant_note for s in _SPECS
                         if s.invariant_note is not None}
 

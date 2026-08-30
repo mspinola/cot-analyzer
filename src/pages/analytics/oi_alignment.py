@@ -217,7 +217,10 @@ def layout(**kwargs):
                         persistence=True,
                         id='oi_alignment_plot_selector',
                         options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
-                        value=list(AVAILABLE_PLOTS.keys()),  # Default to all selected
+                        # All selected except the options-fed panels; see
+                        # registry.DEFAULT_OFF_PLOTS for why they opt in.
+                        value=[p for p in AVAILABLE_PLOTS
+                               if p not in registry.DEFAULT_OFF_PLOTS],
                         multi=True,
                         className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
                         style={'width': '200px'}

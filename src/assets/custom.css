@@ -1238,19 +1238,6 @@ input.dash-input-container { display: none !important; }
     --bs-btn-border-color: rgba(171, 184, 201, 0.5);
 }
 
-/* The Strip's whole-page flex column: viewport height minus where the page
-   starts (the navbar's bottom edge plus the container's top padding, 96px,
-   measured in the browser at the page's own top offset). The ONE number in
-   that page's vertical layout: nothing ON the page can invalidate it, only a
-   navbar change can. Two height declarations on purpose: browsers without dvh
-   keep the vh line, and everywhere else the dvh line wins, which is what stops
-   a phone's retracting URL bar from hiding the board's bottom row (100vh there
-   includes the space behind the bar; 100dvh is what is actually visible). */
-.vh-minus-navbar {
-    height: calc(100vh - 96px);
-    height: calc(100dvh - 96px);
-}
-
 /* The OI Alignment TradingView button is absolutely positioned over the chart,
    tuned to the desktop legend's geometry (top 60px, left 40px). At phone width
    the legend reflows and the button landed on plot content, so below md it
@@ -1331,19 +1318,24 @@ a.setup-card:focus-visible {
 @media (min-width: 992px)  { .setup-grid { grid-template-columns: repeat(var(--cols-lg, 4), minmax(0, 1fr)); } }
 @media (min-width: 1200px) { .setup-grid { grid-template-columns: repeat(var(--cols-xl, 6), minmax(0, 1fr)); } }
 
-/* An open asset-class menu has to paint over the content below its card.
+/* An open menu has to paint over the content below its card.
 
    Nothing clips it -- every ancestor is overflow: visible -- so this is stacking,
    not clipping. The control cards carry backdrop-filter, which makes each one a
-   stacking context, and they sit at z-index: auto. The menu's own z-index: 1000 is
+   stacking context, and they sit at z-index: auto. A menu's own z-index is
    therefore sealed inside its card and cannot lift it past a LATER sibling, so on
-   the strip page the board painted straight over the switches. The heatmap never
-   showed it only because its control row is position: sticky with a z-index of its
-   own, which is a layout decision that happens to fix a paint order.
+   the strip page the board painted straight over the class-filter switches, and on
+   the merged Analysis page the plots painted over the open Visible Plots and Asset
+   Selector dropdowns (dcc.Dropdown in Dash 3 is a Radix popper rendered INLINE at
+   z-index 500, not portaled to <body>, so it is subject to exactly the same
+   sealing; its trigger button carries aria-expanded while the menu is open). The
+   heatmap never showed it only because its control row is position: sticky with a
+   z-index of its own, which is a layout decision that happens to fix a paint order.
 
-   Raising the card is the level the fix belongs at, and only while the menu is open:
+   Raising the card is the level the fix belongs at, and only while a menu is open:
    a card that outranks the page permanently is a trap for the next thing dropped
    into it. 1000 is Bootstrap's dropdown level and stays under the 1030 navbar. */
-.card:has(.class-filter-menu.show) {
+.card:has(.class-filter-menu.show),
+.card:has(.dash-dropdown[aria-expanded="true"]) {
     z-index: 1000;
 }
