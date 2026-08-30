@@ -99,13 +99,13 @@ def test_every_spec_is_buildable():
 
 
 def test_default_off_panels_are_real_and_options_fed():
-    """The set the stack pages exclude from their default selection. Both members
-    must exist in the registry (a typo here silently defaults a panel back on),
-    and both need an asset: they are the options-proxy panels, which is the whole
-    reason they opt in (see the comment on DEFAULT_OFF_PLOTS)."""
+    """The set the stack pages exclude from their default selection. Every member
+    must exist in the registry (a typo here silently defaults a panel back on)
+    and need an asset: only the options-proxy panels qualify (see the comment on
+    DEFAULT_OFF_PLOTS for why the premium/discount history is the one left)."""
     assert reg.DEFAULT_OFF_PLOTS <= set(reg.REGISTRY)
     assert all(reg.REGISTRY[p].needs_asset for p in reg.DEFAULT_OFF_PLOTS)
-    assert reg.DEFAULT_OFF_PLOTS == {"max_pain", "max_pain_historical"}
+    assert reg.DEFAULT_OFF_PLOTS == {"max_pain_historical"}
 
 
 def test_sanitize_selection_drops_retired_ids():

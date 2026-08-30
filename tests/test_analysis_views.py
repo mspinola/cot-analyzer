@@ -119,10 +119,9 @@ def test_the_page_opens_on_the_stack(monkeypatch):
 
 
 def test_the_options_fed_panels_are_offered_but_not_defaulted(monkeypatch):
-    """max_pain and max_pain_historical read the daily options snapshot, and when
-    it is stale they render an empty curve and a single bar, which reads as the
-    page being broken. They stay in the picker; a fresh session's stack must not
-    vouch for them."""
+    """The panels in DEFAULT_OFF_PLOTS (the premium/discount history, whose bar
+    series mixes expiries as they roll) stay in the picker, but a fresh session's
+    stack must not vouch for them."""
     import components.plot_registry as registry
 
     def find_selector(node):
