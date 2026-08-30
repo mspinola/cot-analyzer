@@ -480,6 +480,37 @@ def risk_rank_styles_for(colors, highlight=None):
     ]
 
 
+def warm_caches():
+    """Fill the grid's two join caches so no visitor pays the cold render.
+
+    Called from main.py in a daemon thread at boot and again by the store poller
+    when a new week lands, beside `crowd.warm_caches` and for the same reason:
+    `newest_date` keys both joins, so a release invalidates the lot by
+    construction. The Signal Matrix itself arrives warm (the crowd warmer builds
+    it and this page rides along), but `_spec_risk` and `_leg_offside` did not:
+    both read the PRICE store per market, so the first Heatmap render still paid
+    the whole universe of dollar-risk and offside reads that nothing else warms.
+    Failures are logged and swallowed: a warmer that can take the server down is
+    worse than a slow first visitor.
+    """
+    try:
+        indexer = get_indexer()
+        available = indexer.get_available_dates()
+        if not available:
+            return
+        newest = available[0]
+        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        for record in df.to_dict("records"):
+            _spec_risk(record.get("Asset"), newest)
+            _leg_offside(record.get("Asset"), newest)
+        utils.cot_logger.info(
+            f"heatmap: warmed spec-risk and offside joins for {len(df)} "
+            f"markets ({newest}).")
+    except Exception as e:
+        utils.cot_logger.warning(
+            f"heatmap: cache warm failed, first render pays: {e}")
+
+
 @callback(
     Output('heatmap_display_container', 'children'),
     [Input('page_heatmap_selector', 'value'),
