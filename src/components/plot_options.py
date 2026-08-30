@@ -24,12 +24,12 @@ def get_max_pain_plot(fig, asset_name, row, col):
         return fig
 
     symbol = instrument.symbol
-    from pathlib import Path
+    # Resolve through the library, never a hardcoded path: the writer moved the
+    # history out of the derived-cache root (cotmetrics d44a5ac), and a reader
+    # pinned to the old location rendered these panels from a stale orphan copy.
+    from cotmetrics.options_data import options_history_dir
 
-    import cotmetrics.constants as const
-
-    cache_dir = Path(const.CACHE_DIR) / "options"
-    history_file = cache_dir / f"{symbol}_options_history.parquet"
+    history_file = options_history_dir() / f"{symbol}_options_history.parquet"
 
     if not history_file.exists():
         fig.add_annotation(
@@ -154,12 +154,12 @@ def get_max_pain_historical_plot(fig, asset_name, row, col, showlegend=True):
         return fig
 
     symbol = instrument.symbol
-    from pathlib import Path
+    # Resolve through the library, never a hardcoded path: the writer moved the
+    # history out of the derived-cache root (cotmetrics d44a5ac), and a reader
+    # pinned to the old location rendered these panels from a stale orphan copy.
+    from cotmetrics.options_data import options_history_dir
 
-    import cotmetrics.constants as const
-
-    cache_dir = Path(const.CACHE_DIR) / "options"
-    history_file = cache_dir / f"{symbol}_options_history.parquet"
+    history_file = options_history_dir() / f"{symbol}_options_history.parquet"
 
     if not history_file.exists():
         fig.add_annotation(
