@@ -223,3 +223,37 @@ def test_leg_spread_covers_every_leg_and_skips_uncarried_ones():
     assert dr.leg_spread(reads, "sml") == 0.0
     # comm_spread stays as the shorthand the renderer grew up on.
     assert dr.comm_spread(reads) == dr.leg_spread(reads, "comm")
+
+
+def test_a_spec_leg_disagreement_alone_keeps_the_row():
+    """The widened dim rule. A row whose Commercials agree while a spec leg
+    differs widely used to count as an agreement and dim (the rule keyed on
+    the Commercial gap alone); with legs first-class, any displayed pair
+    disagreeing by GAP_TOLERANCE or more keeps the row."""
+    rows, hidden, _ = dr.build_rows(frame(record(comm=50, comm_norm=52,
+                                                 lrg=77, lrg_norm=86)))
+    row = markets(rows)[0]
+    assert not row.dim and not row.split
+    assert hidden == 0
+    # And within tolerance on every shared leg, it dims exactly as before.
+    rows, hidden, _ = dr.build_rows(frame(record(comm=50, comm_norm=52,
+                                                 lrg=77, lrg_norm=79)))
+    assert markets(rows) == []
+    assert hidden == 1
+
+
+def test_gap_spark_is_a_self_contained_picture():
+    """The sparkline is a data-URI SVG built server-side: no Plotly instance
+    per row, nothing fetched. The threshold rule and the endpoint dot are the
+    parts a reader navigates by, so their presence is the contract; an empty
+    history draws nothing rather than an empty box."""
+    import urllib.parse
+
+    from pages.analytics.divergence import gap_spark
+
+    src = gap_spark([1.0, 3.0, 12.0, 8.0])
+    assert src.startswith("data:image/svg+xml;utf8,")
+    svg = urllib.parse.unquote(src.split(",", 1)[1])
+    assert "polyline" in svg and "stroke-dasharray" in svg and "circle" in svg
+    assert gap_spark([]) is None
+    assert gap_spark(None) is None

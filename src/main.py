@@ -87,9 +87,11 @@ def warm_page_caches():
     poller below runs in the process that did that.
     """
     from pages.analytics.crowd import warm_caches as warm_crowd_caches
+    from pages.analytics.divergence import warm_caches as warm_divergence_caches
     from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
     warm_crowd_caches()
     warm_heatmap_caches()
+    warm_divergence_caches()
 
 
 def store_poll_loop():

@@ -66,3 +66,27 @@ def test_warm_swallows_and_logs_a_failure(monkeypatch):
 
     monkeypatch.setattr(heatmap, "get_indexer", boom)
     heatmap.warm_caches()  # the warmer must never be able to take the server down
+
+
+def test_divergence_warm_fills_the_gap_histories(monkeypatch):
+    """Same contract as the other page warmers: every market touched, keyed on
+    the newest date, empty store a no-op, failure swallowed."""
+    import pages.analytics.divergence as divergence
+
+    warmed = []
+    monkeypatch.setattr(divergence, "get_indexer", lambda: _Indexer())
+    monkeypatch.setattr(
+        divergence, "get_matrix_data",
+        lambda classes, lookback, target: pd.DataFrame(
+            [{"Asset": "Gold"}, {"Asset": "Silver"}]))
+    monkeypatch.setattr(
+        divergence, "_gap_history",
+        lambda asset, newest: warmed.append((asset, newest)))
+
+    divergence.warm_caches()
+    assert set(warmed) == {("Gold", "2026-08-18"), ("Silver", "2026-08-18")}
+
+    def boom():
+        raise RuntimeError("store went away")
+    monkeypatch.setattr(divergence, "get_indexer", boom)
+    divergence.warm_caches()  # never allowed to take the server down

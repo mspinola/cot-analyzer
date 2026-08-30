@@ -12,11 +12,13 @@ page's whole question; the caption counts what was hidden so a short list cannot
 read as a short book.
 """
 
+import functools
 import urllib.parse
 from datetime import datetime
 
 import cotmetrics.constants as const
 import cotmetrics.models as models
+import cotmetrics.utils as utils
 import dash
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
@@ -76,6 +78,107 @@ def compared_models(*keys):
                 continue
         out.append(_MODELS_BY_KEY[key])
     return out
+
+@functools.lru_cache(maxsize=256)
+def _gap_history(asset, newest_date):
+    """One market's weekly basis gap (|raw - normalized| Commercial index), full
+    history, oldest first.
+
+    `newest_date` is a cache-buster and nothing else, the heatmap joins' rule: a
+    Friday release must invalidate this and nothing else does. Both series come
+    from get_symbols_data on the Custom lookback, the exact quantity the Basis
+    gap column snapshots, so the sparkline and the number can never disagree
+    about what the gap is. Returns ((date_str, gap), ...) or None when either
+    basis is missing; the catch is broad on purpose, this is a display join.
+    """
+    try:
+        raw = get_indexer().get_symbols_data(asset, "Custom", const.BASIS_RAW)
+        norm = get_indexer().get_symbols_data(asset, "Custom",
+                                              const.BASIS_OI_NORM)
+        gaps = (raw[const.COMMS_IDX] - norm[const.COMMS_IDX]).abs().dropna()
+    except Exception:
+        return None
+    if gaps.empty:
+        return None
+    return tuple((ts.strftime('%Y-%m-%d'), float(v)) for ts, v in gaps.items())
+
+
+def spark_values(asset, target_date, newest_date, weeks=52):
+    """The trailing year of gaps ending at the selected week, for one row."""
+    history = _gap_history(asset, newest_date)
+    if not history:
+        return None
+    values = [v for d, v in history if not target_date or d <= target_date]
+    return values[-weeks:] or None
+
+
+# The sparkline geometry. Height matches the row's text; the ceiling scales per
+# row to the larger of twice the threshold and the row's own maximum, so the
+# threshold rule is never squeezed above half-height and a quiet market's noise
+# is not inflated to look like history.
+SPARK_W, SPARK_H, SPARK_PAD = 110, 20, 2
+
+
+def gap_spark(values, tolerance=divergence_rows.GAP_TOLERANCE):
+    """A row's basis gap over the trailing year, as a data-URI SVG for the table.
+
+    Server-built rather than a dcc.Graph per row: forty Plotly instances is a
+    page of iframes' worth of runtime for forty 1KB pictures. The faint dashed
+    rule is the SAME tolerance the dimming and the leg emphasis use, so "above
+    the line" means exactly "wide enough to keep the row"; the endpoint dot
+    brightens when this week's gap clears it.
+    """
+    if not values:
+        return None
+    ceiling = max(2 * tolerance, max(values)) or 1
+    span = SPARK_H - 2 * SPARK_PAD
+
+    def y(v):
+        return SPARK_H - SPARK_PAD - min(v, ceiling) / ceiling * span
+
+    step = (SPARK_W - 2 * SPARK_PAD) / max(len(values) - 1, 1)
+    points = " ".join(f"{SPARK_PAD + i * step:.1f},{y(v):.1f}"
+                      for i, v in enumerate(values))
+    threshold_y = y(tolerance)
+    end_x = SPARK_PAD + (len(values) - 1) * step
+    hot = values[-1] >= tolerance
+    svg = (
+        f"<svg xmlns='http://www.w3.org/2000/svg' "
+        f"width='{SPARK_W}' height='{SPARK_H}'>"
+        f"<line x1='{SPARK_PAD}' y1='{threshold_y:.1f}' "
+        f"x2='{SPARK_W - SPARK_PAD}' y2='{threshold_y:.1f}' "
+        f"stroke='{_DIM}' stroke-opacity='0.35' stroke-dasharray='2,3'/>"
+        f"<polyline points='{points}' fill='none' stroke='{_DIM}' "
+        f"stroke-opacity='0.8' stroke-width='1'/>"
+        f"<circle cx='{end_x:.1f}' cy='{y(values[-1]):.1f}' r='2' "
+        f"fill='{_BRIGHT if hot else _DIM}'/>"
+        f"</svg>")
+    return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+
+
+def warm_caches():
+    """Fill the sparkline's per-market history cache; the page warmers' rule.
+
+    Two get_symbols_data frames per market, which nothing else on this page
+    reads until a row draws its path. Keyed on the newest date exactly as the
+    render path is, invalidated by a release by construction, failures logged
+    and swallowed.
+    """
+    try:
+        indexer = get_indexer()
+        available = indexer.get_available_dates()
+        if not available:
+            return
+        newest = available[0]
+        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        for record in df.to_dict("records"):
+            _gap_history(record.get("Asset"), newest)
+        utils.cot_logger.info(
+            f"divergence: warmed gap histories for {len(df)} markets ({newest}).")
+    except Exception as e:
+        utils.cot_logger.warning(
+            f"divergence: cache warm failed, first render pays: {e}")
+
 
 # Cell text tiers. The page dims whole rows, so these are deliberately the same two
 # colours every other surface uses for "speaks" and "background".
@@ -141,7 +244,7 @@ def _triplet(read, is_equity, bright, hot):
                       piece(read.sml, "sml")])
 
 
-def _market_tr(row, palette):
+def _market_tr(row, palette, spark=None):
     bright = not row.dim
     hot = {}
     for leg in ("comm", "lrg", "sml"):
@@ -158,6 +261,11 @@ def _market_tr(row, palette):
         cells.append(html.Td([_triplet(read, row.is_equity, bright, hot),
                               _chip(read.state, palette)],
                              style={**_CELL}))
+    # The path first, then the number it ends at. The image dims with the row.
+    cells.append(html.Td(
+        html.Img(src=spark, style={"display": "block", "marginLeft": "auto"})
+        if spark else html.Span("–", style={"color": _DIM, "opacity": 0.45}),
+        style={**_CELL, "textAlign": "right"}))
     # The gap brightens with the disagreement it measures, so the column can be
     # scanned like the connectors on the Strip's other-basis view.
     gap_bright = bright and row.gap is not None and \
@@ -177,20 +285,23 @@ def _class_tr(row, span):
     )
 
 
-def build_table(rows, palette, compare):
+def build_table(rows, palette, compare, sparks):
     """The board, as one plain table. No grid library: a name column, one column per
-    selected model, and the gap, with no sorting UI (the rows arrive sorted by
-    disagreement). Every cell is text plus a badge the app already knows how to
-    draw."""
-    span = len(compare) + 2
+    selected model, the gap's trailing-year path, and the gap, with no sorting UI
+    (the rows arrive sorted by disagreement). Every cell is text plus a badge or
+    picture the app already knows how to draw; `sparks` maps a market to its
+    pre-built path image."""
+    span = len(compare) + 3
     header = html.Tr(
         [html.Th("Market", style={**_CELL, "textAlign": "left"})]
         + [html.Th(vc.MODEL_LABELS[m.key], style={**_CELL, "textAlign": "left"})
            for m in compare]
-        + [html.Th("Basis gap", style={**_CELL, "textAlign": "right"})],
+        + [html.Th("52w gap", style={**_CELL, "textAlign": "right"}),
+           html.Th("Basis gap", style={**_CELL, "textAlign": "right"})],
         style={"fontSize": "0.68rem", "color": _DIM,
                "borderBottom": "1px solid rgba(255,255,255,0.15)"})
-    body = [(_class_tr(r, span) if r.kind == "class" else _market_tr(r, palette))
+    body = [(_class_tr(r, span) if r.kind == "class"
+             else _market_tr(r, palette, sparks.get(r.label)))
             for r in rows]
     # The scroll box is what keeps the table honest on a phone: every cell is
     # nowrap, so at 375px the rightmost columns ran past the viewport and the
@@ -219,8 +330,8 @@ def caption(report_date, show, hidden, unplaced, compare):
                    else "the one selected model")
     if show == SHOW_ALL:
         visibility = (" Agreeing markets are dimmed rather than hidden; a dimmed row "
-                      "is one where every shown verdict matches and the two bases "
-                      "read within a few points of each other.")
+                      "is one where every shown verdict matches and every leg the "
+                      "shown columns share reads within a few points.")
     else:
         visibility = (f" {hidden} market(s) agree under {agree_under} and are "
                       f"hidden; switch to All markets to see them dimmed in place."
@@ -256,7 +367,10 @@ def help_text(compare):
         f"is |raw − normalized| on the Commercial index, which is the "
         f"contract-size drift the normalization removes and the same gap the "
         f"Strip's Other basis view draws as a connector; it does not depend on "
-        f"which columns are shown. Rows sort by disagreement inside each class: "
+        f"which columns are shown. The 52w gap column draws that same gap over "
+        f"the trailing year to the selected week, the faint rule at the "
+        f"{divergence_rows.GAP_TOLERANCE}-point threshold, so a row says whether "
+        f"the bases have disagreed for months or just this week. Rows sort by disagreement inside each class: "
         f"verdict splits first, then the widest gaps.")
 
 
@@ -425,6 +539,13 @@ def render_board(asset_classes, show, col1, col2, col3, palette_name, target_dat
             style={'textAlign': 'center', 'color': vc.TEXT_COLOR,
                    'padding': '2rem 0'})
     else:
-        board = build_table(rows, palette, compare)
+        # Sparks only for the rows actually drawn: the histories are cached per
+        # market (and boot-warmed), so this loop is a dictionary walk after the
+        # first render.
+        available = get_indexer().get_available_dates()
+        newest = available[0] if available else None
+        sparks = {r.label: gap_spark(spark_values(r.label, target_date, newest))
+                  for r in rows if r.kind == "market"}
+        board = build_table(rows, palette, compare, sparks)
     return (board, caption(report_date, show, hidden, unplaced, compare),
             help_text(compare))

@@ -76,7 +76,7 @@ class DivergenceRow:
     reads: tuple = ()         # one ModelRead per model, in MODEL_ORDER
     gap: float = None         # |raw comm - normalized comm|, None if either absent
     split: bool = False       # the models' verdicts differ
-    dim: bool = False         # no split AND the gap is inside GAP_TOLERANCE
+    dim: bool = False         # no split AND no displayed leg pair differs enough
     is_equity: bool = False
 
 
@@ -154,7 +154,18 @@ def build_rows(df, show_all=False, compare=None):
         gap = abs(raw_comm - norm_comm)
 
         split = len({r.state for r in reads}) > 1
-        dim = not split and gap < GAP_TOLERANCE
+        # Value disagreement follows the DISPLAYED columns across every leg,
+        # the same rule the renderer's per-leg emphasis reads: a row whose
+        # Commercials agree while a spec leg differs widely is not an
+        # agreement (the widening this replaces keyed on the Commercial gap
+        # alone and dimmed exactly that row). A single column has no pair on
+        # any leg, so the frame's own basis gap keeps differentiating there,
+        # which is the one-column behaviour pinned by test.
+        spreads = [s for s in (leg_spread(reads, leg)
+                               for leg in ("comm", "lrg", "sml"))
+                   if s is not None]
+        value_gap = max(spreads) if spreads else gap
+        dim = not split and value_gap < GAP_TOLERANCE
         if dim and not show_all:
             hidden += 1
             continue
