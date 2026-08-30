@@ -175,6 +175,104 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
             return window.dash_clientside.no_update;
         },
+        /**
+         * The Divergence board as one PNG: caption, teaching and the whole table.
+         *
+         * Same family as export_strip_image above, with two differences forced by
+         * what this page is. There is no Plotly on it: the board is an HTML table
+         * and the sparklines are data-URI images, so the clone IS the picture and
+         * no snapshot pass is needed. And the clone is sized to the widest thing
+         * SCROLLING inside the container rather than to the container: on a phone
+         * the table pans sideways in its own box, and a clone at container width
+         * would export the clipped view that scroll box exists to avoid.
+         *
+         * Buttons are removed from the clone rather than kept outside the
+         * container: the help fold's toggle lives inside it by design (the fold is
+         * part of the page), and a control in a picture is the one thing on it
+         * that cannot be acted on.
+         */
+        export_divergence_image: function(n_clicks, target_date) {
+            if (!n_clicks) { return window.dash_clientside.no_update; }
+            if (typeof html2canvas === 'undefined') {
+                console.error("html2canvas is not loaded.");
+                return window.dash_clientside.no_update;
+            }
+            var container = document.getElementById("divergence_export_container");
+            if (!container) {
+                console.error("Could not find the divergence export container.");
+                return window.dash_clientside.no_update;
+            }
+
+            var width = container.clientWidth;
+            Array.prototype.forEach.call(
+                container.querySelectorAll('*'), function(node) {
+                    if (node.scrollWidth > width) { width = node.scrollWidth; }
+                });
+
+            var clone = container.cloneNode(true);
+            clone.style.position = 'absolute';
+            clone.style.left = '-9999px';
+            clone.style.top = '-9999px';
+            clone.style.width = (width + 40) + 'px';
+            clone.style.backgroundColor = '#1a1a1a';
+            clone.style.padding = '20px';
+
+            // Scroll boxes open up, so the export carries the columns and rows a
+            // small screen could only reach by panning.
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('*'), function(node) {
+                    if (node.style && (node.style.overflowX || node.style.overflow)) {
+                        node.style.overflow = 'visible';
+                        node.style.overflowX = 'visible';
+                        node.style.maxHeight = 'none';
+                    }
+                });
+            // And the folds, the strip export's rule: the teaching is the only
+            // thing saying what the emphasis and the threshold rule mean, so the
+            // PNG carries it whether or not the reader ever opened it.
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('.collapse'), function(node) {
+                    node.classList.add('show');
+                    node.style.height = 'auto';
+                    node.style.visibility = 'visible';
+                });
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('button'), function(node) {
+                    node.parentNode.removeChild(node);
+                });
+
+            var themeContainer = document.getElementById("theme-container")
+                || document.body;
+            themeContainer.appendChild(clone);
+            setTimeout(function() {
+                html2canvas(clone, {
+                    backgroundColor: "#1a1a1a",
+                    scale: 2,
+                    useCORS: true,
+                    logging: false
+                }).then(function(canvas) {
+                    themeContainer.removeChild(clone);
+                    var stamp = target_date;
+                    if (!stamp) {
+                        var today = new Date();
+                        stamp = today.getFullYear() + '-'
+                            + String(today.getMonth() + 1).padStart(2, '0') + '-'
+                            + String(today.getDate()).padStart(2, '0');
+                    }
+                    var link = document.createElement('a');
+                    link.download = 'cot_divergence_' + stamp + '.png';
+                    link.href = canvas.toDataURL("image/png");
+                    link.click();
+                }).catch(function(err) {
+                    console.error("html2canvas failed on the divergence clone: ", err);
+                    if (clone.parentNode === themeContainer) {
+                        themeContainer.removeChild(clone);
+                    }
+                });
+            }, 150);
+
+            return window.dash_clientside.no_update;
+        },
         export_oi_alignment_image: function(n_clicks, asset_name) {
             if (n_clicks) {
                 if (typeof html2canvas === 'undefined') {
