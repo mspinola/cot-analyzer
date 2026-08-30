@@ -21,18 +21,18 @@ import dash
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, callback, dcc, html
 
-import app_utils
 import viz_config
 import viz_constants as vc
-from components import class_filter, config_fold, divergence_rows
+from components import class_filter, config_fold, controls, divergence_rows
 from components.signal_cards import tier_of
 
 dash.register_page(__name__, path='/divergence')
 
 # Layout runs per request; the wiring must not.
 class_filter.register('divergence_class_selector')
+controls.register_target_date('divergence_date_selector')
 
 SHOW_DIFFERENCES = "differences"
 SHOW_ALL = "all"
@@ -230,7 +230,6 @@ def _column_select(column_id, default):
 
 
 def layout(**kwargs):
-    dates = get_indexer().get_available_dates()
     return html.Div([
         dbc.Container([
             dbc.Row([
@@ -239,20 +238,9 @@ def layout(**kwargs):
                         dbc.CardBody([
                             config_fold.wrap('divergence', dbc.Row([
                                 dbc.Col([
-                                    html.Label("Target Date",
-                                               style={**vc.label_style,
-                                                      "fontSize": "0.8rem",
-                                                      "textTransform": "uppercase"}),
-                                    dcc.Dropdown(
-                                        id='divergence_date_selector',
-                                        options=[{'label': d, 'value': d}
-                                                 for d in dates],
-                                        value=dates[0] if dates else None,
-                                        className="dash-dropdown bg-dark text-white",
-                                        searchable=True,
-                                        clearable=False,
-                                        style={'borderRadius': '8px'},
-                                    ),
+                                    controls.label("Target Date"),
+                                    controls.target_date_dropdown(
+                                        'divergence_date_selector'),
                                 ], xs=12, md=3, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
@@ -332,20 +320,6 @@ def layout(**kwargs):
             ]),
         ], fluid=True),
     ])
-
-
-@callback(
-    Output('divergence_date_selector', 'options'),
-    Output('divergence_date_selector', 'value'),
-    Input('cot_release_store', 'data'),
-    State('divergence_date_selector', 'options'),
-    State('divergence_date_selector', 'value'),
-)
-def follow_the_store(_release, current_options, current_value):
-    """The Heatmap's arithmetic: a tab on the newest week follows a release, one
-    parked on an older week stays where it is."""
-    return app_utils.next_date_selection(get_indexer().get_available_dates(),
-                                         current_options, current_value)
 
 
 @callback(

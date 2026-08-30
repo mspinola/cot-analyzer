@@ -16,13 +16,18 @@ import components.plot_registry as registry
 import components.tv_layout as tv_layout
 import viz_config
 import viz_constants as vc
-from components import config_fold
+from components import config_fold, controls
 
 # Register this file as a page
 dash.register_page(
     __name__,
     path='/oi_alignment'
 )
+
+# Layout runs per request; the wiring must not.
+controls.register_lookback('oi_alignment_lookback_selector')
+controls.register_model('oi_alignment_model_selector',
+                        choices=vc.MODEL_VIEW_CHOICES)
 
 # Which panels this page offers, in stack order. Labels and everything else about them
 # comes from the registry, so a plot is described in one place rather than five.
@@ -178,7 +183,7 @@ def layout(**kwargs):
             config_fold.wrap('oi_alignment', [
             dbc.Row([
                 dbc.Col([
-                    html.Label("Asset Class", style=vc.label_style),
+                    controls.label("Asset Class"),
                     dbc.RadioItems(
                         id='oi_alignment_asset_class_selector',
                         options=[{'label': c, 'value': c} for c in asset_classes],
@@ -192,7 +197,7 @@ def layout(**kwargs):
                 ], xs=12, md="auto"),
 
                 dbc.Col([
-                    html.Label("Asset Selector", style=vc.label_style),
+                    controls.label("Asset Selector"),
                     dcc.Dropdown(
                         id='oi_alignment_single_asset_filter_input',
                         options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
@@ -207,7 +212,7 @@ def layout(**kwargs):
 
             dbc.Row([
                 dbc.Col([
-                    html.Label("Visible Plots", style=vc.label_style),
+                    controls.label("Visible Plots"),
                     dcc.Dropdown(
                         persistence=True,
                         id='oi_alignment_plot_selector',
@@ -219,41 +224,27 @@ def layout(**kwargs):
                     ),
                 ], xs=12, md="auto"),
                 dbc.Col([
-                    html.Label("Lookback:", style=vc.label_style),
-                    dbc.Select(
-                        id='oi_alignment_lookback_selector',
-                        persistence='session',
-                        options=[
-                            {"label": "26 Weeks", "value": "26"},
-                            {"label": "52 Weeks", "value": "52"},
-                            {"label": "Custom", "value": "Custom"},
-                        ],
-                        value="Custom",
+                    controls.label("Lookback"),
+                    controls.lookback_select(
+                        'oi_alignment_lookback_selector',
                         className="mb-3 bg-dark text-white border-secondary control-mobile-full",
-                        style={'width': '120px'}
-                    )
+                        style={'width': '120px'})
                 ], xs=12, md="auto"),
 
                 dbc.Col([
-                    html.Label("Model:", style=vc.label_style),
-                    dbc.Select(
-                        id='oi_alignment_model_selector',
-                        persistence='session',
-                        options=[
-                            {"label": vc.MODEL_LABELS[v], "value": v}
-                            for v in vc.MODEL_VIEW_CHOICES
-                        ],
-                        value=models.DEFAULT_MODEL.key,
+                    controls.label("Model"),
+                    controls.model_select(
+                        'oi_alignment_model_selector',
+                        choices=vc.MODEL_VIEW_CHOICES,
                         className="mb-3 bg-dark text-white border-secondary control-mobile-full",
-                        style={'width': '110px'}
-                    ),
+                        style={'width': '110px'}),
                     html.Div(id='oi_alignment_model_note',
                              className="text-muted",
                              style={'fontSize': '0.7rem', 'marginTop': '-10px'}),
                 ], xs=12, md="auto"),
 
                 dbc.Col([
-                    html.Label("Cols", style=vc.label_style),
+                    controls.label("Cols"),
                     dbc.Select(
                         id='oi_alignment_columns_selector',
                         persistence='session',
@@ -270,7 +261,7 @@ def layout(**kwargs):
 
                 dbc.Col([
                     html.Div([
-                        html.Label("Delta $ Overlay", style=vc.label_style),
+                        controls.label("Delta $ Overlay"),
                         dbc.RadioItems(
                             id='oi_alignment_price_overlay_selector',
                             persistence=True,
@@ -343,60 +334,10 @@ def layout(**kwargs):
     ])
 
 
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('oi_alignment_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('oi_alignment_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('oi_alignment_lookback_selector', 'value')
-)
-def update_local_lookback(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
-
 # ── positioning basis ─────────────────────────────────────────────────────────
 # Shares global_model_store with the Graphs page rather than keeping a local copy, so
 # picking "% of OI" on one page and navigating to the other does not silently switch
 # back. Same store, same two-way sync, same demotion rules.
-
-@callback(
-    Output('global_model_store', 'data', allow_duplicate=True),
-    Input('oi_alignment_model_selector', 'value'),
-    State('global_model_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_model(value, current_store_val):
-    new_val = value if value in vc.MODEL_VIEW_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('oi_alignment_model_selector', 'value'),
-    Input('global_model_store', 'data'),
-    State('oi_alignment_model_selector', 'value')
-)
-def update_local_model(value, current_local_val):
-    new_val = value if value in vc.MODEL_VIEW_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
 
 @callback(
     Output('global_model_store', 'data', allow_duplicate=True),
@@ -442,19 +383,16 @@ def update_model_availability(selected_plots):
     *any* selected panel responds rather than whether the single one does. A control
     that silently does nothing teaches the user it is broken.
     """
-    def opts(views):
-        return [{"label": vc.MODEL_LABELS[v], "value": v} for v in views]
-
     aware = _basis_aware(selected_plots)
     if not aware:
         # One selected plot means we can say *why* it does not respond; several means
         # the specific reasons stop being worth the line of text.
         note = (registry.BASIS_INVARIANT_NOTE.get(selected_plots[0], vc.NO_BASIS_PLOTS_NOTE)
                 if selected_plots and len(selected_plots) == 1 else vc.NO_BASIS_PLOTS_NOTE)
-        return opts(vc.MODEL_CHOICES), True, note
+        return controls.model_options(vc.MODEL_CHOICES), True, note
     if _overlayable(selected_plots):
-        return opts(vc.MODEL_VIEW_CHOICES), False, ""
-    return opts(vc.MODEL_CHOICES), False, vc.NO_OVERLAY_NOTE
+        return controls.model_options(vc.MODEL_VIEW_CHOICES), False, ""
+    return controls.model_options(vc.MODEL_CHOICES), False, vc.NO_OVERLAY_NOTE
 
 
 @callback(

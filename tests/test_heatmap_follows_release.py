@@ -13,6 +13,7 @@ wrong on any deliberate look at an older week.
 """
 from dash import no_update
 
+import app_utils
 from pages.analytics import heatmap
 
 WEEKS = ["2026-08-11", "2026-08-04", "2026-07-28"]   # newest first, as the page lists them
@@ -26,7 +27,7 @@ def opts(dates):
 
 def test_a_tab_on_the_newest_week_follows_the_new_one():
     """The regression. Nobody chose to sit on 08-04, so it tracks."""
-    options, value = heatmap.next_date_selection(
+    options, value = app_utils.next_date_selection(
         WEEKS, opts(WEEKS[1:]), "2026-08-04")
 
     assert [o['value'] for o in options] == WEEKS, "the new week was never offered"
@@ -35,7 +36,7 @@ def test_a_tab_on_the_newest_week_follows_the_new_one():
 
 def test_a_deliberately_chosen_older_week_is_left_alone():
     """Picking a week is a decision. A release must not yank the reader off it."""
-    options, value = heatmap.next_date_selection(
+    options, value = app_utils.next_date_selection(
         WEEKS, opts(WEEKS[1:]), "2026-07-28")
 
     assert [o['value'] for o in options] == WEEKS, "the new week must still be offered"
@@ -48,14 +49,14 @@ def test_an_unmoved_store_changes_nothing():
     Returning the same options object would re-render the control, and returning the
     same value would re-fire the grid callback, on every tick, for every open tab.
     """
-    options, value = heatmap.next_date_selection(WEEKS, opts(WEEKS), "2026-08-11")
+    options, value = app_utils.next_date_selection(WEEKS, opts(WEEKS), "2026-08-11")
 
     assert options is no_update
     assert value is no_update
 
 
 def test_a_first_render_with_no_prior_options_takes_the_newest():
-    options, value = heatmap.next_date_selection(WEEKS, None, None)
+    options, value = app_utils.next_date_selection(WEEKS, None, None)
 
     assert [o['value'] for o in options] == WEEKS
     assert value == "2026-08-11"
@@ -63,7 +64,7 @@ def test_a_first_render_with_no_prior_options_takes_the_newest():
 
 def test_a_selection_that_no_longer_exists_falls_back_to_the_newest():
     """A vintage revision can withdraw a week. Do not leave the grid pinned to nothing."""
-    options, value = heatmap.next_date_selection(
+    options, value = app_utils.next_date_selection(
         WEEKS, opts(["2026-08-18", "2026-08-11"]), "2026-08-18")
 
     assert [o['value'] for o in options] == WEEKS
@@ -73,7 +74,7 @@ def test_a_selection_that_no_longer_exists_falls_back_to_the_newest():
 def test_an_empty_index_changes_nothing():
     """Mid-rebuild the indexer can answer with no dates. Blanking the control on the
     strength of that would replace a working page with an empty one."""
-    options, value = heatmap.next_date_selection([], opts(WEEKS), "2026-08-11")
+    options, value = app_utils.next_date_selection([], opts(WEEKS), "2026-08-11")
 
     assert options is no_update
     assert value is no_update

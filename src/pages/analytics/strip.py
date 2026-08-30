@@ -32,19 +32,21 @@ import dash_bootstrap_components as dbc
 from cotmetrics import exposure, indicators
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, State, callback, clientside_callback, dcc, html, no_update
+from dash import Input, Output, State, callback, clientside_callback, dcc, html
 
-import app_utils
 import components.strip_traces as strip_traces
 import viz_config
 import viz_constants as vc
-from components import class_filter
+from components import class_filter, controls
 from components.plot_colors import grid_colors
 
 dash.register_page(__name__, path='/strip')
 
 # Layout runs per request; the wiring must not.
 class_filter.register('strip_class_selector')
+controls.register_lookback('strip_lookback_selector')
+controls.register_model('strip_model_selector')
+controls.register_target_date('strip_date_selector')
 
 SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
@@ -380,44 +382,26 @@ def layout(**kwargs):
                                          className="mt-2", children=[
                             dbc.Row([
                                 dbc.Col([
-                                    html.Label("Target Date", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dcc.Dropdown(
-                                        id='strip_date_selector',
-                                        options=[{'label': d, 'value': d} for d in get_indexer().get_available_dates()],
-                                        value=get_indexer().get_available_dates()[0] if get_indexer().get_available_dates() else None,
-                                        className="dash-dropdown bg-dark text-white",
-                                        searchable=True,
-                                        clearable=False,
-                                        style={'borderRadius': '8px'}
-                                    )
+                                    controls.label("Target Date"),
+                                    controls.target_date_dropdown(
+                                        'strip_date_selector')
                                 ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
-                                    html.Label("Model", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Select(
-                                        id='strip_model_selector',
-                                        options=[{"label": vc.MODEL_LABELS[k], "value": k,
-                                                  "title": vc.MODEL_TOOLTIPS[k]}
-                                                 for k in vc.MODEL_CHOICES],
-                                        value=models.DEFAULT_MODEL.key,
-                                        size="sm",
-                                        className="bg-dark text-white border-secondary",
-                                    )
+                                    controls.label("Model"),
+                                    # persistence=None keeps this page's original
+                                    # behaviour: the value rides the global store,
+                                    # not its own browser copy.
+                                    controls.model_select(
+                                        'strip_model_selector', size="sm",
+                                        persistence=None)
                                 ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
-                                    html.Label("Lookback", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Select(
-                                        id='strip_lookback_selector',
-                                        options=[
-                                            {"label": "26 Weeks", "value": "26"},
-                                            {"label": "52 Weeks", "value": "52"},
-                                            {"label": "Custom", "value": "Custom"},
-                                        ],
-                                        value="Custom",
-                                        size="sm",
-                                        className="bg-dark text-white border-secondary",
-                                    )
+                                    controls.label("Lookback"),
+                                    controls.lookback_select(
+                                        'strip_lookback_selector', size="sm",
+                                        persistence=None)
                                 ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
@@ -565,73 +549,6 @@ def layout(**kwargs):
             ])
         ], fluid=True),
     ])
-
-
-@callback(
-    Output('strip_date_selector', 'options'),
-    Output('strip_date_selector', 'value'),
-    Input('cot_release_store', 'data'),
-    State('strip_date_selector', 'options'),
-    State('strip_date_selector', 'value'),
-)
-def follow_the_store(_release, current_options, current_value):
-    """Re-offer the available weeks when the server takes a new one.
-
-    Shares the Heatmap's arithmetic rather than restating it: a tab sitting on the
-    newest week follows the release, one parked on an older week stays where it is.
-    """
-    return app_utils.next_date_selection(get_indexer().get_available_dates(),
-                                         current_options, current_value)
-
-
-@callback(
-    Output('global_model_store', 'data', allow_duplicate=True),
-    Input('strip_model_selector', 'value'),
-    State('global_model_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_model(value, current_store_val):
-    new_val = value if value in vc.MODEL_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('strip_model_selector', 'value'),
-    Input('global_model_store', 'data'),
-    State('strip_model_selector', 'value'),
-)
-def follow_global_model(value, current_local_val):
-    new_val = value if value in vc.MODEL_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('strip_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ("26", "52", "Custom") else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('strip_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('strip_lookback_selector', 'value'),
-)
-def follow_global_lookback(value, current_local_val):
-    new_val = value if value in ("26", "52", "Custom") else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
 
 
 @callback(

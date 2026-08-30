@@ -16,25 +16,24 @@ from dash import (
     ClientsideFunction,
     Input,
     Output,
-    State,
     callback,
     clientside_callback,
     dcc,
     html,
-    no_update,
 )
 
 import app_utils
 import viz_config
 import viz_constants as vc
-from app_utils import next_date_selection
-from components import class_filter, config_fold
+from components import class_filter, config_fold, controls
 from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
 dash.register_page(__name__, path="/heatmap")
 
 # Layout runs per request; the wiring must not.
 class_filter.register('page_heatmap_selector')
+controls.register_lookback('heatmap_lookback_selector')
+controls.register_target_date('heatmap_date_selector')
 
 # The Setups filter. Values are stored in a session-persisted control, so they are a
 # wire format: renaming one silently resets a returning reader's filter to the default.
@@ -126,32 +125,16 @@ def layout(**kwargs):
                             # one button tall.
                             config_fold.wrap('heatmap', dbc.Row([
                                 dbc.Col([
-                                    html.Label("Lookback Window", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Select(
-                                        id='heatmap_lookback_selector',
-                                        persistence='session',
-                                        options=[
-                                            {"label": "26 Weeks", "value": "26"},
-                                            {"label": "52 Weeks", "value": "52"},
-                                            {"label": "Custom", "value": "Custom"},
-                                        ],
-                                        value="Custom",
-                                        className="bg-dark text-white border-secondary",
-                                        style={'borderRadius': '8px'}
-                                    )
+                                    controls.label("Lookback"),
+                                    controls.lookback_select(
+                                        'heatmap_lookback_selector',
+                                        style={'borderRadius': '8px'})
                                 ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md"),
 
                                 dbc.Col([
-                                    html.Label("Target Date", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dcc.Dropdown(
-                                        id='heatmap_date_selector',
-                                        options=[{'label': d, 'value': d} for d in get_indexer().get_available_dates()],
-                                        value=get_indexer().get_available_dates()[0] if get_indexer().get_available_dates() else None,
-                                        className="dash-dropdown bg-dark text-white",
-                                        searchable=True,
-                                        clearable=False,
-                                        style={'borderRadius': '8px'}
-                                    )
+                                    controls.label("Target Date"),
+                                    controls.target_date_dropdown(
+                                        'heatmap_date_selector')
                                 ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
 
                                 dbc.Col([
@@ -225,50 +208,11 @@ def layout(**kwargs):
 
 
 @callback(
-    Output('heatmap_date_selector', 'options'),
-    Output('heatmap_date_selector', 'value'),
-    Input('cot_release_store', 'data'),
-    State('heatmap_date_selector', 'options'),
-    State('heatmap_date_selector', 'value'),
-)
-def follow_the_store(_release, current_options, current_value):
-    """Re-offer the available weeks when the server takes a new one."""
-    return next_date_selection(get_indexer().get_available_dates(),
-                               current_options, current_value)
-
-
-@callback(
     Output('heatmap_snapshot_caption', 'children'),
     Input('heatmap_date_selector', 'value'),
 )
 def update_snapshot_caption(target_date):
     return snapshot_caption(target_date)
-
-
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('heatmap_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('heatmap_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('heatmap_lookback_selector', 'value')
-)
-def update_local_lookback(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
 
 
 # The verdict colour set moved to components.plot_colors when the Crowding Strip
