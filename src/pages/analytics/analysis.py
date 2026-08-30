@@ -421,7 +421,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                      config={
                          'scrollZoom': False,
                          'doubleClick': 'reset',
-                         'displayModeBar': True,
+                         'displayModeBar': not app_utils.is_mobile(),
                          'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
                          'responsive': True,
                          'displaylogo': False,

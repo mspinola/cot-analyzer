@@ -11,7 +11,21 @@ import pandas as pd
 from dash import html
 from plotly.subplots import make_subplots
 
+import app_utils
 import viz_constants as vc
+
+
+def plot_margin_top():
+    """The figure's top chrome in pixels, per request: smaller on a phone.
+
+    A function rather than a constant because it answers per user agent, and
+    every reader must agree within one figure: get_figure_height reserves this
+    space, get_plot_area_height subtracts it, and the layout pass sets it as
+    the margin. One of them reading the desktop number while another read the
+    mobile one would misplace every subplot domain.
+    """
+    return (vc.PLOT_MARGIN_TOP_MOBILE if app_utils.is_mobile()
+            else vc.PLOT_MARGIN_TOP)
 
 
 def get_nice_dtick(span, num_ticks=4):
@@ -53,7 +67,7 @@ FACET_ROW_HEIGHT = 120
 def get_facet_figure_height(rows, cols):
     return (rows * FACET_ROW_HEIGHT
             + max(0, rows - 1) * 12
-            + vc.PLOT_MARGIN_TOP + vc.PLOT_MARGIN_BOTTOM)
+            + plot_margin_top() + vc.PLOT_MARGIN_BOTTOM)
 
 
 def get_figure_height(rows, cols):
@@ -70,12 +84,12 @@ def get_figure_height(rows, cols):
     """
     return (rows * pixels_per_plot_for_cols(cols)
             + max(0, rows - 1) * const.PIXELS_OVERHEAD_PER_PLOT
-            + vc.PLOT_MARGIN_TOP + vc.PLOT_MARGIN_BOTTOM)
+            + plot_margin_top() + vc.PLOT_MARGIN_BOTTOM)
 
 
 def get_plot_area_height(rows, cols):
     """Figure height minus the fixed chrome — the space subplot domains actually span."""
-    return get_figure_height(rows, cols) - vc.PLOT_MARGIN_TOP - vc.PLOT_MARGIN_BOTTOM
+    return get_figure_height(rows, cols) - plot_margin_top() - vc.PLOT_MARGIN_BOTTOM
 
 
 def get_make_subplots_for_facets(rows, cols, titles, specs):
@@ -86,7 +100,7 @@ def get_make_subplots_for_facets(rows, cols, titles, specs):
     only has to keep the marks apart, and a large one would push five categories off
     the screen, which is the thing small multiples exist to avoid.
     """
-    plot_area = get_facet_figure_height(rows, cols) - vc.PLOT_MARGIN_TOP - vc.PLOT_MARGIN_BOTTOM
+    plot_area = get_facet_figure_height(rows, cols) - plot_margin_top() - vc.PLOT_MARGIN_BOTTOM
     v_spacing = (12.0 / plot_area) if rows > 1 and plot_area > 0 else 0.02
     return make_subplots(
         rows=rows,
@@ -126,13 +140,7 @@ def visible_weeks():
     x-window this sets, so the number lives in one place rather than being recomputed
     beside every axis.
     """
-    import flask
-    is_mobile = False
-    if flask.has_request_context():
-        user_agent = flask.request.headers.get('User-Agent', '').lower()
-        if any(kw in user_agent for kw in ['mobile', 'android', 'iphone', 'ipad', 'phone', 'ipod']):
-            is_mobile = True
-    return 52 if is_mobile else const.DEFAULT_WEEKS_TO_VIEW
+    return 52 if app_utils.is_mobile() else const.DEFAULT_WEEKS_TO_VIEW
 
 
 def hide_inner_facet_xlabels(fig, rows, cols):
@@ -240,18 +248,31 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None, hover_
     linear_args = {f"{k}.type": "linear" for k in price_axes}
     log_args = {f"{k}.type": "log" for k in price_axes}
 
+    # Seven range buttons plus the log toggle at x=0.35 collide at phone width,
+    # so a mobile request gets the three that bracket the range and the toggle
+    # moves to the right edge (below). The full ladder stays on desktop.
+    mobile = app_utils.is_mobile()
+    if mobile:
+        range_buttons = [
+            dict(count=1, label="1Y", step="year", stepmode="backward"),
+            dict(count=3, label="3Y", step="year", stepmode="backward"),
+            dict(step="all", label="Max"),
+        ]
+    else:
+        range_buttons = [
+            dict(count=1, label="1Y", step="year", stepmode="backward"),
+            dict(count=2, label="2Y", step="year", stepmode="backward"),
+            dict(count=3, label="3Y", step="year", stepmode="backward"),
+            dict(count=5, label="5Y", step="year", stepmode="backward"),
+            dict(count=10, label="10Y", step="year", stepmode="backward"),
+            dict(count=15, label="15Y", step="year", stepmode="backward"),
+            dict(step="all", label="Max"),
+        ]
+
     layout_updates = dict(
         xaxis=dict(
             rangeselector=dict(
-                buttons=list([
-                    dict(count=1, label="1Y", step="year", stepmode="backward"),
-                    dict(count=2, label="2Y", step="year", stepmode="backward"),
-                    dict(count=3, label="3Y", step="year", stepmode="backward"),
-                    dict(count=5, label="5Y", step="year", stepmode="backward"),
-                    dict(count=10, label="10Y", step="year", stepmode="backward"),
-                    dict(count=15, label="15Y", step="year", stepmode="backward"),
-                    dict(step="all", label="Max")
-                ]),
+                buttons=range_buttons,
                 bgcolor=vc.BLUE_BACKGROUND,
                 activecolor=vc.BLUE_BACKGROUND,
                 font=dict(color=vc.BRIGHTER_TEXT_COLOR, size=11),
@@ -274,13 +295,17 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None, hover_
             y=legend_y,
             xanchor="center",
             x=0.5,
-            font=dict(size=12, color=vc.TEXT_COLOR),
+            # 10pt on mobile, where the horizontal legend wraps to one item per
+            # row: at 12pt four items already spent 87 of the 160px mobile
+            # margin, and the six-item Disagg/TFF combined view would have
+            # climbed into the title.
+            font=dict(size=10 if mobile else 12, color=vc.TEXT_COLOR),
             bgcolor=vc.BACKGROUND_COLOR,
         ),
         spikedistance=1000,
         hoverdistance=100,
         font=dict(size=10),
-        margin=dict(t=vc.PLOT_MARGIN_TOP, b=vc.PLOT_MARGIN_BOTTOM, l=10, r=10),
+        margin=dict(t=plot_margin_top(), b=vc.PLOT_MARGIN_BOTTOM, l=10, r=10),
         bargap=0.2,
     )
 
@@ -289,9 +314,12 @@ def get_update_layout_for_plots(fig, num_rows, num_cols, main_title=None, hover_
             dict(
                 type="buttons",
                 direction="right",
-                x=0.35,          # Aligns right next to the range selector
+                # Desktop: right next to the range selector. Mobile: the three
+                # range buttons plus this pair still cannot share x=0.35 on a
+                # ~340px plot, so it right-aligns instead.
+                x=1.0 if mobile else 0.35,
                 y=buttons_y,
-                xanchor="left",
+                xanchor="right" if mobile else "left",
                 yanchor="bottom",
                 font=dict(color=vc.BRIGHTER_TEXT_COLOR, size=11),
                 bgcolor=vc.BLUE_BACKGROUND,

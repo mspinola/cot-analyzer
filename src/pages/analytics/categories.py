@@ -435,7 +435,7 @@ def render_category_stack(palette_name, asset, report, selected_categories,
                      config={
                          'scrollZoom': False,
                          'doubleClick': 'reset',
-                         'displayModeBar': True,
+                         'displayModeBar': not app_utils.is_mobile(),
                          'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
                          'displaylogo': False,
                          'responsive': True},

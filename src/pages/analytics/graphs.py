@@ -416,7 +416,9 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback, model
                      config={
                         'scrollZoom': False,
                         'doubleClick': 'reset',
-                        'displayModeBar': True,
+                        # Off on a phone: hover-revealed buttons have no hover,
+                        # and the bar painted over the figure title at 375px.
+                        'displayModeBar': not app_utils.is_mobile(),
                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
                         'displaylogo': False,
                         'responsive': True},

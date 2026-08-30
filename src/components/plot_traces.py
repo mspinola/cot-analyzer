@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+import app_utils
 import viz_constants as vc
 from components.plot_colors import hex_to_rgba, lighten_hex
 from components.plot_layout import get_nice_dtick
@@ -246,14 +247,7 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
 
 
 def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_price=False, show_flips=False, y_title="net position"):
-    import flask
-    is_mobile = False
-    if flask.has_request_context():
-        user_agent = flask.request.headers.get('User-Agent', '').lower()
-        if any(kw in user_agent for kw in ['mobile', 'android', 'iphone', 'ipad', 'phone', 'ipod']):
-            is_mobile = True
-
-    weeks_to_view = 52 if is_mobile else const.DEFAULT_WEEKS_TO_VIEW
+    weeks_to_view = 52 if app_utils.is_mobile() else const.DEFAULT_WEEKS_TO_VIEW
     start_idx = max(0, len(df) - weeks_to_view)
 
     # Scale y-axes to the visible range so the bars aren't squished by historical extremes
