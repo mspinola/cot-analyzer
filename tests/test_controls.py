@@ -74,3 +74,44 @@ def test_label_is_the_uppercase_caption_style():
     assert lbl.style["textTransform"] == "uppercase"
     # Geometry overrides merge here too (the chart pages keep their mb spacing).
     assert controls.label("X", marginBottom="0.5rem").style["marginBottom"] == "0.5rem"
+
+
+# ── the as-of week ────────────────────────────────────────────────────────────
+#
+# The scenarios below are the ones next_date_selection pinned before the store
+# existed, restated against the store's two halves: what a selection is stored
+# AS (week_for_store) and what a stored value resolves TO (resolve_week). The
+# split is the whole design: "tracking the newest" is stored as None, so a
+# release moves every tracking page at once, while a parked week is stored as
+# itself and stays put.
+
+WEEKS = ["2026-08-11", "2026-08-04", "2026-07-28"]   # newest first
+
+
+def test_picking_the_newest_week_stores_tracking_not_the_date():
+    """The regression the old per-control arithmetic existed for. Nobody chose
+    to sit on the newest week, so it must follow the next release; storing its
+    concrete date would pin every page the moment a release made it old."""
+    assert controls.week_for_store("2026-08-11", WEEKS) is None
+    assert controls.resolve_week(None, WEEKS) == "2026-08-11"
+    # ...and after a release, tracking lands on the NEW newest.
+    assert controls.resolve_week(None, ["2026-08-18"] + WEEKS) == "2026-08-18"
+
+
+def test_a_deliberately_chosen_older_week_is_stored_and_stays_parked():
+    """Picking a week is a decision. A release must not yank the reader off it."""
+    assert controls.week_for_store("2026-07-28", WEEKS) == "2026-07-28"
+    assert controls.resolve_week("2026-07-28", ["2026-08-18"] + WEEKS) == "2026-07-28"
+
+
+def test_a_stored_week_this_history_does_not_hold_falls_back_to_the_newest():
+    assert controls.resolve_week("1999-01-01", WEEKS) == "2026-08-11"
+    assert controls.week_for_store("1999-01-01", WEEKS) is None
+
+
+def test_an_empty_index_changes_nothing():
+    """Mid-sync the store can serve an empty date list; neither half may turn
+    that into a stored claim or a drawn value."""
+    assert controls.week_for_store("2026-08-11", []) is None
+    assert controls.resolve_week("2026-08-11", []) is None
+    assert controls.resolve_week(None, []) is None
