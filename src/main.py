@@ -76,6 +76,22 @@ log.addFilter(DropScannerNoise())
 STORE_POLL_SECONDS = 5 * 60
 
 
+def warm_page_caches():
+    """Every page warmer, one thread, in dependency order.
+
+    The crowd warmer builds the Signal Matrix the heatmap warmer's joins ride
+    on, so crowd runs first and the heatmap pass starts against a warm frame.
+    One thread rather than one per page: the warmers share the price store and
+    the indexer, and racing them buys nothing but contention. Imported inside
+    the function because a page module needs the Dash app instantiated, and the
+    poller below runs in the process that did that.
+    """
+    from pages.analytics.crowd import warm_caches as warm_crowd_caches
+    from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
+    warm_crowd_caches()
+    warm_heatmap_caches()
+
+
 def store_poll_loop():
     """Notice a new COT week even when nobody has the site open.
 
@@ -119,13 +135,13 @@ def store_poll_loop():
         try:
             if get_indexer().refresh_if_stale():
                 utils.cot_logger.info("Store poller: picked up a new COT week.")
-                # The new week keys every entry in the crowd board's caches, so the
-                # refresh just invalidated them all; re-warm in the background so
-                # the first visitor of the new week does not pay the cold render.
-                # A thread rather than inline, to keep this loop's tick short.
-                from pages.analytics.crowd import warm_caches as warm_crowd_caches
+                # The new week keys every entry in the crowd board's and the
+                # heatmap's join caches, so the refresh just invalidated them
+                # all; re-warm in the background so the first visitor of the new
+                # week does not pay the cold renders. A thread rather than
+                # inline, to keep this loop's tick short.
                 threading.Thread(
-                    target=warm_crowd_caches, name="crowd-warmer", daemon=True
+                    target=warm_page_caches, name="page-warmer", daemon=True
                 ).start()
 
             # After the refresh, never before: refresh_if_stale blocks until the index
@@ -415,12 +431,11 @@ if __name__ == "__main__":
         # After the app import, never before: importing the page needs the Dash app
         # instantiated (register_page raises otherwise). Same process rule as the
         # poller above, and for the same reason: the caches being warmed live on
-        # module objects in whichever process serves HTTP. See crowd.warm_caches for
-        # what is warmed and what it measured.
+        # module objects in whichever process serves HTTP. See crowd.warm_caches
+        # and heatmap.warm_caches for what is warmed and what it measured.
         if serves_requests:
-            from pages.analytics.crowd import warm_caches as warm_crowd_caches
             threading.Thread(
-                target=warm_crowd_caches, name="crowd-warmer", daemon=True
+                target=warm_page_caches, name="page-warmer", daemon=True
             ).start()
 
         try:
