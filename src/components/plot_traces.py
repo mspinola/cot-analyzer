@@ -15,7 +15,23 @@ import plotly.graph_objects as go
 import app_utils
 import viz_constants as vc
 from components.plot_colors import hex_to_rgba, lighten_hex
-from components.plot_layout import get_nice_dtick
+from components.plot_layout import get_nice_dtick, visible_weeks
+
+# Price OVERLAYS start switched off, one legend click from being drawn.
+#
+# An overlay is price on a second y-axis of a panel whose subject is something else.
+# Two scales on one panel align arbitrarily, so where the green line crosses the
+# series under it is an artifact of the two ranges rather than anything the data
+# says, and it is the reading a price line invites. Opt-in keeps it available for
+# the reader who wants the shape without asserting that relationship to everyone
+# else. It is also the single most-drawn trace on these pages: eight panels of one
+# stack each carry it.
+#
+# This is NOT price wherever price is the panel's own subject: the candlestick panel
+# below and the categories facet's dedicated price row are not overlays, they have
+# their own axis, and they keep drawing. `legendonly` rather than False so the entry
+# is still in the legend to click.
+PRICE_OVERLAY_VISIBILITY = "legendonly"
 
 
 def update_legend(fig, showlegend, color_palette, show_price):
@@ -23,17 +39,24 @@ def update_legend(fig, showlegend, color_palette, show_price):
 
     Lives with the traces rather than the layout because that is what it adds. The
     legend is a figure-level thing, but the entries in it are not.
+
+    The entries are what a reader actually clicks: the real traces carry
+    `showlegend=False` and the same `legendgroup`, and Plotly toggles a whole group
+    from one entry. So the Price entry must start in the same state as the overlays
+    it controls, or the legend would show an ungreyed Price over panels not drawing
+    one, and the first click would hide what was already hidden.
     """
     if showlegend:
         add_legend_lines(fig, "Commercials", color_palette[0])
         add_legend_lines(fig, "Large Specs", color_palette[1])
         add_legend_lines(fig, "Small Specs", color_palette[2])
         if show_price:
-            add_legend_lines(fig, "Price", color_palette[3])
+            add_legend_lines(fig, "Price", color_palette[3],
+                             visible=PRICE_OVERLAY_VISIBILITY)
     return fig
 
 
-def add_legend_lines(fig, name, color):
+def add_legend_lines(fig, name, color, visible=True):
     fig.add_trace(go.Scatter(
         x=[None],
         y=[None],
@@ -41,10 +64,55 @@ def add_legend_lines(fig, name, color):
         marker_color=color,
         marker=dict(opacity=1, line=dict(color=color, width=1)),
         legendgroup=name.lower(),
+        visible=visible,
         showlegend=True,
         name=name
     ))
     return fig
+
+
+def add_price_overlay(fig, df, row, col, color_palette):
+    """The green price line on a positioning panel, off until asked for.
+
+    Eight panels drew this with the same nine arguments. One call site means the
+    visibility rule above is stated once rather than being eight things to keep in
+    step, which is how the legend entry and the traces come apart.
+    """
+    add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price",
+                     color_palette[3], 3, secondary=True, opacity=0.6,
+                     visible=PRICE_OVERLAY_VISIBILITY)
+    # The "$" axis is drawn whether or not the line is, so it has to read correctly
+    # while empty. Autorange fits VISIBLE traces, and with the only one switched off
+    # Plotly falls back to its default: every panel printed a dollar axis running -1
+    # to 4, which is both meaningless and, being partly negative, not a price.
+    #
+    # Set BEFORE each caller's own update_yaxes, which names different keys and
+    # therefore merges rather than overwriting this.
+    fig.update_yaxes(range=price_window_range(df), row=row, col=col,
+                     secondary_y=True)
+    return fig
+
+
+def price_window_range(df, pad=0.10):
+    """Price high and low over the weeks the chart opens on, with breathing room.
+
+    The window rather than all of history, for the reason spelled out in
+    category_traces._fit_range: `get_update_xaxes_for_plots` opens the chart on the
+    last `visible_weeks()`, so an axis fitted to a market's whole price history can
+    leave the visible stretch in a sliver of it. It is also what the reader gets the
+    instant they switch the line on, and what the clientside autoscale would compute
+    for them on their first pan.
+    """
+    if const.CLOSING_PRICE not in df.columns:
+        return None
+    window = df.iloc[max(0, len(df) - visible_weeks()):]
+    lo, hi = window[const.CLOSING_PRICE].min(), window[const.CLOSING_PRICE].max()
+    if pd.isna(lo) or pd.isna(hi):
+        return None
+    # A flat series still needs a band, scaled to its own magnitude: a fixed floor
+    # would swamp a currency quoted near 1 and vanish on an index near 40,000.
+    span = (hi - lo) or abs(hi) * pad or 1.0
+    return [lo - span * pad, hi + span * pad]
 
 
 def add_open_interest_legend(fig, color_palette):
@@ -126,7 +194,7 @@ def get_open_interest_percent_plot(fig, df, row, col, color_palette, show_price=
     add_trace_to_all(fig, df, const.LARGE_PCT_OI, row, col, "Large Specs", color_palette[1], 1)
     add_trace_to_all(fig, df, const.SMALL_PCT_OI, row, col, "Small Specs", color_palette[2], 2)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -153,7 +221,7 @@ def get_open_interest_percent_plot(fig, df, row, col, color_palette, show_price=
 def get_willco_plot(fig, df, row, col, color_palette, show_price=True):
     add_trace_to_all(fig, df, const.WILLCO_ALIAS, row, col, "Willco", color_palette[0], 0, showlegend=False)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -187,7 +255,7 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
     add_trace_to_all(fig, df, const.LRG_SPEARMAN, row, col, "Large Specs", color_palette[1], 1)
     add_trace_to_all(fig, df, const.SML_SPEARMAN, row, col, "Small Specs", color_palette[2], 2)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -371,7 +439,7 @@ def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette
     add_trace_to_all(fig, plot_df, lrg_col, row, col, "Large Specs", color_palette[1], 1)
     add_trace_to_all(fig, plot_df, sml_col, row, col, "Small Specs", color_palette[2], 2, opacity=0.9)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -469,7 +537,7 @@ def get_zscore_plot(fig, df, row, col, color_palette, show_price=True):
     add_trace_to_all(fig, df, const.SML_ZSCORE, row, col, "Small Specs", color_palette[2], 2)
     add_trace_to_all(fig, df, const.OI_ZSCORE, row, col, "Open Interest", color_palette[4], 3, opacity=0.6)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -500,7 +568,7 @@ def get_momentum_plot(fig, df, row, col, color_palette, show_price=True):
     add_trace_to_all(fig, df, const.LRG_MOMENTUM, row, col, "Large Specs", color_palette[1], 1, is_bar=True, opacity=0.6)
     add_trace_to_all(fig, df, const.SML_MOMENTUM, row, col, "Small Specs", color_palette[2], 2, is_bar=True, opacity=0.6)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -529,7 +597,7 @@ def get_momentum_plot(fig, df, row, col, color_palette, show_price=True):
 
 def get_cot_macd_subplot(fig, df, row, col, color_palette, show_price=True):
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,
@@ -819,7 +887,7 @@ def get_oi_alignment_decorators(fig, df, target_subplots, color_palette, offset_
 def get_lrg_sentiment_plot(fig, df, row, col, color_palette, show_price=True):
     add_trace_to_all(fig, df, const.LW_LRG_SENTIMENT, row, col, "Large Specs", color_palette[1], 0, showlegend=False)
     if show_price:
-        add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price", color_palette[3], 3, secondary=True, opacity=0.6)
+        add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
             title="$",
             row=row, col=col,

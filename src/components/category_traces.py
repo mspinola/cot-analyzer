@@ -26,7 +26,11 @@ import plotly.graph_objects as go
 import viz_constants as vc
 from components.plot_colors import darken_hex, lighten_hex, relative_luminance
 from components.plot_layout import visible_weeks
-from components.plot_traces import add_legend_lines, add_trace_to_all
+from components.plot_traces import (
+    PRICE_OVERLAY_VISIBILITY,
+    add_legend_lines,
+    add_trace_to_all,
+)
 
 # One drawable category: the cotmetrics spec (which knows the column names), plus the
 # presentation the palette resolved for it.
@@ -78,9 +82,42 @@ def _legend(fig, series, showlegend, palette, show_price, show_oi=False):
     for s in series:
         add_legend_lines(fig, s.label, s.color)
     if show_price:
-        add_legend_lines(fig, "Price", palette[vc.CATEGORY_PRICE_SLOT])
+        # Off at first paint, matching the overlay it toggles; see
+        # plot_traces.PRICE_OVERLAY_VISIBILITY. Only the overlay views reach this,
+        # never the facet one, where price is a row of its own and no legend is
+        # drawn at all.
+        add_legend_lines(fig, "Price", palette[vc.CATEGORY_PRICE_SLOT],
+                         visible=PRICE_OVERLAY_VISIBILITY)
     if show_oi:
         add_legend_lines(fig, "Open Interest", palette[vc.CATEGORY_OI_SLOT])
+    return fig
+
+
+def ensure_price_legend_entry(fig, palette):
+    """Give the overlay figure a Price entry if any panel actually drew one.
+
+    One panel draws the legend for the whole stack (the first), and that panel
+    suppresses its OWN Price entry when open interest has taken its second axis,
+    which is right for the panel and wrong for the figure: a stack led by Net
+    Positions drew price overlays on every later panel and no entry for them.
+
+    That was invisible while the overlays drew themselves, costing only the ability
+    to switch them off. With price off by default it would strand them: hidden, and
+    with nothing in the legend to click. Derived from the traces on the figure rather
+    than from re-deriving which panel draws what, because the figure is the thing
+    that has to be consistent.
+    """
+    drawn = entry = False
+    for t in fig.data:
+        if t.name != "Price":
+            continue
+        if t.x is not None and len(t.x) and t.x[0] is None:
+            entry = True
+        else:
+            drawn = True
+    if drawn and not entry:
+        add_legend_lines(fig, "Price", palette[vc.CATEGORY_PRICE_SLOT],
+                         visible=PRICE_OVERLAY_VISIBILITY)
     return fig
 
 
@@ -89,7 +126,8 @@ def _price_overlay(fig, df, row, col, palette, zorder):
         return fig
     add_trace_to_all(fig, df, const.CLOSING_PRICE, row, col, "Price",
                      palette[vc.CATEGORY_PRICE_SLOT], zorder,
-                     secondary=True, opacity=0.6)
+                     secondary=True, opacity=0.6,
+                     visible=PRICE_OVERLAY_VISIBILITY)
     fig.update_yaxes(title="$", row=row, col=col, showgrid=False, zeroline=False,
                      gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True,
                      range=_fit_range(df, [const.CLOSING_PRICE]))
