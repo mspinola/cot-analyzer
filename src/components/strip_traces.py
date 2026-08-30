@@ -932,6 +932,10 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
                         color=heads, line=dict(width=1, color=heads)),
             hovertext=[_hover(r, model, compare) for _, r in markets],
             hoverinfo="text",
+            # The market's name rides on the point so a click can name its
+            # destination without the page re-deriving row order; the head is
+            # the row's one hoverable mark, so it is also the one click target.
+            customdata=[r.label for _, r in markets],
             showlegend=False,
         ))
 

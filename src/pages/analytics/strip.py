@@ -32,8 +32,9 @@ import dash_bootstrap_components as dbc
 from cotmetrics import exposure, indicators
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, State, callback, clientside_callback, dcc, html
+from dash import Input, Output, State, callback, clientside_callback, dcc, html, no_update
 
+import app_utils
 import components.strip_traces as strip_traces
 import viz_config
 import viz_constants as vc
@@ -279,7 +280,7 @@ def caption(report_date, lookback, model, skipped, hidden=0,
         f"Positioning as of Tuesday {pretty}, gated on {model.title}, measured over "
         f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the stem "
         f"hangs from neutral (50), so length is distance from neutral; hover any head "
-        f"for the exact figures. "
+        f"for the exact figures, or click it to open the market's detail page. "
         f"{tick_note}"
         f"Its colour is the model's verdict on the whole row, not on its own value, so "
         f"a small faded lollipop deep in a band is a market at an extreme with another "
@@ -630,12 +631,13 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
             # would otherwise keep the width it was first drawn at. Resizing the window
             # left the chart at its old width until a reload, which is a real thing to
             # hit: narrowing the browser is the first thing a reader does to this page.
-            dbc.Col(dcc.Graph(figure=f,
+            dbc.Col(dcc.Graph(id={'type': 'strip_board_graph', 'index': n},
+                              figure=f,
                               config={"displayModeBar": False, "responsive": True},
                               style={"width": "100%", "maxWidth": "960px",
                                      "margin": "0 auto"}),
                     xs=12, md=(12 // len(figures)))
-            for f in figures
+            for n, f in enumerate(figures)
         # align="start", because Bootstrap's default is to stretch every column to the
         # row's height. The columns hold different row counts, so the shorter figure
         # was stretched to the taller one's height and `responsive` re-drew it to fit:
@@ -713,3 +715,23 @@ clientside_callback(
     State('strip_date_selector', 'value'),
     prevent_initial_call=True
 )
+
+
+@callback(
+    Output('url', 'href', allow_duplicate=True),
+    Input({'type': 'strip_board_graph', 'index': dash.ALL}, 'clickData'),
+    prevent_initial_call=True,
+)
+def open_market(_clicks):
+    """A click on a row's value mark opens the market's detail page.
+
+    Pattern-matched over the columns because the board is one or two figures by
+    the Columns control; the triggering figure's point carries the destination
+    (`customdata`, set on the head mark, the row's one hoverable trace).
+    Location has refresh=False, so the write is a client-side pushState: the
+    same navigation the navbar makes, back button included.
+    """
+    triggered = dash.ctx.triggered
+    href = app_utils.clicked_market_href(
+        triggered[0]['value'] if triggered else None)
+    return href or no_update

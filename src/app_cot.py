@@ -425,7 +425,14 @@ app.layout = html.Div(
                 dcc.Store(id='cot_release_store'),
                 # Sink for the pageview logger below; never read.
                 dcc.Store(id='pageview_logged'),
-                dcc.Location(id='url', refresh=False),
+                # 'callback-nav', not False: False updates the address bar on a
+                # callback write and stops there, which left the board pages'
+                # click-to-market writing /oi_alignment into the URL while the
+                # Strip kept rendering under it. 'callback-nav' makes a callback
+                # write navigate client-side (pushState plus the router), which
+                # is the navbar's own behaviour; browser-driven changes are
+                # untouched either way.
+                dcc.Location(id='url', refresh='callback-nav'),
                 navbar,
                 dash.page_container
             ],
