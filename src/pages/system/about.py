@@ -4,6 +4,8 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
+from components import subscribe
+
 # Register this file as a page
 dash.register_page(__name__, path='/about')
 
@@ -138,6 +140,10 @@ layout = html.Div([
                 ),
                 create_markdown_card(intro_md)
             ], width=12, lg=10, className="mx-auto mt-4")
+        ]),
+
+        dbc.Row([
+            dbc.Col(subscribe.card(), width=12, lg=10, className="mx-auto")
         ]),
 
         dbc.Row([
