@@ -13,7 +13,7 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
-from components import class_filter, config_fold
+from components import class_filter, config_fold, controls
 
 # Register this file as a page
 dash.register_page(
@@ -24,6 +24,8 @@ dash.register_page(
 # Layout runs per request; the wiring must not.
 class_filter.register('graphs_asset_class_selector',
                       classes=lambda: sorted(get_indexer().get_asset_classes()))
+controls.register_lookback('graphs_lookback_selector')
+controls.register_model('graphs_model_selector', choices=vc.MODEL_VIEW_CHOICES)
 
 # Which panels this page offers, in picker order. Everything else about them comes
 # from the registry.
@@ -57,7 +59,7 @@ def layout(**kwargs):
                     # on a narrow viewport, so nothing needs a bottom margin of its own.
                     config_fold.wrap('graphs', dbc.Row([
                         dbc.Col([
-                            html.H6("Asset Classes", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Asset Classes", marginBottom="0.5rem"),
                             # Same nine switches, collapsed. This page defaults to one
                             # class rather than all of them, so the toggle usually
                             # names it outright.
@@ -67,7 +69,7 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Asset Selector", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Asset Selector", marginBottom="0.5rem"),
                             dcc.Dropdown(
                                 persistence='session',
                                 id='graphs_multi_equity_selector_input',
@@ -81,7 +83,7 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Plot Selector", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Plot Selector", marginBottom="0.5rem"),
                             dbc.Select(
                                 persistence=True,
                                 id='graphs_plot_selector_input',
@@ -92,34 +94,20 @@ def layout(**kwargs):
                             ),
                         ], xs=12, md="auto"),
                         dbc.Col([
-                            html.H6("Lookback", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
-                            dbc.Select(
-                                id='graphs_lookback_selector',
-                                persistence='session',
-                                options=[
-                                    {"label": "26 Weeks", "value": "26"},
-                                    {"label": "52 Weeks", "value": "52"},
-                                    {"label": "Custom", "value": "Custom"},
-                                ],
-                                value="Custom",
+                            controls.label("Lookback", marginBottom="0.5rem"),
+                            controls.lookback_select(
+                                'graphs_lookback_selector',
                                 className="bg-dark text-white border-secondary control-mobile-full",
-                                style={'width': '120px'}
-                            )
+                                style={'width': '120px'})
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Model", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
-                            dbc.Select(
-                                id='graphs_model_selector',
-                                persistence='session',
-                                options=[
-                                    {"label": vc.MODEL_LABELS[v], "value": v}
-                                    for v in vc.MODEL_VIEW_CHOICES
-                                ],
-                                value=models.DEFAULT_MODEL.key,
+                            controls.label("Model", marginBottom="0.5rem"),
+                            controls.model_select(
+                                'graphs_model_selector',
+                                choices=vc.MODEL_VIEW_CHOICES,
                                 className="bg-dark text-white border-secondary control-mobile-full",
-                                style={'width': '110px'}
-                            ),
+                                style={'width': '110px'}),
                             # Sits under its select rather than pulled up into it:
                             # the -10px was clawing back the mb-3 that is now gone. In
                             # flow rather than absolute, so the card reserves height for
@@ -131,7 +119,7 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Cols", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Cols", marginBottom="0.5rem"),
                             dbc.Select(
                                 id='graphs_columns_selector',
                                 persistence='session',
@@ -181,56 +169,6 @@ clientside_callback(
 
 
 @callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('graphs_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('graphs_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('graphs_lookback_selector', 'value')
-)
-def update_local_lookback(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('global_model_store', 'data', allow_duplicate=True),
-    Input('graphs_model_selector', 'value'),
-    State('global_model_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_model(value, current_store_val):
-    new_val = value if value in vc.MODEL_VIEW_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('graphs_model_selector', 'value'),
-    Input('global_model_store', 'data'),
-    State('graphs_model_selector', 'value')
-)
-def update_local_model(value, current_local_val):
-    new_val = value if value in vc.MODEL_VIEW_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
-
-@callback(
     Output('global_model_store', 'data', allow_duplicate=True),
     Input('graphs_plot_selector_input', 'value'),
     State('global_model_store', 'data'),
@@ -255,15 +193,12 @@ def update_model_availability(selected_plot):
 
     A control that silently does nothing teaches the user it is broken.
     """
-    def opts(views):
-        return [{"label": vc.MODEL_LABELS[v], "value": v} for v in views]
-
     if selected_plot not in BASIS_AWARE_PLOTS:
-        return (opts(vc.MODEL_CHOICES), True,
+        return (controls.model_options(vc.MODEL_CHOICES), True,
                 BASIS_INVARIANT_NOTE.get(selected_plot, "not basis-dependent"))
     if selected_plot in BASIS_OVERLAY_SPEC:
-        return opts(vc.MODEL_VIEW_CHOICES), False, ""
-    return opts(vc.MODEL_CHOICES), False, NO_OVERLAY_NOTE
+        return controls.model_options(vc.MODEL_VIEW_CHOICES), False, ""
+    return controls.model_options(vc.MODEL_CHOICES), False, NO_OVERLAY_NOTE
 
 
 @callback(

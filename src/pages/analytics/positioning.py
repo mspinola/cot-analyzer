@@ -6,16 +6,24 @@ import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import Input, Output, State, callback, dcc, html
 
 import viz_config
 import viz_constants as vc
+from components import controls
 
 # Register this file as a page
 dash.register_page(
     __name__,
     path='/positioning'
 )
+
+# Layout runs per request; the wiring must not. register_target_date is new to
+# this page, not just moved: it was the one Target Date without the week-follow
+# callback, so a tab left open across a Friday release stranded on the old week
+# with the new one absent from the dropdown.
+controls.register_lookback('positioning_lookback_selector')
+controls.register_target_date('positioning_date_selector')
 
 
 def layout(**kwargs):
@@ -27,36 +35,22 @@ def layout(**kwargs):
                 dbc.AccordionItem([
                     dbc.Row([
                         dbc.Col([
-                            html.Label("Lookback:", style=vc.label_style),
-                            dbc.Select(
-                                persistence='session',
-                                id='positioning_lookback_selector',
-                                options=[
-                                    {"label": "26 Weeks", "value": "26"},
-                                    {"label": "52 Weeks", "value": "52"},
-                                    {"label": "Custom", "value": "Custom"},
-                                ],
-                                value="Custom",
-                                size="sm",
-                                className="mb-3 bg-dark text-white border-secondary",
-                            )
+                            controls.label("Lookback"),
+                            controls.lookback_select(
+                                'positioning_lookback_selector', size="sm",
+                                className="mb-3 bg-dark text-white border-secondary")
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.Label("Target Date:", style=vc.label_style),
-                            dcc.Dropdown(
-                                id='positioning_date_selector',
-                                options=[{'label': d, 'value': d} for d in get_indexer().get_available_dates()],
-                                value=get_indexer().get_available_dates()[0] if get_indexer().get_available_dates() else None,
-                                className="mb-3 dash-dropdown bg-dark text-white",
-                                searchable=True,
-                                clearable=False,
-                            )
+                            controls.label("Target Date"),
+                            controls.target_date_dropdown(
+                                'positioning_date_selector',
+                                className="mb-3 dash-dropdown bg-dark text-white")
                         ], xs=12, md="auto"),
 
                         dbc.Col([
                             # Positioning Table Extended Data
-                            html.Label("Table Data Selector", style=vc.label_style),
+                            controls.label("Table Data Selector"),
                             dcc.Dropdown(
                                 persistence='session',
                                 id='cot_positioning_column_select_input',
@@ -76,7 +70,7 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.Label("Asset Class Selector", style=vc.label_style),
+                            controls.label("Asset Class Selector"),
                             dcc.Dropdown(
                                 persistence='session',
                                 id='page_positioning_asset_selector',
@@ -123,31 +117,6 @@ def layout(**kwargs):
             ], justify='center')
         ], fluid=True),
     ])
-
-
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('positioning_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('positioning_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('positioning_lookback_selector', 'value')
-)
-def update_local_lookback(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
 
 
 @callback(

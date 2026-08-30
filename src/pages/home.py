@@ -15,6 +15,7 @@ import components.plot_helpers as helpers
 import components.signal_cards as signal_cards
 import viz_config
 import viz_constants as vc
+from components import controls
 
 skeleton_loader = html.Div([
     dbc.Row([
@@ -37,6 +38,10 @@ dash.register_page(
     __name__,
     path='/'
 )
+
+# Layout runs per request; the wiring must not.
+controls.register_lookback('home_lookback_selector')
+controls.register_model('home_model_selector')
 
 
 
@@ -160,42 +165,29 @@ def layout(**kwargs):
                         dbc.CardBody([
                             dbc.Row([
                                 dbc.Col([
-                                    html.Label("Lookback Window", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Select(
-                                        id='home_lookback_selector',
-                                        persistence='session',
-                                        options=[
-                                            {"label": "26 Weeks", "value": "26"},
-                                            {"label": "52 Weeks", "value": "52"},
-                                            {"label": "Custom", "value": "Custom"},
-                                        ],
-                                        value="Custom",
-                                        className="bg-dark text-white border-secondary",
-                                        # Capped rather than left to fill the column: the widest
-                                        # option is "26 Weeks", so a full-width select is mostly
-                                        # empty chrome on a desktop viewport.
-                                        style={'borderRadius': '8px', 'maxWidth': '200px'}
-                                    )
+                                    controls.label("Lookback"),
+                                    # Capped rather than left to fill the column: the widest
+                                    # option is "26 Weeks", so a full-width select is mostly
+                                    # empty chrome on a desktop viewport.
+                                    controls.lookback_select(
+                                        'home_lookback_selector',
+                                        style={'borderRadius': '8px',
+                                               'maxWidth': '200px'})
                                 ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md"),
 
                                 dbc.Col([
-                                    html.Label("Model", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
-                                    dbc.Select(
-                                        id='home_model_selector',
+                                    controls.label("Model"),
+                                    # MODEL_CHOICES, no "Both": it is a chart comparison
+                                    # view and this page renders verdicts, which can only
+                                    # be reached by one model at a time. localStorage,
+                                    # unlike the session default: which model you read
+                                    # the board under is a standing preference.
+                                    controls.model_select(
+                                        'home_model_selector',
                                         persistence=True,
                                         persistence_type='local',
-                                        # No "Both" here: it is a chart comparison view and
-                                        # this page renders verdicts, which can only be
-                                        # reached by one model at a time.
-                                        options=[
-                                            {"label": vc.MODEL_LABELS[k], "value": k,
-                                             "title": vc.MODEL_TOOLTIPS[k]}
-                                            for k in vc.MODEL_CHOICES
-                                        ],
-                                        value=models.DEFAULT_MODEL.key,
-                                        className="bg-dark text-white border-secondary",
-                                        style={'borderRadius': '8px', 'maxWidth': '200px'}
-                                    )
+                                        style={'borderRadius': '8px',
+                                               'maxWidth': '200px'})
                                 ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md"),
 
                                 dbc.Col([
@@ -269,61 +261,6 @@ def layout(**kwargs):
             ], justify='center')
         ], fluid=True),
     ])
-
-
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('home_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback_home(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('home_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('home_lookback_selector', 'value')
-)
-def update_local_lookback_home(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
-
-
-# ── positioning model ─────────────────────────────────────────────────────────
-# Same two-way sync as Lookback. The chart pages can also hold MODEL_BOTH, which this
-# page's selector does not offer, so arriving here with it set resolves to the model the
-# overlay draws as its baseline rather than blanking the control.
-
-@callback(
-    Output('global_model_store', 'data', allow_duplicate=True),
-    Input('home_model_selector', 'value'),
-    State('global_model_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_model_home(value, current_store_val):
-    new_val = value if value in vc.MODEL_CHOICES else models.DEFAULT_MODEL.key
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('home_model_selector', 'value'),
-    Input('global_model_store', 'data'),
-    State('home_model_selector', 'value')
-)
-def update_local_model_home(value, current_local_val):
-    new_val = vc.resolve_model_view(value)[0].key
-    if new_val == current_local_val:
-        return no_update
-    return new_val
 
 
 # 128 rather than 32: the key is (db_time, class, lookback, palette, filters, model), and

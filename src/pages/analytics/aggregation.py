@@ -13,13 +13,16 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
-from components import config_fold
+from components import config_fold, controls
 
 dash.register_page(
     __name__,
     path='/aggregation',
     name='Aggregation'
 )
+
+# Layout runs per request; the wiring must not.
+controls.register_lookback('agg_lookback_selector')
 
 PLOT_IDS = ["oi_pct", "net_pos", "index", "zscore"]
 
@@ -46,7 +49,7 @@ def layout(**kwargs):
                     config_fold.wrap('aggregation', [
                     dbc.Row([
                         dbc.Col([
-                            html.H6("Class", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Class", marginBottom="0.5rem"),
                             dbc.RadioItems(
                                 id='agg_asset_class_selector',
                                 persistence='session',
@@ -61,7 +64,7 @@ def layout(**kwargs):
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Assets to Aggregate", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Assets to Aggregate", marginBottom="0.5rem"),
                             dcc.Dropdown(
                                 persistence='session',
                                 id='agg_assets_input',
@@ -78,7 +81,7 @@ def layout(**kwargs):
 
                     dbc.Row([
                         dbc.Col([
-                            html.H6("Visible Aggregations", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Visible Aggregations", marginBottom="0.5rem"),
                             dcc.Dropdown(
                                 persistence=True,
                                 id='agg_plot_selector',
@@ -92,23 +95,15 @@ def layout(**kwargs):
                             ),
                         ], xs=12, md="auto"),
                         dbc.Col([
-                            html.H6("Lookback", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
-                            dbc.Select(
-                                id='agg_lookback_selector',
-                                persistence='session',
-                                options=[
-                                    {"label": "26 Weeks", "value": "26"},
-                                    {"label": "52 Weeks", "value": "52"},
-                                    {"label": "Custom", "value": "Custom"},
-                                ],
-                                value="Custom",
+                            controls.label("Lookback", marginBottom="0.5rem"),
+                            controls.lookback_select(
+                                'agg_lookback_selector',
                                 className="mb-3 bg-dark text-white border-secondary control-mobile-full",
-                                style={'width': '120px'}
-                            )
+                                style={'width': '120px'})
                         ], xs=12, md="auto"),
 
                         dbc.Col([
-                            html.H6("Cols", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
+                            controls.label("Cols", marginBottom="0.5rem"),
                             dbc.Select(
                                 id='agg_columns_selector',
                                 persistence='session',
@@ -156,31 +151,6 @@ clientside_callback(
     State('aggregation_main_graph', 'id'),
     prevent_initial_call=True
 )
-
-
-@callback(
-    Output('global_lookback_store', 'data', allow_duplicate=True),
-    Input('agg_lookback_selector', 'value'),
-    State('global_lookback_store', 'data'),
-    prevent_initial_call=True
-)
-def update_global_lookback(value, current_store_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_store_val:
-        return no_update
-    return new_val
-
-
-@callback(
-    Output('agg_lookback_selector', 'value'),
-    Input('global_lookback_store', 'data'),
-    State('agg_lookback_selector', 'value')
-)
-def update_local_lookback(value, current_local_val):
-    new_val = value if value in ["26", "52", "Custom"] else "Custom"
-    if new_val == current_local_val:
-        return no_update
-    return new_val
 
 
 @callback(
