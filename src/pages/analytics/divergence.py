@@ -23,7 +23,7 @@ import dash
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, callback, dcc, html
+from dash import Input, Output, State, callback, clientside_callback, dcc, html
 
 import viz_config
 import viz_constants as vc
@@ -35,6 +35,17 @@ dash.register_page(__name__, path='/divergence')
 # Layout runs per request; the wiring must not.
 class_filter.register('divergence_class_selector')
 controls.register_target_date('divergence_date_selector')
+
+# The PNG export, clientside for the Strip's reason: everything in the picture is
+# already in the browser. The date rides along only to name the file; the caption
+# inside the image carries it in prose.
+clientside_callback(
+    "window.dash_clientside.clientside.export_divergence_image",
+    Output('divergence_download_img_btn', 'n_clicks'),
+    Input('divergence_download_img_btn', 'n_clicks'),
+    State('divergence_date_selector', 'value'),
+    prevent_initial_call=True,
+)
 
 SHOW_DIFFERENCES = "differences"
 SHOW_ALL = "all"
@@ -296,23 +307,41 @@ def build_table(rows, palette, compare, sparks):
         [html.Th("Market", style={**_CELL, "textAlign": "left"})]
         + [html.Th(vc.MODEL_LABELS[m.key], style={**_CELL, "textAlign": "left"})
            for m in compare]
-        + [html.Th("52w gap", style={**_CELL, "textAlign": "right"}),
-           html.Th("Basis gap", style={**_CELL, "textAlign": "right"})],
+        + [html.Th("52w gap", id='divergence_spark_header',
+                   style={**_CELL, "textAlign": "right"}),
+           html.Th("Basis gap", id='divergence_gap_header',
+                   style={**_CELL, "textAlign": "right"})],
         style={"fontSize": "0.68rem", "color": _DIM,
                "borderBottom": "1px solid rgba(255,255,255,0.15)"})
     body = [(_class_tr(r, span) if r.kind == "class"
              else _market_tr(r, palette, sparks.get(r.label)))
             for r in rows]
+    # A short hover answer per gap column; the full teaching stays behind the
+    # fold. Rendered beside the table because the table is rebuilt per callback
+    # and a tooltip must be born with its target.
+    tol = divergence_rows.GAP_TOLERANCE
+    tooltips = [
+        dbc.Tooltip(
+            f"The basis gap over the trailing year to the selected week. The "
+            f"dashed rule is the {tol}-point threshold the page keys on; the "
+            f"endpoint dot brightens when this week clears it.",
+            target='divergence_spark_header', placement="top"),
+        dbc.Tooltip(
+            f"This week's |raw − OI-normalized| Commercial index: the "
+            f"contract-size drift the normalization removes. Bright at "
+            f"{tol}+ points on a row that is not dimmed.",
+            target='divergence_gap_header', placement="top"),
+    ]
     # The scroll box is what keeps the table honest on a phone: every cell is
     # nowrap, so at 375px the rightmost columns ran past the viewport and the
     # page-level overflow-x: hidden clipped them with no scrollbar, which read
     # as the Basis gap column not existing. Scrolling inside this div works
     # because the clip is on the body, not on ancestors of the table.
     return html.Div(
-        html.Table([html.Thead(header), html.Tbody(body)],
-                   style={"width": "100%", "maxWidth": "1100px",
-                          "margin": "0 auto", "borderCollapse": "collapse",
-                          "fontSize": "0.8rem"}),
+        [html.Table([html.Thead(header), html.Tbody(body)],
+                    style={"width": "100%", "maxWidth": "1100px",
+                           "margin": "0 auto", "borderCollapse": "collapse",
+                           "fontSize": "0.8rem"})] + tooltips,
         style={"overflowX": "auto"})
 
 
@@ -466,27 +495,44 @@ def layout(**kwargs):
                 ], width=12),
             ], className="mt-3"),
 
-            dbc.Row([
-                dbc.Col([
-                    html.P(id='divergence_caption',
-                           style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                  'fontStyle': 'italic', 'marginBottom': '4px'}),
-                    help_fold.wrap('divergence', html.P(
-                        id='divergence_help',
-                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                               'fontStyle': 'italic', 'marginBottom': '4px'})),
-                ], width=12),
-            ]),
+            # Everything the PNG export captures lives inside this div; unlike the
+            # Strip's container it also holds the buttons (the export's own and the
+            # help fold's toggle), because export_divergence_image strips buttons
+            # from its clone rather than requiring them to live elsewhere.
+            html.Div(id='divergence_export_container', children=[
+                dbc.Row([
+                    dbc.Col([
+                        html.P(id='divergence_caption',
+                               style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                      'fontStyle': 'italic', 'marginBottom': '4px'}),
+                        help_fold.wrap('divergence', html.P(
+                            id='divergence_help',
+                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                   'fontStyle': 'italic', 'marginBottom': '4px'})),
+                    ], xs=True),
+                    dbc.Col([
+                        dbc.Button("📸 Export PNG",
+                                   id="divergence_download_img_btn",
+                                   style={"color": vc.TEXT_COLOR},
+                                   size="sm"),
+                        dbc.Tooltip(
+                            "The whole board as one image, every row and column, "
+                            "with the caption and the how-to-read text.",
+                            target="divergence_download_img_btn",
+                            placement="bottom"),
+                    ], xs="auto"),
+                ]),
 
-            dbc.Row([
-                dbc.Col(
-                    dcc.Loading(
-                        id="loading-divergence",
-                        type="dot",
-                        children=html.Div(id='divergence_display_container'),
-                        color=vc.BRIGHTER_TEXT_COLOR,
-                    ),
-                    width=12),
+                dbc.Row([
+                    dbc.Col(
+                        dcc.Loading(
+                            id="loading-divergence",
+                            type="dot",
+                            children=html.Div(id='divergence_display_container'),
+                            color=vc.BRIGHTER_TEXT_COLOR,
+                        ),
+                        width=12),
+                ]),
             ]),
         ], fluid=True),
     ])

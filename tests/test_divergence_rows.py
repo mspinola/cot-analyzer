@@ -257,3 +257,29 @@ def test_gap_spark_is_a_self_contained_picture():
     assert "polyline" in svg and "stroke-dasharray" in svg and "circle" in svg
     assert gap_spark([]) is None
     assert gap_spark(None) is None
+
+
+def test_build_table_gap_headers_answer_on_hover():
+    """The two gap columns are quantities this page invented, so their headers
+    carry tooltips; the model columns are labelled by name and need none. Both
+    tooltips quote GAP_TOLERANCE so the hover answer cannot drift from the
+    threshold the dimming and the sparkline rule actually use. They render
+    beside the table because it is rebuilt per callback and a tooltip must be
+    born with its target."""
+    import viz_config
+    from pages.analytics.divergence import build_table
+
+    rows, _, _ = dr.build_rows(frame(record(comm=10, comm_norm=90)),
+                               show_all=True)
+    palette = viz_config.get_palette(sorted(viz_config.get_palette_names())[0])
+    table_div = build_table(rows, palette, list(dr.MODEL_ORDER[:2]), {})
+
+    tooltips = [c for c in table_div.children
+                if type(c).__name__ == "Tooltip"]
+    assert {t.target for t in tooltips} == {"divergence_spark_header",
+                                            "divergence_gap_header"}
+    assert all(str(dr.GAP_TOLERANCE) in t.children for t in tooltips)
+
+    header_ths = table_div.children[0].children[0].children.children
+    header_ids = {getattr(th, "id", None) for th in header_ths}
+    assert {t.target for t in tooltips} <= header_ids
