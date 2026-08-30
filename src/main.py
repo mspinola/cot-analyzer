@@ -148,9 +148,13 @@ def store_poll_loop():
 
             # After the refresh, never before: refresh_if_stale blocks until the index
             # matches the store, so by here the matrix the email builds is the new
-            # week's rather than a mix.
+            # week's rather than a mix. The send is the operator copy plus the
+            # subscriber fan-out; only the operator half can fail the ledger (see
+            # subscribers.send_weekly_everywhere for why the fan-out must not).
+            import subscribers
             outcome = weekly_email_trigger.maybe_send(
-                cotDatabase.latest_update_timestamp())
+                cotDatabase.latest_update_timestamp(),
+                send=subscribers.send_weekly_everywhere)
             if outcome in ("sent", "failed"):
                 utils.cot_logger.info(f"Store poller: weekly email {outcome}.")
         except Exception as e:

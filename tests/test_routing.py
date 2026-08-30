@@ -69,6 +69,13 @@ def test_the_browsers_automatic_favicon_request_is_not_a_probe(path):
     assert known(path)
 
 
+@pytest.mark.parametrize("path", ['/confirm', '/unsubscribe'])
+def test_the_email_link_endpoints_are_served(path):
+    """Plain Flask routes on app.server (see app_cot), which `app.routes` does
+    not list; without this membership every link in a subscription email 404s."""
+    assert known(path)
+
+
 # ── what must not ─────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("path", [

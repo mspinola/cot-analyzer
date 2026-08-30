@@ -23,9 +23,11 @@ SERVED_PREFIXES = (
     '/static/',
 )
 
-#: Real paths belonging to no page: the browser's automatic favicon request, and Dash's
-#: own copy of it. Neither is in `page_registry` and both are legitimate.
-EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico'})
+#: Real paths belonging to no page: the browser's automatic favicon request, Dash's
+#: own copy of it, and the two email-link endpoints (plain Flask routes in app_cot,
+#: which `app.routes` does not list because it only knows Dash's own). All legitimate.
+EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
+                         '/confirm', '/unsubscribe'})
 
 
 def _normalize(path: str) -> str:
@@ -98,6 +100,34 @@ def not_found_page(background: str, text: str, bright: str) -> str:
 <body><div>
   <h1>404 &mdash; not found</h1>
   <p>No page is served at this address.</p>
+  <a href="/">Back to COT Analyzer</a>
+</div></body></html>"""
+
+
+def message_page(title: str, body: str,
+                 background: str, text: str, bright: str) -> str:
+    """A one-sentence themed page, for the email-link endpoints.
+
+    Same argument as `not_found_page`: /confirm and /unsubscribe are clicked from
+    an email, and their whole answer is one sentence, so serving the Dash shell
+    to say it would cost a full app payload to a reader who wants a receipt.
+    """
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} | COT Analyzer</title>
+<style>
+  body {{ background:{background}; color:{text};
+         font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+         display:flex; align-items:center; justify-content:center;
+         height:100vh; margin:0; text-align:center; }}
+  h1 {{ color:{bright}; font-size:1.5rem; margin:0 0 .5rem; }}
+  p  {{ margin:0 0 1rem; font-size:.9rem; }}
+  a  {{ color:{bright}; }}
+</style></head>
+<body><div>
+  <h1>{title}</h1>
+  <p>{body}</p>
   <a href="/">Back to COT Analyzer</a>
 </div></body></html>"""
 

@@ -119,6 +119,43 @@ def reject_unknown_paths():
     return body, 404, {'Content-Type': 'text/html; charset=utf-8'}
 
 
+# The two email-link endpoints. Plain Flask routes, not Dash pages: each is
+# clicked once from an inbox and its whole answer is a sentence, so a themed
+# static page beats shipping the app shell (routing.message_page). The token in
+# the URL is the entire authentication; see `subscribers` for its lifecycle.
+# Both paths are named in routing.EXTRA_PATHS so `reject_unknown_paths` admits
+# them.
+
+def _link_page(title, body, status=200):
+    page = routing.message_page(title, body, vc.BACKGROUND_COLOR, vc.TEXT_COLOR,
+                                vc.BRIGHTER_TEXT_COLOR)
+    return page, status, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.server.route('/confirm')
+def confirm_subscription():
+    import subscribers
+    email = subscribers.confirm(request.args.get('token'))
+    if email:
+        return _link_page(
+            "Subscription confirmed",
+            f"{email} will receive the weekly Signal Matrix when each new "
+            f"CFTC report lands. Every email carries an unsubscribe link.")
+    return _link_page("Link not recognized",
+                      "This confirmation link is not valid.", status=404)
+
+
+@app.server.route('/unsubscribe')
+def unsubscribe_subscription():
+    import subscribers
+    email = subscribers.unsubscribe(request.args.get('token'))
+    if email:
+        return _link_page("Unsubscribed",
+                          f"{email} will receive no further weekly emails.")
+    return _link_page("Link not recognized",
+                      "This unsubscribe link is not valid.", status=404)
+
+
 @app.server.after_request
 def set_cache_policy(response):
     """Apply `routing.cache_policy`; see it for what is set and what it measured."""
