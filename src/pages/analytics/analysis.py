@@ -380,8 +380,16 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
         elif state == const.SETUP_BEAR:
             title_color = color_palette[0]
 
-        # Wrap the index values in an HTML span to inject the color
-        chart_title = f"<span style='color:{title_color};'>{asset} ({latest_comm:.0f}, {latest_lrg:.0f}, {latest_sml:.0f})</span>"
+        # Wrap the index values in an HTML span to inject the color. The leg
+        # letters ride at reduced size inside it: a plotly title can carry no
+        # tooltip, so "(14, 85, 64)" had nothing anywhere naming what the three
+        # numbers were.
+        letter = "<span style='font-size:0.65em;'>{}</span>"
+        chart_title = (
+            f"<span style='color:{title_color};'>{asset} "
+            f"({letter.format('C')} {latest_comm:.0f} · "
+            f"{letter.format('L')} {latest_lrg:.0f} · "
+            f"{letter.format('S')} {latest_sml:.0f})</span>")
 
     except (IndexError, KeyError):
         chart_title = asset  # Fallback if data is missing
