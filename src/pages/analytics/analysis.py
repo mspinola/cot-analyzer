@@ -13,17 +13,45 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
-from components import config_fold, controls
+from components import class_filter, config_fold, controls
 
-# Register this file as a page
+# One page, two views. The panel stack (one market, many panels) and the market
+# grid (one metric, many markets) shared a registry, a figure assembler, a control
+# card's worth of duplicated selectors and two nav entries; the grid used to be its
+# own page at /graphs. Old bookmarks survive via a 301 in app_cot to
+# /analysis?view=grid, an explicit route rather than Dash's `redirect_from`
+# because that mechanism cannot carry the query naming which view the old
+# address meant.
 dash.register_page(
     __name__,
-    path='/analysis'
+    path='/analysis',
 )
 
 # Layout runs per request; the wiring must not.
 controls.register_lookback('analysis_lookback_selector')
 controls.register_asset_link('analysis_single_asset_filter_input')
+class_filter.register('graphs_asset_class_selector',
+                      classes=lambda: sorted(get_indexer().get_asset_classes()))
+controls.register_model('graphs_model_selector', choices=vc.MODEL_VIEW_CHOICES)
+
+# The two views. Wire-format values (session-persisted control), so renaming one
+# silently resets a returning reader to the default.
+VIEW_STACK = "stack"
+VIEW_GRID = "grid"
+VIEW_LABELS = {VIEW_STACK: "Panel stack · one market",
+               VIEW_GRID: "Market grid · one metric"}
+
+# Which panels the GRID view offers, in picker order: the metrics worth comparing
+# across markets. The stack's own picker (below) is richer because per-panel basis
+# variants only make sense stacked on one market.
+GRID_PLOT_IDS = ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore",
+                 "momentum", "max_pain", "max_pain_historical"]
+GRID_PLOTS = registry.labels_for(GRID_PLOT_IDS)
+
+BASIS_AWARE_PLOTS = registry.BASIS_AWARE_PLOTS
+BASIS_INVARIANT_NOTE = registry.BASIS_INVARIANT_NOTE
+NO_OVERLAY_NOTE = vc.NO_OVERLAY_NOTE
+BASIS_OVERLAY_SPEC = registry.BASIS_OVERLAY_SPEC
 
 # Which panels this page offers, in stack order. Everything about them beyond the
 # order comes from the registry.
@@ -78,59 +106,37 @@ def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
     asset_classes = sorted(get_indexer().get_asset_classes())
+    default_class = get_indexer().get_default_asset_class()
+    default_assets = sorted(get_indexer().get_assets_for_asset_class(default_class))
 
     return html.Div([
         dbc.Container([
             dbc.Card([
                 dbc.CardBody([
                     config_fold.wrap('analysis', [
+                    # The controls every view shares. Lookback and Cols used to
+                    # exist twice, once per page; a reader flipping views keeps
+                    # their window and their grid width because there is only one
+                    # of each control to keep.
                     dbc.Row([
                         dbc.Col([
-                            controls.label("Asset Class", marginBottom="0.5rem"),
+                            controls.label("View", marginBottom="0.5rem"),
                             dbc.RadioItems(
-                                id='analysis_asset_class_selector',
+                                id='analysis_view_selector',
                                 persistence='session',
-                                options=[{'label': c, 'value': c} for c in asset_classes],
-                                value=get_indexer().get_default_asset_class(),
+                                options=[{'label': text, 'value': value}
+                                         for value, text in VIEW_LABELS.items()],
+                                value=VIEW_STACK,
                                 inline=True,
-                                className="mb-3 p-1 rounded text-white",
-                                style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
-                                labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
-                                inputStyle={'opacity': '0.6'}
-                            )
-                        ], xs=12, md="auto"),
-
-                        dbc.Col([
-                            controls.label("Asset Selector", marginBottom="0.5rem"),
-                            dbc.Select(
-                                persistence='session',
-                                id='analysis_single_asset_filter_input',
-                                options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
-                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
-                                style={'width': '200px'}
-                            ),
-                        ], xs=12, md="auto"),
-
-                    ]),
-
-                    dbc.Row([
-                        dbc.Col([
-                            controls.label("Visible Plots", marginBottom="0.5rem"),
-                            dcc.Dropdown(
-                                persistence=True,
-                                id='analysis_plot_selector',
-                                options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
-                                value=list(BASE_PLOTS.keys()),
-                                multi=True,
-                                className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
-                                style={'width': '200px'}
+                                style={'color': vc.BRIGHTER_TEXT_COLOR,
+                                       'fontSize': '0.85rem'},
                             ),
                         ], xs=12, md="auto"),
                         dbc.Col([
                             controls.label("Lookback", marginBottom="0.5rem"),
                             controls.lookback_select(
                                 'analysis_lookback_selector',
-                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '120px'})
                         ], xs=12, md="auto"),
 
@@ -145,11 +151,106 @@ def layout(**kwargs):
                                     {"label": "3", "value": "3"},
                                 ],
                                 value="1",
-                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '70px'}
                             )
                         ], xs=12, md="auto"),
-                    ]),
+                    ], className="g-2 align-items-start"),
+
+                    # The stack's own controls: one market, chosen precisely, and
+                    # a multi-select of panels (with per-panel basis variants).
+                    html.Div(id='analysis_stack_controls', children=dbc.Row([
+                        dbc.Col([
+                            controls.label("Asset Class", marginBottom="0.5rem"),
+                            dbc.RadioItems(
+                                id='analysis_asset_class_selector',
+                                persistence='session',
+                                options=[{'label': c, 'value': c} for c in asset_classes],
+                                value=default_class,
+                                inline=True,
+                                className="p-1 rounded text-white",
+                                style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
+                                labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
+                                inputStyle={'opacity': '0.6'}
+                            )
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
+                            controls.label("Asset Selector", marginBottom="0.5rem"),
+                            dbc.Select(
+                                persistence='session',
+                                id='analysis_single_asset_filter_input',
+                                options=[{'label': m, 'value': m} for m in default_assets],
+                                className="bg-dark text-white border-secondary control-mobile-full",
+                                style={'width': '200px'}
+                            ),
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
+                            controls.label("Visible Plots", marginBottom="0.5rem"),
+                            dcc.Dropdown(
+                                persistence=True,
+                                id='analysis_plot_selector',
+                                options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
+                                value=list(BASE_PLOTS.keys()),
+                                multi=True,
+                                className="dash-dropdown bg-dark text-white control-mobile-full",
+                                style={'width': '200px'}
+                            ),
+                        ], xs=12, md="auto"),
+                    ], className="g-2 align-items-start mt-1")),
+
+                    # The grid's controls: many markets, one metric, and the model
+                    # view (Raw / NPF / Both) that decides the metric's basis.
+                    html.Div(id='analysis_grid_controls', hidden=True,
+                             children=dbc.Row([
+                        dbc.Col([
+                            controls.label("Asset Classes", marginBottom="0.5rem"),
+                            class_filter.control(
+                                'graphs_asset_class_selector', asset_classes,
+                                value=[default_class])
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
+                            controls.label("Asset Selector", marginBottom="0.5rem"),
+                            dcc.Dropdown(
+                                persistence='session',
+                                id='graphs_multi_equity_selector_input',
+                                options=[{'label': m, 'value': m} for m in default_assets],
+                                multi=True,
+                                className="dash-dropdown bg-dark text-white control-mobile-full",
+                                searchable=True,
+                                clearable=True,
+                                style={'width': '200px'}
+                            ),
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
+                            controls.label("Plot Selector", marginBottom="0.5rem"),
+                            dbc.Select(
+                                persistence=True,
+                                id='graphs_plot_selector_input',
+                                options=[{'label': v, 'value': k} for k, v in GRID_PLOTS.items()],
+                                value="net_pos",
+                                className="bg-dark text-white border-secondary control-mobile-full",
+                                style={'width': '200px'}
+                            ),
+                        ], xs=12, md="auto"),
+
+                        dbc.Col([
+                            controls.label("Model", marginBottom="0.5rem"),
+                            controls.model_select(
+                                'graphs_model_selector',
+                                choices=vc.MODEL_VIEW_CHOICES,
+                                className="bg-dark text-white border-secondary control-mobile-full",
+                                style={'width': '110px'}),
+                            # In flow rather than absolute, so the card reserves
+                            # height for it; only present for some plots.
+                            html.Div(id='graphs_model_note',
+                                     className="text-muted",
+                                     style={'fontSize': '0.7rem', 'marginTop': '2px'}),
+                        ], xs=12, md="auto"),
+                    ], className="g-2 align-items-start mt-1")),
                     ]),
                 ])
             ], style={'backgroundColor': 'var(--card-color)', 'borderColor': vc.GRID_COLOR}, className="mb-4 mt-2"),
@@ -157,8 +258,10 @@ def layout(**kwargs):
             html.Hr(style=vc.hr_style),
 
             # The browser writes the fitted zoom window here. Nothing on this page reads it,
-            # but the shared autoscale needs an Output to hang the callback on.
+            # but the shared autoscale needs an Output to hang the callback on. One sink
+            # per view's graph, since either graph can exist.
             dcc.Store(id='analysis_zoom_sink'),
+            dcc.Store(id='graphs_zoom_sink'),
 
             html.Div([
                 dbc.Row([
@@ -168,10 +271,66 @@ def layout(**kwargs):
                         children=html.Div(id='analysis_stack'),
                         color=vc.BRIGHTER_TEXT_COLOR
                     )
-                ], justify='center')
+                ], justify='center'),
+                dbc.Row([
+                    dcc.Loading(
+                        id="loading-cot-graphs",
+                        type="default",
+                        children=html.Div(id='cot_graphs'),
+                        color=vc.BRIGHTER_TEXT_COLOR
+                    )
+                ], justify='center'),
             ], style={"position": "relative", "width": "100%"})
         ], fluid=True),
     ])
+
+
+# The whole view state, in one clientside callback: the ?view= deep link, the
+# radio, which controls show, and the URL write-back. One writer on purpose, and
+# clientside on purpose: with the link-reader as a server callback, the page-load
+# wave ran the visibility half early with the default value and never re-ran it
+# when the reader's answer landed (server-side dependents wait for pending
+# outputs in the initial wave; clientside ones do not), so a ?view=grid load
+# drew the grid under the stack's controls. Everything in one function cannot
+# disagree with itself.
+#
+# The rules, each the same one the other deep links follow: a link's ?view=
+# wins ONCE per distinct value (so navigation noise and the global write-back
+# re-firing this cannot re-force a view the reader has since flipped away
+# from); afterwards the radio owns the URL, writing ?view=grid and erasing it
+# at the default, so the address bar always deep-links what is on screen.
+# Hidden rather than unmounted, so a hidden control keeps its value: flipping
+# to the grid and back lands on the exact stack the reader left.
+clientside_callback(
+    f"""
+    function(view, _search) {{
+        const nu = window.dash_clientside.no_update;
+        const params = new URLSearchParams(window.location.search);
+        const forced = params.get('view');
+        const valid = forced === '{VIEW_STACK}' || forced === '{VIEW_GRID}';
+        if (valid && forced !== view && window.__analysisViewApplied !== forced) {{
+            window.__analysisViewApplied = forced;
+            const grid = forced === '{VIEW_GRID}';
+            return [forced, grid, !grid];
+        }}
+        window.__analysisViewApplied = valid ? forced : null;
+        if (view === '{VIEW_GRID}') {{ params.set('view', '{VIEW_GRID}'); }}
+        else {{ params.delete('view'); }}
+        const q = params.toString();
+        const next = window.location.pathname + (q ? '?' + q : '');
+        if (next !== window.location.pathname + window.location.search) {{
+            history.replaceState(null, '', next);
+        }}
+        const grid = view === '{VIEW_GRID}';
+        return [nu, grid, !grid];
+    }}
+    """,
+    Output('analysis_view_selector', 'value'),
+    Output('analysis_stack_controls', 'hidden'),
+    Output('analysis_grid_controls', 'hidden'),
+    Input('analysis_view_selector', 'value'),
+    Input('url', 'search'),
+)
 
 
 # Rescale the y-axes to whatever the x-window is showing. Pure arithmetic over data the
@@ -188,36 +347,6 @@ clientside_callback(
     prevent_initial_call=True
 )
 
-
-
-@callback(
-    Output("analysis-tv-modal", "is_open"),
-    Output("analysis-tv-iframe", "src"),
-    Output("analysis-tv-modal-title", "children"),
-    Input("analysis-open-tv-modal-btn", "n_clicks"),
-    State("analysis-tv-modal", "is_open"),
-    State("analysis_single_asset_filter_input", "value"),
-    prevent_initial_call=True
-)
-def toggle_tv_modal(n_clicks, is_open, asset_name):
-    utils.cot_logger.info(f"DEBUG toggle_tv_modal: n_clicks={n_clicks}, is_open={is_open}, asset_name={asset_name}")
-    if not n_clicks or not asset_name:
-        return is_open, "", ""
-
-    # Get the TradingView symbol for this asset
-    # (You may need to map your asset_name to the TV ticker format here)
-    # e.g., mapping "S&P 500 Consolidated" -> "CME:ES1!"
-    tv_symbol = viz_config.tv_chart_for_name(asset_name)
-
-    # Fallback/cleanup if your symbols don't perfectly match TV's format
-    if not tv_symbol:
-        tv_symbol = get_indexer().get_instrument_symbol_from_name(asset_name)
-
-    # Build the TradingView embed URL
-    tv_url = f"https://s.tradingview.com/widgetembed/?symbol={tv_symbol}&interval=D&theme=dark&style=1&hidesidetoolbar=0&symboledit=1"
-
-    # Return the new state: Toggle Modal, set URL, set Title
-    return not is_open, tv_url, f"TradingView - {asset_name}"
 
 
 @callback(
@@ -249,10 +378,15 @@ def set_default_columns(pathname, current_val):
      Input('global_lookback_store', 'data'),
      Input('analysis_plot_selector', 'value'),
      Input('analysis_columns_selector', 'value'),
-     Input('global_model_store', 'data')]
+     Input('global_model_store', 'data'),
+     Input('analysis_view_selector', 'value')]
 )
-def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_cols, model_view):
-    print(f"Updating analysis stack with asset={asset}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
+def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_cols,
+                          model_view, view=VIEW_STACK):
+    # The other view's render must cost nothing: an empty container, not a stale
+    # figure, so nothing below the fold pretends to be current.
+    if view == VIEW_GRID:
+        return []
     utils.cot_logger.info(f"Updating analysis stack with asset={asset}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
 
     show_price = True
@@ -440,3 +574,218 @@ def update_analysis_asset_options(search, selected_class, current_asset):
         return no_update, options, current_asset
     else:
         return no_update, options, assets[0] if assets else None
+
+
+# ── the market grid (one metric, many markets; formerly the /graphs page) ─────
+
+clientside_callback(
+    "window.dash_clientside.clientside.autoscale_y_axes",
+    Output('graphs_zoom_sink', 'data'),
+    Input('graphs_main_graph', 'relayoutData'),
+    State('graphs_main_graph', 'id'),
+    prevent_initial_call=True
+)
+
+
+@callback(
+    Output('global_model_store', 'data', allow_duplicate=True),
+    Input('graphs_plot_selector_input', 'value'),
+    State('global_model_store', 'data'),
+    prevent_initial_call=True
+)
+def demote_both_when_unsupported(selected_plot, model_view):
+    """Fall back to Raw when switching to a plot that cannot overlay, so the control
+    never displays a view the figure isn't drawing."""
+    if model_view == vc.MODEL_BOTH and selected_plot not in BASIS_OVERLAY_SPEC:
+        return models.DEFAULT_MODEL.key
+    return no_update
+
+
+@callback(
+    Output('graphs_model_selector', 'options'),
+    Output('graphs_model_selector', 'disabled'),
+    Output('graphs_model_note', 'children'),
+    Input('graphs_plot_selector_input', 'value')
+)
+def update_model_availability(selected_plot):
+    """Offer only the views this plot can actually draw, and say why when one is missing.
+
+    A control that silently does nothing teaches the user it is broken.
+    """
+    if selected_plot not in BASIS_AWARE_PLOTS:
+        return (controls.model_options(vc.MODEL_CHOICES), True,
+                BASIS_INVARIANT_NOTE.get(selected_plot, "not basis-dependent"))
+    if selected_plot in BASIS_OVERLAY_SPEC:
+        return controls.model_options(vc.MODEL_VIEW_CHOICES), False, ""
+    return controls.model_options(vc.MODEL_CHOICES), False, NO_OVERLAY_NOTE
+
+
+@callback(
+    Output('graphs_multi_equity_selector_input', 'options'),
+    Output('graphs_multi_equity_selector_input', 'value'),
+    Input('graphs_asset_class_selector', 'value'),
+    State('graphs_multi_equity_selector_input', 'value')
+)
+def update_graphs_asset_options(selected_classes, current_assets):
+    if not selected_classes:
+        selected_classes = []
+
+    all_assets = []
+    for cls in selected_classes:
+        all_assets.extend(sorted(get_indexer().get_assets_for_asset_class(cls)))
+
+    all_assets = sorted(list(set(all_assets)))
+    options = [{'label': m, 'value': m} for m in all_assets]
+
+    # Preserve current selections if they are in the active classes
+    valid_assets = [a for a in (current_assets or []) if a in all_assets]
+
+    if not valid_assets and all_assets:
+        valid_assets = [all_assets[0]]
+
+    return options, valid_assets
+
+
+@callback(
+    Output('cot_graphs', 'children'),
+    Input('session_palette_theme_asset_store', 'data'),
+    Input('graphs_multi_equity_selector_input', 'value'),
+    Input('graphs_plot_selector_input', 'value'),
+    Input('global_lookback_store', 'data'),
+    Input('global_model_store', 'data'),
+    Input('analysis_columns_selector', 'value'),
+    Input('analysis_view_selector', 'value'),
+)
+def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
+                   model_view, num_cols, view=VIEW_STACK):
+    # The stack view's render must not pay for this one; same rule in reverse in
+    # update_analysis_stack.
+    if view != VIEW_GRID:
+        return []
+    utils.cot_logger.info(f"Generating graphs for Selected Assets: {selected_assets}, Plot: {selected_plot}, Lookback: {lookback}, Model: {model_view}, Columns: {num_cols}")
+    if not lookback:
+        lookback = "Custom"
+    # The selector persists per session, so a saved value can name a plot that no
+    # longer exists (e.g. the retired synthesis plot). Fall back to the first option.
+    if selected_plot not in GRID_PLOTS:
+        selected_plot = next(iter(GRID_PLOTS))
+    if model_view not in vc.MODEL_VIEW_CHOICES:
+        model_view = models.DEFAULT_MODEL.key
+    # Basis-invariant plots always render the default model so their cache entry is
+    # shared and their output can never depend on a control that does not apply to them.
+    # Same for Both on a plot that cannot overlay — the store callback demotes it, but a
+    # stale session value can still arrive here.
+    if selected_plot not in BASIS_AWARE_PLOTS:
+        model_view = models.DEFAULT_MODEL.key
+    elif model_view == vc.MODEL_BOTH and selected_plot not in BASIS_OVERLAY_SPEC:
+        model_view = models.DEFAULT_MODEL.key
+
+    # One resolution point: the model carries the gate, and the basis it plots is a
+    # consequence rather than a second choice made somewhere else.
+    model, is_overlay = vc.resolve_model_view(model_view)
+    basis = model.basis
+
+    price_overlay = True
+    if not selected_assets:
+        return html.P("Select an asset class and plot to view data.", style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
+
+    assets = selected_assets
+
+    num_cols = int(num_cols)
+    num_selected = len(assets)
+    num_rows = math.ceil(num_selected / num_cols)
+
+    color_palette = viz_config.get_palette(palette_name)
+
+    # This view stacks one metric across many assets, so a panel is titled by its asset
+    # rather than by the plot. The options curves still name the ticker they are quoted
+    # on, which is often a proxy ETF rather than the futures symbol.
+    titles = []
+    for asset in assets:
+        title = asset
+        if registry.REGISTRY[selected_plot].needs_asset:
+            etf = registry.etf_symbol_for(get_indexer().get_instrument_from_name(asset))
+            if etf:
+                title = f"{asset} via {etf}"
+        titles.append(title)
+
+    # Every cell draws the same metric, so they all take the same spec.
+    specs = registry.subplot_specs([selected_plot] * num_selected,
+                                   show_price=price_overlay, num_cols=num_cols)
+
+    # Max Pain plots use price scales for X-axis (which are vastly different per asset)
+    # So we must disable shared X-axes to prevent Plotly from squishing everything.
+    is_shared_x = selected_plot not in ["max_pain", "max_pain_historical"]
+    fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
+
+    df = None
+    plot_idx = 0
+    for r in range(1, num_rows + 1):
+        for c in range(1, num_cols + 1):
+            if plot_idx < num_selected:
+                df = get_indexer().get_symbols_data(assets[plot_idx], lookback, basis)
+                if df is None:
+                    return helpers.get_no_data_html_p()
+
+                if is_overlay:
+                    df_norm = get_indexer().get_symbols_data(assets[plot_idx], lookback, const.BASIS_OI_NORM)
+                    if df_norm is None:
+                        return helpers.get_no_data_html_p()
+                    value_col, y_title, y_range, zero_line = BASIS_OVERLAY_SPEC[selected_plot]
+                    fig = helpers.get_basis_overlay_plot(
+                        fig, df, df_norm, value_col, r, c, color_palette,
+                        y_title=y_title, y_range=y_range, show_oi=price_overlay,
+                        zero_line=zero_line)
+                    plot_idx += 1
+                    continue
+
+                # Net Positions plots the underlying series by name rather than via the
+                # generic aliases, so it has to pick the basis pair itself.
+                if basis == const.BASIS_OI_NORM:
+                    comm_net, lrg_net, sml_net = const.COMM_NET_NORM, const.LARGE_NET_NORM, const.SMALL_NET_NORM
+                else:
+                    comm_net, lrg_net, sml_net = const.COMM_NET, const.LARGE_NET, const.SMALL_NET
+
+                spec = registry.REGISTRY[selected_plot]
+                ctx = registry.PlotCtx(
+                    fig=fig, df=df, row=r, col=c, palette=color_palette,
+                    show_price=price_overlay, asset=assets[plot_idx], model=model,
+                    net_cols=(comm_net, lrg_net, sml_net),
+                    y_title="net / OI" if basis == const.BASIS_OI_NORM else "net position",
+                    setup_comms_only=get_indexer().is_equity(assets[plot_idx]),
+                    # One legend for the whole stack: every panel here draws the same
+                    # metric, so repeating it per asset would be noise.
+                    showlegend=(plot_idx == 0))
+                fig = spec.build(ctx) or fig
+                if spec.decorate:
+                    ctx.fig = fig
+                    fig = spec.decorate(ctx) or fig
+
+                plot_idx += 1
+
+    # After the loop, because it is a question about the whole stack: the panel that
+    # owns the legend is not necessarily the one drawing price or open interest.
+    fig = helpers.reconcile_legend_entries(fig, color_palette)
+
+    if selected_plot not in ["max_pain", "max_pain_historical"] and df is not None:
+        fig = helpers.get_update_xaxes_for_plots(fig, df)
+
+    main_title = GRID_PLOTS[selected_plot]
+    if selected_plot in BASIS_AWARE_PLOTS:
+        suffix = "Raw vs % of OI" if is_overlay else vc.BASIS_LABELS[basis]
+        main_title = f"{main_title} ({suffix})"
+    fig = helpers.get_update_layout_for_plots(fig, num_rows, num_cols, main_title)
+
+    return dcc.Graph(figure=fig,
+                     id='graphs_main_graph',
+                     config={
+                        'scrollZoom': False,
+                        'doubleClick': 'reset',
+                        # Off on a phone: hover-revealed buttons have no hover,
+                        # and the bar painted over the figure title at 375px.
+                        'displayModeBar': not app_utils.is_mobile(),
+                        'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                        'displaylogo': False,
+                        'responsive': True},
+                        style={'width': '100%'
+                    })

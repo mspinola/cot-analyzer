@@ -44,8 +44,8 @@ EXPECTED_SECONDARY = [
     ("analysis", True, {"price_candles", "macd", "willco", "index", "momentum",
                         "zscore", "oi_pct", "spearman", "lrg_sentiment", "net_pos",
                         "max_pain_historical"}),
-    ("graphs", True, {"oi_pct", "willco", "spearman", "index", "zscore", "momentum",
-                      "net_pos", "max_pain_historical"}),
+    ("analysis-grid", True, {"oi_pct", "willco", "spearman", "index", "zscore",
+                             "momentum", "net_pos", "max_pain_historical"}),
     ("aggregation", False, {"net_pos"}),
 ]
 
@@ -120,22 +120,22 @@ def test_labels_for_respects_overrides():
                    "index": "Positioning Index"}
 
 
-@pytest.mark.parametrize("page,dict_name", [
-    ("oi_alignment", "AVAILABLE_PLOTS"),
-    ("analysis", "BASE_PLOTS"),
-    ("graphs", "AVAILABLE_PLOTS"),
-    ("aggregation", "AVAILABLE_PLOTS"),
+@pytest.mark.parametrize("page,list_name", [
+    ("oi_alignment", "PLOT_IDS"),
+    ("analysis", "PLOT_IDS"),
+    ("analysis", "GRID_PLOT_IDS"),
+    ("aggregation", "PLOT_IDS"),
 ])
-def test_pages_only_reference_known_plots(page, dict_name):
+def test_pages_only_reference_known_plots(page, list_name):
     """Catches a page offering an id the registry never learned about.
 
     Read from source rather than imported: a page builds its asset dropdowns at import
     time, which boots the indexer and wants a populated data store. CI runs against an
     empty one, so importing here would be slow and prove nothing about plot ids.
 
-    Accepts either form, because the pages migrate one at a time: a page that has moved
-    declares `PLOT_IDS = [...]` and takes its labels from the registry, one that has
-    not still carries its own `{id: label}` dict.
+    Every page now declares its offering as a named id list and takes labels from
+    the registry; analysis declares two (the panel stack's and the market grid's,
+    the latter formerly the /graphs page).
     """
     import pathlib
     import re
@@ -143,13 +143,9 @@ def test_pages_only_reference_known_plots(page, dict_name):
     src = pathlib.Path(__file__).resolve().parents[1] / "src"
     text = (src / "pages" / "analytics" / f"{page}.py").read_text()
 
-    migrated = re.search(r'^PLOT_IDS\s*=\s*\[(.*?)\]', text, re.S | re.M)
-    if migrated:
-        ids = set(re.findall(r'"([a-z_]+)"', migrated.group(1)))
-    else:
-        body = re.search(rf'^{dict_name}\s*=\s*\{{(.*?)^\}}', text, re.S | re.M)
-        assert body, f"found neither PLOT_IDS nor {dict_name} in {page}.py"
-        ids = set(re.findall(r'"([a-z_]+)"\s*:', body.group(1)))
+    block = re.search(rf'^{list_name}\s*=\s*\[(.*?)\]', text, re.S | re.M)
+    assert block, f"no {list_name} list in {page}.py"
+    ids = set(re.findall(r'"([a-z_]+)"', block.group(1)))
 
     assert ids, f"no plot ids parsed from {page}.py"
     assert ids <= ALL_IDS, f"{page} offers unknown plots: {sorted(ids - ALL_IDS)}"
