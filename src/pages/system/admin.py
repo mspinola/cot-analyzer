@@ -27,7 +27,7 @@ def login_layout():
                 dbc.Input(id='admin-pw-input', type='password', placeholder='Enter Password', className="mb-3"),
                 dbc.Button("Unlock Dashboard", id='admin-login-btn', color="primary"),
                 html.Div(id='admin-login-alert', className="mt-2")
-            ], width=4)
+            ], xs=10, sm=6, md=4)
         ], justify="center", style={'marginTop': '20%'})
     ])
 
@@ -87,9 +87,14 @@ def admin_content():
         ], justify="between", align="center", className="mb-2"),
 
         # Graphs Section
+        # xs=12: a bare width=6 kept the pair side by side at ~187px each on a
+        # phone. responsive, because a chart that stacked at load keeps its
+        # stacked width after a rotation otherwise.
         dbc.Row([
-            dbc.Col(dcc.Graph(id='visit-time-chart'), width=6),
-            dbc.Col(dcc.Graph(id='visitor-geo-chart'), width=6),
+            dbc.Col(dcc.Graph(id='visit-time-chart',
+                              config={'responsive': True}), xs=12, md=6),
+            dbc.Col(dcc.Graph(id='visitor-geo-chart',
+                              config={'responsive': True}), xs=12, md=6),
         ], className="mb-4"),
 
         html.Hr(style=vc.hr_style),

@@ -299,7 +299,10 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
     return dcc.Graph(
         id='aggregation_main_graph',
         figure=fig,
-        config={'displayModeBar': False},
+        # responsive: the figure carries an explicit pixel height, so without it
+        # the chart kept its first-paint width across a rotation or resize until
+        # a reload. The only chart page that was missing it.
+        config={'displayModeBar': False, 'responsive': True},
         style={'width': '100%'}
     )
 

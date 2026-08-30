@@ -1223,6 +1223,30 @@ input.dash-input-container { display: none !important; }
     .hide-border-below-md { border-right: 0 !important; }
 }
 
+/* The Strip's whole-page flex column: viewport height minus where the page
+   starts (the navbar's bottom edge plus the container's top padding, 96px,
+   measured in the browser at the page's own top offset). The ONE number in
+   that page's vertical layout: nothing ON the page can invalidate it, only a
+   navbar change can. Two height declarations on purpose: browsers without dvh
+   keep the vh line, and everywhere else the dvh line wins, which is what stops
+   a phone's retracting URL bar from hiding the board's bottom row (100vh there
+   includes the space behind the bar; 100dvh is what is actually visible). */
+.vh-minus-navbar {
+    height: calc(100vh - 96px);
+    height: calc(100dvh - 96px);
+}
+
+/* The OI Alignment TradingView button is absolutely positioned over the chart,
+   tuned to the desktop legend's geometry (top 60px, left 40px). At phone width
+   the legend reflows and the button landed on plot content, so below md it
+   returns to normal flow and sits above the chart instead. */
+@media (max-width: 767.98px) {
+    .tv-overlay-anchor {
+        position: static !important;
+        margin-bottom: 4px;
+    }
+}
+
 /* The chart pages size their controls with inline pixel widths (Asset Selector
    200px, Lookback 120px, Cols 70px, ...), which is the design at md+ where the
    controls sit in one row of `col-auto`s. Stacked full-width on a phone those

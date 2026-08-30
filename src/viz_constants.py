@@ -305,7 +305,16 @@ MOMENTUM_UNIT_PHRASE = (
 # Figure chrome, in pixels. The top margin holds the title, legend and rangeselector
 # (positioned above the plot area); the bottom holds the x-axis labels. This is fixed
 # per figure and does NOT scale with row count.
+#
+# The mobile value exists because 200px of chrome is a third of a phone screen per
+# figure, and the modebar the desktop margin also clears is not drawn there. It stays
+# above 150 because the legend wraps to more rows on a narrow figure and stacks
+# upward from 70px over the plot area toward the title; 160 held the worst measured
+# case (six legend items on the Disagg/TFF panels). Consumed only through
+# plot_layout.plot_margin_top(), never read beside PLOT_MARGIN_TOP directly, so the
+# height arithmetic and the margin cannot disagree within one figure.
 PLOT_MARGIN_TOP = 200
+PLOT_MARGIN_TOP_MOBILE = 160
 PLOT_MARGIN_BOTTOM = 50
 PLOT_ROW_GAP = 80  # target gap between subplot rows
 

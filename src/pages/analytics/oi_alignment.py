@@ -309,6 +309,10 @@ def layout(**kwargs):
                 html.Div([
                     html.Div(
                         tv_layout.get_tv_overlay_component(prefix=""),
+                        # The class undoes the absolute positioning below md,
+                        # where the legend this is tuned against reflows and the
+                        # button landed on plot content; see custom.css.
+                        className="tv-overlay-anchor",
                         style={
                             "position": "absolute",
                             "top": "60px",    # Adjust this to move it up/down to match your legend perfectly
@@ -809,7 +813,7 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
                      config={
                          'scrollZoom': False,
                          'doubleClick': 'reset',
-                         'displayModeBar': True,
+                         'displayModeBar': not app_utils.is_mobile(),
                          'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
                          'displaylogo': False,
                          'responsive': True},

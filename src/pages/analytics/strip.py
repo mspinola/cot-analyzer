@@ -49,17 +49,14 @@ class_filter.register('strip_class_selector')
 SORT_BY_INDEX = "index"
 SORT_ALPHA = "alpha"
 
-# Where this page starts: the navbar's bottom edge plus the app container's top
-# padding, measured in the browser at the page's own top offset.
-#
-# The ONE number left in the page's vertical layout, where the `calc(100vh - 290px)` it
-# replaces needed four (chrome, card, legend, caption). The difference that matters is
-# not the count: nothing ON this page can change this one, so adding a row or folding
-# the controls cannot silently invalidate it, which is exactly what the old constant
-# could not survive. It moves only if the app's navbar changes, and it is measured
-# rather than guessed: `document.getElementById('strip_export_container')`, walk up to
-# the div carrying this calc, read `getBoundingClientRect().top`.
-NAVBAR_PX = 96
+# Where this page starts (the navbar's bottom edge plus the container's top
+# padding) is 96px, and it lives in custom.css as `.vh-minus-navbar` rather than
+# here: the CSS layer is what lets the same rule say `100vh` for old browsers and
+# `100dvh` where it is supported, which a Dash inline style dict cannot (one
+# `height` key). The dvh half is the mobile fix: `100vh` on a phone includes the
+# space behind the retracting URL bar, so the board's bottom row hid under it.
+# The number's provenance and the reason it is ONE number, not four, are with the
+# rule in custom.css.
 
 # The word for each filter value, in one place because two things need it now: the
 # radio that sets it and the summary line that reports it while the controls are
@@ -325,8 +322,8 @@ def layout(**kwargs):
     # ~40px shut, so one constant cannot be right in both states. `flex: 1` asks for
     # "whatever is left" instead, which is the same answer without the arithmetic.
     return html.Div(
-        style={"display": "flex", "flexDirection": "column",
-               "height": f"calc(100vh - {NAVBAR_PX}px)"},
+        className="vh-minus-navbar",
+        style={"display": "flex", "flexDirection": "column"},
         children=[
         # `local`, not `session`: folding is a standing preference about how this page
         # should look, not a fact about this visit. The filters below use session
