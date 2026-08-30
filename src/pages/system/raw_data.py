@@ -49,7 +49,7 @@ def layout(**kwargs):
                             for code, instr in get_indexer().instruments.items()
                         ],
                         value=list(get_indexer().instruments.keys())[0] if get_indexer().instruments else None,
-                        className="mb-3 bg-dark text-white border-secondary",
+                        className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                         style={'width': '300px'}
                     )
                 ], xs=12, md="auto")

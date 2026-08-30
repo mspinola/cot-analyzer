@@ -57,7 +57,7 @@ import app_utils
 import components.board_traces as board_traces
 import viz_config
 import viz_constants as vc
-from components import class_filter
+from components import class_filter, config_fold
 from components.plot_colors import grid_colors
 from components.strip_traces import SETUP_COLUMN
 
@@ -230,7 +230,7 @@ def layout(**kwargs):
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
-                            dbc.Row([
+                            config_fold.wrap('crowd', dbc.Row([
                                 dbc.Col([
                                     html.Label("Target Date",
                                                style={**vc.label_style,
@@ -293,7 +293,7 @@ def layout(**kwargs):
                                         'crowd_class_selector',
                                         get_indexer().get_asset_classes()),
                                 ], xs=12, md=3, className="px-md-2"),
-                            ], align="center"),
+                            ], align="center")),
                         ]),
                         className="mb-2 shadow-sm",
                         style={

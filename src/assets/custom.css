@@ -1223,6 +1223,24 @@ input.dash-input-container { display: none !important; }
     .hide-border-below-md { border-right: 0 !important; }
 }
 
+/* The chart pages size their controls with inline pixel widths (Asset Selector
+   200px, Lookback 120px, Cols 70px, ...), which is the design at md+ where the
+   controls sit in one row of `col-auto`s. Stacked full-width on a phone those
+   same widths leave a ragged column of mismatched boxes, and the widest (the
+   Disagg / TFF Plot Selector at 340px) is wider than the viewport itself, which
+   the body-level overflow-x: hidden then clips silently. Below md every tagged
+   control takes its column's full width instead; !important because the desktop
+   width is inline. */
+@media (max-width: 767.98px) {
+    .control-mobile-full { width: 100% !important; }
+    /* dcc.Dropdown splits its props: className lands on the inner button while
+       the style prop (and its pixel width) lands on this wrapper div. Capping
+       only the button leaves it at 100% of a wrapper that is still 340px, so
+       the wrapper needs the same treatment. `:has` has precedent in this file
+       (the class-filter menu's stacking fix). */
+    .dash-dropdown-wrapper:has(> .control-mobile-full) { width: 100% !important; }
+}
+
 /* The Active Setups cards. The whole card is a link to the market's OI Alignment
    page, so it needs to look like one: the name alone used to be the only anchor,
    which made most of the card a dead click on a card that has no other action.

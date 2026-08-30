@@ -382,9 +382,12 @@ def update_admin_stats(n, auth_data, traffic):
 
     # Table: Raw logs (using your established dense-table style)
     table_cols = ['timestamp', 'visitor_id', 'kind', 'ip_address', 'city', 'country', 'path']
+    # responsive: seven nowrap columns (dense-table forces nowrap cells) run well
+    # past a phone viewport, and the body-level overflow-x: hidden clipped the
+    # right edge silently. The wrapper div this adds scrolls instead.
     table = dbc.Table.from_dataframe(
         events[table_cols].head(15).fillna(''),
-        striped=True, bordered=True, hover=True,
+        striped=True, bordered=True, hover=True, responsive=True,
         className="dense-table",
         style={'fontSize': '0.85rem'}
     )

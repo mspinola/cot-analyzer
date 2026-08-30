@@ -24,10 +24,11 @@ from dash import (
     no_update,
 )
 
+import app_utils
 import viz_config
 import viz_constants as vc
 from app_utils import next_date_selection
-from components import class_filter
+from components import class_filter, config_fold
 from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
 dash.register_page(__name__, path="/heatmap")
@@ -119,7 +120,11 @@ def layout(**kwargs):
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
-                            dbc.Row([
+                            # Folded on a phone: stacked, these five controls fill the
+                            # viewport, and this row is sticky, so the grid scrolled
+                            # under a full-screen overlay. Folded, the sticky row is
+                            # one button tall.
+                            config_fold.wrap('heatmap', dbc.Row([
                                 dbc.Col([
                                     html.Label("Lookback Window", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
                                     dbc.Select(
@@ -194,7 +199,7 @@ def layout(**kwargs):
                                         style={'backgroundColor': 'transparent', 'borderColor': 'rgba(147, 161, 161, 0.2)'}
                                     )
                                 ], xs=12, md=2, className="d-flex align-items-center justify-content-end")
-                            ], align="center")
+                            ], align="center"))
                         ]),
                         className="mb-4 shadow-sm",
                         style={
@@ -824,6 +829,19 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         for child in group["children"]:
             if child["field"] not in _TEXT_FIELDS:
                 child["type"] = "rightAligned"
+
+    # The four pinned columns are 520px together, and AG Grid gives pinned
+    # columns priority, so on a phone they consumed the whole viewport and the
+    # scrollable body had no room left: the grid rendered as a two-column sliver
+    # of truncated text. Keep only the market name frozen there and let the rest
+    # scroll under it. Same per-request sniff as plot_layout.visible_weeks; this
+    # runs in a callback, so a rotation that changes nothing about the UA keeps
+    # the same answer, which is the known cost of deciding server-side.
+    if app_utils.is_mobile():
+        for group in columnDefs:
+            for child in group["children"]:
+                if child.get("pinned") and child["field"] != "Asset":
+                    del child["pinned"]
 
     # Convert asset column to markdown links
     df['Asset'] = df['Asset'].apply(lambda x: f"[{x}](/oi_alignment?asset={urllib.parse.quote(x)})")

@@ -13,7 +13,7 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
-from components import class_filter
+from components import class_filter, config_fold
 
 # Register this file as a page
 dash.register_page(
@@ -55,7 +55,7 @@ def layout(**kwargs):
                     # a strip of vertical space on a page whose whole subject is a tall
                     # stack of charts. `g-2` supplies the vertical gutter when they wrap
                     # on a narrow viewport, so nothing needs a bottom margin of its own.
-                    dbc.Row([
+                    config_fold.wrap('graphs', dbc.Row([
                         dbc.Col([
                             html.H6("Asset Classes", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
                             # Same nine switches, collapsed. This page defaults to one
@@ -73,7 +73,7 @@ def layout(**kwargs):
                                 id='graphs_multi_equity_selector_input',
                                 options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
                                 multi=True,
-                                className="dash-dropdown bg-dark text-white",
+                                className="dash-dropdown bg-dark text-white control-mobile-full",
                                 searchable=True,
                                 clearable=True,
                                 style={'width': '200px'}
@@ -87,7 +87,7 @@ def layout(**kwargs):
                                 id='graphs_plot_selector_input',
                                 options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
                                 value="net_pos",
-                                className="bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '200px'}
                             ),
                         ], xs=12, md="auto"),
@@ -102,7 +102,7 @@ def layout(**kwargs):
                                     {"label": "Custom", "value": "Custom"},
                                 ],
                                 value="Custom",
-                                className="bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '120px'}
                             )
                         ], xs=12, md="auto"),
@@ -117,7 +117,7 @@ def layout(**kwargs):
                                     for v in vc.MODEL_VIEW_CHOICES
                                 ],
                                 value=models.DEFAULT_MODEL.key,
-                                className="bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '110px'}
                             ),
                             # Sits under its select rather than pulled up into it:
@@ -141,11 +141,11 @@ def layout(**kwargs):
                                     {"label": "3", "value": "3"},
                                 ],
                                 value="1",
-                                className="bg-dark text-white border-secondary",
+                                className="bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '70px'}
                             )
                         ], xs=12, md="auto"),
-                    ], className="g-2 align-items-start"),
+                    ], className="g-2 align-items-start")),
                 ])
             ], style={'backgroundColor': 'var(--card-color)', 'borderColor': vc.GRID_COLOR}, className="mb-4 mt-2"),
 
