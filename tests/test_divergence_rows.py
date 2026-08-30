@@ -207,3 +207,19 @@ def test_comm_spread_is_about_the_displayed_columns_not_the_frame():
     assert dr.comm_spread(
         (read(key="a", comm=60.0), read(key="b", comm=64.0),
          read(key="c", comm=52.0))) == 12.0
+
+
+def test_leg_spread_covers_every_leg_and_skips_uncarried_ones():
+    """The emphasis generalized from the Commercial leg once the default view
+    became the two CLS models, where every leg is the same gate on two bases.
+    The guard that matters: a leg only ONE shown column carries (NPF CS drops
+    Large Specs; equities carry Commercials alone) has no pair to disagree, so
+    it must never light a value against a dash."""
+    read = dr.ModelRead
+    reads = (read(key="a", comm=37.0, lrg=65.0, sml=24.0),
+             read(key="b", comm=49.0, lrg=None, sml=24.0))
+    assert dr.leg_spread(reads, "comm") == 12.0
+    assert dr.leg_spread(reads, "lrg") is None
+    assert dr.leg_spread(reads, "sml") == 0.0
+    # comm_spread stays as the shorthand the renderer grew up on.
+    assert dr.comm_spread(reads) == dr.leg_spread(reads, "comm")
