@@ -220,6 +220,12 @@ def _column_select(column_id, default):
         persistence='session',
         size="sm",
         className="bg-dark text-white border-secondary",
+        # Flex sizing, because the wrapping container below cannot do it alone:
+        # .form-select is width: 100%, so once the row was allowed to wrap (the
+        # phone fix) each select claimed a full line on DESKTOP too. A basis of
+        # 110px with grow shares one row where three fit and wraps where they
+        # do not, which is both layouts from one rule.
+        style={"flex": "1 1 110px", "minWidth": "110px", "width": "auto"},
     )
 
 
