@@ -310,6 +310,36 @@ def record_visit():
         _enqueue_visit('landing', request.path)
 
 
+# The dropdown pages, as data, so the items and the active-state wiring below
+# can never disagree about what is in the menus. OI Alignment and About are
+# absent on purpose: both were promoted to top-level links.
+_ANALYTICS_PAGES = (
+    ("Asset Graphs", "/graphs"),
+    ("Asset Analysis", "/analysis"),
+    ("Divergence", "/divergence"),
+    ("Aggregation", "/aggregation"),
+    ("Disagg / TFF", "/categories"),
+    ("Table", "/positioning"),
+)
+_SYSTEM_PAGES = (
+    ("Options", "/options"),
+    ("Admin", "/admin"),
+    ("Raw Data Viewer", "/raw_data"),
+)
+
+
+def _nav_dropdown_item(label, href):
+    """One menu entry, with the id its active-state callback keys on.
+
+    dbc.NavLink highlights itself via active="exact"; DropdownMenuItem has only a
+    boolean `active`, so without this the dropdown pages were the ones the navbar
+    never admitted you were on. The href rides in the id so the clientside
+    callback below can compare each item against the URL without a lookup table.
+    """
+    return dbc.DropdownMenuItem(
+        label, href=href, id={'type': 'nav_dropdown_item', 'href': href})
+
+
 navbar = dbc.Navbar(
     (
         dbc.NavbarBrand(
@@ -348,33 +378,31 @@ navbar = dbc.Navbar(
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
                     dbc.NavItem(dbc.NavLink("Crowd", href="/crowd", active="exact")),
                     dbc.NavItem(dbc.NavLink("Exposure", href="/exposure", active="exact")),
+                    # Top level rather than in the dropdown: this is the detail page
+                    # every board's market click and deep link lands on, so it is the
+                    # second page most visits reach and should not be two clicks away.
+                    dbc.NavItem(dbc.NavLink("OI Alignment", href="/oi_alignment",
+                                            active="exact")),
                     dbc.DropdownMenu(
-                        children=[
-                            dbc.DropdownMenuItem("Asset Graphs", href="/graphs"),
-                            dbc.DropdownMenuItem("Asset Analysis", href="/analysis"),
-                            dbc.DropdownMenuItem("OI Alignment", href="/oi_alignment"),
-                            dbc.DropdownMenuItem("Divergence", href="/divergence"),
-                            dbc.DropdownMenuItem("Aggregation", href="/aggregation"),
-                            dbc.DropdownMenuItem("Disagg / TFF", href="/categories"),
-                            dbc.DropdownMenuItem("Table", href="/positioning"),
-                        ],
+                        children=[_nav_dropdown_item(label, href)
+                                  for label, href in _ANALYTICS_PAGES],
                         nav=True,
                         in_navbar=True,
                         label="Analytics"
                     ),
 
                     dbc.DropdownMenu(
-                        children=[
-                            dbc.DropdownMenuItem("Options", href="/options"),
-                            dbc.DropdownMenuItem("Admin", href="/admin"),
-                            dbc.DropdownMenuItem("Raw Data Viewer", href="/raw_data"),
-                            dbc.DropdownMenuItem("About", href="/about"),
-                        ],
+                        children=[_nav_dropdown_item(label, href)
+                                  for label, href in _SYSTEM_PAGES],
                         nav=True,
                         in_navbar=True,
                         label="System",
                         className="me-2"
                     ),
+                    # Out of the System dropdown: a first-time visitor deciding
+                    # whether to trust the site looks for About, and burying it
+                    # between Admin and Raw Data Viewer said it was operator chrome.
+                    dbc.NavItem(dbc.NavLink("About", href="/about", active="exact")),
                 ],
                 className="ms-auto",
                 navbar=True,
@@ -542,6 +570,21 @@ app.clientside_callback(
     Input('global_week_store', 'data'),
     Input('global_model_store', 'data'),
     Input('global_lookback_store', 'data'),
+    Input('url', 'pathname'),
+)
+
+# The dropdown pages' active state. NavLinks match the URL themselves via
+# active="exact"; DropdownMenuItem only takes a boolean, so each item's id
+# carries its href and this compares the lot against the path on every
+# navigation. Clientside because it is a string comparison per menu entry.
+app.clientside_callback(
+    """
+    function(pathname) {
+        return dash_clientside.callback_context.outputs_list.map(
+            o => o.id.href === pathname);
+    }
+    """,
+    Output({'type': 'nav_dropdown_item', 'href': dash.ALL}, 'active'),
     Input('url', 'pathname'),
 )
 

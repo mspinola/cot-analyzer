@@ -29,150 +29,27 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         /**
          * The Crowding Strip as one PNG: caption, legend and every column.
          *
-         * Same shape as export_oi_alignment_image below and different in three ways,
-         * each forced by what this page is.
-         *
-         * One, the strip lives in a fixed-height box that scrolls (the control card is
-         * sticky, so the page itself must not scroll). A screenshot of that box is the
-         * visible rows only, which is the opposite of what this page is for. The clone
-         * gets height:auto and overflow:visible, so the export is the WHOLE board even
-         * when the reader can only see a third of it.
-         *
-         * Two, there can be one column or two, so the plots are collected rather than
-         * named. Each is snapshotted at its own on-screen size: the figure's height is
-         * ROW_PX times its row count, so stretching it the way the OI export does would
-         * change the row pitch, which is the one dimension on this figure that has to
-         * stay constant between the two columns.
-         *
-         * Three, the caption and the legend are page chrome here rather than part of a
-         * figure, and both carry things the picture cannot: the report date, which
-         * window each row was measured over, and what the marks mean. An export without
-         * them is a board of coloured dots with no date on it, so they are inside the
-         * cloned container rather than added back afterwards.
+         * The machinery lives in exportBoardImage below, shared with the Crowd
+         * board, whose export is this one's shape exactly: a container of page
+         * chrome (caption, folded key) around Plotly figures that must be
+         * snapshotted at their on-screen size.
          */
         export_strip_image: function(n_clicks, model_key, target_date) {
-            if (!n_clicks) { return window.dash_clientside.no_update; }
-            if (typeof html2canvas === 'undefined' || typeof Plotly === 'undefined') {
-                console.error("html2canvas or Plotly is not loaded.");
-                return window.dash_clientside.no_update;
+            if (n_clicks) {
+                exportBoardImage('strip_export_container', 'cot_strip',
+                                 model_key, target_date);
             }
-            var container = document.getElementById("strip_export_container");
-            if (!container) {
-                console.error("Could not find the strip export container.");
-                return window.dash_clientside.no_update;
+            return window.dash_clientside.no_update;
+        },
+        /**
+         * The Crowd board as one PNG: caption, the how-to-read teaching and the
+         * whole four-window grid, via the same exportBoardImage as the Strip.
+         */
+        export_crowd_image: function(n_clicks, model_key, target_date) {
+            if (n_clicks) {
+                exportBoardImage('crowd_export_container', 'cot_crowd',
+                                 model_key, target_date);
             }
-
-            var plots = Array.prototype.slice.call(
-                container.querySelectorAll('.js-plotly-plot'));
-            if (!plots.length) { return window.dash_clientside.no_update; }
-
-            // scale 2 for a crisp raster; the <img> is sized back down to the on-screen
-            // width below, so the extra pixels land as resolution rather than as size.
-            var shots = plots.map(function(node) {
-                var box = node.getBoundingClientRect();
-                return Plotly.toImage(node, {
-                    format: 'png',
-                    width: Math.round(box.width) || 900,
-                    height: Math.round(box.height) || 800,
-                    scale: 2
-                }).then(function(dataUrl) {
-                    return {url: dataUrl, width: Math.round(box.width) || 900};
-                });
-            });
-
-            Promise.all(shots).then(function(images) {
-                var clone = container.cloneNode(true);
-                clone.style.position = 'absolute';
-                clone.style.left = '-9999px';
-                clone.style.top = '-9999px';
-                clone.style.width = container.clientWidth + 'px';
-                clone.style.backgroundColor = '#1a1a1a';
-                clone.style.padding = '20px';
-
-                // Every scroll box in the clone opens up, so the export carries rows
-                // the reader would have had to scroll to.
-                Array.prototype.forEach.call(
-                    clone.querySelectorAll('*'), function(node) {
-                        if (node.style && (node.style.overflowY || node.style.overflow)) {
-                            node.style.overflow = 'visible';
-                            node.style.overflowY = 'visible';
-                            node.style.height = 'auto';
-                            node.style.maxHeight = 'none';
-                        }
-                    });
-
-                // And so does every fold. The legend and the caption sit in a collapse
-                // that is shut by default, and they are the only things saying what
-                // week this is and what the marks mean, so a PNG without them is a
-                // board of coloured dots. The fold is about screen space; it has no
-                // business deciding what a shared image contains.
-                Array.prototype.forEach.call(
-                    clone.querySelectorAll('.collapse'), function(node) {
-                        node.classList.add('show');
-                        node.style.height = 'auto';
-                        node.style.visibility = 'visible';
-                    });
-
-                // Swap each live plot for its snapshot, in the same order and in place,
-                // so the column layout the page chose is the layout the PNG gets.
-                var clonePlots = Array.prototype.slice.call(
-                    clone.querySelectorAll('.js-plotly-plot'));
-                var pending = [];
-                clonePlots.forEach(function(node, i) {
-                    if (!images[i]) { return; }
-                    var img = document.createElement('img');
-                    img.style.width = images[i].width + 'px';
-                    img.style.maxWidth = '100%';
-                    img.style.height = 'auto';
-                    img.style.display = 'block';
-                    pending.push(new Promise(function(resolve) {
-                        img.onload = resolve;
-                        img.onerror = resolve;
-                    }));
-                    img.src = images[i].url;
-                    node.parentNode.replaceChild(img, node);
-                });
-
-                var themeContainer = document.getElementById("theme-container")
-                    || document.body;
-                themeContainer.appendChild(clone);
-
-                // html2canvas measures rather than waits, so a decoded image is a
-                // precondition, not a nicety: an <img> still loading paints as nothing.
-                Promise.all(pending).then(function() {
-                    setTimeout(function() {
-                        html2canvas(clone, {
-                            backgroundColor: "#1a1a1a",
-                            scale: 2,
-                            useCORS: true,
-                            logging: false
-                        }).then(function(canvas) {
-                            themeContainer.removeChild(clone);
-                            var stamp = target_date;
-                            if (!stamp) {
-                                var today = new Date();
-                                stamp = today.getFullYear() + '-'
-                                    + String(today.getMonth() + 1).padStart(2, '0') + '-'
-                                    + String(today.getDate()).padStart(2, '0');
-                            }
-                            var model = (model_key || 'model')
-                                .replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                            var link = document.createElement('a');
-                            link.download = 'cot_strip_' + model + '_' + stamp + '.png';
-                            link.href = canvas.toDataURL("image/png");
-                            link.click();
-                        }).catch(function(err) {
-                            console.error("html2canvas failed on the strip clone: ", err);
-                            if (clone.parentNode === themeContainer) {
-                                themeContainer.removeChild(clone);
-                            }
-                        });
-                    }, 150);
-                });
-            }).catch(function(err) {
-                console.error("Plotly toImage failed on the strip", err);
-            });
-
             return window.dash_clientside.no_update;
         },
         /**
@@ -581,6 +458,158 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         }
     }
 });
+
+/**
+ * A board page as one PNG: the container's chrome plus every Plotly figure in it.
+ *
+ * Shared by the Strip and Crowd exports; export_oi_alignment_image predates it and
+ * keeps its own stitching (its picture is a signal panel plus ONE deliberately
+ * stretched figure, not the container as laid out). What this does, and why, in
+ * the order it happens:
+ *
+ * One, boards live in fixed-height boxes that scroll, so a screenshot of the
+ * container is the visible rows only, the opposite of what an export is for. The
+ * clone gets height:auto and overflow:visible, so the PNG is the WHOLE board even
+ * when the reader can only see a third of it.
+ *
+ * Two, the plots are collected rather than named, since a page may draw one
+ * column or two. Each is snapshotted at its own on-screen size: a strip figure's
+ * height is ROW_PX times its row count, so stretching it would change the row
+ * pitch, the one dimension that must stay constant between columns.
+ *
+ * Three, the caption, key and how-to-read teaching are page chrome inside the
+ * container, and they carry what the picture cannot: the report date, the window
+ * each row was measured over, what the marks mean. Their folds are re-opened in
+ * the clone (a fold is about screen space and has no business deciding what a
+ * shared image contains), and buttons are stripped, because a control in a
+ * picture is the one thing on it that cannot be acted on.
+ */
+function exportBoardImage(containerId, prefix, model_key, target_date) {
+    if (typeof html2canvas === 'undefined' || typeof Plotly === 'undefined') {
+        console.error("html2canvas or Plotly is not loaded.");
+        return;
+    }
+    var container = document.getElementById(containerId);
+    if (!container) {
+        console.error("Could not find " + containerId + ".");
+        return;
+    }
+
+    var plots = Array.prototype.slice.call(
+        container.querySelectorAll('.js-plotly-plot'));
+    if (!plots.length) { return; }
+
+    // scale 2 for a crisp raster; the <img> is sized back down to the on-screen
+    // width below, so the extra pixels land as resolution rather than as size.
+    var shots = plots.map(function(node) {
+        var box = node.getBoundingClientRect();
+        return Plotly.toImage(node, {
+            format: 'png',
+            width: Math.round(box.width) || 900,
+            height: Math.round(box.height) || 800,
+            scale: 2
+        }).then(function(dataUrl) {
+            return {url: dataUrl, width: Math.round(box.width) || 900};
+        });
+    });
+
+    Promise.all(shots).then(function(images) {
+        var clone = container.cloneNode(true);
+        clone.style.position = 'absolute';
+        clone.style.left = '-9999px';
+        clone.style.top = '-9999px';
+        // The same degenerate-layout fallback the snapshot widths use above: a
+        // window that reports no viewport (a headless or suspended tab) measures
+        // every element at 0, and a 0px clone renders as a 40px strip of padding.
+        // The widest snapshot is the board itself, so it is the honest substitute.
+        var cloneWidth = container.clientWidth
+            || Math.max.apply(null, images.map(function(i) { return i.width; }))
+            || 900;
+        clone.style.width = cloneWidth + 'px';
+        clone.style.backgroundColor = '#1a1a1a';
+        clone.style.padding = '20px';
+
+        Array.prototype.forEach.call(
+            clone.querySelectorAll('*'), function(node) {
+                if (node.style && (node.style.overflowY || node.style.overflow)) {
+                    node.style.overflow = 'visible';
+                    node.style.overflowY = 'visible';
+                    node.style.height = 'auto';
+                    node.style.maxHeight = 'none';
+                }
+            });
+        Array.prototype.forEach.call(
+            clone.querySelectorAll('.collapse'), function(node) {
+                node.classList.add('show');
+                node.style.height = 'auto';
+                node.style.visibility = 'visible';
+            });
+        Array.prototype.forEach.call(
+            clone.querySelectorAll('button'), function(node) {
+                node.parentNode.removeChild(node);
+            });
+
+        // Swap each live plot for its snapshot, in the same order and in place,
+        // so the column layout the page chose is the layout the PNG gets.
+        var clonePlots = Array.prototype.slice.call(
+            clone.querySelectorAll('.js-plotly-plot'));
+        var pending = [];
+        clonePlots.forEach(function(node, i) {
+            if (!images[i]) { return; }
+            var img = document.createElement('img');
+            img.style.width = images[i].width + 'px';
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            pending.push(new Promise(function(resolve) {
+                img.onload = resolve;
+                img.onerror = resolve;
+            }));
+            img.src = images[i].url;
+            node.parentNode.replaceChild(img, node);
+        });
+
+        var themeContainer = document.getElementById("theme-container")
+            || document.body;
+        themeContainer.appendChild(clone);
+
+        // html2canvas measures rather than waits, so a decoded image is a
+        // precondition, not a nicety: an <img> still loading paints as nothing.
+        Promise.all(pending).then(function() {
+            setTimeout(function() {
+                html2canvas(clone, {
+                    backgroundColor: "#1a1a1a",
+                    scale: 2,
+                    useCORS: true,
+                    logging: false
+                }).then(function(canvas) {
+                    themeContainer.removeChild(clone);
+                    var stamp = target_date;
+                    if (!stamp) {
+                        var today = new Date();
+                        stamp = today.getFullYear() + '-'
+                            + String(today.getMonth() + 1).padStart(2, '0') + '-'
+                            + String(today.getDate()).padStart(2, '0');
+                    }
+                    var model = (model_key || 'model')
+                        .replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    var link = document.createElement('a');
+                    link.download = prefix + '_' + model + '_' + stamp + '.png';
+                    link.href = canvas.toDataURL("image/png");
+                    link.click();
+                }).catch(function(err) {
+                    console.error("html2canvas failed on the board clone: ", err);
+                    if (clone.parentNode === themeContainer) {
+                        themeContainer.removeChild(clone);
+                    }
+                });
+            }, 150);
+        });
+    }).catch(function(err) {
+        console.error("Plotly toImage failed on " + containerId, err);
+    });
+}
+
 
 // A price panel that decides its own scale, for the window actually on screen.
 //

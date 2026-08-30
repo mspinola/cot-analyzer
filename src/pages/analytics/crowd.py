@@ -51,7 +51,16 @@ import pandas as pd
 from cotmetrics import indicators
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, callback, dcc, html, no_update
+from dash import (
+    Input,
+    Output,
+    State,
+    callback,
+    clientside_callback,
+    dcc,
+    html,
+    no_update,
+)
 
 import app_utils
 import components.board_traces as board_traces
@@ -67,6 +76,19 @@ dash.register_page(__name__, path='/crowd')
 class_filter.register('crowd_class_selector')
 controls.register_model('crowd_model_selector')
 controls.register_target_date('crowd_date_selector')
+
+# The PNG export, the Strip's machinery exactly (see exportBoardImage in
+# clientside.js): the board snapshotted at on-screen size, the caption and the
+# how-to-read fold opened in the clone. Model and date ride along only to name
+# the file.
+clientside_callback(
+    "window.dash_clientside.clientside.export_crowd_image",
+    Output('crowd_download_img_btn', 'n_clicks'),
+    Input('crowd_download_img_btn', 'n_clicks'),
+    State('crowd_model_selector', 'value'),
+    State('crowd_date_selector', 'value'),
+    prevent_initial_call=True,
+)
 
 ORDER_LABELS = {
     board_traces.ORDER_CLASS: "By class",
@@ -299,27 +321,43 @@ def layout(**kwargs):
                 ], width=12),
             ], className="mt-3"),
 
-            dbc.Row([
-                dbc.Col([
-                    html.P(id='crowd_caption',
-                           style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                  'fontStyle': 'italic', 'marginBottom': '4px'}),
-                    help_fold.wrap('crowd', html.P(
-                        id='crowd_help',
-                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                               'fontStyle': 'italic', 'marginBottom': '4px'})),
-                ], width=12),
-            ]),
+            # Everything the PNG export captures lives inside this div, buttons
+            # included: exportBoardImage strips them from its clone, the
+            # Divergence container's rule.
+            html.Div(id='crowd_export_container', children=[
+                dbc.Row([
+                    dbc.Col([
+                        html.P(id='crowd_caption',
+                               style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                      'fontStyle': 'italic', 'marginBottom': '4px'}),
+                        help_fold.wrap('crowd', html.P(
+                            id='crowd_help',
+                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                   'fontStyle': 'italic', 'marginBottom': '4px'})),
+                    ], xs=True),
+                    dbc.Col([
+                        dbc.Button("📸 Export PNG",
+                                   id="crowd_download_img_btn",
+                                   style={"color": vc.TEXT_COLOR},
+                                   size="sm"),
+                        dbc.Tooltip(
+                            "The whole board as one image, with the caption and "
+                            "the how-to-read text.",
+                            target="crowd_download_img_btn",
+                            placement="bottom"),
+                    ], xs="auto"),
+                ]),
 
-            dbc.Row([
-                dbc.Col(
-                    dcc.Loading(
-                        id="loading-crowd",
-                        type="dot",
-                        children=html.Div(id='crowd_display_container'),
-                        color=vc.BRIGHTER_TEXT_COLOR,
-                    ),
-                    width=12),
+                dbc.Row([
+                    dbc.Col(
+                        dcc.Loading(
+                            id="loading-crowd",
+                            type="dot",
+                            children=html.Div(id='crowd_display_container'),
+                            color=vc.BRIGHTER_TEXT_COLOR,
+                        ),
+                        width=12),
+                ]),
             ]),
         ], fluid=True),
     ])

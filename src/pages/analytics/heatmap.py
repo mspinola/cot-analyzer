@@ -58,6 +58,42 @@ _FILTER_STATES = {
 }
 
 
+# The column presets. Same wire-format warning as the Setups filter: these live in
+# a session-persisted control. The split is by QUESTION rather than by data source:
+# "positioning" is what the gates read and how it moved (both model blocks, the
+# momentum, and the WILLCO/sentiment derivatives of the same series), "risk" is
+# what the positions are worth and cost (dollar-risk percentile, cost basis, open
+# interest). The pinned market block survives every preset, or the grid is a table
+# of numbers about nobody.
+PRESET_ALL = "all"
+PRESET_POSITIONING = "positioning"
+PRESET_RISK = "risk"
+PRESET_LABELS = {
+    PRESET_ALL: "All columns",
+    PRESET_POSITIONING: "Positioning",
+    PRESET_RISK: "Risk & OI",
+}
+
+
+def apply_column_preset(column_defs, preset):
+    """The column groups a preset keeps, with the tag key stripped from all.
+
+    Each group carries a `presetTags` tuple ("always" survives every preset). An
+    unknown preset shows everything: the value comes from a session-persisted
+    control, so a renamed preset in a returning browser must degrade to the full
+    grid rather than to an empty one. The tag key is removed even from dropped
+    groups because AG Grid gets whatever survives, and it is not an AG Grid key.
+    """
+    if preset not in PRESET_LABELS:
+        preset = PRESET_ALL
+    kept = []
+    for group in column_defs:
+        tags = group.pop("presetTags", ())
+        if preset == PRESET_ALL or "always" in tags or preset in tags:
+            kept.append(group)
+    return kept
+
+
 def filter_by_setup(df, mode):
     """Matrix rows narrowed to those at (or approaching) a gate under either model.
 
@@ -146,7 +182,7 @@ def layout(**kwargs):
                                     class_filter.control(
                                         'page_heatmap_selector',
                                         get_indexer().get_asset_classes()),
-                                ], xs=12, md=3, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
 
                                 dbc.Col([
                                     html.Label(
@@ -171,7 +207,29 @@ def layout(**kwargs):
                                         className="bg-dark text-white border-secondary",
                                         style={'borderRadius': '8px'},
                                     )
-                                ], xs=12, md=3, className="mb-3 mb-md-0 px-md-3"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
+
+                                dbc.Col([
+                                    html.Label(
+                                        "Columns",
+                                        title="Which column groups the grid shows. "
+                                              "Positioning is what the gates read and "
+                                              "how it moved; Risk & OI is what the "
+                                              "positions are worth and cost. The "
+                                              "market block stays either way.",
+                                        style={**vc.label_style, "fontSize": "0.8rem",
+                                               "textTransform": "uppercase",
+                                               "cursor": "help"}),
+                                    dbc.Select(
+                                        id='heatmap_columns_preset',
+                                        persistence='session',
+                                        options=[{"label": text, "value": value}
+                                                 for value, text in PRESET_LABELS.items()],
+                                        value=PRESET_ALL,
+                                        className="bg-dark text-white border-secondary",
+                                        style={'borderRadius': '8px'},
+                                    )
+                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-3"),
 
                                 dbc.Col([
                                     dbc.Button(
@@ -517,10 +575,12 @@ def warm_caches():
      Input('global_lookback_store', 'data'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('heatmap_date_selector', 'value'),
-     Input('heatmap_setup_filter', 'value')]
+     Input('heatmap_setup_filter', 'value'),
+     Input('heatmap_columns_preset', 'value')]
 )
 def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
-                          setup_filter=SETUP_FILTER_ALL):
+                          setup_filter=SETUP_FILTER_ALL,
+                          columns_preset=PRESET_ALL):
     utils.cot_logger.info(f"Rendering matrix with Asset Classes: {assest_classes}, Lookback: {lookback}, Palette: {palette_name}, Date: {target_date}")
 
     if not assest_classes:
@@ -598,6 +658,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
     columnDefs = [
         {
             "headerName": header_name,
+            "presetTags": ("always",),
             "children": [
                 {"field": "Asset Class", "filter": True, "pinned": "left", "width": 120},
                 {
@@ -619,6 +680,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             # second block because the CS gate drops that leg -- showing it here would
             # invite reading a column the book does not gate on.
             "headerName": f"Positioning · {models.RAW_PF.title}",
+            "presetTags": (PRESET_POSITIONING,),
             "children": [
                 {"field": "Comm Index", "headerTooltip": f"Williams Commercial Index, on net contracts. The C leg of the {models.RAW_PF.title} gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_styles}},
                 {"field": "Lrg Index", "headerTooltip": f"Large Speculators positioning index, on net contracts. The L leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}},
@@ -627,6 +689,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             "headerName": f"Positioning · {models.NPF.title}",
+            "presetTags": (PRESET_POSITIONING,),
             # Wider than the default 90: this group is only two columns, so it gets the
             # least room to flex into and the header is the longest of the two blocks.
             "children": [
@@ -636,6 +699,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             "headerName": "Index Momentum",
+            "presetTags": (PRESET_POSITIONING,),
             "children": [
                 {
                     "field": "Comm Move",
@@ -676,6 +740,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             "headerName": "Friction & Flow",
+            "presetTags": (PRESET_POSITIONING,),
             "children": [
                 {"field": "WILLCO", "headerTooltip": "Williams Commercial Index (Thresholds: <= 20 Bearish / >= 80 Bullish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": willco_styles}},
                 # minWidth 110, not the default 90: at 90 the header wraps mid-word
@@ -685,6 +750,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             "headerName": "Exposure · Speculators",
+            "presetTags": (PRESET_RISK,),
             "children": [
                 {
                     "field": "Risk %ile",
@@ -721,6 +787,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             # two move independently: a cohort can be at a record position and in profit,
             # which is in fact the common case.
             "headerName": "Cost Basis · Large Specs",
+            "presetTags": (PRESET_RISK,),
             "children": [
                 {
                     "field": "Offside",
@@ -755,6 +822,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             "headerName": "Open Interest",
+            "presetTags": (PRESET_RISK,),
             "children": [
                 {
                     "field": "OI Z",
@@ -793,6 +861,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             ]
         }
     ]
+
+    columnDefs = apply_column_preset(columnDefs, columns_preset)
 
     # Every column past the pinned four is a number, and numbers compare by their
     # right edge: left-aligned, 9 sits under 100's hundreds digit and reads larger.
