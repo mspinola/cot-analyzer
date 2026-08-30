@@ -356,3 +356,99 @@ def test_sanitize_selection_drops_unknown_ids():
 def test_labels_for_covers_every_spec():
     assert set(ct.labels_for()) == set(ct.CATEGORY_SPECS)
     assert all(isinstance(v, str) and v for v in ct.labels_for().values())
+
+
+def _by_name(fig, name):
+    return [t for t in fig.data if t.name == name]
+
+
+def test_price_overlay_starts_switched_off():
+    """The green price line is opt-in where it rides a second axis.
+
+    Both halves matter and they are different traces: the drawn overlay, and the
+    empty scatter that puts Price in the legend. Plotly toggles a whole legendgroup
+    from its entry, so an entry that disagreed with the traces it controls would
+    render ungreyed over a panel drawing nothing, and the reader's first click would
+    hide what was already hidden.
+    """
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    fig = ct.build_panel("index", _figure("index"), df, series, HEADER, 1, 1,
+                         PALETTE, showlegend=True)
+
+    price = _by_name(fig, "Price")
+    assert price, "the overlay view still draws a price trace"
+    assert all(t.visible == "legendonly" for t in price)
+
+    # Every category series is unaffected: only price is opt-in.
+    assert all(t.visible in (True, None)
+               for t in _named_traces(fig) if t.name != "Price")
+
+
+def test_faceted_price_row_is_not_an_overlay_and_still_draws():
+    """Price as its own row keeps drawing.
+
+    The rule is about a second scale on someone else's panel, not about price. A
+    facet row has its own axis, and there is no legend in this view at all, so
+    hiding it would remove the row with no way to ask for it back.
+    """
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    fig, _, _ = _facet(df, series, ["index"])
+
+    price = _by_name(fig, "Price")
+    assert price
+    assert all(t.visible in (True, None) for t in price)
+
+
+def test_a_stack_led_by_net_positions_still_offers_price_in_the_legend():
+    """The legend-owning panel need not be the one drawing price.
+
+    Net Positions gives its second axis to open interest, so it advertises no Price
+    entry; the panels after it still draw price overlays. With the overlay off by
+    default, an entry-less figure would strand them: hidden, with nothing to click.
+    """
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    plots = ["net_pos", "index"]
+
+    specs = ct.subplot_specs(plots, show_price=True, num_cols=1)
+    fig = layout_helpers.get_make_subplots_for_plots(2, 1, plots, specs)
+    for i, plot_id in enumerate(plots):
+        fig = ct.build_panel(plot_id, fig, df, series, HEADER, i + 1, 1, PALETTE,
+                             show_price=True, showlegend=(i == 0))
+
+    def entries():
+        return [t for t in fig.data
+                if t.name == "Price" and t.x is not None and len(t.x)
+                and t.x[0] is None]
+
+    assert not entries(), "the precondition this guards: no entry from panel one"
+    fig = ct.ensure_price_legend_entry(fig, PALETTE)
+    added = entries()
+    assert len(added) == 1
+    assert added[0].visible == "legendonly"
+    assert added[0].legendgroup == "price"
+
+
+def test_the_price_entry_is_not_duplicated_when_one_already_exists():
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    fig = ct.build_panel("index", _figure("index"), df, series, HEADER, 1, 1,
+                         PALETTE, showlegend=True)
+
+    before = len([t for t in fig.data if t.name == "Price"])
+    ct.ensure_price_legend_entry(fig, PALETTE)
+    assert len([t for t in fig.data if t.name == "Price"]) == before
+
+
+def test_no_price_entry_is_invented_when_nothing_drew_one():
+    """A stack of Net Positions alone draws no price at all, so an entry would
+    control nothing."""
+    df = _frame(cot_categories.REPORT_DISAGG)
+    series = ct.category_series(cot_categories.REPORT_DISAGG, None, PALETTE, frame=df)
+    fig = ct.build_panel("net_pos", _figure("net_pos"), df, series, HEADER, 1, 1,
+                         PALETTE, show_price=True, showlegend=True)
+
+    ct.ensure_price_legend_entry(fig, PALETTE)
+    assert not [t for t in fig.data if t.name == "Price"]

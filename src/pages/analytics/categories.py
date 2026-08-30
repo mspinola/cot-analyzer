@@ -415,6 +415,9 @@ def render_category_stack(palette_name, asset, report, selected_categories,
                                      palette, show_price=show_price,
                                      showlegend=(i == 0))
                 i += 1
+        # After the loop, because it is a question about the whole stack: the panel
+        # that owns the legend does not necessarily draw the price overlay.
+        fig = ct.ensure_price_legend_entry(fig, palette)
         height = None
         show_legend = True
 
