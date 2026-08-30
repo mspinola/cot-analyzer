@@ -34,6 +34,7 @@ dash.register_page(
 
 # Layout runs per request; the wiring must not.
 controls.register_lookback('categories_lookback_selector')
+controls.register_asset_link('categories_asset_selector')
 
 AVAILABLE_PLOTS = ct.labels_for()
 
@@ -236,18 +237,32 @@ clientside_callback(
 
 
 @callback(
+    Output('categories_asset_class_selector', 'value'),
     Output('categories_asset_selector', 'options'),
     Output('categories_asset_selector', 'value'),
+    Input('url', 'search'),
     Input('categories_asset_class_selector', 'value'),
     State('categories_asset_selector', 'value')
 )
-def update_categories_asset_options(asset_class, current_asset):
+def update_categories_asset_options(search, asset_class, current_asset):
+    # A ?asset= deep link wins on load, forcing the class along with the asset
+    # so the link is self-sufficient; the report radio and category checklist
+    # re-derive from the asset downstream exactly as on a hand selection.
+    triggered = dash.ctx.triggered_id
+    if triggered in (None, 'url') and search:
+        forced = controls.forced_asset(search)
+        if forced:
+            forced_class, asset = forced
+            assets = sorted(get_indexer().get_assets_for_asset_class(forced_class))
+            return (forced_class,
+                    [{'label': m, 'value': m} for m in assets], asset)
+
     # get_assets_for_asset_class, not .instruments: it honours instrument roles, so a
     # heldout market cannot become plottable through this new door.
     assets = sorted(get_indexer().get_assets_for_asset_class(asset_class or ""))
     options = [{'label': m, 'value': m} for m in assets]
     value = current_asset if current_asset in assets else (assets[0] if assets else None)
-    return options, value
+    return no_update, options, value
 
 
 @callback(

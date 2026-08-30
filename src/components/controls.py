@@ -19,9 +19,11 @@ Builders take `**overrides` merged over the shared kwargs. Semantic fields
 `className=` and friends are the page's business.
 """
 
+import urllib.parse
+
 import cotmetrics.models as models
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import Input, Output, State, callback, clientside_callback, dcc, html, no_update
 
 import viz_constants as vc
 
@@ -236,3 +238,106 @@ def register_target_date(control_id):
             return no_update
         new_val = week_for_store(value, get_indexer().get_available_dates())
         return no_update if new_val == stored else new_val
+
+
+# ── URL deep links ────────────────────────────────────────────────────────────
+#
+# The read half lives here as pure parsers plus one register function; the write
+# half (reflecting the stores back into the address bar) is a clientside callback
+# in app_cot, because the address bar is app chrome, not a control.
+
+def deep_link_params(search, dates=()):
+    """Validated global-store writes from a URL query string.
+
+    Only params that are PRESENT and VALID appear in the result, and absence
+    means "leave the store alone". That is what makes it safe to feed every
+    `url.search` change through this: navbar navigation produces URLs with no
+    query at all, and a link that resets a session's parked week or chosen
+    model just for being clicked would make navigation destructive.
+
+    `date` is checked against the real week list and normalized through
+    `week_for_store`, so a link to the newest week stores "tracking" rather
+    than pinning the session to a date about to go stale, and a link to a week
+    that does not exist is dropped rather than stored as a claim the pages
+    would silently round to the newest while the URL kept asserting it.
+    """
+    if not search:
+        return {}
+    parsed = urllib.parse.parse_qs(search.lstrip('?'))
+
+    out = {}
+    date = parsed.get('date', [None])[0]
+    if date and date in dates:
+        out['global_week_store'] = week_for_store(date, dates)
+    model = parsed.get('model', [None])[0]
+    if model in vc.MODEL_VIEW_CHOICES:
+        out['global_model_store'] = model
+    lookback = parsed.get('lookback', [None])[0]
+    if lookback in LOOKBACK_CHOICES:
+        out['global_lookback_store'] = lookback
+    return out
+
+
+def asset_from_search(search):
+    """The ?asset= name in a URL query, or None."""
+    if not search:
+        return None
+    return urllib.parse.parse_qs(search.lstrip('?')).get('asset', [None])[0]
+
+
+def forced_asset(search):
+    """(asset_class, asset) for a ?asset= link naming a real market, else None.
+
+    The class rides along because a deep link must be self-sufficient: the
+    session's persisted class is whatever the reader last browsed, and honouring
+    it would put the linked market's name into a selector whose list does not
+    contain it.
+    """
+    from cotmetrics.indexer import get_indexer
+    name = asset_from_search(search)
+    if not name:
+        return None
+    instrument = get_indexer().get_instrument_from_name(name)
+    if not instrument:
+        return None
+    return instrument.asset_class, name
+
+
+def register_asset_link(control_id):
+    """Keep ?asset= in the address bar agreeing with a single-asset page's control.
+
+    replaceState, not pushState: the asset is view state, and a history entry
+    per selection would turn the back button into an undo stack. Merging
+    through URLSearchParams preserves whatever else the query carries (the
+    global date/model/lookback params written by app_cot's sync). Navigation
+    clears it naturally: the router pushes a bare pathname, so the next page
+    does not inherit an asset it never asked for.
+
+    The getElementById guard is load-bearing, not defensive. Navigating away
+    fires the old page's asset-options callback too (its url.search input just
+    changed), and that callback's output pokes this control while the router is
+    swapping pages; without the guard the mirror then ran against the NEW
+    page's location and stamped the old page's asset onto it (observed:
+    /strip?asset=Copper after leaving /analysis). A control no longer in the
+    document has no page to describe, so it writes nothing.
+    """
+    clientside_callback(
+        f"""
+        function(asset) {{
+            if (!document.getElementById('{control_id}')) {{
+                return window.dash_clientside.no_update;
+            }}
+            const params = new URLSearchParams(window.location.search);
+            if (asset) {{ params.set('asset', asset); }} else {{ params.delete('asset'); }}
+            const q = params.toString();
+            const next = window.location.pathname + (q ? '?' + q : '');
+            if (next !== window.location.pathname + window.location.search) {{
+                history.replaceState(null, '', next);
+            }}
+            return window.dash_clientside.no_update;
+        }}
+        """,
+        Output('url_sync_sink', 'data', allow_duplicate=True),
+        Input(control_id, 'value'),
+        prevent_initial_call=True,
+    )

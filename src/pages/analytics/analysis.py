@@ -23,6 +23,7 @@ dash.register_page(
 
 # Layout runs per request; the wiring must not.
 controls.register_lookback('analysis_lookback_selector')
+controls.register_asset_link('analysis_single_asset_filter_input')
 
 # Which panels this page offers, in stack order. Everything about them beyond the
 # order comes from the registry.
@@ -402,12 +403,25 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                      )
 
 @callback(
+    Output('analysis_asset_class_selector', 'value'),
     Output('analysis_single_asset_filter_input', 'options'),
     Output('analysis_single_asset_filter_input', 'value'),
+    Input('url', 'search'),
     Input('analysis_asset_class_selector', 'value'),
     State('analysis_single_asset_filter_input', 'value')
 )
-def update_analysis_asset_options(selected_class, current_asset):
+def update_analysis_asset_options(search, selected_class, current_asset):
+    # A ?asset= deep link wins on load, forcing the class along with the asset
+    # so the link is self-sufficient; the OI Alignment page's pattern.
+    triggered = dash.ctx.triggered_id
+    if triggered in (None, 'url') and search:
+        forced = controls.forced_asset(search)
+        if forced:
+            forced_class, asset = forced
+            assets = sorted(get_indexer().get_assets_for_asset_class(forced_class))
+            return (forced_class,
+                    [{'label': m, 'value': m} for m in assets], asset)
+
     if not selected_class:
         selected_class = get_indexer().get_default_asset_class()
 
@@ -415,6 +429,6 @@ def update_analysis_asset_options(selected_class, current_asset):
     options = [{'label': m, 'value': m} for m in assets]
 
     if current_asset in assets:
-        return options, current_asset
+        return no_update, options, current_asset
     else:
-        return options, assets[0] if assets else None
+        return no_update, options, assets[0] if assets else None

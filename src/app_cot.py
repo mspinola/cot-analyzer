@@ -16,6 +16,7 @@ from flask_compress import Compress
 import routing
 import visitors
 import viz_constants as vc
+from components import controls
 
 utils.launch_logger.warning("Launch app_cot")
 
@@ -400,6 +401,9 @@ app.layout = html.Div(
                 # reading is a fact about this visit, and a page reopened weeks
                 # later still describing a stale week would be lying by default.
                 dcc.Store(id='global_week_store', storage_type='session'),
+                # Sink for the URL write-back below and for the per-page
+                # ?asset= mirrors (controls.register_asset_link); never read.
+                dcc.Store(id='url_sync_sink'),
                 dcc.Store(id='theme_store', storage_type='local', data='solarized_dark'),
                 # The COT week the server currently serves, republished by the navbar
                 # poller below whenever it changes. Pages whose contents are pinned to
@@ -462,6 +466,67 @@ def update_theme(theme_value):
     if theme_value == "modern_web":
         return "theme-modern-web"
     return "theme-solarized-dark"
+
+
+# ── URL deep links ────────────────────────────────────────────────────────────
+#
+# Two halves of one contract: a pasted link SETS the shared state, and the
+# address bar always CARRIES it, so the URL a reader copies is the view they
+# are looking at. ?asset= stays per page (controls.register_asset_link); the
+# three globals are handled here once because they are app state, not page
+# state.
+
+@app.callback(
+    Output('global_week_store', 'data', allow_duplicate=True),
+    Output('global_model_store', 'data', allow_duplicate=True),
+    Output('global_lookback_store', 'data', allow_duplicate=True),
+    Input('url', 'search'),
+    # 'initial_duplicate', because the initial call is the whole point: a deep
+    # link does its work on document load. Later fires are navbar navigations,
+    # whose bare URLs deep_link_params answers with "leave everything alone".
+    prevent_initial_call='initial_duplicate',
+)
+def apply_deep_link(search):
+    """?date= / ?model= / ?lookback= into the global stores; see deep_link_params
+    for what is honoured and why absence never resets anything."""
+    params = controls.deep_link_params(
+        search, dates=get_indexer().get_available_dates())
+    return (params.get('global_week_store', no_update),
+            params.get('global_model_store', no_update),
+            params.get('global_lookback_store', no_update))
+
+
+# The write half. replaceState, not pushState: this is view state, and a
+# history entry per control change would turn Back into an undo stack. Only
+# NON-DEFAULT state is written, so an untouched session keeps clean URLs; and
+# because it re-runs on every pathname change, a parked week or chosen model
+# follows the reader across navbar navigation in the address bar itself, which
+# is what makes any page shareable at any moment with plain copy-paste. Merging
+# through URLSearchParams preserves page-owned params (?asset=, ?file=) on the
+# page that set them, while navigation drops them naturally: the router pushes
+# a bare pathname, and this only re-adds the three globals.
+app.clientside_callback(
+    f"""
+    function(week, model, lookback, _pathname) {{
+        const params = new URLSearchParams(window.location.search);
+        const set = (k, v) => v ? params.set(k, v) : params.delete(k);
+        set('date', week || '');
+        set('model', (model && model !== '{models.DEFAULT_MODEL.key}') ? model : '');
+        set('lookback', (lookback && lookback !== 'Custom') ? lookback : '');
+        const q = params.toString();
+        const next = window.location.pathname + (q ? '?' + q : '');
+        if (next !== window.location.pathname + window.location.search) {{
+            history.replaceState(null, '', next);
+        }}
+        return window.dash_clientside.no_update;
+    }}
+    """,
+    Output('url_sync_sink', 'data'),
+    Input('global_week_store', 'data'),
+    Input('global_model_store', 'data'),
+    Input('global_lookback_store', 'data'),
+    Input('url', 'pathname'),
+)
 
 @app.callback(
     Output("navbar_timestamp_text", "children"),
