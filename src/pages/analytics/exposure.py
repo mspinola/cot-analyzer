@@ -37,6 +37,7 @@ from dash import Input, Output, Patch, State, callback, clientside_callback, dcc
 import components.exposure_traces as exposure_traces
 import viz_config
 import viz_constants as vc
+from components import config_fold
 from components.plot_colors import grid_colors, hex_to_rgba
 
 dash.register_page(__name__, path='/exposure')
@@ -1073,7 +1074,7 @@ def layout(**kwargs):
                 # the two multi-selects half the width each when neither needs it: they
                 # show a count once more than a couple of items are chosen, so a wider
                 # box buys nothing after the second chip.
-                dbc.Row([
+                config_fold.wrap('exposure', dbc.Row([
                     dbc.Col([
                         html.Label("Asset Classes", style=CONTROL_LABEL),
                         dcc.Dropdown(id='exposure_class_selector', multi=True,
@@ -1168,7 +1169,10 @@ def layout(**kwargs):
                                        className="mb-0",
                                        style={"color": vc.BRIGHTER_TEXT_COLOR,
                                               "fontSize": "0.85rem"}),
-                        ], className="d-flex align-items-center"),
+                        # flex-wrap: at phone width the radios and two switches do
+                        # not fit one line, and without the wrap they overflowed
+                        # into the body-level overflow-x: hidden clip.
+                        ], className="d-flex align-items-center flex-wrap"),
                         dbc.Tooltip(
                             "Divide by the gold price, so the series is in troy ounces "
                             "rather than dollars. Dollar figures carry the price level; "
@@ -1178,7 +1182,7 @@ def layout(**kwargs):
                             "itself in gold terms is just its contract count.",
                             target='exposure_gold_toggle', placement="bottom"),
                     ], xs=12, md=2, className="px-md-2 mt-2 mt-md-0"),
-                ], align="center"),
+                ], align="center")),
             ], className="py-2"), className="mb-2 shadow-sm",
                 style={"backgroundColor": "rgba(30, 30, 30, 0.6)",
                        "border": "1px solid rgba(255, 255, 255, 0.1)",

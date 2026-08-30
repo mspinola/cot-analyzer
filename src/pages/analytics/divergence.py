@@ -26,7 +26,7 @@ from dash import Input, Output, State, callback, dcc, html
 import app_utils
 import viz_config
 import viz_constants as vc
-from components import class_filter, divergence_rows
+from components import class_filter, config_fold, divergence_rows
 from components.signal_cards import tier_of
 
 dash.register_page(__name__, path='/divergence')
@@ -155,10 +155,17 @@ def build_table(rows, palette, compare):
                "borderBottom": "1px solid rgba(255,255,255,0.15)"})
     body = [(_class_tr(r, span) if r.kind == "class" else _market_tr(r, palette))
             for r in rows]
-    return html.Table([html.Thead(header), html.Tbody(body)],
-                      style={"width": "100%", "maxWidth": "1100px",
-                             "margin": "0 auto", "borderCollapse": "collapse",
-                             "fontSize": "0.8rem"})
+    # The scroll box is what keeps the table honest on a phone: every cell is
+    # nowrap, so at 375px the rightmost columns ran past the viewport and the
+    # page-level overflow-x: hidden clipped them with no scrollbar, which read
+    # as the Basis gap column not existing. Scrolling inside this div works
+    # because the clip is on the body, not on ancestors of the table.
+    return html.Div(
+        html.Table([html.Thead(header), html.Tbody(body)],
+                   style={"width": "100%", "maxWidth": "1100px",
+                          "margin": "0 auto", "borderCollapse": "collapse",
+                          "fontSize": "0.8rem"}),
+        style={"overflowX": "auto"})
 
 
 def caption(report_date, show, hidden, unplaced, compare):
@@ -224,7 +231,7 @@ def layout(**kwargs):
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
-                            dbc.Row([
+                            config_fold.wrap('divergence', dbc.Row([
                                 dbc.Col([
                                     html.Label("Target Date",
                                                style={**vc.label_style,
@@ -251,7 +258,12 @@ def layout(**kwargs):
                                         [_column_select(cid, default)
                                          for cid, default in zip(COLUMN_IDS,
                                                                  COLUMN_DEFAULTS)],
-                                        style={"display": "flex", "gap": "6px"},
+                                        # Wraps rather than crushes: three selects
+                                        # side by side do not fit a phone, and the
+                                        # page-level overflow-x: hidden would clip
+                                        # the third one silently.
+                                        style={"display": "flex", "gap": "6px",
+                                               "flexWrap": "wrap"},
                                     ),
                                 ], xs=12, md=4, className="mb-3 mb-md-0 px-md-2"),
 
@@ -281,7 +293,7 @@ def layout(**kwargs):
                                         'divergence_class_selector',
                                         get_indexer().get_asset_classes()),
                                 ], xs=12, md=3, className="px-md-2"),
-                            ], align="center"),
+                            ], align="center")),
                         ]),
                         className="mb-2 shadow-sm",
                         style={

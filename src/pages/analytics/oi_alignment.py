@@ -16,6 +16,7 @@ import components.plot_registry as registry
 import components.tv_layout as tv_layout
 import viz_config
 import viz_constants as vc
+from components import config_fold
 
 # Register this file as a page
 dash.register_page(
@@ -172,7 +173,9 @@ def layout(**kwargs):
     return html.Div([
         dbc.Container([
 
-            # Primary Data Filters
+            # Primary Data Filters. Folded on a phone: stacked, these two rows
+            # of controls ran a screen and a half deep before any content.
+            config_fold.wrap('oi_alignment', [
             dbc.Row([
                 dbc.Col([
                     html.Label("Asset Class", style=vc.label_style),
@@ -183,7 +186,7 @@ def layout(**kwargs):
                         inline=True,
                         className="mb-3 p-1 rounded text-white",
                         style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
-                        labelStyle={'color': 'white', 'marginRight': '0px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
+                        labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
                         inputStyle={'opacity': '0.6'}
                     )
                 ], xs=12, md="auto"),
@@ -195,7 +198,7 @@ def layout(**kwargs):
                         options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
                         clearable=False,
                         searchable=True,
-                        className="mb-3 dash-dropdown bg-dark text-white",
+                        className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
                         style={'width': '200px'}
                     ),
                 ], xs=12, md="auto"),
@@ -211,7 +214,7 @@ def layout(**kwargs):
                         options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
                         value=list(AVAILABLE_PLOTS.keys()),  # Default to all selected
                         multi=True,
-                        className="mb-3 dash-dropdown bg-dark text-white",
+                        className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
                         style={'width': '200px'}
                     ),
                 ], xs=12, md="auto"),
@@ -226,7 +229,7 @@ def layout(**kwargs):
                             {"label": "Custom", "value": "Custom"},
                         ],
                         value="Custom",
-                        className="mb-3 bg-dark text-white border-secondary",
+                        className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                         style={'width': '120px'}
                     )
                 ], xs=12, md="auto"),
@@ -241,7 +244,7 @@ def layout(**kwargs):
                             for v in vc.MODEL_VIEW_CHOICES
                         ],
                         value=models.DEFAULT_MODEL.key,
-                        className="mb-3 bg-dark text-white border-secondary",
+                        className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                         style={'width': '110px'}
                     ),
                     html.Div(id='oi_alignment_model_note',
@@ -260,7 +263,7 @@ def layout(**kwargs):
                             {"label": "3", "value": "3"},
                         ],
                         value="1", # We'll handle responsive defaults in the callback
-                        className="mb-3 bg-dark text-white border-secondary",
+                        className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                         style={'width': '70px'}
                     )
                 ], xs=12, md="auto"),
@@ -278,7 +281,7 @@ def layout(**kwargs):
                             value=False,
                             inline=True,
                             className="mb-3",
-                            labelStyle={'color': 'white', 'marginRight': '0px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
+                            labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
                             inputStyle={'opacity': '0.6'}
                         )
                     ], id="price_overlay_container"),
@@ -292,6 +295,7 @@ def layout(**kwargs):
                     dbc.Button("📸 Export PNG", id="oi_alignment_download_img_btn", style={"color": vc.TEXT_COLOR}, size="sm", className="ms-2")
                 ], xs=12, md="auto"),
             ], align="center", className="mb-2"),
+            ]),
 
             html.Hr(style=vc.hr_style),
 

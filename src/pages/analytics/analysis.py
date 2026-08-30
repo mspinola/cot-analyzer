@@ -13,6 +13,7 @@ import components.plot_helpers as helpers
 import components.plot_registry as registry
 import viz_config
 import viz_constants as vc
+from components import config_fold
 
 # Register this file as a page
 dash.register_page(
@@ -78,6 +79,7 @@ def layout(**kwargs):
         dbc.Container([
             dbc.Card([
                 dbc.CardBody([
+                    config_fold.wrap('analysis', [
                     dbc.Row([
                         dbc.Col([
                             html.H6("Asset Class", className="text-muted text-uppercase mb-2", style={'fontSize': '0.75rem'}),
@@ -89,7 +91,7 @@ def layout(**kwargs):
                                 inline=True,
                                 className="mb-3 p-1 rounded text-white",
                                 style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
-                                labelStyle={'color': 'white', 'marginRight': '0px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
+                                labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
                                 inputStyle={'opacity': '0.6'}
                             )
                         ], xs=12, md="auto"),
@@ -100,7 +102,7 @@ def layout(**kwargs):
                                 persistence='session',
                                 id='analysis_single_asset_filter_input',
                                 options=[{'label': m, 'value': m} for m in sorted(get_indexer().get_assets_for_asset_class(get_indexer().get_default_asset_class()))],
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '200px'}
                             ),
                         ], xs=12, md="auto"),
@@ -116,7 +118,7 @@ def layout(**kwargs):
                                 options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
                                 value=list(BASE_PLOTS.keys()),
                                 multi=True,
-                                className="mb-3 dash-dropdown bg-dark text-white",
+                                className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
                                 style={'width': '200px'}
                             ),
                         ], xs=12, md="auto"),
@@ -131,7 +133,7 @@ def layout(**kwargs):
                                     {"label": "Custom", "value": "Custom"},
                                 ],
                                 value="Custom",
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '120px'}
                             )
                         ], xs=12, md="auto"),
@@ -147,10 +149,11 @@ def layout(**kwargs):
                                     {"label": "3", "value": "3"},
                                 ],
                                 value="1",
-                                className="mb-3 bg-dark text-white border-secondary",
+                                className="mb-3 bg-dark text-white border-secondary control-mobile-full",
                                 style={'width': '70px'}
                             )
                         ], xs=12, md="auto"),
+                    ]),
                     ]),
                 ])
             ], style={'backgroundColor': 'var(--card-color)', 'borderColor': vc.GRID_COLOR}, className="mb-4 mt-2"),
