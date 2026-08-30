@@ -80,6 +80,23 @@ class DivergenceRow:
     is_equity: bool = False
 
 
+def comm_spread(reads):
+    """The widest disagreement among the DISPLAYED columns' Commercial readings.
+
+    None with fewer than two readings, because one column cannot disagree with
+    itself. Deliberately distinct from `gap`: gap is the raw-vs-normalized fact
+    about the FRAME, this is a fact about the columns on screen, and the two
+    coincide exactly when the columns are one raw and one normalized model (the
+    default view). Two normalized columns share a series, so their spread is
+    zero however wide the basis gap is, which is why the Commercial emphasis in
+    the renderer must not borrow the gap.
+    """
+    values = [r.comm for r in reads if r.comm is not None]
+    if len(values) < 2:
+        return None
+    return max(values) - min(values)
+
+
 def _read_for(record, model, is_equity):
     """One model's ModelRead off a matrix record.
 
