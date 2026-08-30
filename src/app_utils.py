@@ -4,6 +4,8 @@ app_utils.py
 App-layer (Dash/Flask) helpers. Kept out of the data layer so cotmetrics.utils
 carries no web-framework dependency.
 """
+import urllib.parse
+
 import flask
 
 # The union of the two keyword lists that used to live here and (inline) in
@@ -25,3 +27,20 @@ def is_mobile():
         return False
     user_agent = flask.request.headers.get("User-Agent", "").lower()
     return any(keyword in user_agent for keyword in MOBILE_UA_KEYWORDS)
+
+
+def clicked_market_href(click_data):
+    """The Market Detail href for a board-figure click, or None to stay put.
+
+    Reads the point's customdata, which the Strip's and the Crowd board's
+    hoverable traces set to the market's name. A click on a mark without one (a
+    decorative trace) navigates nowhere, which is also what makes clicking safe
+    to wire at all: only the marks that already carry a hover are targets.
+    """
+    try:
+        asset = click_data['points'][0]['customdata']
+    except (TypeError, KeyError, IndexError):
+        return None
+    if not asset or not isinstance(asset, str):
+        return None
+    return f"/oi_alignment?asset={urllib.parse.quote(asset)}"

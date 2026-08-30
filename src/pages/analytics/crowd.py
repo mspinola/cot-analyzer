@@ -51,8 +51,9 @@ import pandas as pd
 from cotmetrics import indicators
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, callback, dcc, html
+from dash import Input, Output, callback, dcc, html, no_update
 
+import app_utils
 import components.board_traces as board_traces
 import viz_config
 import viz_constants as vc
@@ -230,7 +231,8 @@ def help_text(model):
         f"whether the market is net long: the 3M column especially moves in "
         f"coarse steps and pins at 0 or 100 often. The {vc.MOMENTUM_LABEL} "
         f"column is the {vc.MOMENTUM_UNIT_PHRASE}, on the 12M window; the path "
-        f"is the same 12M index over the trailing year."
+        f"is the same 12M index over the trailing year. Click any of a row's "
+        f"marks to open that market's detail page."
     )
 
 
@@ -371,10 +373,27 @@ def render_board(asset_classes, model_key, order, palette_name, target_date):
 
     report_date = target_date or (reads[0].date if reads else None)
     return (
-        dcc.Graph(figure=fig,
+        dcc.Graph(id='crowd_board_graph', figure=fig,
                   config={"displayModeBar": False, "responsive": True},
                   style={"width": "100%", "maxWidth": "1100px",
                          "margin": "0 auto"}),
         caption(report_date, model, sorted(set(unreadable) | set(skipped))),
         help_text(model),
     )
+
+
+@callback(
+    Output('url', 'href', allow_duplicate=True),
+    Input('crowd_board_graph', 'clickData'),
+    prevent_initial_call=True,
+)
+def open_market(click):
+    """A click on any of a row's marks opens the market's detail page.
+
+    The destination rides on the point (`customdata`, set by board_traces), so
+    this never re-derives row order from a figure the server no longer holds.
+    Location has refresh=False, so the write is a client-side pushState: the
+    same navigation the navbar makes, back button included.
+    """
+    href = app_utils.clicked_market_href(click)
+    return href or no_update

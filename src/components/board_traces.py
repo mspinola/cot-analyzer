@@ -538,13 +538,17 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                 fill = cell_fill(value, colors, background)
                 ink = cell_text_colour(fill)
                 buckets.setdefault(ink, []).append(
-                    (x, i, f"{value:.0f}", cell_hover(read, w)))
+                    (x, i, f"{value:.0f}", cell_hover(read, w), read.asset))
+        # `customdata` on every hoverable trace here and below: the market's
+        # name rides on the point so a click can open its detail page without
+        # the server re-deriving row order from a figure it no longer holds.
         for ink, points in buckets.items():
             fig.add_trace(go.Scatter(
                 x=[p[0] for p in points], y=[p[1] for p in points],
                 mode="text", text=[p[2] for p in points],
                 textfont=dict(size=TEXT_SIZE, color=ink),
                 hovertext=[p[3] for p in points], hoverinfo="text",
+                customdata=[p[4] for p in points],
                 showlegend=False))
 
         # The change column: a direction triangle and the signed number. The triangle
@@ -562,6 +566,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                 line=dict(width=1,
                           color=[delta_colour(r.move, colors) for _, r in markets])),
             hovertext=[delta_hover(r) for _, r in markets], hoverinfo="text",
+            customdata=[r.asset for _, r in markets],
             showlegend=False))
         fig.add_trace(go.Scatter(
             x=[DELTA_TEXT_X] * len(markets), y=[i for i, _ in markets],
@@ -578,7 +583,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             if chip is None:
                 continue
             chip_buckets.setdefault(chip[3], []).append(
-                (i, chip[0], chip_hover(r, model)))
+                (i, chip[0], chip_hover(r, model), r.asset))
         for ink, points in chip_buckets.items():
             fig.add_trace(go.Scatter(
                 x=[(CHIP_X0 + CHIP_X1) / 2] * len(points),
@@ -586,11 +591,12 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                 mode="text", text=[p[1] for p in points],
                 textfont=dict(size=CHIP_TEXT_SIZE, color=ink),
                 hovertext=[p[2] for p in points], hoverinfo="text",
+                customdata=[p[3] for p in points],
                 showlegend=False))
 
         # The sparklines: one line per market, one shared endpoint trace so the dots
         # can carry per-point colour without a trace apiece.
-        end_xs, end_ys, end_colours, end_hovers = [], [], [], []
+        end_xs, end_ys, end_colours, end_hovers, end_assets = [], [], [], [], []
         for i, read in markets:
             xs, ys = _spark_points(read, i)
             if not xs:
@@ -605,11 +611,13 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             end_colours.append(colors.bull if latest >= const.INDEX_NEUTRAL
                                else colors.bear)
             end_hovers.append(spark_hover(read))
+            end_assets.append(read.asset)
         if end_xs:
             fig.add_trace(go.Scatter(
                 x=end_xs, y=end_ys, mode="markers",
                 marker=dict(size=SPARK_END_SIZE, color=end_colours),
-                hovertext=end_hovers, hoverinfo="text", showlegend=False))
+                hovertext=end_hovers, hoverinfo="text",
+                customdata=end_assets, showlegend=False))
 
     n = len(rows)
     fig.update_layout(
