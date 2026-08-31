@@ -161,6 +161,35 @@ def test_the_old_graphs_address_redirects_to_the_grid():
     assert "redirect('/analysis?view=grid', code=301)" in app_cot
 
 
+def test_grid_plot_link_reads_and_never_resets():
+    from dash import no_update
+
+    assert analysis.apply_grid_plot_link("?plot=index", "net_pos") == "index"
+    # Absence, an unknown id, and the current value all leave the control alone.
+    assert analysis.apply_grid_plot_link("", "index") is no_update
+    assert analysis.apply_grid_plot_link("?plot=synthesis", "index") is no_update
+    assert analysis.apply_grid_plot_link("?plot=index", "index") is no_update
+
+
+def test_each_view_owns_its_subject_params():
+    """One writer mirrors the SUBJECT into the URL, swapping per view: ?asset=
+    for the stack, ?assets=/?plot= for the grid, each set deleted while the
+    other view shows. Before this, flipping to the grid left the stack's
+    ?asset= as the only subject in the address bar, so a copied link described
+    the view you were NOT looking at (reported from use). Pinned in source, the
+    view-writer test's reasons."""
+    import pathlib
+
+    text = pathlib.Path(analysis.__file__).read_text()
+    assert "params.set('assets', assets.join(','))" in text
+    assert text.count("params.delete('asset')") >= 1
+    assert text.count("params.delete('assets')") >= 1
+    # The shared mirror for the stack asset must NOT also be registered, or two
+    # writers fight over ?asset= with opposite view rules. (The comment naming
+    # its replacement may mention it; a registration is a call.)
+    assert "controls.register_asset_link(" not in text
+
+
 def test_view_state_is_one_clientside_writer():
     """The ?view= reader, the visibility flip and the URL write-back live in ONE
     clientside function. The shape is the contract: split across a server

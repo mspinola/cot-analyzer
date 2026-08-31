@@ -166,3 +166,36 @@ def test_asset_from_search_decodes_the_name():
     assert controls.asset_from_search("?asset=Japanese+Yen") == "Japanese Yen"
     assert controls.asset_from_search("?date=2026-07-28") is None
     assert controls.asset_from_search("") is None
+
+
+class _Instrument:
+    def __init__(self, asset_class):
+        self.asset_class = asset_class
+
+
+class _AssetsIndexer:
+    _known = {"Gold": "Metals", "Silver": "Metals", "Corn": "Grains"}
+
+    def get_instrument_from_name(self, name):
+        cls = self._known.get(name)
+        return _Instrument(cls) if cls else None
+
+
+def test_forced_assets_resolves_names_and_their_classes(monkeypatch):
+    """The grid's ?assets= link: unknown names drop rather than fail (a market
+    renamed after the link was copied must not blank the board), classes ride
+    along deduplicated so the link is self-sufficient, and a link naming
+    nothing real is no link at all."""
+    import cotmetrics.indexer
+    monkeypatch.setattr(cotmetrics.indexer, "get_indexer", lambda: _AssetsIndexer())
+
+    classes, names = controls.forced_assets("?assets=Gold,Silver,Corn")
+    assert names == ["Gold", "Silver", "Corn"]
+    assert classes == ["Metals", "Grains"]
+
+    classes, names = controls.forced_assets("?assets=Gold,Palladium%20Futures")
+    assert (classes, names) == (["Metals"], ["Gold"])
+
+    assert controls.forced_assets("?assets=Nothing%20Real") is None
+    assert controls.forced_assets("?asset=Gold") is None
+    assert controls.forced_assets("") is None
