@@ -303,6 +303,33 @@ def forced_asset(search):
     return instrument.asset_class, name
 
 
+def forced_assets(search):
+    """(asset_classes, names) for an ?assets= link naming real markets, else None.
+
+    The multi-market sibling of `forced_asset`: comma-separated names, unknown
+    ones dropped rather than failing the link (a market renamed after the link
+    was copied should not blank the board), and the classes ride along for the
+    same self-sufficiency reason. None only when nothing in the list is real.
+    """
+    from cotmetrics.indexer import get_indexer
+    if not search:
+        return None
+    raw = urllib.parse.parse_qs(search.lstrip('?')).get('assets', [None])[0]
+    if not raw:
+        return None
+    classes, names = [], []
+    for name in raw.split(','):
+        name = name.strip()
+        instrument = get_indexer().get_instrument_from_name(name) if name else None
+        if instrument:
+            names.append(name)
+            if instrument.asset_class not in classes:
+                classes.append(instrument.asset_class)
+    if not names:
+        return None
+    return classes, names
+
+
 def register_asset_link(control_id):
     """Keep ?asset= in the address bar agreeing with a single-asset page's control.
 

@@ -29,7 +29,6 @@ dash.register_page(
 
 # Layout runs per request; the wiring must not.
 controls.register_lookback('analysis_lookback_selector')
-controls.register_asset_link('analysis_single_asset_filter_input')
 class_filter.register('graphs_asset_class_selector',
                       classes=lambda: sorted(get_indexer().get_asset_classes()))
 controls.register_model('graphs_model_selector', choices=vc.MODEL_VIEW_CHOICES)
@@ -131,6 +130,17 @@ def layout(**kwargs):
                                 style={'color': vc.BRIGHTER_TEXT_COLOR,
                                        'fontSize': '0.85rem'},
                             ),
+                            # One tooltip over the pair rather than one per
+                            # option: dbc.RadioItems gives its options no
+                            # addressable ids, and the two labels are only
+                            # meaningful against each other anyway.
+                            dbc.Tooltip(
+                                "Panel stack: every selected panel, one market "
+                                "deep. Market grid: one metric, every selected "
+                                "market wide. Each view keeps its own asset and "
+                                "plot selections; Lookback and Cols are shared.",
+                                target='analysis_view_selector',
+                                placement="bottom"),
                         ], xs=12, md="auto"),
                         dbc.Col([
                             controls.label("Lookback", marginBottom="0.5rem"),
@@ -340,6 +350,64 @@ clientside_callback(
     Input('analysis_view_selector', 'value'),
     Input('url', 'search'),
 )
+
+
+# The page's SUBJECT params, one writer: ?asset= while the stack shows, and
+# ?assets=/?plot= while the grid does, each view's set deleted while the other
+# is on screen. This replaced controls.register_asset_link for this page after
+# a report from use: flipping to the grid left ?asset=<the stack's market> in
+# the address bar and said nothing about the grid's markets, so a copied link
+# described the view you were NOT looking at. The mirror fires on the view too,
+# so a flip swaps the whole set immediately; the ?view param itself belongs to
+# the view writer above (disjoint ownership, both merge through URLSearchParams,
+# so the two compose whichever order they run).
+clientside_callback(
+    f"""
+    function(view, asset, assets, plot) {{
+        if (!document.getElementById('analysis_view_selector')) {{
+            return window.dash_clientside.no_update;
+        }}
+        const params = new URLSearchParams(window.location.search);
+        if (view === '{VIEW_GRID}') {{
+            params.delete('asset');
+            if (assets && assets.length) {{ params.set('assets', assets.join(',')); }}
+            else {{ params.delete('assets'); }}
+            if (plot) {{ params.set('plot', plot); }} else {{ params.delete('plot'); }}
+        }} else {{
+            params.delete('assets');
+            params.delete('plot');
+            if (asset) {{ params.set('asset', asset); }} else {{ params.delete('asset'); }}
+        }}
+        const q = params.toString();
+        const next = window.location.pathname + (q ? '?' + q : '');
+        if (next !== window.location.pathname + window.location.search) {{
+            history.replaceState(null, '', next);
+        }}
+        return window.dash_clientside.no_update;
+    }}
+    """,
+    Output('url_sync_sink', 'data', allow_duplicate=True),
+    Input('analysis_view_selector', 'value'),
+    Input('analysis_single_asset_filter_input', 'value'),
+    Input('graphs_multi_equity_selector_input', 'value'),
+    Input('graphs_plot_selector_input', 'value'),
+    prevent_initial_call=True,
+)
+
+
+@callback(
+    Output('graphs_plot_selector_input', 'value'),
+    Input('url', 'search'),
+    State('graphs_plot_selector_input', 'value'),
+)
+def apply_grid_plot_link(search, current):
+    """?plot= deep-links the grid's metric; absence never resets, the rule every
+    reader follows. Unknown ids fall through to the session value untouched."""
+    import urllib.parse
+    forced = urllib.parse.parse_qs((search or '').lstrip('?')).get('plot', [None])[0]
+    if forced in GRID_PLOTS and forced != current:
+        return forced
+    return no_update
 
 
 # Rescale the y-axes to whatever the x-window is showing. Pure arithmetic over data the
@@ -632,10 +700,27 @@ def update_model_availability(selected_plot):
 @callback(
     Output('graphs_multi_equity_selector_input', 'options'),
     Output('graphs_multi_equity_selector_input', 'value'),
+    Output('graphs_asset_class_selector', 'value', allow_duplicate=True),
     Input('graphs_asset_class_selector', 'value'),
-    State('graphs_multi_equity_selector_input', 'value')
+    Input('url', 'search'),
+    State('graphs_multi_equity_selector_input', 'value'),
+    prevent_initial_call='initial_duplicate',
 )
-def update_graphs_asset_options(selected_classes, current_assets):
+def update_graphs_asset_options(selected_classes, search, current_assets):
+    # An ?assets= deep link wins on load, forcing the class filter along with
+    # the markets so the link is self-sufficient; forced_asset's pattern, for a
+    # comma-separated list. The class write re-fires this callback, which then
+    # takes the normal branch and keeps the forced markets (they are inside the
+    # forced classes by construction).
+    triggered = dash.ctx.triggered_id
+    if triggered in (None, 'url') and search:
+        forced = controls.forced_assets(search)
+        if forced:
+            classes, names = forced
+            all_assets = sorted({a for cls in classes
+                                 for a in get_indexer().get_assets_for_asset_class(cls)})
+            return ([{'label': m, 'value': m} for m in all_assets], names, classes)
+
     if not selected_classes:
         selected_classes = []
 
@@ -652,7 +737,7 @@ def update_graphs_asset_options(selected_classes, current_assets):
     if not valid_assets and all_assets:
         valid_assets = [all_assets[0]]
 
-    return options, valid_assets
+    return options, valid_assets, no_update
 
 
 @callback(
