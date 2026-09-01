@@ -7,7 +7,13 @@ from dash import dcc, html
 from components import subscribe
 
 # Register this file as a page
-dash.register_page(__name__, path='/about')
+dash.register_page(
+    __name__, path='/about',
+    title='Guide & Weekly Email | COT Analyzer',
+    description='How to read COT Analyzer: market participants, core metrics, '
+                'algorithmic chart markers and workflows for trading with '
+                'Commitments of Traders data. Free weekly email.',
+)
 
 # ==========================================
 # 1. UI Helper Functions

@@ -28,7 +28,13 @@ import viz_constants as vc
 from components import class_filter, config_fold, controls
 from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
-dash.register_page(__name__, path="/heatmap")
+dash.register_page(
+    __name__, path="/heatmap",
+    title='COT Signal Matrix Heatmap | COT Analyzer',
+    description='Scan every futures market\'s COT positioning at a glance: '
+                'Commercial and Speculator indexes, momentum, dollar risk '
+                'percentile and cost basis, updated weekly.',
+)
 
 # Layout runs per request; the wiring must not.
 class_filter.register('page_heatmap_selector')

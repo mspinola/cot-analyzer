@@ -29,7 +29,11 @@ from components import config_fold, controls
 
 dash.register_page(
     __name__,
-    path='/categories'
+    path='/categories',
+    title='Disaggregated & TFF COT Reports | COT Analyzer',
+    description='Managed Money, Producers, Swap Dealers and Leveraged Funds: '
+                'charts of the CFTC Disaggregated and Traders in Financial '
+                'Futures reports.',
 )
 
 # Layout runs per request; the wiring must not.

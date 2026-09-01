@@ -25,6 +25,10 @@ from components import class_filter, config_fold, controls
 dash.register_page(
     __name__,
     path='/analysis',
+    title='Futures Market COT Charts | COT Analyzer',
+    description='Stack COT panels for any futures market, or compare one '
+                'metric across many: positioning index, net positions, '
+                'z-scores, WILLCO and more.',
 )
 
 # Layout runs per request; the wiring must not.

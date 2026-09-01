@@ -18,7 +18,10 @@ from components import config_fold, controls
 dash.register_page(
     __name__,
     path='/aggregation',
-    name='Aggregation'
+    name='Aggregation',
+    title='Aggregated COT Positioning | COT Analyzer',
+    description='Commitments of Traders net positioning summed across asset '
+                'classes, on raw and OI-normalized bases.',
 )
 
 # Layout runs per request; the wiring must not.

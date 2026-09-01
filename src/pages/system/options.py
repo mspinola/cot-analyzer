@@ -10,7 +10,13 @@ from dash import Input, Output, callback, dcc, html
 import viz_config
 import viz_constants as vc
 
-dash.register_page(__name__, path="/options")
+dash.register_page(
+    __name__, path="/options",
+    title='Settings & Backtest Data Export | COT Analyzer',
+    description='Palette settings and backtest data export: CSV event lists '
+                'of COT indexes, net positions and signal states for '
+                'systematic testing.',
+)
 
 palette_options = viz_config.get_palette_names()
 

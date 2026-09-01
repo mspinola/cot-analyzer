@@ -20,7 +20,11 @@ from components import config_fold, controls
 # Register this file as a page
 dash.register_page(
     __name__,
-    path='/oi_alignment'
+    path='/oi_alignment',
+    title='COT & Open Interest Charts | COT Analyzer',
+    description='Price candles, open interest and COT positioning on one '
+                'chart, with algorithmic markers for squeezes, traps and '
+                'accumulation, per futures market.',
 )
 
 # Layout runs per request; the wiring must not.

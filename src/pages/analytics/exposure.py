@@ -40,7 +40,13 @@ import viz_constants as vc
 from components import config_fold
 from components.plot_colors import grid_colors, hex_to_rgba
 
-dash.register_page(__name__, path='/exposure')
+dash.register_page(
+    __name__, path='/exposure',
+    title='Speculator Dollar Exposure | COT Analyzer',
+    description='Speculator futures positioning in dollar terms: net exposure, '
+                'percentile of history and price context per market, built '
+                'from CFTC COT data.',
+)
 
 #: One implementation, used by this page's prose and by the figure's hovers.
 #: It lives beside the figure because that is where 27% of its callers are.

@@ -208,7 +208,7 @@ def test_the_bot_filter_is_the_complement():
 # ── the analytics tag ─────────────────────────────────────────────────────────
 
 def test_goatcounter_markup_is_complete_and_spa_aware():
-    html = app_cot.goatcounter_index_string('https://stats.example.com')
+    html = app_cot.index_template('https://stats.example.com')
     assert 'data-goatcounter="https://stats.example.com/count"' in html
     assert 'src="https://stats.example.com/count.js"' in html
     # The SPA hook: onload counting off, pushState and popstate counted, or every
@@ -220,3 +220,12 @@ def test_goatcounter_markup_is_complete_and_spa_aware():
     for token in ['{%metas%}', '{%title%}', '{%favicon%}', '{%css%}',
                   '{%app_entry%}', '{%config%}', '{%scripts%}', '{%renderer%}']:
         assert token in html
+
+
+def test_without_an_origin_the_template_carries_no_tracker():
+    """Opt-in stays opt-in: one builder now serves both cases (the noscript
+    block rides every deployment), so the untracked default must be provably
+    tracker-free rather than assumed."""
+    html = app_cot.index_template(None)
+    assert 'goatcounter' not in html
+    assert '<noscript>' in html

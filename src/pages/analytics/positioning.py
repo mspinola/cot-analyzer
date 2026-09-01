@@ -15,7 +15,10 @@ from components import controls
 # Register this file as a page
 dash.register_page(
     __name__,
-    path='/positioning'
+    path='/positioning',
+    title='COT Data Table | COT Analyzer',
+    description='Sortable table of weekly Commitments of Traders data with '
+                'signals and momentum for every tracked futures market.',
 )
 
 # Layout runs per request; the wiring must not. register_target_date is new to

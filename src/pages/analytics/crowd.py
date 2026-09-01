@@ -70,7 +70,13 @@ from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
 from components.strip_traces import SETUP_COLUMN
 
-dash.register_page(__name__, path='/crowd')
+dash.register_page(
+    __name__, path='/crowd',
+    title='COT Crowdedness Board | COT Analyzer',
+    description='How crowded is each futures market? Range index of Commercial '
+                'net positioning over 13, 26 and 52 weeks and full history, '
+                'from the weekly COT report.',
+)
 
 # Layout runs per request; the wiring must not.
 class_filter.register('crowd_class_selector')
