@@ -65,6 +65,11 @@ else
     FAIL=$((FAIL+1))
 fi
 
+# The install surface (Add to Home screen on Android needs both).
+check "manifest serves"                "$BASE/manifest.webmanifest" 200 '"display": "standalone"'
+check "service worker serves"          "$BASE/sw.js"       200 "addEventListener('fetch'"
+check "install icon serves"            "$BASE/assets/icon-512.png"  200
+
 # The subscription endpoints exist and refuse garbage; nothing here subscribes,
 # confirms or sends anything.
 check "confirm rejects a bad token"    "$BASE/confirm?token=verify-deploy-probe"     404 "not valid"
