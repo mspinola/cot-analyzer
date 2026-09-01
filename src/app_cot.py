@@ -107,6 +107,9 @@ def index_template(goatcounter_origin=None):
     <head>
         {%metas%}
         <title>{%title%}</title>
+        <meta name="theme-color" content="#1a1a1a">
+        <link rel="manifest" href="/manifest.webmanifest">
+        <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
         {%favicon%}
         {%css%}
     </head>
@@ -119,6 +122,11 @@ def index_template(goatcounter_origin=None):
             {%renderer%}
         </footer>
         __TRACKER__
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js');
+            }
+        </script>
     </body>
 </html>'''.replace('__NOSCRIPT__', _NOSCRIPT_BLOCK).replace('__TRACKER__', tracker)
 
@@ -188,6 +196,25 @@ def _link_page(title, body, status=200):
     page = routing.message_page(title, body, vc.BACKGROUND_COLOR, vc.TEXT_COLOR,
                                 vc.BRIGHTER_TEXT_COLOR)
     return page, status, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+# The install surface: the manifest and the service worker, both from the
+# ROOT because a worker's scope cannot exceed its own path (under /assets/ it
+# could only control /assets/). Content lives in src/pwa.py with the argument
+# for why the worker caches nothing.
+
+@app.server.route('/manifest.webmanifest')
+def pwa_manifest():
+    import pwa
+    return (pwa.manifest_json(), 200,
+            {'Content-Type': 'application/manifest+json'})
+
+
+@app.server.route('/sw.js')
+def pwa_service_worker():
+    import pwa
+    return (pwa.SERVICE_WORKER, 200,
+            {'Content-Type': 'application/javascript; charset=utf-8'})
 
 
 # The crawler endpoints. `subscribers.base_url` is the one place the public

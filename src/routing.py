@@ -32,7 +32,8 @@ SERVED_PREFIXES = (
 #: invisible to `app.routes` the same way).
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
                          '/confirm', '/unsubscribe', '/graphs',
-                         '/robots.txt', '/sitemap.xml'})
+                         '/robots.txt', '/sitemap.xml',
+                         '/manifest.webmanifest', '/sw.js'})
 
 #: Operator surfaces and internal viewers: out of the sitemap, disallowed in
 #: robots.txt. A search result should never land a visitor on the admin login
@@ -215,6 +216,11 @@ def cache_policy(path, fingerprinted, content_type):
     if path.startswith(('/_dash-layout', '/_dash-dependencies',
                         '/_dash-update-component')):
         return 'no-store'
+    # The install surface revalidates: a service worker or manifest cached
+    # long would pin every installed app to an old worker (browsers cap a
+    # worker script's HTTP cache at a day, but explicit beats capped).
+    if path in ('/manifest.webmanifest', '/sw.js'):
+        return 'no-cache'
     # A DATED weekly report barely changes once its week has passed (a store
     # revision or a copy tweak, both rare), and its cold render is the most
     # expensive page this app serves, so a day of public caching is cheap

@@ -220,6 +220,13 @@ def test_goatcounter_markup_is_complete_and_spa_aware():
     for token in ['{%metas%}', '{%title%}', '{%favicon%}', '{%css%}',
                   '{%app_entry%}', '{%config%}', '{%scripts%}', '{%renderer%}']:
         assert token in html
+    # And the install surface rides every variant of it: the manifest link and
+    # worker registration are what make Android's Add to Home screen a real
+    # install rather than a bookmark (the pieces themselves are test_pwa's).
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in html
+    assert 'name="theme-color"' in html
+    assert 'apple-touch-icon' in html
+    assert "navigator.serviceWorker.register('/sw.js')" in html
 
 
 def test_without_an_origin_the_template_carries_no_tracker():
