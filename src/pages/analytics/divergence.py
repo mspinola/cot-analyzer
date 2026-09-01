@@ -30,7 +30,13 @@ import viz_constants as vc
 from components import class_filter, config_fold, controls, divergence_rows, help_fold
 from components.signal_cards import tier_of
 
-dash.register_page(__name__, path='/divergence')
+dash.register_page(
+    __name__, path='/divergence',
+    title='COT Model Divergence | COT Analyzer',
+    description='Where raw and OI-normalized COT models disagree, market by '
+                'market: verdict splits, value gaps and a year of basis '
+                'divergence per futures market.',
+)
 
 # Layout runs per request; the wiring must not.
 class_filter.register('divergence_class_selector')

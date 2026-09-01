@@ -23,6 +23,11 @@ utils.launch_logger.warning("Launch app_cot")
 app = Dash(
     __name__,
     use_pages=True,
+    # The served <title> fallback and the og:title for any page without its own.
+    # It was the framework default, so every Google result for the site was
+    # headlined "Dash"; per-page titles are swapped in by the interpolate_index
+    # wrapper below.
+    title='COT Analyzer | Free Commitments of Traders Charts & Signals',
     external_stylesheets=[
         dbc.themes.DARKLY,
         # The `bi bi-*` classes used across the pages are Bootstrap Icons, which DARKLY
@@ -41,32 +46,29 @@ server = app.server
 Compress(server)
 
 
-def goatcounter_index_string(origin):
-    """Dash's default index template with a self-hosted GoatCounter tracker appended.
+# The one crawlable sentence-and-links block a Dash app can honestly serve. The
+# shell used to carry ~69 characters of visible text: everything on every page
+# arrives via scripts and callbacks, which a crawler that renders no JS reads as
+# an empty site. <noscript> is the honest vehicle (it is exactly the content a
+# non-rendering client should get, and doubles as the no-JS experience), and the
+# links give a crawler the public pages to walk even before the sitemap.
+_NOSCRIPT_BLOCK = '''<noscript>
+            <h1>COT Analyzer</h1>
+            <p>Free weekly Commitments of Traders (COT) analysis for 40+
+            futures markets: positioning indexes, a signal heatmap, crowding
+            boards, dollar exposure and per-market charts, updated with every
+            CFTC release. This application requires JavaScript.</p>
+            <p><a href="/heatmap">Signal Heatmap</a> ·
+            <a href="/strip">Crowding Strip</a> ·
+            <a href="/crowd">Crowdedness Board</a> ·
+            <a href="/exposure">Dollar Exposure</a> ·
+            <a href="/oi_alignment">Open Interest Charts</a> ·
+            <a href="/analysis">Market Charts</a> ·
+            <a href="/divergence">Model Divergence</a> ·
+            <a href="/about">Guide</a></p>
+        </noscript>'''
 
-    Two scripts, and the first exists because Dash is a single-page app: count.js on
-    its own counts the document load and then never again, since navigation is
-    pushState. The hook disables the onload count, counts once when the page settles,
-    and re-counts on every pushState and popstate, which is exactly the set of
-    transitions the client-side router makes. Everything else is Dash's stock
-    template, spelled out because `index_string` replaces the whole thing.
-    """
-    return '''<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-        <script>
+_GOATCOUNTER_BLOCK = '''<script>
             window.goatcounter = {no_onload: true};
             (function () {
                 var count = function () {
@@ -83,18 +85,73 @@ def goatcounter_index_string(origin):
                 window.addEventListener('popstate', count);
             })();
         </script>
-        <script data-goatcounter="__GC_ORIGIN__/count" async src="__GC_ORIGIN__/count.js"></script>
+        <script data-goatcounter="__GC_ORIGIN__/count" async src="__GC_ORIGIN__/count.js"></script>'''
+
+
+def index_template(goatcounter_origin=None):
+    """Dash's stock index template plus the noscript block, plus GoatCounter when
+    a deployment opts in.
+
+    One builder for both cases, because `index_string` replaces the whole
+    template: two hand-maintained copies is how the analytics one silently
+    misses the next head change. The GoatCounter half needs two scripts because
+    Dash is a single-page app: count.js on its own counts the document load and
+    then never again (navigation is pushState), so the hook re-counts on every
+    pushState and popstate, exactly the transitions the client router makes.
+    """
+    tracker = (_GOATCOUNTER_BLOCK.replace('__GC_ORIGIN__', goatcounter_origin)
+               if goatcounter_origin else '')
+    return '''<!DOCTYPE html>
+<html lang="en">
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        __NOSCRIPT__
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+        __TRACKER__
     </body>
-</html>'''.replace('__GC_ORIGIN__', origin)
+</html>'''.replace('__NOSCRIPT__', _NOSCRIPT_BLOCK).replace('__TRACKER__', tracker)
 
 
 # Client-side analytics are opt-in per deployment: set GOATCOUNTER_URL to the origin
 # of a GoatCounter instance (e.g. https://stats.example.com, no trailing path) in .env
-# and every served page reports to it. Unset, the page is byte-identical to stock and
-# nothing loads. run-local.sh does not set it, so local work stays untracked.
+# and every served page reports to it. Unset, nothing loads and nothing tracks.
+# run-local.sh does not set it, so local work stays untracked.
 _goatcounter_origin = os.getenv('GOATCOUNTER_URL')
-if _goatcounter_origin:
-    app.index_string = goatcounter_index_string(_goatcounter_origin.rstrip('/'))
+app.index_string = index_template(
+    _goatcounter_origin.rstrip('/') if _goatcounter_origin else None)
+
+
+# The served <title> tag, per page. Dash Pages puts each page's title into
+# og:title and document.title, but the HTML <title> it SERVES is always
+# app.title: the one string a search result is headlined by was the same on
+# every page. This swaps in the registered page title for the exact path being
+# served; unknown paths (and pages without titles) keep the app default.
+_original_interpolate_index = app.interpolate_index
+
+
+def _interpolate_index_with_page_title(**kwargs):
+    try:
+        path = routing._normalize(request.path)
+        for page in dash.page_registry.values():
+            if page.get('title') and routing._normalize(page.get('path') or '') == path:
+                kwargs['title'] = page['title']
+                break
+    except Exception:
+        pass  # serving the default title beats failing the index
+    return _original_interpolate_index(**kwargs)
+
+
+app.interpolate_index = _interpolate_index_with_page_title
 
 
 @app.server.before_request
@@ -130,6 +187,32 @@ def _link_page(title, body, status=200):
     page = routing.message_page(title, body, vc.BACKGROUND_COLOR, vc.TEXT_COLOR,
                                 vc.BRIGHTER_TEXT_COLOR)
     return page, status, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+# The crawler endpoints. `subscribers.base_url` is the one place the public
+# origin is stated (COT_PUBLIC_BASE_URL), so the sitemap and the emails can
+# never disagree about where the site lives. Both paths are in
+# routing.EXTRA_PATHS so the unknown-path guard admits them.
+
+@app.server.route('/robots.txt')
+def robots_txt():
+    import subscribers
+    return (routing.robots_txt(subscribers.base_url()), 200,
+            {'Content-Type': 'text/plain; charset=utf-8'})
+
+
+@app.server.route('/sitemap.xml')
+def sitemap_xml():
+    import subscribers
+    lastmod = None
+    try:
+        dates = get_indexer().get_available_dates()
+        lastmod = dates[0] if dates else None
+    except Exception:
+        pass  # a sitemap without lastmod beats a 500 to a crawler
+    paths = [page.get('path') for page in dash.page_registry.values()]
+    return (routing.sitemap_xml(subscribers.base_url(), paths, lastmod), 200,
+            {'Content-Type': 'application/xml; charset=utf-8'})
 
 
 @app.server.route('/graphs')

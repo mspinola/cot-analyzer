@@ -41,7 +41,13 @@ import viz_constants as vc
 from components import class_filter, controls
 from components.plot_colors import grid_colors
 
-dash.register_page(__name__, path='/strip')
+dash.register_page(
+    __name__, path='/strip',
+    title='Futures Crowding Strip | COT Analyzer',
+    description='A one-screen crowding read of Commercial positioning across '
+                '40+ futures markets, with prior-week, dollar and basis '
+                'comparisons from the weekly COT report.',
+)
 
 # Layout runs per request; the wiring must not.
 class_filter.register('strip_class_selector')

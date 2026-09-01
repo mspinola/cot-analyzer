@@ -36,7 +36,11 @@ skeleton_loader = html.Div([
 # Register this file as a page
 dash.register_page(
     __name__,
-    path='/'
+    path='/',
+    title='COT Analyzer | Free Commitments of Traders Charts & Signals',
+    description='Free weekly Commitments of Traders analysis: positioning '
+                'indexes, signal heatmap, crowding boards and charts for 40+ '
+                'futures markets, updated with every CFTC release.',
 )
 
 # Layout runs per request; the wiring must not.

@@ -24,12 +24,48 @@ SERVED_PREFIXES = (
 )
 
 #: Real paths belonging to no page: the browser's automatic favicon request, Dash's
-#: own copy of it, the two email-link endpoints (plain Flask routes in app_cot,
-#: which `app.routes` does not list because it only knows Dash's own), and the old
-#: /graphs address (a `redirect_from` alias of /analysis: Dash registers it as a
-#: real 301 route on the Flask server, invisible to `app.routes` the same way).
+#: own copy of it, the email-link and crawler endpoints (plain Flask routes in
+#: app_cot, which `app.routes` does not list because it only knows Dash's own),
+#: and the old /graphs address (an explicit 301 route to /analysis?view=grid,
+#: invisible to `app.routes` the same way).
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
-                         '/confirm', '/unsubscribe', '/graphs'})
+                         '/confirm', '/unsubscribe', '/graphs',
+                         '/robots.txt', '/sitemap.xml'})
+
+#: Operator surfaces and internal viewers: out of the sitemap, disallowed in
+#: robots.txt. A search result should never land a visitor on the admin login
+#: or a raw parquet browser.
+NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view'})
+
+
+def robots_txt(base_url):
+    """The crawl policy: everything public, the operator surfaces excluded, and
+    the sitemap named (which is how most engines find it)."""
+    lines = ["User-agent: *"]
+    lines += [f"Disallow: {path}" for path in sorted(NOINDEX_PATHS)]
+    lines += ["", f"Sitemap: {base_url}/sitemap.xml", ""]
+    return "\n".join(lines)
+
+
+def sitemap_xml(base_url, page_paths, lastmod=None):
+    """Every public page as a sitemap entry.
+
+    Built from the live page registry rather than a hand-kept list, so a new
+    page is discoverable the day it ships; NOINDEX_PATHS is the only curation.
+    `lastmod` is the newest COT week when the caller has one: the data pages
+    genuinely change once per release, and telling crawlers when invites a
+    weekly re-crawl.
+    """
+    urls = []
+    for path in sorted({_normalize(p) for p in page_paths if p} - NOINDEX_PATHS):
+        loc = f"{base_url}{path}"
+        entry = f"  <url>\n    <loc>{loc}</loc>"
+        if lastmod:
+            entry += f"\n    <lastmod>{lastmod}</lastmod>"
+        urls.append(entry + "\n  </url>")
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            + "\n".join(urls) + "\n</urlset>\n")
 
 
 def _normalize(path: str) -> str:
