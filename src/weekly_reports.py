@@ -27,6 +27,7 @@ Three decisions:
   param, so "explore this week" lands the reader on the same week the page
   describes.
 """
+import functools
 import re
 from datetime import datetime
 
@@ -136,7 +137,25 @@ def report_page(week):
     weeks = published_weeks()
     if week not in weeks:
         return None
+    return _rendered(week, weeks[0])
 
+
+@functools.lru_cache(maxsize=WEEKS_PUBLISHED + 8)
+def _rendered(week, newest_date):
+    """The finished page, cached per (week, newest release).
+
+    Measured on the deployment the day these shipped: a COLD render exceeded a
+    30-second timeout from the outside (the matrix build for an explicit
+    target_date shares no cache with the boards, which ask for the newest week
+    as None), then 3-7s once warm. A crawler walking 104 cold pages meets that
+    wall on every one, and these pages exist FOR crawlers. The page for a week
+    is immutable once built, except that a new release moves the prev/next
+    strip on the newest page and the store can restate on a revision, which is
+    exactly what keying on `newest_date` invalidates: a release busts every
+    entry, the heatmap joins' rule. The cache holds the whole window plus slack,
+    at ~40KB a page.
+    """
+    weeks = published_weeks()
     # asset_classes=None is "every class", the same call the weekly email makes.
     df = get_matrix_data(asset_classes=None, lookback="Custom", target_date=week)
     email_html = generate_matrix_html(df, report_date=week)

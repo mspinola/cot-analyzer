@@ -48,3 +48,12 @@ def test_everything_else_is_left_alone():
     assert cache_policy('/_favicon.ico', False, 'image/x-icon') is None
     assert cache_policy('/_dash-component-suites-lookalike', False,
                         'text/plain') is None
+
+
+def test_dated_weekly_reports_cache_for_a_day_and_the_index_does_not():
+    """The dated pages are the most expensive renders the app serves and barely
+    change once their week passes; the index gains a row per release and must
+    not read stale on a Friday."""
+    assert cache_policy('/weekly/2026-08-25', False,
+                        'text/html; charset=utf-8') == 'public, max-age=86400'
+    assert cache_policy('/weekly', False, 'text/html; charset=utf-8') == 'no-cache'
