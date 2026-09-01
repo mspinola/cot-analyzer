@@ -215,6 +215,13 @@ def cache_policy(path, fingerprinted, content_type):
     if path.startswith(('/_dash-layout', '/_dash-dependencies',
                         '/_dash-update-component')):
         return 'no-store'
+    # A DATED weekly report barely changes once its week has passed (a store
+    # revision or a copy tweak, both rare), and its cold render is the most
+    # expensive page this app serves, so a day of public caching is cheap
+    # honesty. The /weekly index is excluded: it gains a row per release and
+    # must not read stale on a Friday.
+    if WEEKLY_RE.match(path) and path != '/weekly':
+        return 'public, max-age=86400'
     if content_type.startswith('text/html'):
         return 'no-cache'
     return None

@@ -43,6 +43,10 @@ EMAIL_DOC = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
 
 @pytest.fixture()
 def stubbed(monkeypatch):
+    # The rendered-page cache is module-level and keyed on (week, newest), so
+    # without this a page built under one test's stubs would serve under the
+    # next test's assertions.
+    weekly_reports._rendered.cache_clear()
     monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Indexer())
     monkeypatch.setattr(weekly_reports, "get_matrix_data",
                         lambda **kw: _frame())
@@ -114,3 +118,29 @@ def test_no_setups_still_reads_as_a_sentence(stubbed, monkeypatch):
              const.SETUP_NPF_COL: const.SETUP_NONE}]))
     page = weekly_reports.report_page("2026-08-25")
     assert "No market finished the week at a full setup" in page
+
+
+def test_a_release_rebuilds_a_cached_page(stubbed, monkeypatch):
+    """Pages are served from an in-process cache (a cold render was measured
+    beyond a 30s external timeout on the deployment, and crawlers walk 104 of
+    them), and the newest release is the cache key: a new week must rebuild
+    every page (prev/next strips move, revisions restate), while repeat visits
+    inside a week must not touch the matrix at all."""
+    builds = []
+
+    def counting_matrix(**kw):
+        builds.append(kw.get("target_date"))
+        return _frame()
+
+    monkeypatch.setattr(weekly_reports, "get_matrix_data", counting_matrix)
+    weekly_reports.report_page("2026-08-18")
+    weekly_reports.report_page("2026-08-18")
+    assert builds == ["2026-08-18"]  # the second visit was the cache
+
+    class _Advanced:
+        def get_available_dates(self):
+            return ["2026-09-01"] + WEEKS
+
+    monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Advanced())
+    weekly_reports.report_page("2026-08-18")
+    assert builds == ["2026-08-18", "2026-08-18"]  # the release rebuilt it
