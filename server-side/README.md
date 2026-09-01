@@ -201,6 +201,25 @@ worker, or a browser tab winning the refresh race cannot produce a second copy.
 deliberate, so switching the flag on does not itself look like a release. The next COT
 week is the first one mailed. Use the Admin button if you want one immediately.
 
+**Visitor subscriptions (since 2026-08-31) ride the same three credentials.** The
+About page carries a subscribe form; confirmed subscribers get the weekly send
+fanned out after the operator copy, each with their own unsubscribe link. Two
+things this adds on this box:
+
+```bash
+COT_PUBLIC_BASE_URL=https://bluemagicai.com   # optional; this IS the default.
+                                              # The origin used in email links
+                                              # (/confirm, /unsubscribe), page
+                                              # canonical URLs and the sitemap.
+                                              # Set it only if the site moves.
+```
+
+The subscriber list lives in `subscribers.db` beside the weekly-email ledger
+(`~/.local/share/cotmetrics/` unless `COT_SUBSCRIBERS_DB` overrides it). It is
+the mailing list: back it up with the same care as the visitor DB, because an OS
+reinstall that loses it silently unsubscribes everyone. The weekly fan-out only
+runs where `COT_WEEKLY_EMAIL` is set, same as the operator copy.
+
 **Optional:**
 
 ```bash
@@ -586,6 +605,25 @@ version skew shows up as an `AttributeError` at request time rather than at star
 price failure inside a healthy-looking COT deployment.
 
 `restart.sh` in this directory is the restart on its own.
+
+**Then verify from the outside.** `verify-deploy.sh` in this directory curls the
+public origin (or a passed one) for everything a green `systemctl status` cannot
+vouch for: the per-page titles, robots.txt and the sitemap, the /weekly report
+pages, the subscription endpoints, and the unknown-path guard. Read-only, exits
+non-zero on any failure:
+
+```bash
+./verify-deploy.sh                        # checks https://bluemagicai.com
+./verify-deploy.sh http://127.0.0.1:5001  # or the app directly, skipping nginx
+```
+
+Nothing in nginx needs adjusting for the 2026-08-31 additions: every new path
+(`/weekly`, `/weekly/<date>`, `/robots.txt`, `/sitemap.xml`, `/confirm`,
+`/unsubscribe`) rides the existing `location /` proxy, and none matches the
+scanner-block snippet's rules. The one nginx-side thing to CHECK rather than
+change: some setups carve out `location = /robots.txt` to serve a static file,
+which would shadow the app's route. `verify-deploy.sh`'s robots check fails
+loudly if this box has one.
 
 ## Troubleshooting
 
