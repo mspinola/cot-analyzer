@@ -65,6 +65,7 @@ _NOSCRIPT_BLOCK = '''<noscript>
             <a href="/oi_alignment">Open Interest Charts</a> ·
             <a href="/analysis">Market Charts</a> ·
             <a href="/divergence">Model Divergence</a> ·
+            <a href="/weekly">Weekly Reports</a> ·
             <a href="/about">Guide</a></p>
         </noscript>'''
 
@@ -204,6 +205,7 @@ def robots_txt():
 @app.server.route('/sitemap.xml')
 def sitemap_xml():
     import subscribers
+    import weekly_reports
     lastmod = None
     try:
         dates = get_indexer().get_available_dates()
@@ -211,8 +213,36 @@ def sitemap_xml():
     except Exception:
         pass  # a sitemap without lastmod beats a 500 to a crawler
     paths = [page.get('path') for page in dash.page_registry.values()]
-    return (routing.sitemap_xml(subscribers.base_url(), paths, lastmod), 200,
-            {'Content-Type': 'application/xml; charset=utf-8'})
+    # The weekly report pages, each dated with its own release week. The index
+    # moves whenever a new week publishes, so it carries the shared lastmod.
+    weeks = weekly_reports.published_weeks()
+    extra = ([('/weekly', lastmod)] if weeks else []) + \
+        [(f'/weekly/{week}', week) for week in weeks]
+    return (routing.sitemap_xml(subscribers.base_url(), paths, lastmod, extra),
+            200, {'Content-Type': 'application/xml; charset=utf-8'})
+
+
+# The weekly report pages: server-rendered, script-free HTML, because their
+# whole reason to exist is being readable by crawlers and no-JS clients (see
+# weekly_reports). The unknown-path guard admits them via routing.WEEKLY_RE in
+# date shape only; a well-formed week outside the published window 404s here.
+
+@app.server.route('/weekly')
+def weekly_index():
+    import weekly_reports
+    return (weekly_reports.index_page(), 200,
+            {'Content-Type': 'text/html; charset=utf-8'})
+
+
+@app.server.route('/weekly/<week>')
+def weekly_report(week):
+    import weekly_reports
+    page = weekly_reports.report_page(week)
+    if page is None:
+        return _link_page("Not published",
+                          "No weekly report is published for this date.",
+                          status=404)
+    return page, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.server.route('/graphs')
@@ -453,6 +483,13 @@ _ANALYTICS_PAGES = (
     ("Disagg / TFF", "/categories"),
     ("Table", "/positioning"),
 )
+
+#: Server-rendered pages reachable from the same menu. Kept apart from
+#: _ANALYTICS_PAGES because they need external_link=True: they are Flask
+#: routes the Dash router does not know.
+_ANALYTICS_STATIC_PAGES = (
+    ("Weekly Reports", "/weekly"),
+)
 _SYSTEM_PAGES = (
     ("Options", "/options"),
     ("Admin", "/admin"),
@@ -460,16 +497,21 @@ _SYSTEM_PAGES = (
 )
 
 
-def _nav_dropdown_item(label, href):
+def _nav_dropdown_item(label, href, external=False):
     """One menu entry, with the id its active-state callback keys on.
 
     dbc.NavLink highlights itself via active="exact"; DropdownMenuItem has only a
     boolean `active`, so without this the dropdown pages were the ones the navbar
     never admitted you were on. The href rides in the id so the clientside
     callback below can compare each item against the URL without a lookup table.
+
+    `external` marks an entry served by Flask rather than the Dash router (the
+    weekly report pages): without it dbc client-routes the click and the SPA
+    answers with its own 404 for a URL the server serves perfectly well.
     """
     return dbc.DropdownMenuItem(
-        label, href=href, id={'type': 'nav_dropdown_item', 'href': href})
+        label, href=href, external_link=external,
+        id={'type': 'nav_dropdown_item', 'href': href})
 
 
 navbar = dbc.Navbar(
@@ -517,7 +559,9 @@ navbar = dbc.Navbar(
                                             active="exact")),
                     dbc.DropdownMenu(
                         children=[_nav_dropdown_item(label, href)
-                                  for label, href in _ANALYTICS_PAGES],
+                                  for label, href in _ANALYTICS_PAGES]
+                                 + [_nav_dropdown_item(label, href, external=True)
+                                    for label, href in _ANALYTICS_STATIC_PAGES],
                         nav=True,
                         in_navbar=True,
                         label="Analytics"
