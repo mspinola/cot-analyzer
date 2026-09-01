@@ -73,13 +73,23 @@ def test_the_browsers_automatic_favicon_request_is_not_a_probe(path):
 
 
 @pytest.mark.parametrize("path", ['/confirm', '/unsubscribe',
-                                  '/robots.txt', '/sitemap.xml'])
+                                  '/robots.txt', '/sitemap.xml',
+                                  '/weekly', '/weekly/2026-08-25'])
 def test_the_flask_route_endpoints_are_served(path):
     """Plain Flask routes on app.server (see app_cot), which `app.routes` does
     not list; without this membership every link in a subscription email 404s
     and every crawler is told the site has no robots policy or sitemap."""
     assert known(path)
 
+
+@pytest.mark.parametrize("path", ['/weekly/latest', '/weekly/2026-8-25',
+                                  '/weekly/2026-08-25/extra',
+                                  '/weeklyreports'])
+def test_weekly_lookalikes_are_not_served(path):
+    """The guard admits the weekly family by date SHAPE only. Anything else
+    under /weekly must 404 here rather than fall through to the Dash catch-all
+    and come back as a 200 app shell (the exact hole the guard exists for)."""
+    assert not known(path)
 
 # ── what must not ─────────────────────────────────────────────────────────────
 

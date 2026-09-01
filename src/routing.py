@@ -13,6 +13,8 @@ a 200 and a full app shell, which costs bandwidth, makes the visit log unable to
 separate a page view from a probe, and advertises the host as a live PHP target.
 """
 
+import re
+
 #: Prefixes under which Dash serves generated or static content. Everything below them
 #: is Dash's to answer for, including its own errors, so membership stops here rather
 #: than trying to enumerate fingerprinted asset filenames. The one carve-out is vendor
@@ -37,6 +39,13 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: or a raw parquet browser.
 NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view'})
 
+#: The weekly report pages: /weekly and /weekly/<date>. The one dynamic family
+#: this guard admits, and only in date SHAPE: whether a well-formed week is
+#: actually published is the route handler's question (it 404s the rest), while
+#: /weekly/anything-else must never fall through to the Dash catch-all and come
+#: back as a 200 app shell.
+WEEKLY_RE = re.compile(r'^/weekly(/\d{4}-\d{2}-\d{2})?$')
+
 
 def robots_txt(base_url):
     """The crawl policy: everything public, the operator surfaces excluded, and
@@ -47,22 +56,26 @@ def robots_txt(base_url):
     return "\n".join(lines)
 
 
-def sitemap_xml(base_url, page_paths, lastmod=None):
-    """Every public page as a sitemap entry.
+def sitemap_xml(base_url, page_paths, lastmod=None, extra=()):
+    """Every public page as a sitemap entry, plus any (path, lastmod) extras.
 
     Built from the live page registry rather than a hand-kept list, so a new
     page is discoverable the day it ships; NOINDEX_PATHS is the only curation.
     `lastmod` is the newest COT week when the caller has one: the data pages
     genuinely change once per release, and telling crawlers when invites a
-    weekly re-crawl.
+    weekly re-crawl. `extra` carries the weekly report pages, each dated with
+    its own week rather than the shared lastmod.
     """
-    urls = []
-    for path in sorted({_normalize(p) for p in page_paths if p} - NOINDEX_PATHS):
-        loc = f"{base_url}{path}"
-        entry = f"  <url>\n    <loc>{loc}</loc>"
-        if lastmod:
-            entry += f"\n    <lastmod>{lastmod}</lastmod>"
-        urls.append(entry + "\n  </url>")
+    def entry(loc, mod):
+        text = f"  <url>\n    <loc>{loc}</loc>"
+        if mod:
+            text += f"\n    <lastmod>{mod}</lastmod>"
+        return text + "\n  </url>"
+
+    urls = [entry(f"{base_url}{path}", lastmod)
+            for path in sorted({_normalize(p) for p in page_paths if p}
+                               - NOINDEX_PATHS)]
+    urls += [entry(f"{base_url}{path}", mod) for path, mod in extra]
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             + "\n".join(urls) + "\n</urlset>\n")
@@ -91,6 +104,8 @@ def is_known_path(path: str, page_paths, dash_routes) -> bool:
         return True
     normalized = _normalize(path)
     if normalized in EXTRA_PATHS:
+        return True
+    if WEEKLY_RE.match(normalized):
         return True
     if normalized in {_normalize(route) for route in dash_routes}:
         return True
