@@ -92,3 +92,18 @@ def test_every_alias_the_cards_read_is_reported_when_absent(log):
     for alias in aliases:
         assert get(alias, 50) == 50
     assert len(log.errors) == len(aliases)
+
+
+def test_a_short_row_keeps_the_column_count_and_a_long_one_balances():
+    """One setup at the gate is one card, not a card-shaped banner across the
+    panel: a row with room to spare keeps the breakpoint's full column count and
+    leaves the rest empty. Only an overflowing count is balanced, and there the
+    fewest-rows-then-even rule stands (nine at six across is 5 + 4)."""
+    from components.signal_cards import balanced_columns
+
+    assert balanced_columns(1, 6) == 6
+    assert balanced_columns(3, 6) == 6
+    assert balanced_columns(6, 6) == 6
+    assert balanced_columns(9, 6) == 5
+    assert balanced_columns(13, 6) == 5
+    assert balanced_columns(0, 4) == 4
