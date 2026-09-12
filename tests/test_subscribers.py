@@ -137,12 +137,22 @@ def _matrix_frame():
     return pd.DataFrame([{"Asset": "Gold", "Date": "2026-08-25"}])
 
 
+def _fake_matrix_data(asset_classes, lookback, target_date=None):
+    """Stands in for cotmetrics.reports.get_matrix_data WITH its real signature.
+
+    A `lambda **kw` stub accepted any call and hid a mismatch: the fan-out called
+    get_matrix_data(lookback="Custom") against a function whose asset_classes is
+    positional-required, so every real weekly fan-out failed (2026-09-12, after
+    the operator copy had already gone out) while this file stayed green.
+    """
+    return _matrix_frame()
+
+
 def test_the_fanout_sends_each_subscriber_their_own_unsubscribe_link(
         env, monkeypatch):
     import cotmetrics.reports
     import cotmetrics.weekly_email as we
-    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data",
-                        lambda **kw: _matrix_frame())
+    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data", _fake_matrix_data)
     monkeypatch.setattr(we, "generate_matrix_html",
                         lambda df, report_date=None: "<table>matrix</table>",
                         raising=False)
@@ -166,8 +176,7 @@ def test_the_fanout_sends_each_subscriber_their_own_unsubscribe_link(
 def test_one_failed_recipient_does_not_stop_the_fanout(env, monkeypatch):
     import cotmetrics.reports
     import cotmetrics.weekly_email as we
-    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data",
-                        lambda **kw: _matrix_frame())
+    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data", _fake_matrix_data)
     monkeypatch.setattr(we, "generate_matrix_html",
                         lambda df, report_date=None: "<table>matrix</table>",
                         raising=False)

@@ -283,7 +283,7 @@ def send_weekly_to_subscribers(env=None, smtp_factory=None):
     from cotmetrics.reports import get_matrix_data
     from cotmetrics.weekly_email import build_message, email_config, report_date_for
     sender, _receiver, password = email_config(env)
-    df = get_matrix_data(lookback="Custom")
+    df = get_matrix_data(asset_classes=None, lookback="Custom")
     report_date = report_date_for(df)
 
     sent = 0
