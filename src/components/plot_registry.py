@@ -108,6 +108,8 @@ class PlotSpec:
     needs_asset: bool = False
     # Second pass after the traces land, e.g. shading setup clusters.
     decorate: Optional[Callable[[PlotCtx], object]] = None
+    # How to read the panel, shown as a tooltip on its title (see the HINT table).
+    hint: Optional[str] = None
 
 
 # --- adapters -------------------------------------------------------------------
@@ -199,6 +201,163 @@ def _max_pain_historical(ctx):
                                           showlegend=ctx.showlegend)
 
 
+# How to read each panel, shown as a tooltip on its subplot title. Written as
+# <br>-separated sentences: Plotly annotation hovertext renders a limited HTML subset
+# and ignores newlines. Each one names the marks the builder actually draws (bands,
+# shading, secondary axis) rather than describing the metric in the abstract, so a
+# change to a builder's bands is a change to its hint too.
+
+def _hint(*lines):
+    return "<br>".join(("<b>How to read this panel</b>",) + lines)
+
+
+PRICE_OI_ALIGNMENT_HINT = _hint(
+    "Weekly price candles with the tape-reading markers from the Guide page.",
+    "Bullish markers (bottoms, squeezes, stealth accumulation) sit below price;",
+    "bearish ones (tops, exhaustion, capitulation) sit above it. See the legend.",
+    "With the Price Delta overlay on, a green / red background marks weeks that",
+    "closed up / down against the prior week.",
+    "COT is a leading macro indicator, not a timing tool: wait for price to",
+    "confirm a marker before acting on it.",
+)
+
+PRICE_CANDLES_HINT = _hint(
+    "Weekly price candles.",
+    "Shaded weeks are setup clusters: the positioning model's index band is met",
+    "(green bullish, red bearish), judged by that panel's own model.",
+    "COT is a leading macro indicator, not a timing tool: commercials can be early",
+    "by weeks, so wait for price to confirm before acting.",
+)
+
+MACD_HINT = _hint(
+    "MACD (12 / 26 / 9 week EMAs) applied to Commercial net position, not price.",
+    "MACD line vs Signal line; the histogram is the gap between them.",
+    "MACD crossing above Signal: commercials accelerating their buying, which",
+    "leads price bottoms. Crossing below leads tops.",
+    "Zero line: whether the fast average is above or below the slow one.",
+)
+
+WILLCO_HINT = _hint(
+    "Commercial net position as a share of open interest, indexed 0-100 over",
+    "the lookback (100 = most long of the window, 0 = most short).",
+    "Above 80 (green band): accumulation. Below 20 (red band): distribution.",
+    "Already divided by open interest, so the basis control does not apply.",
+)
+
+INDEX_HINT = _hint(
+    "Each group's net position scaled 0-100 over the lookback:",
+    "100 = most long of the window, 0 = most short.",
+    "Commercials are contrarian. Commercials near 100 with speculators near 0",
+    "is the classic buy setup; the mirror image is the sell setup.",
+    "Raw uses net contracts; % of OI divides by open interest first.",
+    "COT leads price, often by weeks: wait for price confirmation.",
+)
+
+MOMENTUM_HINT = _hint(
+    "Bars: each group's positioning index now minus its value 6 weeks ago.",
+    "A large positive Commercial bar during a price dip is aggressive dip-buying;",
+    "a large negative one into a rally is selling into strength.",
+    "Speculator bars usually point the other way, since the groups net to zero.",
+)
+
+ZSCORE_HINT = _hint(
+    "Each group's net position as standard deviations from its mean over the",
+    "lookback, with open interest on the same scale (axis clipped to +/-3).",
+    "Beyond +/-2 is an extreme; +/-1 is moderate.",
+    "The Open Interest line says whether the extreme is forming on rising or",
+    "falling participation.",
+)
+
+SPEARMAN_HINT = _hint(
+    "Rolling rank correlation (-1 to +1) between the weekly close and each",
+    "group's net position, over the selected lookback.",
+    "Commercials normally run negative because they sell into strength.",
+    "Green shading: regime-shift signal, the commercial correlation breaking",
+    "toward positive faster than its trailing norm while commercial",
+    "positioning momentum is positive. Red shading: the same break while",
+    "commercial momentum is flat or negative.",
+)
+
+NET_POS_HINT = _hint(
+    "Each group's net position: long minus short contracts, or that as a",
+    "fraction of open interest on the % of OI basis.",
+    "Right axis: total open interest. Zero line: net flat.",
+    "The three groups sum to zero by construction, so a commercial net long is",
+    "the speculators' net short.",
+)
+
+OI_PCT_HINT = _hint(
+    "Each group's net position divided by total open interest, in %.",
+    "Same shape as Net Positions but comparable across markets and years:",
+    "50k contracts net long is a lot in a 100k-OI market and little in a 1M one.",
+    "Already divided by open interest, so the basis control does not apply.",
+)
+
+LRG_SENTIMENT_HINT = _hint(
+    "Williams' LATE index: large speculator net position scaled 0-100 over a",
+    "fixed 15-week window, not the lookback control.",
+    "Contrarian. At or above 80 (red band): funds crowded long late in an",
+    "advance. At or below 20 (green band): crowded short.",
+)
+
+# Each curve sums, over every open call and put on the nearest usable expiry, the
+# payout the option holder would collect if the underlying settled at the x-axis
+# price (cotmetrics.options_data.calculate_intrinsic_curve).
+MAX_PAIN_HINT = _hint(
+    "Each curve is one day's options chain (last 7 days; darker blue = more recent).",
+    "x: a simulated settlement price. y: what every open call and put would pay out",
+    "in total at that price, so a low point is where option holders get the least.",
+    "Yellow dot: that day's max-pain strike, the settlement price where holders",
+    "collectively lose the most and writers pay the least.",
+    "Red vertical line: the current underlying price (latest day).",
+    "Dashed lines: payout at the current price vs at max pain; the arrow is the gap.",
+    "Reading: a large gap means the market is far from where writers want it to",
+    "settle, so watch for price drifting toward the yellow dot into expiry.",
+    "Quoted on the ETF named in the title, which may be a proxy for the future.",
+)
+
+MAX_PAIN_HISTORICAL_HINT = _hint(
+    "Bars: how far the underlying closed above (+) or below (-) that day's",
+    "max-pain strike, in %.",
+    "Line (right axis): delta IV, the extra payout at the current price versus",
+    "at max pain. A large delta is pressure toward the strike into expiry.",
+    "Each snapshot uses the nearest expiry more than 3 days out, so the series",
+    "can change expiry as chains roll; a jump can be a roll artifact rather than",
+    "positioning drift. The title names only the latest expiry.",
+)
+
+
+def apply_title_hints(fig, plot_ids):
+    """Attach each panel's reading hint to its subplot title, as a hover tooltip.
+
+    make_subplots stores subplot titles as layout annotations, one per non-empty
+    title in order, so the i-th panel's title is the i-th annotation. Pages build
+    the figure with a title for every panel, which is what lets this match by
+    position instead of by text. Annotations are the one Plotly object that carries
+    a hover tooltip without a trace, which is why the hint rides on the title rather
+    than on a dummy scatter. Panels without a hint are left untouched; the marker is
+    appended to the title so the reader knows there is something to hover.
+    """
+    annotations = list(fig.layout.annotations)
+    for i, plot_id in enumerate(plot_ids):
+        spec = REGISTRY.get(plot_id)
+        if spec is None or spec.hint is None or i >= len(annotations):
+            continue
+        ann = annotations[i]
+        if HINT_MARKER in (ann.text or ""):
+            continue
+        ann.text = f"{ann.text} {HINT_MARKER}"
+        ann.hovertext = spec.hint
+        ann.hoverlabel = dict(bgcolor="#0e1116", bordercolor=vc.GRID_COLOR,
+                              font=dict(color=vc.HOVER_TEXT_COLOR, size=12))
+    return fig
+
+
+# The affordance that a title has a tooltip. Dimmed so it reads as chrome, not
+# as part of the panel name.
+HINT_MARKER = '<span style="color:#8a8f98;font-size:12px">\u24d8</span>'
+
+
 # --- the registry ---------------------------------------------------------------
 
 _SPECS = [
@@ -206,49 +365,52 @@ _SPECS = [
     # not behave the same: OI Alignment overlays its decorators on the price panel and
     # keeps it on a single axis, while Analysis puts price on a secondary axis and
     # shades setup clusters. Session-persisted selections also already use both names.
-    PlotSpec("oi_alignment", "OI Alignment", _price),
+    PlotSpec("oi_alignment", "OI Alignment", _price, hint=PRICE_OI_ALIGNMENT_HINT),
     PlotSpec("price_candles", "Price (Candles)", _price,
-             secondary_y=SECONDARY_WITH_PRICE, decorate=_setup_highlight),
+             secondary_y=SECONDARY_WITH_PRICE, decorate=_setup_highlight,
+             hint=PRICE_CANDLES_HINT),
 
     PlotSpec("macd", "Commercial Net Positioning MACD", _macd,
-             secondary_y=SECONDARY_WITH_PRICE),
+             secondary_y=SECONDARY_WITH_PRICE, hint=MACD_HINT),
     # The id stays a literal. "willco" is also a frame column (const.WILLCO_ALIAS),
     # but a plot id is a picker key, not a column name, and the two only happen to
     # spell the same. Swapping in the constant here would read as a claim that a
     # panel is named after the column it draws, which is true of no other spec.
     PlotSpec("willco", "WillCo", _willco, secondary_y=SECONDARY_WITH_PRICE,
-             invariant_note="already normalized by OI"),
+             invariant_note="already normalized by OI", hint=WILLCO_HINT),
 
     PlotSpec("index", "Positioning Index", _index, secondary_y=SECONDARY_WITH_PRICE,
              basis_aware=True, overlay=(const.COMMS_IDX, "Index", [0, 100], False),
-             decorate=_setup_highlight),
+             decorate=_setup_highlight, hint=INDEX_HINT),
     PlotSpec("momentum", vc.MOMENTUM_LABEL, _momentum,
              secondary_y=SECONDARY_WITH_PRICE, basis_aware=True,
-             overlay=(const.COMM_MOMENTUM, vc.MOMENTUM_LABEL, None, True)),
+             overlay=(const.COMM_MOMENTUM, vc.MOMENTUM_LABEL, None, True),
+             hint=MOMENTUM_HINT),
     PlotSpec("zscore", "Positioning Z-Score", _zscore,
              secondary_y=SECONDARY_WITH_PRICE, basis_aware=True,
-             overlay=(const.COMMS_ZSCORE, "Z-Score", None, True)),
+             overlay=(const.COMMS_ZSCORE, "Z-Score", None, True), hint=ZSCORE_HINT),
     PlotSpec("spearman", "Spearman Correlation", _spearman,
              secondary_y=SECONDARY_WITH_PRICE, basis_aware=True,
-             overlay=(const.COMMS_SPEARMAN, "Correlation", [-1, 1], True)),
+             overlay=(const.COMMS_SPEARMAN, "Correlation", [-1, 1], True),
+             hint=SPEARMAN_HINT),
     # Basis-aware but cannot overlay: contracts and a fraction of open interest share
     # no scale. Its secondary axis carries Open Interest, not price, so it holds even
     # where price is switched off.
     PlotSpec("net_pos", "Net Positions", _net_pos, secondary_y=SECONDARY_ALWAYS,
-             basis_aware=True),
+             basis_aware=True, hint=NET_POS_HINT),
 
     PlotSpec("oi_pct", "Net Position % of OI", _oi_pct,
              secondary_y=SECONDARY_WITH_PRICE,
-             invariant_note="already normalized by OI"),
+             invariant_note="already normalized by OI", hint=OI_PCT_HINT),
     PlotSpec("lrg_sentiment", "Large Trader Sentiment", _lrg_sentiment,
-             secondary_y=SECONDARY_WITH_PRICE),
+             secondary_y=SECONDARY_WITH_PRICE, hint=LRG_SENTIMENT_HINT),
 
     PlotSpec("max_pain", "Max Pain Options Curve", _max_pain, needs_asset=True,
-             invariant_note="not a COT metric"),
+             invariant_note="not a COT metric", hint=MAX_PAIN_HINT),
     # Secondary axis carries Delta IV rather than price.
     PlotSpec("max_pain_historical", "Price Premium/Discount to Max-Pain Price",
              _max_pain_historical, secondary_y=SECONDARY_ALWAYS, needs_asset=True,
-             invariant_note="not a COT metric"),
+             invariant_note="not a COT metric", hint=MAX_PAIN_HISTORICAL_HINT),
 ]
 
 REGISTRY = {s.id: s for s in _SPECS}

@@ -675,6 +675,7 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
 
     is_shared_x = False if any(p in ["max_pain", "max_pain_historical"] for p in selected_plots) else True
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
+    fig = registry.apply_title_hints(fig, selected_plots)
 
     plot_idx = 0
     decorator_targets = []

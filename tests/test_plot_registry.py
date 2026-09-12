@@ -186,3 +186,56 @@ def test_volatility_owns_the_sixth_slot_rather_than_borrowing_one():
     assert viz_config.PALETTE_SLOTS[et.VOL_PALETTE_SLOT] == "Volatility"
     assert et.VOL_PALETTE_SLOT not in et.LEG_PALETTE_SLOT.values()
     assert et.VOL_PALETTE_SLOT != 3
+
+
+# --- title hints ----------------------------------------------------------------
+
+def test_title_hint_rides_on_the_matching_subplot_title():
+    from plotly.subplots import make_subplots
+
+    ids = ["index", "max_pain", "lrg_sentiment"]
+    titles = ["Positioning Index", "Options Max Pain (Gold via GLD)", "Large Trader Sentiment"]
+    fig = make_subplots(rows=3, cols=1, subplot_titles=titles)
+    reg.apply_title_hints(fig, ids)
+
+    anns = fig.layout.annotations
+    for ann, plot_id, title in zip(anns, ids, titles):
+        assert ann.hovertext == reg.REGISTRY[plot_id].hint
+        assert ann.text.startswith(title + " ")
+        assert reg.HINT_MARKER in ann.text
+    assert anns[1].hovertext == reg.MAX_PAIN_HINT
+
+
+def test_title_hint_is_idempotent_and_tolerates_short_annotation_lists():
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=1, cols=1, subplot_titles=["Options Max Pain (Gold via GLD)"])
+    reg.apply_title_hints(fig, ["max_pain"])
+    once = fig.layout.annotations[0].text
+    reg.apply_title_hints(fig, ["max_pain"])
+    assert fig.layout.annotations[0].text == once
+    # More ids than titles (a page that passed an empty title) must not raise.
+    reg.apply_title_hints(fig, ["max_pain", "max_pain"])
+
+
+def test_unknown_ids_and_hintless_specs_leave_titles_alone():
+    from dataclasses import replace
+
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=2, cols=1, subplot_titles=["A", "B"])
+    bare = replace(reg.REGISTRY["index"], id="bare", hint=None)
+    reg.REGISTRY["bare"] = bare
+    try:
+        reg.apply_title_hints(fig, ["not_a_plot", "bare"])
+    finally:
+        del reg.REGISTRY["bare"]
+    assert [a.text for a in fig.layout.annotations] == ["A", "B"]
+    assert all(a.hovertext is None for a in fig.layout.annotations)
+
+
+def test_every_panel_has_a_hint_that_names_how_to_read_it():
+    for spec in reg._SPECS:
+        assert spec.hint, spec.id
+        assert spec.hint.startswith("<b>How to read this panel</b><br>"), spec.id
+        assert "\n" not in spec.hint, spec.id

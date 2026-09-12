@@ -519,6 +519,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
 
     is_shared_x = False if any(p in ["max_pain", "max_pain_historical"] for p in selected_plots) else True
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
+    fig = registry.apply_title_hints(fig, [resolve(p)[0] for p in selected_plots])
 
     plot_idx = 0
     for r in range(1, num_rows + 1):
@@ -815,6 +816,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
     # So we must disable shared X-axes to prevent Plotly from squishing everything.
     is_shared_x = selected_plot not in ["max_pain", "max_pain_historical"]
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
+    fig = registry.apply_title_hints(fig, [selected_plot] * num_selected)
 
     df = None
     plot_idx = 0

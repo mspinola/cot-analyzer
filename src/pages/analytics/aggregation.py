@@ -249,6 +249,7 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
     specs = registry.subplot_specs(selected_plots, show_price=False, num_cols=num_cols)
 
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)
+    fig = registry.apply_title_hints(fig, selected_plots)
 
     plot_idx = 0
     for r in range(1, num_rows + 1):
