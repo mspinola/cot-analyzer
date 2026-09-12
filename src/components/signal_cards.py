@@ -1214,9 +1214,15 @@ def balanced_columns(n, most):
     Fewest rows first, evenness second: 13 cards at six across goes to three rows of
     five rather than four rows of four, because dropping a card per row to buy a whole
     extra row of vertical space is not a trade these panels want.
+
+    Balancing is for rows that overflow. A row with room to spare keeps the full
+    column count and leaves the space empty: one setup spread across the whole panel
+    is a card-shaped banner, not a card, and it would sit over an approaching tier
+    whose cards are a sixth as wide. Empty space to the right is the honest reading
+    of "one at the gate".
     """
-    if n <= 0:
-        return 1
+    if n <= most:
+        return most
     rows = -(-n // most)                 # ceil, without importing math
     return -(-n // rows)
 
