@@ -132,6 +132,9 @@ def store_poll_loop():
     # the one serving requests is any use.
     utils.cot_logger.info(
         f"Store poller started in pid {os.getpid()} (every {STORE_POLL_SECONDS}s).")
+    # Once, here, not per tick: the disabled outcome is otherwise invisible (see
+    # weekly_email_trigger.startup_message), and every five minutes would be spam.
+    utils.cot_logger.info(weekly_email_trigger.startup_message())
     while True:
         time.sleep(STORE_POLL_SECONDS)
         try:

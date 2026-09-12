@@ -71,6 +71,21 @@ def state_path(env=None):
     return Path(const.DB_PATH).parent / "weekly_email.json"
 
 
+def startup_message(env=None):
+    """One line for the poller's start-up log saying whether sending is armed.
+
+    Exists because the disabled path is otherwise silent: `maybe_send` returns
+    'disabled' and the poller logs only 'sent' and 'failed', so a deployment that
+    never set the flag showed weeks of "picked up a new COT week" with no email line
+    after it, no ledger file ever written, and nothing in the journal naming the flag.
+    Logged once per process, never per tick.
+    """
+    if not enabled(env):
+        return (f"weekly email: {ENABLE_ENV} unset, automatic send disabled "
+                f"(Admin button still works)")
+    return f"weekly email: enabled, ledger at {state_path(env)}"
+
+
 def read_last_sent(path):
     """The week the last email covered, or None if the ledger is absent/unreadable.
 
