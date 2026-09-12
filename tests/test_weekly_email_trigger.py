@@ -68,6 +68,23 @@ def test_anything_else_is_off(value, ledger):
     assert send.calls == 0
 
 
+def test_the_startup_message_names_the_flag_when_unset():
+    """The disabled path is otherwise silent, so the start-up line must say why."""
+    msg = trigger.startup_message(env={})
+
+    assert "COT_WEEKLY_EMAIL" in msg
+    assert "disabled" in msg
+    assert "Admin button" in msg
+
+
+def test_the_startup_message_names_the_ledger_when_enabled(ledger):
+    msg = trigger.startup_message(env=env_with(ledger))
+
+    assert "enabled" in msg
+    assert str(ledger) in msg
+    assert "disabled" not in msg
+
+
 def test_an_unset_flag_is_off(ledger):
     send = Spy()
     env = {"COT_WEEKLY_EMAIL_STATE": str(ledger)}
