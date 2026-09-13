@@ -65,6 +65,10 @@ WINDOW_DESC = ("13-week window", "26-week window", "52-week window", "full histo
 # How the rows are ordered. Values are session-persisted control state, so they are a
 # wire format: renaming one silently resets a returning reader's choice.
 ORDER_CLASS = "class"
+
+# The heading of the block of tape-context rows (components.tape_context) drawn under
+# the markets whatever the order: ETF ratios on the board's windows, not positioning.
+CONTEXT_CLASS = "Tape context"
 ORDER_FLAT = "flat"
 ORDER_ALPHA = "alpha"
 
@@ -183,6 +187,19 @@ class MarketRead:
     state: str = const.SETUP_NONE
     is_equity: bool = False
     date: str = None
+    # False for a row with no detail page behind it (the tape-context ratios): its
+    # marks carry no click target, so `clicked_market_href` stays put.
+    linked: bool = True
+    # What the cells measure, for the hovers. The markets all measure one thing; a
+    # context row names its own ratio.
+    measure: str = "Commercial index"
+    # An extra hover line saying what the poles mean, where "window low" does not.
+    note: str = ""
+
+
+def _target(read):
+    """The click target riding on a row's marks: the market name, or nothing."""
+    return read.asset if read.linked else ""
 
 
 @dataclass(frozen=True)
@@ -254,6 +271,27 @@ def build_rows(reads, order=ORDER_CLASS):
                              asset_class=asset_class, read=read)
                     for _, read in markets)
     return rows, skipped
+
+
+def build_context_rows(reads):
+    """`(rows, skipped)` for the tape-context block: a spacer, its heading, then the
+    rows in the order given, whatever the board's order setting.
+
+    Not folded into `build_rows` because these rows answer to none of its orders:
+    ORDER_FLAT's one-gradient claim is about positioning, and a ratio sorted into the
+    middle of it would read as a market. Empty when nothing is readable, so a board
+    with no price store draws no heading over nothing.
+    """
+    kept, skipped = [], []
+    for read in reads:
+        (kept if crowding_score(read) is not None else skipped).append(read)
+    if not kept:
+        return [], [r.symbol or r.asset for r in skipped]
+    rows = [BoardRow(kind="spacer", label="", asset_class=CONTEXT_CLASS),
+            BoardRow(kind="class", label=CONTEXT_CLASS, asset_class=CONTEXT_CLASS)]
+    rows.extend(BoardRow(kind="market", label=read.asset,
+                         asset_class=CONTEXT_CLASS, read=read) for read in kept)
+    return rows, [r.symbol or r.asset for r in skipped]
 
 
 def figure_height(rows):
@@ -366,9 +404,10 @@ def cell_hover(read, window_index):
         window = f"Full history ({weeks_note})"
     else:
         window = f"{WINDOW_DESC[window_index]}"
+    note = f"<br><i>{read.note}</i>" if read.note else ""
     return (f"<b>{read.asset}</b> · {window}<br>"
-            f"Commercial index {_fmt(value)}"
-            f"<br><i>0 = window low · 100 = window high</i>")
+            f"{read.measure} {_fmt(value)}"
+            f"<br><i>0 = window low · 100 = window high</i>{note}")
 
 
 def delta_hover(read):
@@ -404,7 +443,7 @@ def name_label(read):
 
 def spark_hover(read):
     latest = read.path[-1] if read.path else None
-    return (f"<b>{read.asset}</b> · 52-week index over the trailing year<br>"
+    return (f"<b>{read.asset}</b> · 52-week {read.measure} over the trailing year<br>"
             f"latest {_fmt(latest)}")
 
 
@@ -538,7 +577,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                 fill = cell_fill(value, colors, background)
                 ink = cell_text_colour(fill)
                 buckets.setdefault(ink, []).append(
-                    (x, i, f"{value:.0f}", cell_hover(read, w), read.asset))
+                    (x, i, f"{value:.0f}", cell_hover(read, w), _target(read)))
         # `customdata` on every hoverable trace here and below: the market's
         # name rides on the point so a click can open its detail page without
         # the server re-deriving row order from a figure it no longer holds.
@@ -566,7 +605,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
                 line=dict(width=1,
                           color=[delta_colour(r.move, colors) for _, r in markets])),
             hovertext=[delta_hover(r) for _, r in markets], hoverinfo="text",
-            customdata=[r.asset for _, r in markets],
+            customdata=[_target(r) for _, r in markets],
             showlegend=False))
         fig.add_trace(go.Scatter(
             x=[DELTA_TEXT_X] * len(markets), y=[i for i, _ in markets],
@@ -583,7 +622,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             if chip is None:
                 continue
             chip_buckets.setdefault(chip[3], []).append(
-                (i, chip[0], chip_hover(r, model), r.asset))
+                (i, chip[0], chip_hover(r, model), _target(r)))
         for ink, points in chip_buckets.items():
             fig.add_trace(go.Scatter(
                 x=[(CHIP_X0 + CHIP_X1) / 2] * len(points),
@@ -611,7 +650,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
             end_colours.append(colors.bull if latest >= const.INDEX_NEUTRAL
                                else colors.bear)
             end_hovers.append(spark_hover(read))
-            end_assets.append(read.asset)
+            end_assets.append(_target(read))
         if end_xs:
             fig.add_trace(go.Scatter(
                 x=end_xs, y=end_ys, mode="markers",

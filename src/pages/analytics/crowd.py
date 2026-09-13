@@ -48,7 +48,6 @@ import cotmetrics.utils as utils
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from cotmetrics import indicators
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import get_matrix_data
 from dash import (
@@ -64,6 +63,7 @@ from dash import (
 
 import app_utils
 import components.board_traces as board_traces
+import components.tape_context as tape_context
 import viz_config
 import viz_constants as vc
 from components import class_filter, config_fold, controls, help_fold
@@ -102,8 +102,9 @@ ORDER_LABELS = {
     board_traces.ORDER_ALPHA: "A-Z",
 }
 
-# See the module docstring: mirrors exposure.windowed_pct_rank's min_periods.
-FULL_HISTORY_MIN_WEEKS = 104
+# See the module docstring: mirrors exposure.windowed_pct_rank's min_periods. Lives
+# with the window rule in tape_context, which scores the context rows the same way.
+FULL_HISTORY_MIN_WEEKS = tape_context.FULL_HISTORY_MIN_WEEKS
 
 
 @functools.lru_cache(maxsize=256)
@@ -128,22 +129,8 @@ def _market_indices(asset, basis, newest_date):
     if net.notna().sum() < 2:
         return None
 
-    out = pd.DataFrame(index=net.index)
-    for weeks, label in zip(board_traces.WINDOW_WEEKS, board_traces.WINDOW_LABELS):
-        if weeks is None:
-            window = len(net)
-            min_periods = min(FULL_HISTORY_MIN_WEEKS, int(net.notna().sum()))
-        else:
-            window = weeks + 1
-            min_periods = window
-        out[label] = indicators.calculate_range_index(
-            net, window=window, min_periods=min_periods)
-    year_label = board_traces.WINDOW_LABELS[2]
-    out["move"] = out[year_label] - out[year_label].shift(const.MOMENTUM_PERIOD)
-    out.attrs["history_weeks"] = int(net.notna().sum())
-    first = net.first_valid_index()
-    out.attrs["start"] = first.strftime('%Y-%m-%d') if first is not None else None
-    return out
+    # One window rule for the markets and the tape-context rows under them.
+    return tape_context.window_index_frame(net)
 
 
 def _clean(value):
@@ -216,15 +203,20 @@ def warm_caches():
                 _market_indices(record.get("Asset"), basis, newest)
         utils.cot_logger.info(
             f"crowd: warmed window indices for {len(df)} markets ({newest}).")
+        tape_context.warm()
     except Exception as e:
         utils.cot_logger.warning(f"crowd: cache warm failed, first render pays: {e}")
 
 
-def caption(report_date, model, skipped):
+def caption(report_date, model, skipped, awaiting=(), stale=()):
     """The line under the board: the FACTS of this render, and nothing a reader
     already taught can skip. What the series is measured as and which week, plus
     what could not be shown; the teaching moved to `help_text` behind the fold
-    (see components.help_fold for the split)."""
+    (see components.help_fold for the split). `awaiting` names the tape-context
+    ratios the price store cannot serve yet, which is a delivery fact, not a
+    data gap in the positioning. `stale` names the ratios whose last priced week
+    trails the board's (a leg that stopped updating), so the reader knows the two
+    dates differ before comparing the rows."""
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
     except (TypeError, ValueError):
@@ -235,10 +227,16 @@ def caption(report_date, model, skipped):
     if skipped:
         dropped = (f" {len(skipped)} market(s) have no reading this week and are "
                    f"not shown: {', '.join(sorted(skipped))}.")
+    context = ""
+    if awaiting:
+        context = (f" Tape context awaiting price data for: "
+                   f"{', '.join(awaiting)}.")
+    if stale:
+        context += f" Tape context trailing the board: {'; '.join(stale)}."
     return (
         f"Commercial positioning as of Tuesday {pretty}, measured as {basis} "
         f"({model.title}'s basis). Colour is the cell's own value, not the "
-        f"model's verdict.{dropped}"
+        f"model's verdict.{dropped}{context}"
     )
 
 
@@ -260,7 +258,13 @@ def help_text(model):
         f"coarse steps and pins at 0 or 100 often. The {vc.MOMENTUM_LABEL} "
         f"column is the {vc.MOMENTUM_UNIT_PHRASE}, on the 12M window; the path "
         f"is the same 12M index over the trailing year. Click any of a row's "
-        f"marks to open that market's detail page."
+        f"marks to open that market's detail page. The {board_traces.CONTEXT_CLASS} "
+        f"block at the bottom is not positioning: four ETF ratios at the Tuesday "
+        f"close, scored on the same windows, each written with the defensive leg "
+        f"on top so a high cell is the fearful or broad side and a low cell the "
+        f"crowded, complacent side, the same way round as the markets above. "
+        f"Equal-over-cap-weight stands in for breadth counts this deployment "
+        f"has no vendor for. Context, not a signal, and not a composite."
     )
 
 
@@ -411,17 +415,25 @@ def render_board(asset_classes, model_key, order, palette_name, target_date):
             reads.append(read)
 
     rows, skipped = board_traces.build_rows(reads, order=order)
+    # The tape beside the positioning, under the markets whatever the order. A
+    # ratio the price store cannot serve yet is named in the caption, not drawn.
+    context_reads, awaiting = tape_context.context_reads(target_date)
+    context_rows, context_skipped = board_traces.build_context_rows(context_reads)
+    rows += context_rows
+    awaiting = sorted(set(awaiting) | set(context_skipped))
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
     fig = board_traces.build_figure(rows, model, colors)
 
     report_date = target_date or (reads[0].date if reads else None)
+    stale = tape_context.stale_notes(context_reads, report_date)
     return (
         dcc.Graph(id='crowd_board_graph', figure=fig,
                   config={"displayModeBar": False, "responsive": True},
                   style={"width": "100%", "maxWidth": "1100px",
                          "margin": "0 auto"}),
-        caption(report_date, model, sorted(set(unreadable) | set(skipped))),
+        caption(report_date, model, sorted(set(unreadable) | set(skipped)),
+                awaiting=awaiting, stale=stale),
         help_text(model),
     )
 
