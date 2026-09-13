@@ -703,6 +703,7 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
                     fig=fig, df=df, df_norm=df_norm, row=r, col=c,
                     palette=color_palette, show_price=True, asset=asset, model=model,
                     net_cols=(comm_net, lrg_net, sml_net), y_title=net_y_title,
+                    range_weeks=controls.lookback_weeks(lookback, asset),
                     setup_comms_only=setup_comms_only)
                 fig = spec.build(ctx) or fig
                 if spec.decorate:

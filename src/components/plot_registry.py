@@ -75,6 +75,9 @@ class PlotCtx:
     net_cols: Tuple[str, str, str] = (const.COMM_NET, const.LARGE_NET, const.SMALL_NET)
     idx_cols: Tuple[str, str, str] = IDX_COLS
     y_title: str = "net position"
+    # Lookback in weeks for the Net Positions range band, resolved by the page from
+    # the lookback control (`controls.lookback_weeks`). None draws no band.
+    range_weeks: Optional[int] = None
     price_scale: str = "linear"
     showlegend: bool = True
     setup_comms_only: bool = False
@@ -132,7 +135,8 @@ def _net_pos(ctx):
     comm, lrg, sml = ctx.net_cols
     # No show_price: this panel's second axis is Open Interest, never price.
     return h.get_net_pos_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
-                              ctx.palette, y_title=ctx.y_title)
+                              ctx.palette, y_title=ctx.y_title,
+                              range_weeks=ctx.range_weeks)
 
 
 def _index(ctx):
@@ -284,6 +288,9 @@ NET_POS_HINT = _hint(
     "Right axis: total open interest. Zero line: net flat.",
     "The three groups sum to zero by construction, so a commercial net long is",
     "the speculators' net short.",
+    "Shaded band: the commercial rolling range over the lookback, the same window",
+    "the COT index is scored on. A bar at the band's top edge is index 100, at",
+    "its bottom edge index 0. Top-left: each group's latest print.",
 )
 
 OI_PCT_HINT = _hint(

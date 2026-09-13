@@ -64,6 +64,26 @@ def _canon_lookback(value):
     return value if value in LOOKBACK_CHOICES else "Custom"
 
 
+def lookback_weeks(lookback, asset):
+    """The lookback control's value as a number of weeks for one market.
+
+    "26" and "52" name themselves; "Custom" is per instrument, from params.yaml.
+    Resolved here because the control owns what its values mean, and the indexer's
+    frames do not stamp it: `get_symbols_data` records the basis in `attrs` but not
+    the window. Returns None for an unknown market, so a caller can draw nothing
+    rather than guess.
+    """
+    from cotmetrics.indexer import get_indexer
+    indexer = get_indexer()
+    lookback = _canon_lookback(lookback or "Custom")
+    if lookback != "Custom":
+        return int(lookback)
+    instrument = indexer.get_instrument_from_name(asset) if asset else None
+    if instrument is None:
+        return None
+    return int(instrument.custom_lookback)
+
+
 def register_lookback(control_id):
     """Two-way sync with `global_lookback_store`, so every page's Lookback is the
     same setting rather than nine settings that happen to share a name."""

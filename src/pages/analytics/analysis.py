@@ -561,6 +561,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                     df_norm=df_norm, row=r, col=c, palette=color_palette,
                     show_price=show_price, asset=asset, model=model,
                     net_cols=(comm_net, lrg_net, sml_net), y_title=net_y_title,
+                    range_weeks=controls.lookback_weeks(lookback, asset),
                     setup_comms_only=setup_comms_only)
                 fig = spec.build(ctx) or fig
                 if spec.decorate:
@@ -852,6 +853,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
                     show_price=price_overlay, asset=assets[plot_idx], model=model,
                     net_cols=(comm_net, lrg_net, sml_net),
                     y_title="net / OI" if basis == const.BASIS_OI_NORM else "net position",
+                    range_weeks=controls.lookback_weeks(lookback, assets[plot_idx]),
                     setup_comms_only=get_indexer().is_equity(assets[plot_idx]),
                     # One legend for the whole stack: every panel here draws the same
                     # metric, so repeating it per asset would be noise.
