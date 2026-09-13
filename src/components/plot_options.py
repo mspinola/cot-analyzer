@@ -89,16 +89,26 @@ def get_max_pain_plot(fig, asset_name, row, col):
         min_strike = daily_df.loc[min_idx, 'SimulatedStrike']
         min_iv = daily_df.loc[min_idx, 'IntrinsicValue_M']
 
-        # Highlight minimum
+        # Highlight the minimum. Only the latest day's strike drives the rest of the
+        # panel (the price line, both dashed lines and the delta arrow all read it),
+        # so it gets a distinct shape rather than one more identical circle; the
+        # earlier days fade with age on the same ramp as their curves, so the drift
+        # of the strike toward or away from price reads at a glance.
+        age = i / max(len(dates) - 1, 1)
         fig.add_trace(go.Scatter(
             x=[min_strike],
             y=[min_iv],
             mode='markers',
-            marker=dict(color='yellow', size=8, line=dict(width=1, color='red')),
+            marker=(dict(symbol='star', color='yellow', size=14, line=dict(width=1.5, color='red'))
+                    if is_last else
+                    dict(symbol='circle', color='yellow', size=7, opacity=0.35 + 0.5 * age,
+                         line=dict(width=1, color='red'))),
             name="Max Pain Strike",
             showlegend=False,
             legendgroup="max_pain_group",
-            hovertemplate=f"Date: {date}<br>Max Pain Strike: %{{x:,.2f}}<br>Min IV: $%{{y:,.1f}}M<extra></extra>"
+            hovertemplate=(f"Date: {date} (latest)<br>Max Pain Strike: %{{x:,.2f}}<br>Min IV: $%{{y:,.1f}}M<extra></extra>"
+                           if is_last else
+                           f"Date: {date}<br>Max Pain Strike: %{{x:,.2f}}<br>Min IV: $%{{y:,.1f}}M<extra></extra>")
         ), row=row, col=col)
 
         if is_last:

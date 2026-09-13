@@ -307,12 +307,13 @@ MAX_PAIN_HINT = _hint(
     "Each curve is one day's options chain (last 7 days; darker blue = more recent).",
     "x: a simulated settlement price. y: what every open call and put would pay out",
     "in total at that price, so a low point is where option holders get the least.",
-    "Yellow dot: that day's max-pain strike, the settlement price where holders",
-    "collectively lose the most and writers pay the least.",
+    "Yellow star: the latest max-pain strike, the settlement price where holders",
+    "collectively lose the most and writers pay the least. Smaller yellow dots:",
+    "the same strike on earlier days, fading with age.",
     "Red vertical line: the current underlying price (latest day).",
     "Dashed lines: payout at the current price vs at max pain; the arrow is the gap.",
     "Reading: a large gap means the market is far from where writers want it to",
-    "settle, so watch for price drifting toward the yellow dot into expiry.",
+    "settle, so watch for price drifting toward the star into expiry.",
     "Quoted on the ETF named in the title, which may be a proxy for the future.",
 )
 
