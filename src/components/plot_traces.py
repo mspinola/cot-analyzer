@@ -371,8 +371,105 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
     return fig
 
 
-def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_flips=False, y_title="net position"):
+# Which group the range band sits behind, by position in the (comms, lrg, sml)
+# column triple. Commercials by default: the models, the crowd board and WILLCO all
+# read the commercial side, so the band shows the same series they judge. Large
+# specs are near enough its mirror that the reading carries across.
+RANGE_BAND_GROUPS = {"comms": 0, "lrg": 1, "sml": 2}
+RANGE_BAND_FILL_ALPHA = 0.10
+RANGE_BAND_EDGE_ALPHA = 0.35
+
+
+def net_range_band(series, weeks):
+    """Rolling low and high of a net-position series over the lookback.
+
+    `weeks + 1` observations, `min_periods` the same, so the band is exactly the
+    range the COT index is scored against: `CotIndexer.process_lookback` slices
+    `iloc[idx - weeks : idx + 1]`, and the crowd board's windows follow the same
+    rule. A bar touching the band's top edge is therefore an index of 100, and one
+    on its bottom edge an index of 0. The first `weeks` rows are NaN rather than a
+    partial range, because a band that narrows toward the left edge of the data
+    reads as "positioning was less extreme back then", which is not what it means.
+
+    Computed over the whole series and clipped to the view by the axis, never over
+    the visible window: a range that starts fresh at the left edge of the chart is
+    a one-week range on its first bar and a lookback only by its last.
+    """
+    window = int(weeks) + 1
+    roll = series.astype(float).rolling(window=window, min_periods=window)
+    return roll.min(), roll.max()
+
+
+def format_net(value):
+    """Accounting-style net position: thousands separated, negatives in parentheses.
+
+    Contracts print as integers; the OI-normalized basis, a fraction inside +/-1,
+    prints to three places. Integrality decides: a contract count is always whole
+    and a share of open interest almost never is, and a share that happens to be
+    exactly zero or one reads correctly either way.
+    """
+    if value is None or pd.isna(value):
+        return "n/a"
+    v = float(value)
+    body = f"{abs(v):,.0f}" if v == int(v) else f"{abs(v):.3f}"
+    return f"({body})" if v < 0 else body
+
+
+def _add_net_range_band(fig, df, col_name, group_name, row, col, color, weeks):
+    """Shade one group's rolling range behind its bars.
+
+    Two scatters, low then high with `fill="tonexty"`, in the group's legendgroup so
+    the legend click that hides the bars hides their band too. Hover is skipped:
+    the bar already answers "what was the position", and the band's edges are read
+    against it, not in a tooltip. Tinted with the group's own palette slot rather
+    than a neutral grey, so the band says which group it belongs to.
+    """
+    lo, hi = net_range_band(df[col_name], weeks)
+    name = f"{group_name} {weeks}-wk range"
+    common = dict(x=df.index, mode="lines", name=name, legendgroup=group_name.lower(),
+                  showlegend=False, hoverinfo="skip", zorder=-1,
+                  line=dict(color=hex_to_rgba(color, RANGE_BAND_EDGE_ALPHA), width=1))
+    fig.add_trace(go.Scatter(y=lo, **common), row=row, col=col, secondary_y=False)
+    fig.add_trace(go.Scatter(y=hi, fill="tonexty",
+                             fillcolor=hex_to_rgba(color, RANGE_BAND_FILL_ALPHA),
+                             **common), row=row, col=col, secondary_y=False)
+    return lo, hi
+
+
+def _add_latest_net_readout(fig, df, cols, row, col, color_palette, band_note=None):
+    """The latest print of each group, in the panel's top-left corner.
+
+    An annotation on this panel rather than values in the legend: the legend is
+    figure-wide and its three entries toggle every panel of the stack, most of which
+    are not drawing net positions. Each value takes its group's colour, so the line
+    reads without labels once the legend has taught them.
+    """
+    if df.empty:
+        return
+    latest = df.iloc[-1]
+    parts = []
+    for (name, c), color in zip(cols, color_palette[:3]):
+        value = latest[c] if c in df.columns else None
+        parts.append(f'<span style="color:{color}">{name} {format_net(value)}</span>')
+    if band_note:
+        parts.append(f'<span style="color:{vc.TEXT_COLOR}">{band_note}</span>')
+    fig.add_annotation(
+        row=row, col=col, xref="x domain", yref="y domain", x=0.01, y=0.98,
+        xanchor="left", yanchor="top", showarrow=False, align="left",
+        text="&nbsp;&nbsp;".join(parts), font=dict(size=10),
+        name="net_latest_readout")
+
+
+def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_flips=False, y_title="net position",
+                     range_weeks=None, range_group="comms"):
     """Three net-position bar series, with Open Interest on the secondary axis.
+
+    `range_weeks` shades one group's rolling range (see `net_range_band`) behind the
+    bars, so the reader sees where the latest bar sits inside its own lookback in
+    the units of the bars themselves, which is the COT index without leaving the
+    contracts scale. None draws no band; the aggregation page passes None, since a
+    sum across markets with different custom lookbacks has no single window.
+    `range_group` names which group, a key of RANGE_BAND_GROUPS.
 
     No price here, at either scale: the second axis carries Open Interest, which is
     why the registry marks this panel SECONDARY_ALWAYS rather than SECONDARY_WITH_PRICE.
@@ -390,6 +487,24 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
     cols = [c for c in [comms_col, lrg_col, sml_col] if c in visible_df.columns]
     max_pos = visible_df[cols].max().max() if cols else 1000
     min_pos = visible_df[cols].min().min() if cols else -1000
+
+    band_cols = (comms_col, lrg_col, sml_col)
+    band_names = ("Commercials", "Large Specs", "Small Specs")
+    band_note = None
+    if range_weeks is not None and range_weeks > 0:
+        slot = RANGE_BAND_GROUPS[range_group]
+        band_col = band_cols[slot]
+        if band_col in df.columns:
+            lo, hi = _add_net_range_band(fig, df, band_col, band_names[slot], row, col,
+                                         color_palette[slot], range_weeks)
+            band_note = f"band: {band_names[slot]} {range_weeks}-wk range"
+            # The band's edges at the left of the view reflect bars before it, so
+            # the axis fitted to the visible bars alone can clip them.
+            band_lo, band_hi = lo.iloc[start_idx:].min(), hi.iloc[start_idx:].max()
+            if not pd.isna(band_hi):
+                max_pos = max(max_pos, band_hi) if not pd.isna(max_pos) else band_hi
+            if not pd.isna(band_lo):
+                min_pos = min(min_pos, band_lo) if not pd.isna(min_pos) else band_lo
     if pd.isna(max_pos):
         max_pos = 1000
     if pd.isna(min_pos):
@@ -486,6 +601,9 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
                 row=row,  # "all" Spans all active subplots
                 col=1
             )
+
+    _add_latest_net_readout(fig, df, list(zip(band_names, band_cols)), row, col,
+                            color_palette, band_note=band_note)
 
     showlegend = row == 1 and col == 1
     fig = update_legend(fig, showlegend, color_palette, show_price=False)
