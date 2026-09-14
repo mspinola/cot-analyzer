@@ -173,11 +173,23 @@ def _context_frame(key, stamp):
         return None
     if series.notna().sum() < 2:
         return None
-    return window_index_frame(series)
+    frame = window_index_frame(series)
+    # The ratio itself, for the hover: the index says where it sits, not what it is.
+    frame["value"] = series
+    return frame
 
 
 def _clean(value):
     return None if value is None or value != value else float(value)
+
+
+def ratio_text(ratio, value):
+    """"XLP/QQQ 0.1315": the ratio at the row's date, four significant figures,
+    so a reader sees that index 2 is a small ratio near its floor rather than
+    a strong one."""
+    if value is None:
+        return ""
+    return f"{ratio.symbol} {value:.4g}"
 
 
 def context_reads(target_date=None):
@@ -210,6 +222,7 @@ def context_reads(target_date=None):
             linked=False,
             measure=f"{ratio.label} index",
             note=f"high: {ratio.high} · low: {ratio.low}",
+            value_text=ratio_text(ratio, _clean(latest["value"])),
         ))
     return reads, awaiting
 
