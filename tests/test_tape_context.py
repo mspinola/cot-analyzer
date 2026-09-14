@@ -147,6 +147,9 @@ def test_context_reads_are_unlinked_chipless_rows_in_their_own_class(monkeypatch
         assert read.state == const.SETUP_NONE
         assert read.measure.endswith(" index")
         assert "high:" in read.note and "low:" in read.note
+        # The raw ratio rides beside the index, so "2" cannot be read as "twice".
+        assert read.value_text.startswith(read.asset.split(" · ")[0] + " ")
+        assert float(read.value_text.split()[-1]) > 0
         assert len(read.windows) == len(bt.WINDOW_LABELS)
         assert read.windows[0] is not None
         assert read.date and pd.Timestamp(read.date).weekday() == 1
@@ -262,3 +265,16 @@ def test_a_ratio_priced_well_before_the_boards_week_is_named_as_trailing():
     # Within the allowance (the equities task runs after the release) is not stale.
     assert tc.stale_notes([fresh], report_date="2026-08-25") == []
     assert tc.stale_notes([fresh, stale], report_date=None) == []
+
+
+def test_the_raw_ratio_is_in_the_cell_hover_beside_the_index():
+    read = bt.MarketRead(asset="XLP/QQQ · Staples over Nasdaq", asset_class=bt.CONTEXT_CLASS,
+                         symbol="", windows=(2, 2, 2, 2), linked=False,
+                         measure="Staples over Nasdaq index", value_text="XLP/QQQ 0.1315")
+    text = bt.cell_hover(read, 3)
+    assert "Staples over Nasdaq index 2 · XLP/QQQ 0.1315" in text
+    assert tc.ratio_text(tc.RATIOS[0], 0.13149) == "XLP/QQQ 0.1315"
+    assert tc.ratio_text(tc.RATIOS[0], None) == ""
+    # The markets' hover carries no such line.
+    market = bt.MarketRead(asset="Gold", asset_class="Metals", windows=(80, 70, 60, 55))
+    assert " · " not in bt.cell_hover(market, 0).split("<br>")[1]

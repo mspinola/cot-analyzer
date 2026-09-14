@@ -195,6 +195,9 @@ class MarketRead:
     measure: str = "Commercial index"
     # An extra hover line saying what the poles mean, where "window low" does not.
     note: str = ""
+    # The underlying value at the row's date, where the index alone misleads: a
+    # ratio at index 2 is near its all-time LOW, which "2" does not say.
+    value_text: str = ""
 
 
 def _target(read):
@@ -405,8 +408,9 @@ def cell_hover(read, window_index):
     else:
         window = f"{WINDOW_DESC[window_index]}"
     note = f"<br><i>{read.note}</i>" if read.note else ""
+    raw = f" · {read.value_text}" if read.value_text else ""
     return (f"<b>{read.asset}</b> · {window}<br>"
-            f"{read.measure} {_fmt(value)}"
+            f"{read.measure} {_fmt(value)}{raw}"
             f"<br><i>0 = window low · 100 = window high</i>{note}")
 
 
