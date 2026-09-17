@@ -5,7 +5,10 @@
 `docs/design/breadth-domain-scoping.md` (2026-09-13); the amendment is recorded in
 [amendments-2026-09-16.md](amendments-2026-09-16.md). Revised the same day once it was
 established that the Windows producer box runs Claude Code Desktop on this account, so the
-connector is schedulable there (§2).
+connector is schedulable there (§2). Revised again 2026-09-17 with what was then verified on
+the box itself: an interactive session and a local routine both reached the connector and
+wrote identical bars, the sync scripts already exclude the raw directory, and both NDU and
+the Desktop app relaunch on a reboot. Each such fact is marked "verified on the box".
 **Why now:** the 2026-09-13 session wanted the AGI breadth reads (the "FOMO" share of stocks
 above their 5-day average, net new 52-week highs and lows) beside COT positioning, found
 that Norgate does not publish the 5-day share at any tier, and settled for four ETF ratios as
@@ -81,13 +84,33 @@ contract, and out of every store sync.**
 2. **The routine's instructions live in the repo**, versioned, beside the other wrappers
    (`scheduler\series-routine.md` on the box), and the routine's prompt is one line
    pointing at that file. The steps it prescribes, in order, and nothing else:
+   - load the TradingView tool schema (the connector's tools are deferred on the box too,
+     verified on the box: the probe needed one schema-load call before the bars call);
    - for each registry series symbol, one `get_ohlcv` call, `interval=1D`, `count=10`;
    - write each tool result **verbatim** to
-     `%MARKETDATA_STORE%\_raw\tradingview\<internal>\<YYYY-MM-DD>.json`;
+     `%MARKETDATA_STORE%\_raw\tradingview\<internal>\<YYYY-MM-DD>.json`, and do not
+     print it back;
    - run `scheduler\run-series.cmd` and report its exit code and printed summary.
-3. **`run-series.cmd`** does what the other wrappers do, with per-step `ERRORLEVEL`
-   capture on its own following line: `marketdata-update --domain series
-   --build-tradingview`, then `sync-store.cmd`, then `push-to-server.cmd`.
+
+   The routine's folder is `C:\Users\matt\code\marketdata`, so the allow rules for
+   exactly those tools (the schema load, the bars call as the box's session names it,
+   writes under the raw directory, the one `.cmd`) go in that folder's
+   `.claude\settings.json`, versioned with the repo, with the routine's own permission
+   mode as the backstop. Verified on the box: the throwaway routine reached the connector
+   and wrote the file, and it stopped twice for approval, once for the bars call and once
+   for the write. Those two prompts are what the allow rules remove; unattended, either
+   would stall the night.
+3. **`run-series.cmd`** is `run-equities.cmd` with the fetch replaced by the build:
+   `setlocal`, `MARKETDATA_STORE=C:\Users\matt\code\marketdata_store`,
+   `MDEXE=C:\Users\matt\code\marketdata\.venv\Scripts\marketdata-update.exe`,
+   then `"%MDEXE%" --domain series --build-tradingview` with `if errorlevel 1 exit /b
+   %ERRORLEVEL%` on its own following line, then `call sync-store.cmd`, then `call
+   push-to-server.cmd`, each guarded the same way, Mac sync first so that replica is
+   current on a day the VPS is unreachable. No in-file retry loop: the equities wrapper
+   retries because its fetch hits Yahoo, but this build reads local files, and the retry
+   here is the second routine (step 5). The three wrapper rules carry over verbatim: no
+   angle brackets anywhere in the file, `ERRORLEVEL` captured on the line after the
+   command, and the exit code of the last command is the wrapper's.
 4. **`--build-tradingview`** is the producer proper: it parses the raw files, validates
    (§2.2), appends only bars the store does not hold, writes the parquet atomically, and
    touches the manifest under `series/tradingview/<internal>`. Idempotent: a second run on
@@ -134,12 +157,26 @@ is code, not in the prompt:
 
 ### 2.3 What the routine cannot do and the verifier must say
 
-`verify-scheduling.ps1` inspects Task Scheduler tasks; a Desktop routine is not one. The
-verifier gains a **store freshness** check on `series/tradingview/` (the same shape as the
-futures and equities checks, which is what actually matters) and a **GUARD PROOFS** line
-saying that the routine's existence, schedule and permission mode cannot be checked from
-the script. A night the series did not update is caught by the freshness check the next
-morning and by cot-analyzer's stale note, never by the routine's own logs.
+`verify-scheduling.ps1` inspects Task Scheduler tasks through its `$TASKS` table; a
+Desktop routine is not one and gets no row there. Three changes, read against the script
+as it stands (verified on the box, 2026-09-17):
+
+- **A freshness check of its own.** The existing "Store freshness" section takes the
+  NEWEST date across every line of `marketdata-update --check` and ages that. A stalled
+  series would hide behind a fresh equities date. The new check filters the `--check`
+  lines whose symbol column starts with `series/tradingview/`, takes the OLDEST last-bar
+  date among them, and fails past four days, the same threshold the section already
+  uses. That is the check that matters; everything else here is bookkeeping.
+- **`run-series.cmd` joins the wrapper list**, so a missing wrapper fails the run like a
+  missing `run-equities.cmd` does.
+- **A GUARD PROOFS line** saying the routine's existence, schedule and permission mode
+  cannot be checked from the script and must be eyeballed in the Desktop app's Routines
+  list, beside a hand-run of `run-series.cmd` against a raw file with one altered close
+  (expect a refusal naming the bar).
+
+The replica-parity section already skips `_raw` on both sides, so the raw JSON does not
+count against parity. A night the series did not update is caught by the freshness check
+the next morning and by cot-analyzer's stale note, never by the routine's own logs.
 
 ## 3. FOMO is not a weekly quantity, so it is not a tape-context row
 
@@ -208,10 +245,9 @@ Independent of the store work, each usable in a session today:
 
 - **The Desktop app has to be running on the box.** A local routine fires only while the
   app is open; every other producer step is a Task Scheduler task and survives a reboot
-  without anyone logging in. The box already keeps an interactive desktop session because
-  NDU needs one (`cotdata prices` runs only when the user is logged on), so the constraint
-  is not new, but a reboot that relaunches NDU and not the app stops the series silently
-  while everything else keeps running. Put the app in the same start-up path as NDU, and
+  without anyone logging in. Verified on the box: NDU and the Desktop app both launch
+  automatically in the logged-on session, so a reboot does not stop the series. What
+  does is someone closing the app, which nothing relaunches until the next reboot, so
   rely on the freshness check (§2.3), not on noticing. The Desktop app catches up one
   missed run within seven days on the next launch, which covers a short outage and not a
   long one.
@@ -231,10 +267,12 @@ Independent of the store work, each usable in a session today:
   key, and internals stay store-safe (`NDX_FOMO_5D`, `NDX_NH52W`, `NDX_NL52W`,
   `SPX_PCT_ABOVE_200D`, `CBOE_PCC`); fix the scheme when the entries are written. The
   pinned anchors (§2.2) are what catches a string that quietly starts naming something else.
-- **`_raw\tradingview` must be outside both syncs.** databento's raw store is already
-  producer-internal; confirm on the box that `sync-store.cmd`'s bars pass excludes `_raw`
-  (the share was not mounted during this scoping) before the first routine run, or the raw
-  JSON rides to both replicas.
+- **`_raw\tradingview` stays outside both syncs**, verified on the box: `sync-store.cmd`'s
+  bars pass carries `/XD _raw` and `push-to-server.cmd`'s bars pass carries
+  `--exclude "_raw/"`, both written for databento's paid raw store and both matching by
+  name at any depth, so a `_raw\tradingview` tree is excluded the day it appears. The
+  box's bar store has no `_raw` directory today; the routine's first write creates it.
+  Keep the directory name exactly `_raw` or both exclusions silently stop applying.
 - **`NCFD` starts 2018-12-07.** About eight years, enough for every board window and the
   104-week floor, not enough for a 2008 look. `S5FD` adds two years. The 2006 series do not
   have this problem.
@@ -250,19 +288,22 @@ Independent of the store work, each usable in a session today:
 
 1. Fix the stranded `marketdata` checkout (a `checkout main` and a fast-forward pull), so
    the VIX3M row and everything after it can be judged from the app. No code.
-2. On the box, in an interactive session: one connector pull of `NCFD` with `count=10`,
-   saved verbatim to a scratch file, to prove the connector is attached to that account on
-   that machine and to fix the JSON shape the build will parse. Ten minutes, and it settles
-   the only fact this document takes on the user's word.
+2. **Done 2026-09-17.** An interactive session on the box pulled `NCFD` with `count=10`
+   and wrote it verbatim; a throwaway local routine then did the same on a schedule. Both
+   files are identical to each other and to the Mac-side pull on every date and close
+   (`c` for 2026-09-16 is 32.23). The routine prompted twice, for the bars call and the
+   write, which fixes the allow rules in §2.1. The two probe files sit at
+   `C:\Users\matt\code\ncfd_probe.json` and `ncfd_routine.json`, outside any repo;
+   delete them once the build's parser fixture is committed from one of them.
 3. `cotmetrics.indicators`: `fomo_zone` and the net-highs regime, cited to the SWG cutoffs,
    with tests on the boundary values.
 4. marketdata: the `series` domain per the 2026-09-13 scoping doc (its steps 3 and 4, store
    layout tests included), `--build-tradingview` with the §2.2 guards each under test, and
    the registry entries with anchors. No network in any of it: the build reads files.
-5. On the box: `run-series.cmd`, `series-routine.md`, the two routines, the `_raw` sync
-   exclusion confirmed, the backfill session, the `verify-scheduling.ps1` freshness row and
-   GUARD PROOFS line. Run the verifier. Next morning: `marketdata-update --check` and the
-   manifest entries under `series/tradingview/`.
+5. On the box: `run-series.cmd`, `series-routine.md`, the allow rules in the routine
+   folder's `.claude\settings.json`, the two routines, the backfill session, the
+   `verify-scheduling.ps1` changes in §2.3. Run the verifier. Next morning:
+   `marketdata-update --check` and the manifest entries under `series/tradingview/`.
 6. In parallel with 4 and 5, and at no cost to the store: replace the agi repo's manual
    export with a connector pull for `NCFD`, `HIGQ`, `LOWQ` through the same importers, with
    the 48.05 check as acceptance.
