@@ -317,3 +317,18 @@ Bottom line, in words: the connector answers the data question the last session 
 box runs Claude on this account, a local routine there can be the producer, with every
 number validated by code before it reaches the store. The measurement still says FOMO must
 be drawn daily against its published zones rather than as a fifth weekly context row.
+
+---
+
+**UPDATE 2026-09-17, step 7 landed on its own page.** The daily FOMO and net-highs
+component went to a new `/internals` page (`src/pages/analytics/internals.py`, reads in
+`src/components/market_internals.py`) rather than onto the crowd page: the view it
+recreates (the Caruso Insights market overview) is a page of six daily reads, and the
+crowd board is weekly. The other four reads are advancing against declining issues
+(`USI:ADVQ` / `USI:DECLQ`, registered in marketdata as `NASDAQ_ADV` / `NASDAQ_DEC`; `DECQ`
+does not resolve), JNK against its 20-day average, XLP/QQQ against its 50-day, and 20-session
+up/down volume for QQQ and SPY. The routine on the box pulls every registry series
+symbol, so pulling marketdata's registry change onto the box is the seeding step for the
+two new series; DIA, USO, JNK and IBIT ride the equities task the same way. Until they
+land, the page names each as awaiting data. A TradingView pane of the same six reads is
+`npf/scripts/pine/market_overview.pine`; the two are twins and change together.

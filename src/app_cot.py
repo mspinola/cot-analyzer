@@ -504,6 +504,7 @@ def record_visit():
 # can never disagree about what is in the menus. OI Alignment and About are
 # absent on purpose: both were promoted to top-level links.
 _ANALYTICS_PAGES = (
+    ("Market Internals", "/internals"),
     ("Asset Analysis", "/analysis"),
     ("Divergence", "/divergence"),
     ("Aggregation", "/aggregation"),

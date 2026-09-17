@@ -20,7 +20,7 @@ from routing import is_known_path, is_vendor_sourcemap, not_found_page
 # the same list it hands this function, so it belongs here: an old bookmark must
 # reach the shell for the client router to forward it.
 PAGES = ['/', '/aggregation', '/analysis', '/categories', '/exposure', '/graphs',
-         '/heatmap', '/oi_alignment', '/positioning', '/strip', '/citpy',
+         '/heatmap', '/internals', '/oi_alignment', '/positioning', '/strip', '/citpy',
          '/citpy/view', '/about', '/admin', '/options', '/raw_data']
 
 # `app.routes` as Dash builds it: the index plus its own endpoints.
