@@ -295,30 +295,30 @@ def build_signal_panel(df, asset, color_palette, target_date=None, is_equity=Fal
             )
 
         # ==================================================================
-        # CARD: LARGE SPEC INDEX (Williams LATE Index)
+        # CARD: NONCOMM SENTIMENT (Williams LATE Index on the Non-Commercial leg)
         # ==================================================================
         if pd.notna(lrg_sentiment):
             if lrg_sentiment >= const.LW_LRG_SENTIMENT_MAX_THRESHOLD:
                 ls_color, ls_text = BEAR_COLOR, "BEARISH EXTREME"
                 ls_tooltip = (
-                    "Williams LATE Index: Large speculators are heavily long (>=80%). "
+                    "Williams LATE Index: Non-Commercials are heavily long (>=80%). "
                     "This indicates nearing the end of a market advance since they notoriously get it wrong at the extremes."
                 )
             elif lrg_sentiment <= const.LW_LRG_SENTIMENT_MIN_THRESHOLD:
                 ls_color, ls_text = BULL_COLOR, "BULLISH EXTREME"
                 ls_tooltip = (
-                    "Williams LATE Index: Large speculators are largely absent or net short (<=20%). "
+                    "Williams LATE Index: Non-Commercials are largely absent or net short (<=20%). "
                     "This indicates nearing the end of a market downturn since they notoriously get it wrong at the extremes."
                 )
             else:
                 ls_color, ls_text = NEUT_COLOR, "NEUTRAL"
                 ls_tooltip = (
                     "Williams LATE Index is currently in the middle of its 15-week range. "
-                    "Large speculator positioning is not at a crowded extreme."
+                    "Non-Commercial positioning is not at a crowded extreme."
                 )
 
         card_large_spec = _make_signal_card(
-            "LARGE SPEC INDEX", ls_text, ls_color,
+            "NONCOMM SENTIMENT", ls_text, ls_color,
             html.Small([
                 "Index: ",
                 html.Span(
@@ -667,8 +667,9 @@ def build_mobile_asset_card(df, asset, color_palette, lookback,
         _lit(willco, willco >= const.WILLCO_MAX_THRESHOLD,
              willco <= const.WILLCO_MIN_THRESHOLD),
         sep,
-        html.Span("LW ", title="Larry Williams Large Speculator Sentiment Index "
-                               "(15-week). A contrarian reading.",
+        html.Span("LW ", title="Larry Williams' LATE index: Non-Commercial net "
+                               "position scaled 0-100 over a fixed 15-week window. "
+                               "A contrarian reading.",
                   style={"cursor": "help"}),
         (_lit(lrg_sentiment,
               lrg_sentiment <= const.LW_LRG_SENTIMENT_MIN_THRESHOLD,
@@ -676,9 +677,9 @@ def build_mobile_asset_card(df, asset, color_palette, lookback,
          if pd.notna(lrg_sentiment)
          else html.Span("\u2013", style={"opacity": 0.6})),
         html.Br(),
-        html.Span("Move ", title="Six-week momentum of positioning, Comm / Large / "
-                                 "Small. Not the one-week index change beside the "
-                                 "strip above.",
+        html.Span("Move ", title="Six-week momentum of positioning, Commercial / "
+                                 "Non-Commercial / Non-Reportable. Not the one-week "
+                                 "index change beside the strip above.",
                   style={"cursor": "help"}),
         _lit(comm_momentum, comm_momentum >= const.MOMENTUM_MAX_THRESHOLD,
              comm_momentum <= const.MOMENTUM_MIN_THRESHOLD),
@@ -831,15 +832,14 @@ def _strip_hover(row, model):
             return f"{label} {value}"
         return f"{label} {value} ({'no change' if delta == 0 else f'{delta:+d}'})"
 
-    parts = [_with_move("Comm", row["index"], row.get("delta"))]
+    parts = [_with_move(vc.LEG_SHORT[vc.LEG_COMM], row["index"], row.get("delta"))]
     if row["is_equity"]:
         parts.append("specs not gated")
     else:
-        for leg, short, key, dkey in (
-                (models.LEG_LARGE, "Large", "lrg_index", "lrg_delta"),
-                (models.LEG_SMALL, "Small", "sml_index", "sml_delta")):
+        for leg, key, dkey in ((models.LEG_LARGE, "lrg_index", "lrg_delta"),
+                               (models.LEG_SMALL, "sml_index", "sml_delta")):
             if leg in model.spec_legs and row[key] is not None:
-                parts.append(_with_move(short, row[key], row.get(dkey)))
+                parts.append(_with_move(vc.LEG_SHORT[leg], row[key], row.get(dkey)))
     return " · ".join(parts) + " this week"
 
 
@@ -860,7 +860,7 @@ def _strip_hover(row, model):
 # in the badge and in the border down its left edge, so spending colour on it a third
 # time buys nothing -- while three lanes with no colour distinction cannot be told
 # apart at all. The slots are the app's own (plot_traces draws Commercials from 0,
-# Large Specs from 1 and Small Traders from 2 on every stacked panel), so a reader
+# Non-Commercial from 1 and Non-Reportable from 2 on every stacked panel), so a reader
 # arriving from the Graphs or OI Alignment pages already knows which is which.
 #
 # Plain divs, not SVG and emphatically not Plotly. Thirteen dcc.Graphs on the home
@@ -900,7 +900,7 @@ def strip_legs(row, model):
     delta against the wrong leg, and both failures look plausible.
 
     Commercials first and always: every gate in the app reads them. The speculator
-    legs are exactly `model.spec_legs`, so an NPF card has no Large Spec lane because
+    legs are exactly `model.spec_legs`, so an NPF card has no Non-Commercial lane because
     NPF's CS gate never reads that leg, and an equity index card has none at all
     because those gate on Commercials alone. Drawing a lane the gate does not read
     would put a condition on the card that the verdict above it never checked, which
@@ -935,8 +935,8 @@ COMM_LANE_TAKES_LEG_COLOUR = False
 
 
 # Whether the speculator lanes get a stem back to neutral as well as a mark. On, but
-# at a HAIRLINE against the Commercial stem's 2px -- #60A5FA for Large Specs and
-# #FBBF24 for Small Traders, the app's slot 1 and slot 2.
+# at a HAIRLINE against the Commercial stem's 2px -- #60A5FA for Non-Commercial and
+# #FBBF24 for Non-Reportable, the app's slot 1 and slot 2.
 #
 # /strip draws its bar for Commercials only, and copying that exactly left the spec
 # lanes as a bare tick on an empty track: it says where the leg is and takes away the
@@ -1044,7 +1044,7 @@ def gate_strip(row, model, palette, colour=None, lane_px=LANE_PX, gap=LANE_GAP,
             # All three lanes were the same filled dot for a while, which left colour
             # carrying two different variables in one 20px picture: leg identity on
             # the speculator lanes and the verdict on the Commercial one. A reader who
-            # learned "amber is Small Traders" would reasonably read "green is
+            # learned "amber is Non-Reportable" would reasonably read "green is
             # Commercials", and then meet a red Commercial dot on the next card.
             #
             # /strip had already solved this and the fix was to stop ignoring it. Its
@@ -1066,7 +1066,7 @@ def gate_strip(row, model, palette, colour=None, lane_px=LANE_PX, gap=LANE_GAP,
 
 
 def index_triplet(row, model, size="0.85rem"):
-    """The positioning index for all three legs: Comm / Large / Small.
+    """The positioning index for all three legs: Comm / NonComm / NonRept.
 
     ALL THREE, whichever legs the model gates on, because this is the precise readout
     the strip below it cannot give -- position says roughly 100, only a number says
@@ -1115,10 +1115,10 @@ def index_triplet(row, model, size="0.85rem"):
                    "fontWeight": "bold" if lit else "normal",
                    "opacity": 1.0 if lit else 0.7}))
 
-    reads = "Commercials alone" if row["is_equity"] else _gate_leg_names(model)
+    reads = "Commercial alone" if row["is_equity"] else _gate_leg_names(model)
     return html.Span(
         parts,
-        title=(f"0-100 positioning index: Commercials / Large Specs / Small Traders. "
+        title=(f"0-100 positioning index: {' / '.join(vc.LEG_LABELS_BY_SLOT)}. "
                f"{model.title} gates on {reads}; the other legs are shown but not lit."),
         style={"fontSize": size, "whiteSpace": "nowrap",
                "fontVariantNumeric": "tabular-nums", "cursor": "help"},
@@ -1126,16 +1126,10 @@ def index_triplet(row, model, size="0.85rem"):
 
 
 def _gate_leg_names(model):
-    """"Commercials and Small Traders", for the triplet's hover."""
-    names = ["Commercials"] + [LEG_HOVER_NAMES[leg] for leg in model.spec_legs]
+    """"Commercial and Non-Reportable", for the triplet's hover."""
+    names = [vc.LEG_LABELS[vc.LEG_COMM]] + [vc.LEG_LABELS[leg] for leg in model.spec_legs]
     return " and ".join(names) if len(names) < 3 else \
         ", ".join(names[:-1]) + " and " + names[-1]
-
-
-LEG_HOVER_NAMES = {
-    models.LEG_LARGE: "Large Specs",
-    models.LEG_SMALL: "Small Traders",
-}
 
 
 # The delta column that sits beside the strip. Wide enough for "-12" and no wider:
@@ -1148,7 +1142,7 @@ def gate_strip_row(row, model, palette, colour=None, lane_px=LANE_PX, gap=LANE_G
     """The gate strip with each leg's week-over-week move beside its own lane.
 
     The card used to carry ONE delta, on the "Comm 100/100" line, and it was
-    necessarily the Commercial one -- so a card could show Small Traders sitting at
+    necessarily the Commercial one -- so a card could show Non-Reportables sitting at
     100 with no hint of whether they arrived this week or had been there a year. Now
     every lane the strip draws gets its own number on the same row, which is the
     reading the single delta was standing in for.

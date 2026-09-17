@@ -11,7 +11,7 @@ this module is shaped to prevent:
 **Verdict splits.** The models can answer SETUP / NEAR / nothing differently about the
 same week. This is the headline, because a split names a market where which model you
 follow changes what you would do. Splits can come from the band (95/5 against 80/20 on
-the same normalized series), from the gate (NPF CS ignores the Large Spec leg the two
+the same normalized series), from the gate (NPF CS ignores the Non-Commercial leg the two
 CLS gates read), or from the basis.
 
 **The basis gap.** |raw Comm index - OI-normalized Comm index|, the same number the
@@ -85,7 +85,7 @@ def leg_spread(reads, leg):
 
     None with fewer than two readings, because one column cannot disagree with
     itself; that is also what keeps the emphasis honest on legs some columns do
-    not carry (NPF CS drops Large Specs, equities carry Commercials alone). It
+    not carry (NPF CS drops Non-Commercials, equities carry Commercials alone). It
     is deliberately distinct from `gap`: gap is the raw-vs-normalized fact
     about the FRAME, this is a fact about the columns on screen, and the two
     coincide on the Commercial leg exactly when the columns are one raw and one

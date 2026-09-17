@@ -312,8 +312,8 @@ def test_the_two_halves_are_named_when_they_disagree():
              LEG_SMALL: pd.Series([6.65e8] * 3, index=a.frame.index)}
     line = composition_line(a, et.UNIT_RISK, LEG_SPEC, parts)
     assert "two halves disagree" in line
-    assert "Small Traders long" in line
-    assert "Large Speculators short" in line
+    assert "Non-Reportables long" in line
+    assert "Non-Commercials short" in line
 
 
 def test_two_halves_pointing_the_same_way_are_said_to_agree():
@@ -350,8 +350,8 @@ def test_a_total_with_no_dominant_market_names_the_largest_without_the_word_alon
 
 
 def test_a_low_agreement_total_is_called_a_residual_rather_than_a_crowd():
-    """It moves a lot and independently of the level: 1.00 for Small Traders and 0.63
-    for Large Speculators on the same markets on the same day."""
+    """It moves a lot and independently of the level: 1.00 for Non-Reportables and 0.63
+    for Non-Commercials on the same markets on the same day."""
     line = composition_line(with_members({"A": 1.0e8, "B": -0.6e8, "C": 0.3e8}),
                             et.UNIT_RISK, LEG_COMM, {})
     assert "residual rather than a crowd" in line
@@ -908,7 +908,7 @@ def test_the_lens_line_is_silent_when_the_two_lenses_agree():
 
 
 def test_the_lens_line_speaks_when_the_dollars_are_extreme_and_the_contracts_are_not():
-    """The live case it was built from: Large Specs in Silver at the 45th percentile on
+    """The live case it was built from: Non-Commercials in Silver at the 45th percentile on
     contracts and the 98th on dollar risk, in the same week."""
     one, ranks = lensed(45.0, 98.0)
     line = lens_line(one, et.UNIT_RISK, ranks=ranks)

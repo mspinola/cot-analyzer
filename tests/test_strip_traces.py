@@ -25,7 +25,7 @@ from components.plot_colors import GridColors
 COLORS = GridColors(bull="#00FF00", bear="#FF4D4D",
                     bull_near="rgba(0,255,0,0.5)", bear_near="rgba(255,77,77,0.5)")
 
-# Commercials, Large Specs, Small Specs, price, open interest: the slot order every
+# Commercial, Non-Commercial, Non-Reportable, price, open interest: the slot order every
 # panel in plot_traces already draws from.
 PALETTE = ["#F87171", "#60A5FA", "#FBBF24", "#34D399", "#ABB8C9"]
 
@@ -68,7 +68,7 @@ def test_every_model_can_be_drawn(model):
 
 
 def test_npf_draws_no_large_spec_leg():
-    """The CS gate does not read Large Specs, so the NPF strip must not imply it did."""
+    """The CS gate does not read Non-Commercials, so the NPF strip must not imply it did."""
     rows, _ = st.build_rows(
         frame(matrix_row("Gold", "Metals", 90, 10, 12)), models.NPF)
     market = [r for r in rows if r.kind == "market"][0]
@@ -83,7 +83,7 @@ def test_raw_pf_draws_both_spec_legs():
 
 
 def test_npf_cls_draws_all_three_legs_from_the_normalized_family():
-    """The CLS gate reads Large Specs, so unlike NPF the strip must draw that leg,
+    """The CLS gate reads Non-Commercials, so unlike NPF the strip must draw that leg,
     and off "Lrg Index Norm" rather than the raw column: reading the raw twin under
     a normalized model is the movers.py defect the LEG_COLUMNS table exists to stop."""
     assert st.LEG_COLUMNS[models.NPF_CLS_95_5.key][models.LEG_LARGE] == "Lrg Index Norm"
@@ -126,7 +126,7 @@ def test_equity_spec_legs_never_count():
 # ── colour is the row's verdict, position is the level ────────────────────────
 
 def test_a_blocked_extreme_draws_the_faint_neutral_grey():
-    """Orange Juice at (96, 0, 100): two legs through, Small Specs blocking outright.
+    """Orange Juice at (96, 0, 100): two legs through, Non-Reportables blocking outright.
     Its lollipop sits deep in the bull band but takes the faint neutral grey, not a
     verdict colour — the value is real, the verdict is withheld. Grey specifically:
     the quiet tier wore the Commercial red for a while, and that red is the bear
@@ -284,7 +284,7 @@ def test_the_legend_keys_the_colours_and_the_legs():
     groups = st.legend_items(models.RAW_PF, COLORS, PALETTE)
     named = [label for _, entries in groups for label, _, _ in entries]
     assert named == ["Bull setup", "Bear setup", "Near", "No setup", "6w ago",
-                     "Large Specs", "Small Traders"]
+                     "Non-Commercial", "Non-Reportable"]
     # "No setup" is keyed because it is a COLOUR here, not an absence: the Commercial
     # series colour, which a reader must not mistake for a verdict. The key is faded
     # exactly as the drawn mark is — a full-strength swatch would promise a red the
@@ -313,7 +313,7 @@ def test_an_empty_board_still_draws():
 def test_a_tick_takes_its_leg_colour_and_its_rows_tier_as_opacity():
     """Colour is which leg, opacity is the ROW's tier: one channel per variable.
 
-    The leg colours are the app's, by palette slot, so blue is Large Specs on this page
+    The leg colours are the app's, by palette slot, so blue is Non-Commercial on this page
     exactly as it is on every stacked panel. An earlier version coloured a gating tick
     by the row's direction, which spent colour on something the bar beside it already
     says and left the two legs indistinguishable from each other. Opacity then carried
@@ -324,15 +324,15 @@ def test_a_tick_takes_its_leg_colour_and_its_rows_tier_as_opacity():
     large = st._leg_colour(models.LEG_LARGE, True, PALETTE)
     small = st._leg_colour(models.LEG_SMALL, True, PALETTE)
     assert large != small
-    assert large.startswith("rgba(96, 165, 250")     # PALETTE[1], Large Specs
-    assert small.startswith("rgba(251, 191, 36")     # PALETTE[2], Small Specs
+    assert large.startswith("rgba(96, 165, 250")     # PALETTE[1], Non-Commercial
+    assert small.startswith("rgba(251, 191, 36")     # PALETTE[2], Non-Reportable
     quiet = st._leg_colour(models.LEG_LARGE, False, PALETTE)
     assert quiet.startswith("rgba(96, 165, 250")     # same leg, same colour
     assert quiet != large                            # fainter, on a row with no verdict
 
 
 def test_ticks_light_with_their_row_not_with_their_own_gate():
-    """Copper is a bull setup with Large Specs at 40 — nowhere near ITS gate — and its
+    """Copper is a bull setup with Non-Commercials at 40 — nowhere near ITS gate — and its
     tick still draws lit, because the row is worth inspecting whole. Gold's leg sits at
     an extreme, and draws quiet, because its row is quiet."""
     df = frame(

@@ -70,7 +70,7 @@ COLUMN_IDS = ('divergence_col1_selector', 'divergence_col2_selector',
 # bases, so every default-view disagreement is the normalization and nothing
 # else, and the C emphasis below coincides exactly with the Basis gap column.
 # The three-way comparison (adding NPF CS 80/20, where a split can also come
-# from the band or the dropped Large Spec leg) is one selection away, not gone.
+# from the band or the dropped Non-Commercial leg) is one selection away, not gone.
 COLUMN_DEFAULTS = (models.RAW_PF.key, models.NPF_CLS_95_5.key, COLUMN_NONE)
 _MODELS_BY_KEY = {m.key: m for m in divergence_rows.MODEL_ORDER}
 
@@ -393,7 +393,7 @@ def help_text(compare):
                     f"OI-normalized series by construction, so they can only differ "
                     f"in verdict, never in value.")
     return (
-        f"Each column is one model's Commercials / Large Specs / Small Traders on "
+        f"Each column is one model's {' / '.join(vc.LEG_LABELS_BY_SLOT)} on "
         f"its own basis, with its verdict. A dash is a leg that model's gate does "
         f"not read. A leg's values print heavy only where the shown columns "
         f"disagree on that leg by {divergence_rows.GAP_TOLERANCE} index points "

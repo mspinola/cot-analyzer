@@ -179,8 +179,8 @@ def _rendered(week, newest_date):
 
     body = f"""<h1>COT Signal Matrix &#8212; week of {pretty}</h1>
 <p class="sub">Commitments of Traders positioning for {len(df)} futures
-markets as reported by the CFTC for Tuesday {pretty}: Commercial and
-Speculator positioning indexes on raw and OI-normalized bases, index momentum,
+markets as reported by the CFTC for Tuesday {pretty}: Commercial, Non-Commercial
+and Non-Reportable positioning indexes on raw and OI-normalized bases, index momentum,
 WILLCO, sentiment and open-interest readings, with each model's setup verdict.</p>
 <p class="sub">{_setup_summary(df)}</p>
 <p class="nav">{' &middot; '.join(steps)}</p>
@@ -198,7 +198,7 @@ free weekly Commitments of Traders charts and signals &middot;
     return _shell(
         f"COT Report Signal Matrix, {pretty} | COT Analyzer",
         f"Commitments of Traders signal matrix for the week of {pretty}: "
-        f"Commercial and Speculator positioning indexes, momentum and setup "
+        f"Commercial, Non-Commercial and Non-Reportable positioning indexes, momentum and setup "
         f"verdicts for {len(df)} futures markets.",
         f"{base}/weekly/{week}", body)
 

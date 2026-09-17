@@ -41,7 +41,7 @@ MODEL_LABELS = {
 
 MODEL_TOOLTIPS = {
     models.RAW_PF.key: f"{models.RAW_PF.title} — net contracts, all three legs",
-    models.NPF.key: f"{models.NPF.title} — net / open interest, Commercials and Small only",
+    models.NPF.key: f"{models.NPF.title} — net / open interest, Commercial and Non-Reportable only",
     models.NPF_CLS_95_5.key: f"{models.NPF_CLS_95_5.title} — net / open interest, all three legs, tight band",
     MODEL_BOTH: "Draws both bases on one axis. Verdicts fall back to Raw PF.",
 }
@@ -60,19 +60,55 @@ def resolve_model_view(value):
     return models.resolve(value), False
 
 
+# ── the three Legacy-report legs, named as the CFTC names them ─────────────────
+#
+# The Legacy report has exactly three categories, so the mapping is one-to-one:
+# Commercial, Non-Commercial, Nonreportable Positions. The CMR-era aliases the app
+# grew up on (Large Specs, Small Traders, Smart Money, Dumb Money) are interpretive
+# claims about how each group behaves, not what the CFTC calls them; they survive in
+# tooltips and the About glossary as aliases, never as a label. "Non-Reportable" is
+# spelled the way the Disaggregated / TFF page already spells its residual leg
+# (`cotmetrics.categories`), so one reader sees one spelling across every report.
+#
+# Three forms, because the surfaces differ: a legend or grid header names the category
+# (singular), prose names the group (plural, "Commercials are ..."), and the dense grid
+# and email columns use the CFTC's own column prefixes, which is what a reader meets if
+# they ever open the raw CFTC file. Every page reads these; nothing spells a leg name
+# on its own. `models` keys the two speculator legs; the Commercial leg has no model key
+# because no gate ever omits it.
+LEG_COMM = "comm"
+
+LEG_LABELS = {
+    LEG_COMM: "Commercial",
+    models.LEG_LARGE: "Non-Commercial",
+    models.LEG_SMALL: "Non-Reportable",
+}
+
+LEG_SHORT = {
+    LEG_COMM: "Comm",
+    models.LEG_LARGE: "NonComm",
+    models.LEG_SMALL: "NonRept",
+}
+
+# The same labels in palette-slot order (viz_config.PALETTE_SLOTS: 0 Commercial,
+# 1 Non-Commercial, 2 Non-Reportable), for the chart code that indexes `palette[n]`.
+LEG_LABELS_BY_SLOT = (LEG_LABELS[LEG_COMM], LEG_LABELS[models.LEG_LARGE],
+                      LEG_LABELS[models.LEG_SMALL])
+
 # ── prose that has to agree with the active gate ──────────────────────────────
 #
 # The positioning tooltips used to be one fixed set of sentences describing the Raw PF
 # three-leg gate: "Commercials are heavily accumulated near their historical max, while
 # Speculators are heavily distributed". That is false under NPF, whose CS gate does not
-# read the Large Spec leg at all -- and it was already false for equity index contracts
-# under either model, since those gate on Commercials alone and their speculator legs
-# may sit anywhere. Generating the sentence from the model closes both gaps at once and
-# stops a third opening the next time a model is added.
+# read the Non-Commercial leg at all -- and it was already false for equity index
+# contracts under either model, since those gate on Commercials alone and their
+# speculator legs may sit anywhere. Generating the sentence from the model closes both
+# gaps at once and stops a third opening the next time a model is added.
 
 LEG_NAMES = {
-    models.LEG_LARGE: "Large Speculators",
-    models.LEG_SMALL: "Small Traders",
+    LEG_COMM: "Commercials",
+    models.LEG_LARGE: "Non-Commercials",
+    models.LEG_SMALL: "Non-Reportables",
 }
 
 
@@ -142,7 +178,7 @@ def positioning_tooltip(state, model, is_equity=False):
         return (f"Positioning is approaching a bearish extreme. Commercials are within "
                 f"{near} points of {model.low}{spec}, indicating a potential ceiling or "
                 f"drop may be on the horizon.{eq_note}")
-    tail = (f" across {_join(['Commercials'] + names)}" if names
+    tail = (f" across {_join([LEG_NAMES[LEG_COMM]] + names)}" if names
             else " in Commercial positioning")
     return (f"Positioning is within normal historical bounds. No extreme structural "
             f"alignment detected{tail}.{eq_note}")
@@ -160,10 +196,10 @@ BASIS_LABELS = {
 # The OI-normalized line in an overlay, and the band between the two.
 #
 # The overlay draws the same series (Commercials) twice, so the second line can't take
-# another palette slot — every one of the five already means something (Commercials,
-# Large Specs, Small Specs, Price, Open Interest) and blue/yellow in particular would
-# read as Large/Small Specs. A fixed color doesn't work either: magenta collides with
-# Cyberpunk's own #FF007F. So it's derived as a lighter tint of the Commercials color,
+# another palette slot — every one of the five already means something (Commercial,
+# Non-Commercial, Non-Reportable, Price, Open Interest) and blue/yellow in particular
+# would read as Non-Commercial/Non-Reportable. A fixed color doesn't work either:
+# magenta collides with Cyberpunk's own #FF007F. So it's derived as a lighter tint of the Commercials color,
 # which stays correct for every palette.
 # "dash" over "dot": the two bases track each other closely most of the time, and a
 # dotted 1px line gets absorbed into the solid one wherever they nearly coincide.

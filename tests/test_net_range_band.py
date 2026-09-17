@@ -88,7 +88,7 @@ def test_the_band_is_drawn_behind_the_commercial_bars_and_follows_their_legend_e
 
     band = _band_traces(fig)
     assert len(band) == 2
-    assert {t.legendgroup for t in band} == {"commercials"}
+    assert {t.legendgroup for t in band} == {"commercial"}
     assert all(t.hoverinfo == "skip" and t.showlegend is False for t in band)
     assert all(t.zorder < 0 for t in band)
     lo_trace, hi_trace = band
@@ -130,10 +130,10 @@ def test_the_readout_carries_each_groups_latest_print_and_names_the_band():
     readout = [a for a in fig.layout.annotations if a.name == "net_latest_readout"]
     assert len(readout) == 1
     text = readout[0].text
-    assert "Commercials (45,420)" in text
-    assert "Large Specs 25,890" in text
-    assert "Small Specs 19,530" in text
-    assert f"Commercials {WEEKS}-wk range" in text
+    assert "Commercial (45,420)" in text
+    assert "Non-Commercial 25,890" in text
+    assert "Non-Reportable 19,530" in text
+    assert f"Commercial {WEEKS}-wk range" in text
     assert readout[0].xref == "x domain" and readout[0].yref == "y domain"
 
 

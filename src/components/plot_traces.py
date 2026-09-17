@@ -17,6 +17,9 @@ import viz_constants as vc
 from components.plot_colors import hex_to_rgba, lighten_hex
 from components.plot_layout import get_nice_dtick, visible_weeks
 
+# Legend names for the three positioning legs, in palette-slot order.
+COMM_LABEL, LRG_LABEL, SML_LABEL = vc.LEG_LABELS_BY_SLOT
+
 # Price OVERLAYS start switched off, one legend click from being drawn.
 #
 # An overlay is price on a second y-axis of a panel whose subject is something else.
@@ -47,9 +50,9 @@ def update_legend(fig, showlegend, color_palette, show_price):
     one, and the first click would hide what was already hidden.
     """
     if showlegend:
-        add_legend_lines(fig, "Commercials", color_palette[0])
-        add_legend_lines(fig, "Large Specs", color_palette[1])
-        add_legend_lines(fig, "Small Specs", color_palette[2])
+        add_legend_lines(fig, COMM_LABEL, color_palette[0])
+        add_legend_lines(fig, LRG_LABEL, color_palette[1])
+        add_legend_lines(fig, SML_LABEL, color_palette[2])
         if show_price:
             add_legend_lines(fig, "Price", color_palette[3],
                              visible=PRICE_OVERLAY_VISIBILITY)
@@ -247,9 +250,9 @@ def fast_add_vrects(fig, segments, fillcolor, subplots):
 
 
 def get_open_interest_percent_plot(fig, df, row, col, color_palette, show_price=True):
-    add_trace_to_all(fig, df, const.COMM_PCT_OI, row, col, "Commercials", color_palette[0], 0)
-    add_trace_to_all(fig, df, const.LARGE_PCT_OI, row, col, "Large Specs", color_palette[1], 1)
-    add_trace_to_all(fig, df, const.SMALL_PCT_OI, row, col, "Small Specs", color_palette[2], 2)
+    add_trace_to_all(fig, df, const.COMM_PCT_OI, row, col, COMM_LABEL, color_palette[0], 0)
+    add_trace_to_all(fig, df, const.LARGE_PCT_OI, row, col, LRG_LABEL, color_palette[1], 1)
+    add_trace_to_all(fig, df, const.SMALL_PCT_OI, row, col, SML_LABEL, color_palette[2], 2)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
@@ -308,9 +311,9 @@ def get_willco_plot(fig, df, row, col, color_palette, show_price=True):
 
 
 def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
-    add_trace_to_all(fig, df, const.COMMS_SPEARMAN, row, col, "Commercials", color_palette[0], 0)
-    add_trace_to_all(fig, df, const.LRG_SPEARMAN, row, col, "Large Specs", color_palette[1], 1)
-    add_trace_to_all(fig, df, const.SML_SPEARMAN, row, col, "Small Specs", color_palette[2], 2)
+    add_trace_to_all(fig, df, const.COMMS_SPEARMAN, row, col, COMM_LABEL, color_palette[0], 0)
+    add_trace_to_all(fig, df, const.LRG_SPEARMAN, row, col, LRG_LABEL, color_palette[1], 1)
+    add_trace_to_all(fig, df, const.SML_SPEARMAN, row, col, SML_LABEL, color_palette[2], 2)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
@@ -373,8 +376,8 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
 
 # Which group the range band sits behind, by position in the (comms, lrg, sml)
 # column triple. Commercials by default: the models, the crowd board and WILLCO all
-# read the commercial side, so the band shows the same series they judge. Large
-# specs are near enough its mirror that the reading carries across.
+# read the commercial side, so the band shows the same series they judge.
+# Non-Commercials are near enough its mirror that the reading carries across.
 RANGE_BAND_GROUPS = {"comms": 0, "lrg": 1, "sml": 2}
 RANGE_BAND_FILL_ALPHA = 0.10
 RANGE_BAND_EDGE_ALPHA = 0.35
@@ -489,7 +492,7 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
     min_pos = visible_df[cols].min().min() if cols else -1000
 
     band_cols = (comms_col, lrg_col, sml_col)
-    band_names = ("Commercials", "Large Specs", "Small Specs")
+    band_names = vc.LEG_LABELS_BY_SLOT
     band_note = None
     if range_weeks is not None and range_weeks > 0:
         slot = RANGE_BAND_GROUPS[range_group]
@@ -531,9 +534,9 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
     oi_range = [oi_min - oi_padding, oi_max + oi_padding]
 
 
-    add_trace_to_all(fig, df, comms_col, row, col, "Commercials", color_palette[0], 0, is_bar=True, opacity=0.8)
-    add_trace_to_all(fig, df, lrg_col, row, col, "Large Specs", color_palette[1], 1, is_bar=True, opacity=0.8)
-    add_trace_to_all(fig, df, sml_col, row, col, "Small Specs", color_palette[2], 2, is_bar=True, opacity=0.7)
+    add_trace_to_all(fig, df, comms_col, row, col, COMM_LABEL, color_palette[0], 0, is_bar=True, opacity=0.8)
+    add_trace_to_all(fig, df, lrg_col, row, col, LRG_LABEL, color_palette[1], 1, is_bar=True, opacity=0.8)
+    add_trace_to_all(fig, df, sml_col, row, col, SML_LABEL, color_palette[2], 2, is_bar=True, opacity=0.7)
     add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest", color_palette[4], 3, secondary=True)
 
     # Calculate independent tick steps to stop Plotly from auto-syncing the axes
@@ -622,9 +625,9 @@ def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette
         plot_df[comms_col] = plot_df[comms_col].rolling(window=4).mean()
         plot_df[lrg_col] = plot_df[lrg_col].rolling(window=4).mean()
         plot_df[sml_col] = plot_df[sml_col].rolling(window=4).mean()
-    add_trace_to_all(fig, plot_df, comms_col, row, col, "Commercials", color_palette[0], 0)
-    add_trace_to_all(fig, plot_df, lrg_col, row, col, "Large Specs", color_palette[1], 1)
-    add_trace_to_all(fig, plot_df, sml_col, row, col, "Small Specs", color_palette[2], 2, opacity=0.9)
+    add_trace_to_all(fig, plot_df, comms_col, row, col, COMM_LABEL, color_palette[0], 0)
+    add_trace_to_all(fig, plot_df, lrg_col, row, col, LRG_LABEL, color_palette[1], 1)
+    add_trace_to_all(fig, plot_df, sml_col, row, col, SML_LABEL, color_palette[2], 2, opacity=0.9)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
@@ -682,12 +685,12 @@ def get_basis_overlay_plot(fig, df_raw, df_norm, value_col, row, col, color_pale
     ), row=row, col=col, secondary_y=False)
 
     # Both lines are Commercials, so the normalized one is a lighter tint of the
-    # Commercials color rather than another palette slot (palette[1]/[2] are Large and
-    # Small Specs). Dash carries the rest of the distinction.
+    # Commercials color rather than another palette slot (palette[1]/[2] are
+    # Non-Commercial and Non-Reportable). Dash carries the rest of the distinction.
     norm_color = lighten_hex(color_palette[0], vc.BASIS_OVERLAY_TINT)
-    add_trace_to_all(fig, df_raw, value_col, row, col, "Commercials (Raw)",
+    add_trace_to_all(fig, df_raw, value_col, row, col, f"{COMM_LABEL} (Raw)",
                      color_palette[0], 0, showlegend=is_first)
-    add_trace_to_all(fig, df_norm, value_col, row, col, "Commercials (% of OI)",
+    add_trace_to_all(fig, df_norm, value_col, row, col, f"{COMM_LABEL} (% of OI)",
                      norm_color, 1, showlegend=is_first,
                      dash=vc.BASIS_OVERLAY_DASH)
 
@@ -719,9 +722,9 @@ def get_basis_overlay_plot(fig, df_raw, df_norm, value_col, row, col, color_pale
 def get_zscore_plot(fig, df, row, col, color_palette, show_price=True):
     # The raw/OI-normalized choice is resolved upstream in CotIndexer.get_symbols_data,
     # which is what these generic aliases carry. Do not re-select columns here.
-    add_trace_to_all(fig, df, const.COMMS_ZSCORE, row, col, "Commercials", color_palette[0], 0)
-    add_trace_to_all(fig, df, const.LRG_ZSCORE, row, col, "Large Specs", color_palette[1], 1)
-    add_trace_to_all(fig, df, const.SML_ZSCORE, row, col, "Small Specs", color_palette[2], 2)
+    add_trace_to_all(fig, df, const.COMMS_ZSCORE, row, col, COMM_LABEL, color_palette[0], 0)
+    add_trace_to_all(fig, df, const.LRG_ZSCORE, row, col, LRG_LABEL, color_palette[1], 1)
+    add_trace_to_all(fig, df, const.SML_ZSCORE, row, col, SML_LABEL, color_palette[2], 2)
     add_trace_to_all(fig, df, const.OI_ZSCORE, row, col, "Open Interest", color_palette[4], 3, opacity=0.6)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
@@ -751,9 +754,9 @@ def get_zscore_plot(fig, df, row, col, color_palette, show_price=True):
 
 
 def get_momentum_plot(fig, df, row, col, color_palette, show_price=True):
-    add_trace_to_all(fig, df, const.COMM_MOMENTUM, row, col, "Commercials", color_palette[0], 0, is_bar=True, opacity=0.8)
-    add_trace_to_all(fig, df, const.LRG_MOMENTUM, row, col, "Large Specs", color_palette[1], 1, is_bar=True, opacity=0.6)
-    add_trace_to_all(fig, df, const.SML_MOMENTUM, row, col, "Small Specs", color_palette[2], 2, is_bar=True, opacity=0.6)
+    add_trace_to_all(fig, df, const.COMM_MOMENTUM, row, col, COMM_LABEL, color_palette[0], 0, is_bar=True, opacity=0.8)
+    add_trace_to_all(fig, df, const.LRG_MOMENTUM, row, col, LRG_LABEL, color_palette[1], 1, is_bar=True, opacity=0.6)
+    add_trace_to_all(fig, df, const.SML_MOMENTUM, row, col, SML_LABEL, color_palette[2], 2, is_bar=True, opacity=0.6)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
@@ -1070,7 +1073,7 @@ def get_oi_alignment_decorators(fig, df, target_subplots, color_palette, offset_
 
 
 def get_lrg_sentiment_plot(fig, df, row, col, color_palette, show_price=True):
-    add_trace_to_all(fig, df, const.LW_LRG_SENTIMENT, row, col, "Large Specs", color_palette[1], 0, showlegend=False)
+    add_trace_to_all(fig, df, const.LW_LRG_SENTIMENT, row, col, LRG_LABEL, color_palette[1], 0, showlegend=False)
     if show_price:
         add_price_overlay(fig, df, row, col, color_palette)
         fig.update_yaxes(
@@ -1085,7 +1088,7 @@ def get_lrg_sentiment_plot(fig, df, row, col, color_palette, show_price=True):
     fig.add_hline(y=const.LW_LRG_SENTIMENT_MAX_THRESHOLD, line_dash="dot", line_color='red', opacity=0.4, row=row, col=col)
     fig.add_hline(y=const.LW_LRG_SENTIMENT_MIN_THRESHOLD, line_dash="dot", line_color='green', opacity=0.5, row=row, col=col)
     fig.update_yaxes(
-        title="Large Trader Sentiment",
+        title="Non-Commercial Sentiment",
         row=row, col=col,
         showgrid=False,
         zeroline=False,

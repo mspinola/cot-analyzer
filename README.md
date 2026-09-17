@@ -12,7 +12,7 @@ metrics of its own. Given the CFTC legacy report, it will:
 
 * generate CSV files with per-symbol data
 * generate RealTest data as an Event List for each symbol
-* calculate the COT index from configurable lookbacks for the 3 COT categories (Commercials, Large Speculators, Small Speculators)
+* calculate the COT index from configurable lookbacks for the 3 Legacy-report categories (Commercial, Non-Commercial, Non-Reportable)
 * render positioning plots via Dash/Plotly for browser viewing
 * periodically download updated COT reports (released Fridays at 3:30 US/Eastern)
 
