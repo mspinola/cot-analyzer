@@ -598,15 +598,19 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
             title_color = color_palette[0]
 
         # Wrap the index values in an HTML span to inject the color. The leg
-        # letters ride at reduced size inside it: a plotly title can carry no
+        # names ride at reduced size inside it: a plotly title can carry no
         # tooltip, so "(14, 85, 64)" had nothing anywhere naming what the three
-        # numbers were.
-        letter = "<span style='font-size:0.65em;'>{}</span>"
+        # numbers were. They are the CFTC column prefixes (Comm / NonComm /
+        # NonRept), the same short form the heatmap and the weekly email use,
+        # rather than the old C / L / S letters, which named the legs in the
+        # CMR vocabulary the app has left.
+        leg = "<span style='font-size:0.65em;'>{}</span>"
+        comm_s, lrg_s, sml_s = vc.LEG_SHORT_BY_SLOT
         chart_title = (
             f"<span style='color:{title_color};'>{asset} "
-            f"({letter.format('C')} {latest_comm:.0f} · "
-            f"{letter.format('L')} {latest_lrg:.0f} · "
-            f"{letter.format('S')} {latest_sml:.0f})</span>")
+            f"({leg.format(comm_s)} {latest_comm:.0f} · "
+            f"{leg.format(lrg_s)} {latest_lrg:.0f} · "
+            f"{leg.format(sml_s)} {latest_sml:.0f})</span>")
 
     except (IndexError, KeyError):
         chart_title = asset  # Fallback if data is missing

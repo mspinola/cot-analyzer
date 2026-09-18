@@ -94,6 +94,8 @@ LEG_SHORT = {
 # 1 Non-Commercial, 2 Non-Reportable), for the chart code that indexes `palette[n]`.
 LEG_LABELS_BY_SLOT = (LEG_LABELS[LEG_COMM], LEG_LABELS[models.LEG_LARGE],
                       LEG_LABELS[models.LEG_SMALL])
+LEG_SHORT_BY_SLOT = (LEG_SHORT[LEG_COMM], LEG_SHORT[models.LEG_LARGE],
+                     LEG_SHORT[models.LEG_SMALL])
 
 # ── prose that has to agree with the active gate ──────────────────────────────
 #
