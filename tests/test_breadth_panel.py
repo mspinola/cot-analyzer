@@ -31,7 +31,7 @@ def _frames(n=120, seed=7):
     fomo = np.clip(50 + np.cumsum(rng.normal(0, 9, n)), 0.5, 99.5)
     highs = rng.integers(20, 200, n).astype(float)
     lows = rng.integers(20, 200, n).astype(float)
-    return {"NASDAQ_FOMO_5D": _series(fomo), "SPX_FOMO_5D": _series(fomo * 0.9),
+    return {"NASDAQ_FOMO_5D": _series(fomo),
             "NASDAQ_NH52W": _series(highs), "NASDAQ_NL52W": _series(lows)}
 
 
@@ -48,7 +48,7 @@ def _fresh_cache():
 
 # ── the read ──────────────────────────────────────────────────────────────────
 def test_read_is_daily_and_trailing_sessions_long():
-    r = bp.build_read("nasdaq", get_bars=_bars(_frames()))
+    r = bp.build_read(get_bars=_bars(_frames()))
     assert len(r.fomo) == bp.SESSIONS and len(r.net) == bp.SESSIONS
     # Daily: consecutive business days, never a weekly collapse.
     assert (pd.Series(r.fomo.index).diff().dt.days.dropna() <= 3).all()
@@ -58,7 +58,7 @@ def test_read_is_daily_and_trailing_sessions_long():
 def test_classifiers_see_history_before_the_window_is_cut():
     frames = _frames()
     full = frames["NASDAQ_FOMO_5D"]["Close"]
-    r = bp.build_read("nasdaq", get_bars=_bars(frames))
+    r = bp.build_read(get_bars=_bars(frames))
     expected = ind.fomo_zones(full).iloc[-bp.SESSIONS:]
     assert list(r.zones) == list(expected)
     net_full = frames["NASDAQ_NH52W"]["Close"] - frames["NASDAQ_NL52W"]["Close"]
@@ -66,27 +66,31 @@ def test_classifiers_see_history_before_the_window_is_cut():
 
 
 def test_target_date_ends_the_window_on_the_boards_week():
-    r = bp.build_read("nasdaq", get_bars=_bars(_frames()), target_date="2026-09-15")
+    r = bp.build_read(get_bars=_bars(_frames()), target_date="2026-09-15")
     assert r.date == "2026-09-15"
     assert r.fomo.index.max() <= pd.Timestamp("2026-09-15")
 
 
-def test_universe_selects_the_fomo_series_and_keeps_nasdaq_net_highs():
+def test_both_series_are_nasdaq_and_nothing_else_is_read():
+    # M-07 defines FOMO on Nasdaq and M-01's pair is Nasdaq by the author's choice; the
+    # S&P variant in the store is not offered. Pinned so a toggle does not creep back.
+    assert bp.FOMO[0] == "NASDAQ_FOMO_5D" and bp.NET_HIGHS == ("NASDAQ_NH52W", "NASDAQ_NL52W")
     frames = _frames()
-    r = bp.build_read("spx", get_bars=_bars(frames))
-    assert r.latest == pytest.approx(float(frames["SPX_FOMO_5D"]["Close"].iloc[-1]))
-    assert r.highs.iloc[-1] == frames["NASDAQ_NH52W"]["Close"].iloc[-1]
+    asked = []
+    r = bp.build_read(get_bars=lambda s: asked.append(s) or frames[s])
+    assert set(asked) == set(bp.SYMBOLS)
+    assert r.latest == pytest.approx(float(frames["NASDAQ_FOMO_5D"]["Close"].iloc[-1]))
 
 
 def test_a_missing_series_yields_no_read():
     frames = _frames()
     del frames["NASDAQ_NL52W"]
-    assert bp.build_read("nasdaq", get_bars=_bars(frames)) is None
+    assert bp.build_read(get_bars=_bars(frames)) is None
 
 
 def test_read_names_the_awaited_symbols_and_raises_nothing(monkeypatch):
     monkeypatch.setattr(bp, "_last_date", lambda s: None)
-    r, awaiting = bp.read("nasdaq")
+    r, awaiting = bp.read()
     assert r is None and awaiting == ["NASDAQ_FOMO_5D", "NASDAQ_NH52W", "NASDAQ_NL52W"]
     assert "awaiting series data" in bp.caption(None, awaiting)
 
@@ -96,19 +100,12 @@ def test_read_is_cached_on_the_stores_last_dates(monkeypatch):
     calls = []
     monkeypatch.setattr(bp, "_get_bars", lambda s: calls.append(s) or frames[s])
     monkeypatch.setattr(bp, "_last_date", lambda s: "2026-11-13")
-    bp.read("nasdaq")
-    bp.read("nasdaq")
+    bp.read()
+    bp.read()
     assert len(calls) == 3                       # one pass, three series
     monkeypatch.setattr(bp, "_last_date", lambda s: "2026-11-16")
-    bp.read("nasdaq")
+    bp.read()
     assert len(calls) == 6                       # a new delivery invalidates
-
-
-def test_an_unknown_universe_falls_back_to_the_default(monkeypatch):
-    monkeypatch.setattr(bp, "_get_bars", _bars(_frames()))
-    monkeypatch.setattr(bp, "_last_date", lambda s: "2026-11-13")
-    r, _ = bp.read("nope")
-    assert r.universe == "nasdaq"
 
 
 def test_the_boards_default_date_means_now_and_an_older_week_cuts():
@@ -136,7 +133,7 @@ def test_figure_draws_the_published_zone_bands_and_the_regime_runs():
     frames = _frames()
     frames["NASDAQ_NH52W"] = _series([300] * 6 + [10] * 6 + [300] * 108)
     frames["NASDAQ_NL52W"] = _series([10] * 6 + [300] * 6 + [10] * 108)
-    r = bp.build_read("nasdaq", get_bars=_bars(frames))
+    r = bp.build_read(get_bars=_bars(frames))
     fig = bp.build_figure(r, COLORS)
     rects = [s for s in fig.layout.shapes if s.type == "rect"]
     zone_rects = [s for s in rects if s.yref == "y"]
@@ -152,16 +149,18 @@ def test_figure_draws_the_published_zone_bands_and_the_regime_runs():
 def test_figure_labels_the_last_reading_with_its_zone():
     frames = _frames()
     frames["NASDAQ_FOMO_5D"] = _series([50] * 119 + [88])
-    r = bp.build_read("nasdaq", get_bars=_bars(frames))
+    r = bp.build_read(get_bars=_bars(frames))
     fig = bp.build_figure(r, COLORS)
     labels = [a.text for a in fig.layout.annotations if a.arrowhead is not None]
     assert any("<b>88</b> exhaustion" in t for t in labels)
-    # The universe is named on the panel.
-    assert any("Nasdaq Composite" in (a.text or "") for a in fig.layout.annotations)
+    # Both panels name their universe, and it is Nasdaq on both.
+    titles = [a.text or "" for a in fig.layout.annotations if a.arrowhead is None]
+    assert any("FOMO, Nasdaq Composite" in t for t in titles)
+    assert any("Nasdaq net new 52-week highs" in t for t in titles)
 
 
 def test_hover_carries_the_zone_and_the_two_legs():
-    r = bp.build_read("nasdaq", get_bars=_bars(_frames()))
+    r = bp.build_read(get_bars=_bars(_frames()))
     fig = bp.build_figure(r, COLORS)
     marker_trace = fig.data[1]
     assert all("FOMO" in h for h in marker_trace.hovertext)
@@ -175,14 +174,14 @@ def test_caption_states_the_session_the_reading_and_the_regime():
     frames["NASDAQ_FOMO_5D"] = _series([50] * 119 + [12])
     frames["NASDAQ_NH52W"] = _series([300] * 120)
     frames["NASDAQ_NL52W"] = _series([10] * 120)
-    r = bp.build_read("nasdaq", get_bars=_bars(frames))
+    r = bp.build_read(get_bars=_bars(frames))
     text = bp.caption(r)
     assert "2026-11-13 session" in text and "FOMO (Nasdaq Composite) 12, fear" in text
     assert "regime up (three sessions)" in text and "not a signal" in text
 
 
 def test_caption_says_when_the_panel_trails_the_board():
-    r = bp.build_read("nasdaq", get_bars=_bars(_frames()), target_date="2026-09-15")
+    r = bp.build_read(get_bars=_bars(_frames()), target_date="2026-09-15")
     assert "trails the board" not in bp.caption(r, report_date="2026-09-15")
     assert "last session 2026-09-15" in bp.caption(r, report_date="2026-09-29")
 
