@@ -115,7 +115,10 @@ def _fomo_figure(read, colors):
                              hoverinfo="skip"))
     layout = _base_layout(200)
     layout["yaxis"]["range"] = [0, 100]
+    # A month of sessions: day-and-month ticks, no year on one tick and not the
+    # others, which is what plotly's automatic date format produced.
     layout["xaxis"]["nticks"] = 4
+    layout["xaxis"]["tickformat"] = "%b %e"
     fig.update_layout(**layout)
     return fig
 
@@ -309,13 +312,17 @@ def asset_table(rows, awaiting, colors):
                                                  "borderBottom": "1px solid var(--border-color)"})
                                for h in ("Symbol", "Last", "Day", "3 mo")]))
     body = []
+    # The text sits in a span inside each cell: custom.css sets every `tbody td` to
+    # the muted color with !important, which beats a style on the cell itself.
     for row in rows:
         day_color = colors.bull if row.day_change >= 0 else colors.bear
         body.append(html.Tr([
-            html.Td(row.symbol, style={"color": vc.BRIGHTER_TEXT_COLOR, "fontWeight": 600}),
-            html.Td(f"{row.last:,.2f}", style={"color": vc.BRIGHTER_TEXT_COLOR,
-                                                "textAlign": "right"}),
-            html.Td(_pct(row.day_change), style={"color": day_color, "textAlign": "right"}),
+            html.Td(html.Span(row.symbol, style={"color": vc.BRIGHTER_TEXT_COLOR,
+                                                 "fontWeight": 600})),
+            html.Td(html.Span(f"{row.last:,.2f}", style={"color": vc.BRIGHTER_TEXT_COLOR}),
+                    style={"textAlign": "right"}),
+            html.Td(html.Span(_pct(row.day_change), style={"color": day_color}),
+                    style={"textAlign": "right"}),
             html.Td(_spark(row, colors), style={"textAlign": "right"}),
         ], style={"borderBottom": "1px solid var(--border-color-dim)"}))
     missing = [s for s in mi.ASSET_SYMBOLS if s in awaiting]
