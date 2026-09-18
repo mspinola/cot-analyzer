@@ -9,6 +9,9 @@ connector is schedulable there (§2). Revised again 2026-09-17 with what was the
 the box itself: an interactive session and a local routine both reached the connector and
 wrote identical bars, the sync scripts already exclude the raw directory, and both NDU and
 the Desktop app relaunch on a reboot. Each such fact is marked "verified on the box".
+**Built and live, 2026-09-17**: every step below landed the same day (cotmetrics 0.13.0,
+marketdata 0.3.0 to 0.3.2, cotdata #114 and #115, and the panel in this repo). §7 records
+the three places the build departed from this text.
 **Why now:** the 2026-09-13 session wanted the AGI breadth reads (the "FOMO" share of stocks
 above their 5-day average, net new 52-week highs and lows) beside COT positioning, found
 that Norgate does not publish the 5-day share at any tier, and settled for four ETF ratios as
@@ -117,14 +120,18 @@ contract, and out of every store sync.**
    a night the store is already current writes nothing and says so. Stale input (newest
    bar older than the expected session) is a refusal with a non-zero exit, the analogue of
    the futures defer, so a re-run later in the evening is the retry.
-5. **Schedule**: two daily routines on the box, weekdays, about 18:30 and 21:30 Eastern
-   (after the 17:30 equities task; the connector's notice says the last bar may still
-   change, and a breadth count computed from closes is settled well before 18:30). The
-   second is the retry; on a good night it is the no-op in step 4.
-6. **The backfill** is one interactive session on the box: `count=5000` for every symbol
-   into the same raw directory, then the same build. `NCFD`'s 1952 bars are its whole
-   published history; the 2006 series exceed the cap and the cap exceeds every board
-   window.
+5. **Schedule**: two daily routines on the box, weekdays, about 18:30 and 19:45 Eastern
+   (after the 17:30 equities task and its retries; before the 20:55 futures task, whose
+   repeating trigger syncs the same two replicas this wrapper syncs, and two mirror passes
+   at once is the race the equities wrapper's header warns about). The second is the
+   retry; on a good night it is the no-op in step 4.
+6. **The backfill** is a `count=5000` pull per symbol from a Claude session, and it needs
+   no transcription: a result that size exceeds the harness's tool-result limit and is
+   persisted VERBATIM to a file before the model sees it, so the file is copied into the
+   raw directory as-is and built with `--expect-session none`. Done from a Mac session on
+   2026-09-17, eleven symbols, every file validated by the build's own parser and anchors
+   before it was placed. `NCFD`'s 1953 bars are its whole published history; the 2006
+   series hit the cap and the cap exceeds every board window.
 
 ### 2.2 What stands between an LLM and the store
 
@@ -318,17 +325,41 @@ box runs Claude on this account, a local routine there can be the producer, with
 number validated by code before it reaches the store. The measurement still says FOMO must
 be drawn daily against its published zones rather than as a fifth weekly context row.
 
----
+## 7. Where the build departed from this document
 
-**UPDATE 2026-09-17, step 7 landed on its own page.** The daily FOMO and net-highs
-component went to a new `/internals` page (`src/pages/analytics/internals.py`, reads in
-`src/components/market_internals.py`) rather than onto the crowd page: the view it
-recreates (the Caruso Insights market overview) is a page of six daily reads, and the
-crowd board is weekly. The other four reads are advancing against declining issues
-(`USI:ADVQ` / `USI:DECLQ`, registered in marketdata as `NASDAQ_ADV` / `NASDAQ_DEC`; `DECQ`
-does not resolve), JNK against its 20-day average, XLP/QQQ against its 50-day, and 20-session
-up/down volume for QQQ and SPY. The routine on the box pulls every registry series
-symbol, so pulling marketdata's registry change onto the box is the seeding step for the
-two new series; DIA, USO, JNK and IBIT ride the equities task the same way. Until they
-land, the page names each as awaiting data. A TradingView pane of the same six reads is
-`npf/scripts/pine/market_overview.pine`; the two are twins and change together.
+Recorded rather than rewritten above, so the reasoning stays legible.
+
+- **Internal names are `NASDAQ_`, not `NDX_`.** The FOMO script's universe is the Nasdaq
+  COMPOSITE (settled by its Pine source), and `NDX` names the 100. The registry says which.
+- **The second routine runs at 19:45, not 21:30**, for the sync-race reason now stated in
+  §2.1 step 5.
+- **The backfill went through persisted tool results, not a CSV export**, §2.1 step 6. The
+  CSV importer (`--tradingview-csv`, marketdata 0.3.1) exists and works; it is the fallback
+  for a session without the persisted-result path. The routine instructions on the box
+  still describe the CSV route and are due the same edit.
+- **Two vendor conventions the build learned on the first full pull** (marketdata 0.3.2): a
+  count of zero is printed as 0.01, and the equity put/call ratio carries two zero-close
+  holes. Neither is a transcription matter; both would have refused a nightly file on the
+  wrong day.
+- **The wrapper is invoked `cmd //c`**, doubled slash, because the routine's Bash tool is
+  Git Bash and rewrites a lone `/c`. Found on the first supervised run.
+- **No universe toggle, and the S&P 500 FOMO series is not drawn.** The panel shipped with
+  a Nasdaq / S&P 500 switch, mirroring the Pine script's dropdown, and lost it the next day:
+  rulebook M-07 defines FOMO on Nasdaq stocks and its zones were read off that series,
+  nothing in the corpus or the agi importer uses the S&P variant, and the two universes sit
+  apart (45 against 36 on 2026-09-17), so drawing S5FD against Nasdaq-calibrated bands would
+  be an untested extension wearing the guide's labels. `SPX_FOMO_5D` stays in the store.
+- **The panel honours the board's date selector only when the reader has gone back in
+  time.** The selector defaults to the newest COT Tuesday, which for a daily panel is up to
+  a week stale; the newest report means "now".
+- **A second, page-sized consumer of the same series.** The `/internals` page
+  (`src/pages/analytics/internals.py`, reads in `src/components/market_internals.py`)
+  recreates the Caruso Insights market overview: the FOMO and net-highs reads above, plus
+  Nasdaq advancing against declining (`USI:ADVQ` / `USI:DECLQ`, registered as `NASDAQ_ADV` /
+  `NASDAQ_DEC`; `DECQ` does not resolve), JNK against its 20-day average, XLP/QQQ against its
+  50-day, 20-session up/down volume for QQQ and SPY, and nine asset rows. It reads the same
+  daily frames and the same cotmetrics classifiers; it is a page because the view it
+  recreates is one, where the breadth panel is the two series the crowd board could not
+  carry. DIA, USO, JNK and IBIT ride the equities task; the two count series ride the
+  routine like every other registry series symbol. A TradingView pane of the same six reads
+  is `npf/scripts/pine/market_overview.pine`; the two are twins and change together.
