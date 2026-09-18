@@ -29,11 +29,12 @@ MODEL_VIEW_CHOICES = MODEL_CHOICES + (MODEL_BOTH,)
 # models, two of them one gate or one band apart, a bare "NPF" no longer says which
 # rule is deciding the verdicts on screen (requested 2026-08-28; the labels were short
 # forms before that). Built from the models so the numbers cannot drift from the gates;
-# Raw PF is the one whose title ("Raw CLS 95/5") is not the app's name for it, so its
-# label is assembled rather than taken.
+# Raw PF is the one whose title ("Raw 3-leg 95/5") is not the app's name for it, so its
+# label is assembled rather than taken, from `gate_label` and never `gate`: the books'
+# CLS / CS notation is a spec name, not something a screen shows.
 MODEL_LABELS = {
     models.RAW_PF.key:
-        f"Raw PF {models.RAW_PF.gate} {models.RAW_PF.high}/{models.RAW_PF.low}",
+        f"Raw PF {models.RAW_PF.gate_label} {models.RAW_PF.high}/{models.RAW_PF.low}",
     models.NPF.key: models.NPF.title,
     models.NPF_CLS_95_5.key: models.NPF_CLS_95_5.title,
     MODEL_BOTH: "Both",

@@ -199,9 +199,9 @@ def layout(**kwargs):
                                 dbc.Col([
                                     html.Label(
                                         "Setups",
-                                        title="Either model. A row survives if it is at "
-                                              "the gate under Raw CLS 95/5 OR NPF CS "
-                                              "80/20, because this grid reports both "
+                                        title=f"Either model. A row survives if it is at "
+                                              f"the gate under {models.RAW_PF.title} OR "
+                                              f"{models.NPF.title}, because this grid reports both "
                                               "and hiding a row one of them fired on "
                                               "would contradict the block beside it.",
                                         style={**vc.label_style, "fontSize": "0.8rem",
