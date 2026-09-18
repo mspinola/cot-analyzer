@@ -10,6 +10,30 @@ from cotmetrics.indexer import get_indexer
 import viz_constants as vc
 
 
+def max_pain_point(daily_df):
+    """The (strike, payout) pair to mark as max pain for one day's snapshot.
+
+    The snapshot writer already snaps the curve's minimum to the nearest REAL strike
+    and stores it as `MaxPainStrike` (cotmetrics.options_data.calculate_intrinsic_curve),
+    but the stored curve itself is a 200-point grid over +/-20% of the underlying, so
+    the grid's argmin is a point up to half a grid step (~0.1% of price) off any strike
+    that exists. Read the stored strike and interpolate the payout there, so the star,
+    the dashed line, the delta arrow and the premium/discount history all sit on a
+    strike the chain actually has. Rows written before the column existed fall back to
+    the grid argmin, which is what every reader used until now.
+    """
+    import numpy as np
+    import pandas as pd
+
+    daily_df = daily_df.sort_values('SimulatedStrike')
+    strike = daily_df['MaxPainStrike'].iloc[0] if 'MaxPainStrike' in daily_df else np.nan
+    if pd.isna(strike):
+        min_idx = daily_df['IntrinsicValue_M'].idxmin()
+        return daily_df.loc[min_idx, 'SimulatedStrike'], daily_df.loc[min_idx, 'IntrinsicValue_M']
+    payout = np.interp(strike, daily_df['SimulatedStrike'], daily_df['IntrinsicValue_M'])
+    return float(strike), float(payout)
+
+
 def get_max_pain_plot(fig, asset_name, row, col):
     """
     Plots the Notional Intrinsic Value curves of all options across different days.
@@ -84,10 +108,7 @@ def get_max_pain_plot(fig, asset_name, row, col):
             hovertemplate=f"Date: {date}<br>Strike: %{{x:,.2f}}<br>IV: $%{{y:,.1f}}M<extra></extra>"
         ), row=row, col=col)
 
-        # Find minimum
-        min_idx = daily_df['IntrinsicValue_M'].idxmin()
-        min_strike = daily_df.loc[min_idx, 'SimulatedStrike']
-        min_iv = daily_df.loc[min_idx, 'IntrinsicValue_M']
+        min_strike, min_iv = max_pain_point(daily_df)
 
         # Highlight the minimum. Only the latest day's strike drives the rest of the
         # panel (the price line, both dashed lines and the delta arrow all read it),
@@ -206,10 +227,7 @@ def get_max_pain_historical_plot(fig, asset_name, row, col, showlegend=True):
 
         expiry_str = str(daily_df['Expiry'].iloc[0])[:10]  # Grab just the date part
 
-        # Find max pain (min IV)
-        min_idx = daily_df['IntrinsicValue_M'].idxmin()
-        min_strike = daily_df.loc[min_idx, 'SimulatedStrike']
-        min_iv = daily_df.loc[min_idx, 'IntrinsicValue_M']
+        min_strike, min_iv = max_pain_point(daily_df)
 
         # Calculate premium/discount %
         premium_pct = ((underlying - min_strike) / min_strike) * 100
