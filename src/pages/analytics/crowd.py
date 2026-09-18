@@ -387,21 +387,7 @@ def layout(**kwargs):
                         id='crowd_breadth_help',
                         style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                'fontStyle': 'italic', 'marginBottom': '4px'})),
-                ], xs=12, md=True),
-                # The universe toggle sits beside the caption on a desktop and
-                # under it on a phone, where a side column squeezed the caption
-                # into a strip of one word per line.
-                dbc.Col([
-                    dbc.RadioItems(
-                        persistence='session',
-                        id='crowd_fomo_universe',
-                        options=[{"label": name, "value": key}
-                                 for key, (_sym, name) in breadth_panel.UNIVERSES.items()],
-                        value=breadth_panel.DEFAULT_UNIVERSE,
-                        inline=True,
-                        style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.8rem"},
-                    ),
-                ], xs=12, md="auto", className="mb-2 mb-md-0"),
+                ], xs=12),
             ], className="mt-4", align="center"),
             dbc.Row([
                 dbc.Col(html.Div(id='crowd_breadth_container'), width=12),
@@ -414,11 +400,10 @@ def layout(**kwargs):
     Output('crowd_breadth_container', 'children'),
     Output('crowd_breadth_caption', 'children'),
     Output('crowd_breadth_help', 'children'),
-    [Input('crowd_fomo_universe', 'value'),
-     Input('session_palette_theme_asset_store', 'data'),
+    [Input('session_palette_theme_asset_store', 'data'),
      Input('crowd_date_selector', 'value')],
 )
-def render_breadth(universe, palette_name, target_date):
+def render_breadth(palette_name, target_date):
     """The daily panel, on the board's palette. A series the store cannot serve
     draws nothing and says so in the caption, the tape-context rule.
 
@@ -428,7 +413,7 @@ def render_breadth(universe, palette_name, target_date):
     so the two agree about which week is on screen.
     """
     cut = breadth_panel.cut_date(target_date, _newest_report_date())
-    r, awaiting = breadth_panel.read(universe, cut)
+    r, awaiting = breadth_panel.read(cut)
     if r is None:
         return (html.Div(), breadth_panel.caption(None, awaiting),
                 breadth_panel.help_text())

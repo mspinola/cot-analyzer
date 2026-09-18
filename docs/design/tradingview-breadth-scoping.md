@@ -343,6 +343,12 @@ Recorded rather than rewritten above, so the reasoning stays legible.
   wrong day.
 - **The wrapper is invoked `cmd //c`**, doubled slash, because the routine's Bash tool is
   Git Bash and rewrites a lone `/c`. Found on the first supervised run.
+- **No universe toggle, and the S&P 500 FOMO series is not drawn.** The panel shipped with
+  a Nasdaq / S&P 500 switch, mirroring the Pine script's dropdown, and lost it the next day:
+  rulebook M-07 defines FOMO on Nasdaq stocks and its zones were read off that series,
+  nothing in the corpus or the agi importer uses the S&P variant, and the two universes sit
+  apart (45 against 36 on 2026-09-17), so drawing S5FD against Nasdaq-calibrated bands would
+  be an untested extension wearing the guide's labels. `SPX_FOMO_5D` stays in the store.
 - **The panel honours the board's date selector only when the reader has gone back in
   time.** The selector defaults to the newest COT Tuesday, which for a daily panel is up to
   a week stale; the newest report means "now".

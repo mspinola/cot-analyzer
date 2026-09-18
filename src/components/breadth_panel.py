@@ -49,14 +49,16 @@ from components.plot_colors import hex_to_rgba
 # zone visits and the regime flips around them without the line turning to noise.
 SESSIONS = 60
 
-# The two FOMO universes the source names: the Nasdaq Composite is the default (the
-# Pine script's own default, and the universe the rulebook's zones were written on).
-UNIVERSES = {
-    "nasdaq": ("NASDAQ_FOMO_5D", "Nasdaq Composite"),
-    "spx": ("SPX_FOMO_5D", "S&P 500"),
-}
-DEFAULT_UNIVERSE = "nasdaq"
+# Nasdaq for both series, and only Nasdaq. Rulebook M-07 defines FOMO on Nasdaq
+# stocks and its zones were read off that series; the S&P 500 variant (S5FD, in the
+# store as SPX_FOMO_5D) exists only as a dropdown in the Pine script, and nothing in
+# the corpus, the call notes or the agi importer uses it. Drawing it against
+# Nasdaq-calibrated bands would be an untested extension wearing the guide's labels,
+# so the panel does not offer it (it did, for a day). M-01's net new highs are Nasdaq
+# by the author's explicit choice: the liquidity-sensitive names under the surface.
+FOMO = ("NASDAQ_FOMO_5D", "Nasdaq Composite")
 NET_HIGHS = ("NASDAQ_NH52W", "NASDAQ_NL52W")
+SYMBOLS = (FOMO[0],) + NET_HIGHS
 
 # How far the last session may trail the board's week before the caption says so.
 # A weekend plus a holiday is four days; five means the routine missed a night.
@@ -72,7 +74,6 @@ GAP_MARKER_SIZE = 3
 @dataclass(frozen=True)
 class BreadthRead:
     """What the panel draws: the trailing window of both series and their labels."""
-    universe: str
     fomo: pd.Series
     zones: pd.Series
     net: pd.Series
@@ -125,8 +126,8 @@ def _close(symbol, get_bars):
     return s.sort_index()
 
 
-def build_read(universe, get_bars=None, target_date=None, sessions=SESSIONS):
-    """The read for one universe, or None when either series is absent.
+def build_read(get_bars=None, target_date=None, sessions=SESSIONS):
+    """The read, or None when any of the three series is absent.
 
     The zone and regime classifiers run over the FULL series before the window is
     cut, because the recovery test and the three-day rule look back past the first
@@ -134,8 +135,7 @@ def build_read(universe, get_bars=None, target_date=None, sessions=SESSIONS):
     panel agrees with the week the board shows.
     """
     get_bars = get_bars or _get_bars
-    fomo_symbol = UNIVERSES[universe][0]
-    fomo = _close(fomo_symbol, get_bars)
+    fomo = _close(FOMO[0], get_bars)
     highs = _close(NET_HIGHS[0], get_bars)
     lows = _close(NET_HIGHS[1], get_bars)
     if fomo is None or highs is None or lows is None:
@@ -151,7 +151,6 @@ def build_read(universe, get_bars=None, target_date=None, sessions=SESSIONS):
     regime = ind.net_highs_regime(net)
     tail = slice(-sessions, None)
     return BreadthRead(
-        universe=universe,
         fomo=fomo.iloc[tail], zones=zones.iloc[tail],
         net=net.iloc[tail], regime=regime.iloc[tail],
         highs=highs.reindex(net.index).iloc[tail],
@@ -160,24 +159,22 @@ def build_read(universe, get_bars=None, target_date=None, sessions=SESSIONS):
 
 
 @functools.lru_cache(maxsize=16)
-def _cached_read(universe, target_date, stamp):
+def _cached_read(target_date, stamp):
     if stamp is None or None in stamp:
         return None
     try:
-        return build_read(universe, target_date=target_date)
+        return build_read(target_date=target_date)
     except Exception as e:  # noqa: BLE001 -- one missing series must not take the page
-        utils.cot_logger.warning(f"breadth panel: no read for {universe}: {e}")
+        utils.cot_logger.warning(f"breadth panel: no read: {e}")
         return None
 
 
-def read(universe=DEFAULT_UNIVERSE, target_date=None):
+def read(target_date=None):
     """`(read, awaiting)`: the BreadthRead, or None with the symbols the store
     cannot serve."""
-    universe = universe if universe in UNIVERSES else DEFAULT_UNIVERSE
-    symbols = (UNIVERSES[universe][0],) + NET_HIGHS
-    r = _cached_read(universe, target_date, _stamp(symbols))
+    r = _cached_read(target_date, _stamp(SYMBOLS))
     if r is None:
-        return None, list(symbols)
+        return None, list(SYMBOLS)
     return r, []
 
 
@@ -192,8 +189,7 @@ def cut_date(target_date, newest_report_date):
 
 def warm():
     """Fill the cache for the boot warmer. Swallowing is the warmer's own rule."""
-    for universe in UNIVERSES:
-        _cached_read(universe, None, _stamp((UNIVERSES[universe][0],) + NET_HIGHS))
+    _cached_read(None, _stamp(SYMBOLS))
 
 
 # ── drawing ───────────────────────────────────────────────────────────────────
@@ -234,7 +230,6 @@ def _runs(labels):
 
 def build_figure(r, colors, background=vc.BACKGROUND_COLOR):
     """The two panels, pure over a BreadthRead and a colour set."""
-    universe_name = UNIVERSES[r.universe][1]
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.10,
                         row_heights=[0.58, 0.42])
     x0, x1 = r.fomo.index.min(), max(r.fomo.index.max(), r.net.index.max())
@@ -294,7 +289,7 @@ def build_figure(r, colors, background=vc.BACKGROUND_COLOR):
         font=dict(color=vc.TEXT_COLOR, size=11),
         hoverlabel=dict(bgcolor="#0e1116", font=dict(color=vc.HOVER_TEXT_COLOR)),
         annotations=list(fig.layout.annotations) + [
-            dict(text=f"FOMO, {universe_name}: % above 5-day average", xref="paper",
+            dict(text=f"FOMO, {FOMO[1]}: % above 5-day average", xref="paper",
                  yref="paper", x=0, y=1.07, xanchor="left", showarrow=False,
                  font=dict(size=10, color=colors.dim)),
             dict(text="Nasdaq net new 52-week highs", xref="paper", yref="paper",
@@ -326,15 +321,17 @@ def caption(r, awaiting=(), report_date=None):
         gap = (pd.Timestamp(report_date) - pd.Timestamp(r.date)).days
         if gap > STALE_AFTER_DAYS:
             stale = f" The panel trails the board: last session {r.date}."
-    return (f"Breadth as of the {r.date} session: FOMO ({UNIVERSES[r.universe][1]}) "
+    return (f"Breadth as of the {r.date} session: FOMO ({FOMO[1]}) "
             f"{r.latest:.0f}, {zone}; {trend}. Daily, against the published zones; "
             f"context, not a signal.{stale}")
 
 
 def help_text():
     return (
-        "FOMO is the share of the index's stocks closing above their own 5-day "
-        "average, as TradingView publishes it. It is drawn daily because its zone "
+        "FOMO is the share of Nasdaq Composite stocks closing above their own 5-day "
+        "average, as TradingView publishes it; the rulebook defines it on Nasdaq and its "
+        "zones were read off that series, so no other universe is offered. It is drawn "
+        "daily because its zone "
         "visits last a session at a time and the board's weekly frame sees one in "
         f"five of them. The bands are the June 2026 Swing Trading Guide's zones: above "
         f"{ind.FOMO_EXHAUSTION_MIN:.0f} buying exhaustion (the crowd chasing, in the "
