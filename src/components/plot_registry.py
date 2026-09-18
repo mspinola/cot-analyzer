@@ -321,7 +321,8 @@ MAX_PAIN_HINT = _hint(
     "Dashed lines: payout at the current price vs at max pain; the arrow is the gap.",
     "Reading: a large gap means the market is far from where writers want it to",
     "settle, so watch for price drifting toward the star into expiry.",
-    "Quoted on the ETF named in the title, which may be a proxy for the future.",
+    "Quoted on the ETF named in the title, which may be a proxy for the future,",
+    "on its nearest open standard monthly expiry.",
 )
 
 MAX_PAIN_HISTORICAL_HINT = _hint(
@@ -329,9 +330,10 @@ MAX_PAIN_HISTORICAL_HINT = _hint(
     "max-pain strike, in %.",
     "Line (right axis): delta IV, the extra payout at the current price versus",
     "at max pain. A large delta is pressure toward the strike into expiry.",
-    "Each snapshot uses the nearest expiry more than 3 days out, so the series",
-    "can change expiry as chains roll; a jump can be a roll artifact rather than",
-    "positioning drift. The title names only the latest expiry.",
+    "Each snapshot is taken on the nearest open standard monthly expiry (the",
+    "chain that carries the open interest), so the series rolls once a month;",
+    "a jump on a roll is an expiry change, not positioning drift. The title names",
+    "only the latest expiry. Snapshots before 2026-09-18 used the nearest weekly.",
 )
 
 
@@ -436,12 +438,14 @@ BASIS_OVERLAY_SPEC = {s.id: s.overlay for s in _SPECS if s.overlay is not None}
 # default stack once its empty state was traced to a reader pinned at the
 # pre-move history path (fixed alongside cotmetrics#40) rather than a broken
 # producer. The premium/discount history stays opt-in for a different reason:
-# each snapshot targets the nearest expiry more than 3 days out, so the bar
-# series mixes expiries as they roll (several times a week on ETFs with weekly
-# chains) while the title names only the latest one -- a day-over-day move can
-# be a roll artifact rather than positioning drift. Until the series is pinned
-# to a stable expiry, it is a panel the reader opts into, not one the default
-# stack vouches for. Registry-level so the stack pages cannot disagree about it.
+# the bar series mixes expiries as they roll while the title names only the
+# latest one, so a day-over-day move can be a roll artifact rather than
+# positioning drift. Since cotmetrics 0.14.0 each snapshot targets the nearest
+# open standard monthly, so the roll is monthly rather than several times a
+# week, but the stored history before 2026-09-18 is still on the weeklies and
+# the series has yet to accumulate a stretch on one expiry. Until it has, it is
+# a panel the reader opts into, not one the default stack vouches for.
+# Registry-level so the stack pages cannot disagree about it.
 DEFAULT_OFF_PLOTS = frozenset({"max_pain_historical"})
 
 BASIS_INVARIANT_NOTE = {s.id: s.invariant_note for s in _SPECS

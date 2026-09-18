@@ -60,6 +60,11 @@ Parquet is used for dense, columnar storage of historical data, optimizing read 
 4.  **`data_cache/options/{Symbol}_options_history.parquet`**
     - *Purpose*: Historical options data used for max pain and strike analysis.
     - *Schema*: `Date`, `Expiry`, `UnderlyingPrice`, `SimulatedStrike`, `IntrinsicValue_M`, `MaxPainStrike`, `ETF_Proxy`.
+    - Since cotmetrics 0.14.0 the snapshot is taken on the nearest open standard monthly expiry (the chain that carries the open interest); rows before 2026-09-18 are on the nearest weekly.
+
+5.  **`data_cache/options/{Symbol}_options_strikes.parquet`** (since cotmetrics 0.14.0, 2026-09-18)
+    - *Purpose*: the same day's chain on its real strikes, calls and puts apart. `CallPayout_M + PutPayout_M` is the curve above evaluated at the strike; what this adds is the split and the ladder itself, neither of which the summed 200-point grid keeps. Days before it have no rows and nothing backfills them. Not yet read by any panel.
+    - *Schema*: `Date`, `Expiry`, `UnderlyingPrice`, `Strike` (curve units), `EtfStrike` (as listed), `CallOI`, `PutOI`, `CallPayout_M`, `PutPayout_M`, `ETF_Proxy`.
 
 **B. Metadata Store (SQLite Relational DB)**
 `data/cftc_database.db` serves as a lightweight relational store.
