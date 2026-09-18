@@ -70,7 +70,7 @@ markers_intro_md = textwrap.dedent("""
 workflows_md = textwrap.dedent("""
     1. The Top-Down Scan (Using the Heatmap)
         * Start your weekend analysis on the **Heatmap** page, then pick a Lookback Window and toggle the Asset Classes you care about.
-        * The grid shows both gates side by side: **Raw CLS 95/5** (net contracts, Commercial + Non-Commercial + Non-Reportable) and **NPF CS 80/20** (net / open interest, Commercial + Non-Reportable). A cell lights up green or red when that leg qualifies under its own model's band.
+        * The grid shows both gates side by side: **Raw 3-leg 95/5** (net contracts, Commercial + Non-Commercial + Non-Reportable) and **NPF 2-leg 80/20** (net / open interest, Commercial + Non-Reportable). A cell lights up green or red when that leg qualifies under its own model's band.
         * Scan the Tape Bias and Signals columns for markets where a setup is already firing, then read across to see whether both gates agree.
         * A row with Commercials lit green and the speculator legs lit red is a market ripe for a **bullish reversal**.
 
