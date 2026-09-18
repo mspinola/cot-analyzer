@@ -180,6 +180,27 @@ def test_a_palette_that_predates_a_slot_is_padded_rather_than_raising():
     assert len(viz_config._padded([])) == len(viz_config.PALETTE_SLOTS)
 
 
+def test_palette_slots_match_leg_labels():
+    """The three positioning slots and the app-wide leg labels are the same three CFTC
+    names spelled in two modules (viz_config cannot import viz_constants without
+    dragging cotmetrics into a config loader). A legend and its palette slot must agree,
+    so the two spellings are pinned to each other, and both to the CFTC's own names."""
+    import viz_config
+    assert viz_config.PALETTE_SLOTS[:3] == vc.LEG_LABELS_BY_SLOT
+    assert vc.LEG_LABELS_BY_SLOT == ("Commercial", "Non-Commercial", "Non-Reportable")
+
+
+def test_leg_vocabulary_has_left_the_cmr_names_behind():
+    """Every leg name a page can render comes from one of three tables, and none of
+    them may say Large Specs, Small Traders or Small Specs: those were CMR's aliases
+    for the CFTC categories and the app now names the categories."""
+    rendered = (list(vc.LEG_LABELS.values()) + list(vc.LEG_NAMES.values())
+                + list(vc.LEG_SHORT.values()))
+    for text in rendered:
+        for stale in ("Large", "Small", "Spec"):
+            assert stale not in text, text
+
+
 def test_volatility_owns_the_sixth_slot_rather_than_borrowing_one():
     import components.exposure_traces as et
     import viz_config
@@ -194,7 +215,7 @@ def test_title_hint_rides_on_the_matching_subplot_title():
     from plotly.subplots import make_subplots
 
     ids = ["index", "max_pain", "lrg_sentiment"]
-    titles = ["Positioning Index", "Options Max Pain (Gold via GLD)", "Large Trader Sentiment"]
+    titles = ["Positioning Index", "Options Max Pain (Gold via GLD)", "Non-Commercial Sentiment"]
     fig = make_subplots(rows=3, cols=1, subplot_titles=titles)
     reg.apply_title_hints(fig, ids)
 

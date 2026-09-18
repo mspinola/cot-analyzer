@@ -28,11 +28,17 @@ import viz_constants as vc
 from components import class_filter, config_fold, controls
 from components.plot_colors import GridColors, grid_colors  # noqa: F401
 
+# Grid headers use the CFTC column prefixes; the `field` keys stay the Signal Matrix's
+# own column names, which cotmetrics.reports mints.
+COMM_SHORT, LRG_SHORT, SML_SHORT = (vc.LEG_SHORT[vc.LEG_COMM],
+                                    vc.LEG_SHORT[models.LEG_LARGE],
+                                    vc.LEG_SHORT[models.LEG_SMALL])
+
 dash.register_page(
     __name__, path="/heatmap",
     title='COT Signal Matrix Heatmap | COT Analyzer',
     description='Scan every futures market\'s COT positioning at a glance: '
-                'Commercial and Speculator indexes, momentum, dollar risk '
+                'Commercial, Non-Commercial and Non-Reportable indexes, momentum, dollar risk '
                 'percentile and cost basis, updated weekly.',
 )
 
@@ -56,8 +62,8 @@ SETUP_FILTER_NEAR = "near"
 # from this union: the grid has no block for it (its legs are the normalized columns
 # already shown, under a tighter band), and a verdict the grid does not display must
 # not decide which rows survive the filter. Full CLS setups are CS setups anyway (95/5
-# sits inside 80/20 and the extra Large-leg clause only narrows), so what the union
-# forgoes is only the CLS near tier, which can fire off the Large leg alone.
+# sits inside 80/20 and the extra Non-Commercial clause only narrows), so what the union
+# forgoes is only the CLS near tier, which can fire off the Non-Commercial leg alone.
 _FILTER_STATES = {
     SETUP_FILTER_GATE: frozenset(const.SETUP_FULL_STATES),
     SETUP_FILTER_NEAR: frozenset(const.SETUP_FULL_STATES + const.SETUP_NEAR_STATES),
@@ -335,7 +341,7 @@ def setup_styles_for(state_col, role, high_val, low_val, colors,
 
     # An equity setup is decided by Commercials alone, so its spec legs can sit
     # anywhere. Washing one that disagrees would colour a cell against its own
-    # value: DOW is a bear setup whose Small Specs sit at 64, and a red mid-range
+    # value: DOW is a bear setup whose Non-Reportables sit at 64, and a red mid-range
     # cell invites being read as a bearish extreme. Commodity rows are unaffected,
     # since a full state already required every leg through its gate.
     if role == "comm":
@@ -435,17 +441,17 @@ def attach_spec_risk(df, newest_date):
 
 #: How far under water is worth lighting, in the market's own weekly sigma. A DISPLAY
 #: threshold, deliberately rounder than any figure in the study behind the measure: the
-#: pooled tenth percentile of Large Spec readings is about -1.7 and the per-market median
+#: pooled tenth percentile of Non-Commercial readings is about -1.7 and the per-market median
 #: cutoff about -1.4, so -2 lights a genuinely unusual reading without implying the grid
 #: reproduces a statistic. Only the losing tail is lit; a cohort deep in PROFIT is not
 #: distress, and the measure is not symmetric in what it says.
 OFFSIDE_DEEP = -2.0
 
-#: The cohort this column reads. Large Specs alone, NOT the large+small `LEG_SPEC` the
+#: The cohort this column reads. Non-Commercial alone, NOT the summed `LEG_SPEC` the
 #: dollar-risk column uses, and the difference is not cosmetic: a basis computed on the
 #: summed net describes a trader who is both cohorts at once, and the two have different
 #: average costs and behave differently when under water (measured in
-#: `npf/docs/handoffs/2026-08-23-offside-capitulation-prereg.md`). Large Specs is also
+#: `npf/docs/handoffs/2026-08-23-offside-capitulation-prereg.md`). Non-Commercial is also
 #: the cohort every published figure for this measure is quoted on.
 OFFSIDE_LEG = exposure.LEG_LARGE
 
@@ -681,16 +687,16 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             # The two blocks mirror the two npf books. Raw/all-three-legs/95-5 is the
-            # Raw PF baseline (Raw CLS 95/5); OI-normalized/Comm+Small/80-20 is
-            # NPF CS 80/20, the deployable headline. Large Specs is absent from the
+            # Raw PF baseline (Raw CLS 95/5); OI-normalized/Comm+NonRept/80-20 is
+            # NPF CS 80/20, the deployable headline. Non-Commercial is absent from the
             # second block because the CS gate drops that leg -- showing it here would
             # invite reading a column the book does not gate on.
             "headerName": f"Positioning · {models.RAW_PF.title}",
             "presetTags": (PRESET_POSITIONING,),
             "children": [
-                {"field": "Comm Index", "headerTooltip": f"Williams Commercial Index, on net contracts. The C leg of the {models.RAW_PF.title} gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_styles}},
-                {"field": "Lrg Index", "headerTooltip": f"Large Speculators positioning index, on net contracts. The L leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}},
-                {"field": "Sml Index", "headerTooltip": f"Small Traders positioning index, on net contracts. The S leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                {"field": "Comm Index", "headerName": f"{COMM_SHORT} Index", "headerTooltip": f"Williams Commercial Index, on net contracts. The C leg of the {models.RAW_PF.title} gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_styles}},
+                {"field": "Lrg Index", "headerName": f"{LRG_SHORT} Index", "headerTooltip": f"Non-Commercial positioning index, on net contracts. The L leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}},
+                {"field": "Sml Index", "headerName": f"{SML_SHORT} Index", "headerTooltip": f"Non-Reportable positioning index, on net contracts. The S leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
             ]
         },
         {
@@ -699,8 +705,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             # Wider than the default 90: this group is only two columns, so it gets the
             # least room to flex into and the header is the longest of the two blocks.
             "children": [
-                {"field": "Comm Index Norm", "headerName": "Comm Index", "minWidth": 115, "headerTooltip": "Williams Commercial Index built on net / open interest, so contract-size growth is out of the level. The C leg of the NPF CS gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_norm_styles}},
-                {"field": "Sml Index Norm", "headerName": "Sml Index", "minWidth": 115, "headerTooltip": "Small Traders positioning index built on net / open interest. The S leg of the NPF CS gate, coloured only when opposed to Commercials", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_norm_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                {"field": "Comm Index Norm", "headerName": f"{COMM_SHORT} Index", "minWidth": 115, "headerTooltip": "Williams Commercial Index built on net / open interest, so contract-size growth is out of the level. The C leg of the NPF CS gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_norm_styles}},
+                {"field": "Sml Index Norm", "headerName": f"{SML_SHORT} Index", "minWidth": 115, "headerTooltip": "Non-Reportable positioning index built on net / open interest. The S leg of the NPF CS gate, coloured only when opposed to Commercials", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_norm_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
             ]
         },
         {
@@ -709,6 +715,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             "children": [
                 {
                     "field": "Comm Move",
+                    "headerName": f"{COMM_SHORT} Move",
                     "headerTooltip": f"Commercial {vc.MOMENTUM_UNIT_PHRASE}",
                     "valueFormatter": {"function": "d3.format(',.0f')(params.value)"},
                     "cellRenderer": "MomentumRenderer",
@@ -720,7 +727,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
                 },
                 {
                     "field": "Lrg Move",
-                    "headerTooltip": f"Large Speculator {vc.MOMENTUM_UNIT_PHRASE}",
+                    "headerName": f"{LRG_SHORT} Move",
+                    "headerTooltip": f"Non-Commercial {vc.MOMENTUM_UNIT_PHRASE}",
                     "valueFormatter": {"function": "d3.format(',.0f')(params.value)"},
                     "cellRenderer": "MomentumRenderer",
                     "cellRendererParams": {
@@ -731,7 +739,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
                 },
                 {
                     "field": "Sml Move",
-                    "headerTooltip": f"Small Trader {vc.MOMENTUM_UNIT_PHRASE}",
+                    "headerName": f"{SML_SHORT} Move",
+                    "headerTooltip": f"Non-Reportable {vc.MOMENTUM_UNIT_PHRASE}",
                     "valueFormatter": {"function": "d3.format(',.0f')(params.value)"},
                     "cellRenderer": "MomentumRenderer",
                     "cellRendererParams": {
@@ -751,11 +760,11 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
                 {"field": "WILLCO", "headerTooltip": "Williams Commercial Index (Thresholds: <= 20 Bearish / >= 80 Bullish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": willco_styles}},
                 # minWidth 110, not the default 90: at 90 the header wraps mid-word
                 # ("Sentim / ent"), and wrapHeaderText cannot know where the word breaks.
-                {"field": "Inst Sentiment", "minWidth": 110, "headerTooltip": "Institutional Speculator Sentiment (Thresholds: <= 20 Bullish / >= 80 Bearish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": inst_sentiment_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                {"field": "Inst Sentiment", "headerName": f"{LRG_SHORT} Sentiment", "minWidth": 110, "headerTooltip": "Williams LATE index on the Non-Commercial leg (Thresholds: <= 20 Bullish / >= 80 Bearish)", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": inst_sentiment_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
             ]
         },
         {
-            "headerName": "Exposure · Speculators",
+            "headerName": "Exposure · Non-Commercial + Non-Reportable",
             "presetTags": (PRESET_RISK,),
             "children": [
                 {
@@ -788,11 +797,12 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         },
         {
             # Its own group rather than a third column under Exposure, because it reads a
-            # different cohort (Large Specs, not Large+Small) and answers the opposite
+            # different cohort (Non-Commercial alone, not Non-Commercial + Non-Reportable)
+            # and answers the opposite
             # question. Exposure is about SIZE; this is about P&L per contract, and the
             # two move independently: a cohort can be at a record position and in profit,
             # which is in fact the common case.
-            "headerName": "Cost Basis · Large Specs",
+            "headerName": f"Cost Basis · {vc.LEG_LABELS[models.LEG_LARGE]}",
             "presetTags": (PRESET_RISK,),
             "children": [
                 {

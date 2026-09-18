@@ -23,7 +23,10 @@ _VIZ_CONFIG_PATH = Path(
 #: so this tuple is the only place the association is written down; every page indexes
 #: `palette[n]` against it. Order is load-bearing and slots are append-only: renumbering
 #: one would silently repaint every chart in the app.
-PALETTE_SLOTS = ("Commercials", "Large Specs", "Small Traders", "Price",
+#: The three positioning slots carry the CFTC Legacy report's category names, the same
+#: spelling as `viz_constants.LEG_LABELS` (kept as literals here so this module stays
+#: free of cotmetrics imports; `test_palette_slots_match_leg_labels` pins the two).
+PALETTE_SLOTS = ("Commercial", "Non-Commercial", "Non-Reportable", "Price",
                  "Open Interest", "Volatility")
 
 _DEFAULT_PALETTE = ["#e70307", "#0000ff", "#ffff00", "#00FF00", "#E2E8F0", "#ff00ff"]

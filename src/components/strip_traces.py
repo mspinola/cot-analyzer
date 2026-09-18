@@ -19,12 +19,12 @@ normalization: how far from neutral, and which way. It also makes the neutral ma
 recede on its own, since a market sitting near 50 draws almost no ink.
 
 **Every leg the model gates on, not one collapsed "speculator" series.** Those reports
-show a single series, usually the mirror of Commercials, which quietly folds Small
-Traders into the speculator leg (the Legacy legs sum to zero, so the mirror of
-Commercials is Large PLUS Non-Reportable). This app has kept the legs apart everywhere
-else and the gates read them separately, so the strip asks the model which legs it
-gates on and draws exactly those. NPF's CS gate has no Large Spec leg, and no Large
-Spec marker appears on the NPF strip.
+show a single series, usually the mirror of Commercials, which quietly folds
+Non-Reportables into the speculator leg (the Legacy legs sum to zero, so the mirror of
+Commercials is Non-Commercial PLUS Non-Reportable). This app has kept the legs apart
+everywhere else and the gates read them separately, so the strip asks the model which
+legs it gates on and draws exactly those. NPF's CS gate has no Non-Commercial leg, and
+no Non-Commercial marker appears on the NPF strip.
 
 **Colour comes from the ROW's setup state, not from each value's own level.** Same rule
 the Heatmap's index cells follow, and for the same reason: a positioning index only
@@ -67,7 +67,7 @@ from components.plot_colors import hex_to_rgba
 # frame columns, and this draws from the Signal Matrix, which has already renamed and
 # rounded them.
 #
-# NPF has no Large Spec entry because its CS gate does not read that leg. NPF CLS 95/5
+# NPF has no Non-Commercial entry because its CS gate does not read that leg. NPF CLS 95/5
 # reads all three on the same normalized family, which is why the matrix carries
 # "Lrg Index Norm" at all. test_strip_traces holds this table to `models.MODELS` so a
 # new model fails loudly here rather than silently drawing a leg short.
@@ -116,14 +116,11 @@ OTHER_BASIS_COLUMN = {
     models.NPF_CLS_95_5.key: "Comm Index",
 }
 
-LEG_LABELS = {
-    "comm": "Commercials",
-    models.LEG_LARGE: "Large Specs",
-    models.LEG_SMALL: "Small Traders",
-}
+# The CFTC names, spelled once in viz_constants; the "comm" key is vc.LEG_COMM.
+LEG_LABELS = vc.LEG_LABELS
 
 # The app-wide leg colours, by palette slot. Every stacked panel in plot_traces draws
-# Commercials from slot 0, Large Specs from 1 and Small Specs from 2, so a reader
+# Commercial from slot 0, Non-Commercial from 1 and Non-Reportable from 2, so a reader
 # arriving from the Graphs or OI Alignment pages already knows what blue and yellow are.
 # The strip used one grey for both legs before this, which made its ticks the only place
 # in the app where leg identity was not a colour.

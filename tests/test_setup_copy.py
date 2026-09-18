@@ -1,7 +1,7 @@
 """Positioning prose has to agree with the gate that produced the verdict.
 
 The copy used to be one fixed set of sentences describing the Raw PF three-leg gate.
-That was false under NPF, whose CS gate never reads the Large Spec leg, and it was
+That was false under NPF, whose CS gate never reads the Non-Commercial leg, and it was
 already false for equity index contracts under either model, since those gate on
 Commercials alone and their speculator legs may sit anywhere.
 """
@@ -21,8 +21,8 @@ def _all(model, is_equity=False):
 # ── the leg set ───────────────────────────────────────────────────────────────
 
 def test_each_model_names_exactly_the_legs_its_gate_reads():
-    assert vc.setup_legs(models.RAW_PF) == ["Large Speculators", "Small Traders"]
-    assert vc.setup_legs(models.NPF) == ["Small Traders"]
+    assert vc.setup_legs(models.RAW_PF) == ["Non-Commercials", "Non-Reportables"]
+    assert vc.setup_legs(models.NPF) == ["Non-Reportables"]
 
 
 def test_equities_name_no_speculator_legs_under_any_model():
@@ -34,19 +34,19 @@ def test_equities_name_no_speculator_legs_under_any_model():
 
 
 def test_npf_copy_never_mentions_the_leg_it_does_not_gate_on():
-    """The whole point. NPF's CS gate drops Large Specs, so no NPF sentence may claim
-    anything about them."""
+    """The whole point. NPF's CS gate drops Non-Commercials, so no NPF sentence may
+    claim anything about them."""
     for text in _all(models.NPF) + _all(models.NPF, is_equity=True):
-        assert "Large Spec" not in text
+        assert "Non-Commercial" not in text
 
 
 def test_equity_copy_never_asserts_speculator_crowding():
     """This was already wrong before NPF existed: DOW is a bear setup on Commercials
-    alone while its Small Specs sit mid-range, and the old text said they were
+    alone while its Non-Reportables sit mid-range, and the old text said they were
     heavily accumulated."""
     for m in models.MODELS:
         for text in _all(m, is_equity=True):
-            assert "Large Spec" not in text and "Small Trader" not in text
+            assert "Non-Commercial" not in text and "Non-Reportable" not in text
             assert "does not gate equity index setups" in text
 
 
@@ -88,10 +88,10 @@ def test_no_doubled_conjunction_or_empty_slots():
 
 
 def test_a_single_leg_gate_does_not_say_at_least_one_of():
-    """"at least one of Small Traders" is not a sentence."""
+    """"at least one of Non-Reportables" is not a sentence."""
     t = vc.positioning_tooltip(const.SETUP_NEAR_BULL, models.NPF)
     assert "at least one of" not in t
-    assert "with Small Traders also within" in t
+    assert "with Non-Reportables also within" in t
 
 
 def test_a_two_leg_gate_does_say_both():

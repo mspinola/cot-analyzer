@@ -26,6 +26,7 @@ three are failures of the printed reference it was built from:
 - whether a retired constituent is truncating the series
 - that positioning is as-of Tuesday and published the following Friday
 """
+import cotmetrics.models as models
 import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
@@ -53,14 +54,16 @@ dash.register_page(
 ordinal = exposure_traces.ordinal
 
 #: Short labels for the CONTROL only. The prose keeps `exposure.LEG_LABELS`, where
-#: "Speculators (Large + Small)" is worth its length because a reader meeting the total
-#: for the first time needs to know what is in it. In a 180px select it is three words
-#: of ellipsis, and the composition line under the headline names the two halves anyway.
+#: "Speculators (Non-Commercial + Non-Reportable)" is worth its length because a reader
+#: meeting the total for the first time needs to know what is in it. In a 180px select
+#: it is three words of ellipsis, and the composition line under the headline names the
+#: two halves anyway. The three report legs take the app-wide CFTC labels; `exposure`
+#: keys its legs differently from `models`, so the map is spelled per key here.
 LEG_SHORT = {
     exposure.LEG_SPEC: "Speculators",
-    exposure.LEG_COMM: "Commercials",
-    exposure.LEG_LARGE: "Large Specs",
-    exposure.LEG_SMALL: "Small Traders",
+    exposure.LEG_COMM: vc.LEG_LABELS[vc.LEG_COMM],
+    exposure.LEG_LARGE: vc.LEG_LABELS[models.LEG_LARGE],
+    exposure.LEG_SMALL: vc.LEG_LABELS[models.LEG_SMALL],
 }
 
 LEG_OPTIONS = [{"label": LEG_SHORT[k], "value": k}
@@ -568,7 +571,7 @@ def lens_line(agg, unit, when=None, ranks=None):
     """What the raw contract count says about the same week, when it disagrees.
 
     The reason this is worth a line rather than a footnote: on the week it was written
-    Large Specs in Silver sat at the 45th percentile on contracts and the 98th on
+    Non-Commercials in Silver sat at the 45th percentile on contracts and the 98th on
     dollar risk, and 12 of the 43 priceable markets disagreed about whether the leg was
     at a 90/10 extreme at all. The gap is not a second opinion about positioning, it is
     positioning multiplied by price and volatility, so a reader who only ever sees the
@@ -611,7 +614,7 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
 
     Two facts, both invisible in a sum and both measured rather than suspected.
 
-    The leg split, when the drawn leg is Speculators. Large and Small sit on OPPOSITE
+    The leg split, when the drawn leg is Speculators. Non-Commercials and Non-Reportables sit on OPPOSITE
     sides 59% of weeks, and the sign of their total disagrees with one of them about a
     third of the time. So the page can say CROWDED LONG on a week where one of the two
     groups inside that number is short, which is what it did before this line existed.
@@ -632,7 +635,7 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
 
     bits = []
     # Only where the leg IS the sum of those two. The figure draws companions under
-    # every leg, but Large and Small are the rest of the report beneath Commercials, not
+    # every leg, but Non-Commercials and Non-Reportables are the rest of the report beneath Commercials, not
     # what Commercials is made of, and calling them its halves would describe an
     # arithmetic that does not exist.
     parts = (part_frames or {}) if leg in exposure_traces.LEG_PARTS else {}
@@ -665,7 +668,7 @@ def composition_line(agg, unit, leg, part_frames=None, when=None,
     # Concentration is a fact about a SET. With one market selected it can only say
     # that market is 100% of itself and that 1 of 1 markets point the same way, which
     # is true, uninformative, and reads as a page not looking at its own controls. The
-    # leg split above stays, because Large against Small is a real disagreement inside
+    # leg split above stays, because Non-Commercial against Non-Reportable is a real disagreement inside
     # one market's number.
     if len(shares) > 1:
         gross = float(sum(abs(v) for v in shares))
@@ -848,7 +851,7 @@ def how_to_read(unit):
         ("The third panel",
          "The other two Legacy groups, whichever one you are looking at. The three sum "
          "to zero every week, so no group moves without another moving against it, but "
-         "no single one determines another either: Large and Small sit on opposite "
+         "no single one determines another either: Non-Commercials and Non-Reportables sit on opposite "
          "sides 59% of weeks. They get their own panel because they are often an order "
          "of magnitude away from the subject, and because the band above belongs to the "
          "subject alone."),

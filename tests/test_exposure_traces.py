@@ -179,7 +179,7 @@ def test_a_percentile_needs_two_years_before_it_says_anything():
 # ── the leg convention and the gaps ───────────────────────────────────────────
 
 def test_the_level_takes_its_colour_from_the_leg_it_draws():
-    """The app-wide slot convention: 0 Commercials, 1 Large Specs, 2 Small Traders.
+    """The app-wide slot convention: 0 Commercial, 1 Non-Commercial, 2 Non-Reportable.
     Drawing a speculator series in the Commercial red would contradict every other page,
     and the reader carries that mapping between them."""
     from cotmetrics.exposure import LEG_COMM, LEG_SMALL, LEG_SPEC
@@ -254,8 +254,8 @@ def test_the_companions_get_their_own_panel_under_the_subject():
                           palette=PALETTE, leg_label="Spec", leg=LEG_SPEC, parts=parts)
     axes = {t.name: (t.yaxis or "y") for t in fig.data}
     assert axes["Spec"] == "y2"
-    assert axes["Large Speculators"] == "y3"
-    assert axes["Small Traders"] == "y3"
+    assert axes["Non-Commercials"] == "y3"
+    assert axes["Non-Reportables"] == "y3"
 
 
 def test_the_companion_panel_gets_its_own_zero_line():
@@ -286,7 +286,7 @@ def test_the_companions_stay_thinner_and_unfilled_even_with_a_panel_of_their_own
     fig = et.build_figure(df, None, unit=et.UNIT_NOTIONAL, colors=COLORS,
                           palette=PALETTE, leg_label="Spec", leg=LEG_SPEC, parts=parts)
     drawn = {t.name: t for t in fig.data}
-    for name in ("Large Speculators", "Small Traders"):
+    for name in ("Non-Commercials", "Non-Reportables"):
         assert drawn[name].fill is None
         assert drawn[name].line.width < drawn["Spec"].line.width
 
@@ -296,7 +296,7 @@ def test_a_part_with_no_data_is_skipped_rather_than_drawn_flat():
     fig = et.build_figure(frame([1e9, 2e9]), None, unit=et.UNIT_NOTIONAL, colors=COLORS,
                           palette=PALETTE, leg_label="Spec", leg=LEG_SPEC,
                           parts={LEG_LARGE: None})
-    assert "Large Speculators" not in [t.name for t in fig.data]
+    assert "Non-Commercials" not in [t.name for t in fig.data]
 
 
 # ── the price axis ────────────────────────────────────────────────────────────
@@ -693,7 +693,7 @@ def test_the_lens_still_draws_without_the_counts():
 def test_the_lens_is_grey_and_not_the_theme_text_colour():
     """It used vc.BRIGHTER_TEXT_COLOR, which is not neutral: viz_constants defines it as
     "#E2E8F0" and then reassigns it to Solarized base3 "#fdf6e3", a warm cream. At 55%
-    on a dark ground that reads as yellow, one panel above Small Traders in amber, so a
+    on a dark ground that reads as yellow, one panel above Non-Reportables in amber, so a
     line that is not a trader group looked like one."""
     import viz_constants as vc
     df = frame([1e9, 2e9, 3e9])

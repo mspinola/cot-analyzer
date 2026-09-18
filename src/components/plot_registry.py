@@ -301,8 +301,8 @@ OI_PCT_HINT = _hint(
 )
 
 LRG_SENTIMENT_HINT = _hint(
-    "Williams' LATE index: large speculator net position scaled 0-100 over a",
-    "fixed 15-week window, not the lookback control.",
+    "Williams' LATE (Large Trader) index: Non-Commercial net position scaled",
+    "0-100 over a fixed 15-week window, not the lookback control.",
     "Contrarian. At or above 80 (red band): funds crowded long late in an",
     "advance. At or below 20 (green band): crowded short.",
 )
@@ -410,7 +410,7 @@ _SPECS = [
     PlotSpec("oi_pct", "Net Position % of OI", _oi_pct,
              secondary_y=SECONDARY_WITH_PRICE,
              invariant_note="already normalized by OI", hint=OI_PCT_HINT),
-    PlotSpec("lrg_sentiment", "Large Trader Sentiment", _lrg_sentiment,
+    PlotSpec("lrg_sentiment", "Non-Commercial Sentiment", _lrg_sentiment,
              secondary_y=SECONDARY_WITH_PRICE, hint=LRG_SENTIMENT_HINT),
 
     PlotSpec("max_pain", "Max Pain Options Curve", _max_pain, needs_asset=True,

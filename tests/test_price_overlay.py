@@ -89,7 +89,7 @@ def test_the_positioning_series_are_untouched():
     fig = pt.get_index_plot(_figure(), df, "comms_idx", "lrg_idx", "sml_idx",
                             1, 1, PALETTE, show_price=True)
 
-    for name in ("Commercials", "Large Specs", "Small Specs"):
+    for name in ("Commercial", "Non-Commercial", "Non-Reportable"):
         traces = _named(fig, name)
         assert traces, name
         assert all(t.visible in (True, None) for t in traces), name

@@ -88,14 +88,14 @@ BAND_HIGH = 0.90
 #: Weeks of history before a percentile or a band says anything. Two years.
 MIN_RANK_PERIODS = 104
 
-#: The app-wide palette-slot convention (see components/plot_traces.py): 0 Commercials,
-#: 1 Large Specs, 2 Small Traders, 3 Price, 4 Open Interest. Drawing a speculator series
+#: The app-wide palette-slot convention (see components/plot_traces.py): 0 Commercial,
+#: 1 Non-Commercial, 2 Non-Reportable, 3 Price, 4 Open Interest. Drawing a speculator series
 #: in the Commercial red would contradict every other page in the app, and the reader
 #: carries that mapping between them.
 #:
-#: LEG_SPEC takes the Large Spec slot rather than a fifth colour: it is Large plus Small
-#: and Large dominates it in every market in the universe, so borrowing Large's colour
-#: says more about what the line is than a new hue would.
+#: LEG_SPEC takes the Non-Commercial slot rather than a fifth colour: it is Non-Commercial
+#: plus Non-Reportable and Non-Commercial dominates it in every market in the universe,
+#: so borrowing that colour says more about what the line is than a new hue would.
 LEG_PALETTE_SLOT = {
     exposure.LEG_COMM: 0,
     exposure.LEG_LARGE: 1,
@@ -168,15 +168,16 @@ ANNUALISE = exposure.TRADING_DAYS ** 0.5
 #: all 45 priceable markets and every week in the store, `Comm_net + Spec_net` is
 #: 0.000000. Drawing those two is one series and its reflection.
 #:
-#: Commercials against Large and Small SEPARATELY is not. Three series with one linear
-#: constraint means any two determine the third, and it means no ONE of them determines
-#: another: you cannot recover Large from Commercials. So each line is individually
+#: Commercials against Non-Commercials and Non-Reportables SEPARATELY is not. Three
+#: series with one linear constraint means any two determine the third, and it means
+#: no ONE of them determines another: you cannot recover Non-Commercials from
+#: Commercials. So each line is individually
 #: informative, and the constraint that ties them is only visible when all three are on
 #: the page. That is the conventional COT presentation and it is conventional for a
 #: reason.
 #:
 #: Hence: the companion panel never draws the subject's own mirror, and always draws the
-#: legs the subject does not contain. Large and Small are the pair worth separating on
+#: legs the subject does not contain. Non-Commercials and Non-Reportables are the pair worth separating on
 #: their own account, sitting on opposite sides 59% of weeks with a level correlation of
 #: -0.26.
 COMPANION_LEGS = {
@@ -189,7 +190,7 @@ COMPANION_LEGS = {
 #: The legs a leg is literally the SUM of, which is a different relation from
 #: COMPANION_LEGS above and must not be collapsed into it.
 #:
-#: Every leg has companions; only Speculators has parts. Large and Small are drawn
+#: Every leg has companions; only Speculators has parts. Non-Commercials and Non-Reportables are drawn
 #: beneath Commercials because they are the rest of the report, not because they are
 #: what Commercials is made of, and a sentence calling them its "halves" would be
 #: describing an arithmetic that does not exist. This map is what the composition line
@@ -642,7 +643,7 @@ LENS_ALPHA = 0.55
 #: A literal grey rather than `vc.BRIGHTER_TEXT_COLOR`, which is what this used and
 #: which is NOT neutral: viz_constants defines it as "#E2E8F0" and then reassigns it to
 #: the Solarized base3 "#fdf6e3", a warm cream. Rendered at 55% on a dark ground that
-#: reads as yellow, one panel above Small Traders in amber, so a line that is not a
+#: reads as yellow, one panel above Non-Reportables in amber, so a line that is not a
 #: trader group looked like one.
 #:
 #: Palette-independent on purpose. This line is the SUBJECT seen another way rather than

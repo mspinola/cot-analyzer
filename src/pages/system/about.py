@@ -70,14 +70,14 @@ markers_intro_md = textwrap.dedent("""
 workflows_md = textwrap.dedent("""
     1. The Top-Down Scan (Using the Heatmap)
         * Start your weekend analysis on the **Heatmap** page, then pick a Lookback Window and toggle the Asset Classes you care about.
-        * The grid shows both gates side by side: **Raw CLS 95/5** (net contracts, Commercials + Large + Small) and **NPF CS 80/20** (net / open interest, Commercials + Small). A cell lights up green or red when that leg qualifies under its own model's band.
+        * The grid shows both gates side by side: **Raw CLS 95/5** (net contracts, Commercial + Non-Commercial + Non-Reportable) and **NPF CS 80/20** (net / open interest, Commercial + Non-Reportable). A cell lights up green or red when that leg qualifies under its own model's band.
         * Scan the Tape Bias and Signals columns for markets where a setup is already firing, then read across to see whether both gates agree.
         * A row with Commercials lit green and the speculator legs lit red is a market ripe for a **bullish reversal**.
 
     2. Validating the Setup (Using OI Alignment)
         * Move to the **OI Alignment** tab and review the Price Candles and Open Interest plots.
         * Verify if the static extreme is supported by active behavioral signals (e.g., "Short Squeeze" or "Comm New Accum" markers).
-        * Use the **Model** selector to switch between **Raw PF** (net contracts, Commercials + Large + Small, 95/5) and **NPF** (net / open interest, Commercials + Small, 80/20), and see how price reacted historically under each gate. **Both** overlays the two bases on one axis so the drift the normalization removes is visible.
+        * Use the **Model** selector to switch between **Raw PF** (net contracts, Commercial + Non-Commercial + Non-Reportable, 95/5) and **NPF** (net / open interest, Commercial + Non-Reportable, 80/20), and see how price reacted historically under each gate. **Both** overlays the two bases on one axis so the drift the normalization removes is visible.
 
     3. Triggering the Trade (Price Confirmation)
         * **Crucial Rule:** COT data is a *macro/leading indicator*, not a timing tool. Commercials have deep pockets and can be "early" to a reversal for weeks/months.
@@ -95,22 +95,25 @@ backtest_md = textwrap.dedent("""
 # ==========================================
 
 # -- Participants --
-part_headers = ["Entity", "Alias (Color)", "Typical Behavior & Role"]
+# The entity names are the CFTC Legacy report's own three categories. The aliases are
+# the older COT-analysis vocabulary (Large Specs, Small Specs, Smart/Dumb Money), kept
+# here so a reader arriving from that literature can map it, and nowhere else.
+part_headers = ["Entity (CFTC Legacy report)", "Also called (Color)", "Typical Behavior & Role"]
 part_rows = [
-    ["**Commercials**", "Smart Money (🔴 Red)", "Producers and hedgers. **Contrarian:** They buy into falling markets (locking in cheap prices) and sell into rising markets."],
-    ["**Large Speculators**", "Trend Followers (🔵 Blue)", "Hedge funds and CTAs. **Trend-following:** Typically hold the largest net longs at market tops and largest net shorts at bottoms."],
-    ["**Small Speculators**", "Dumb Money (🟡 Yellow)", "Retail traders. They follow trends but notoriously hold peak positions exactly when the trend reverses."]
+    ["**Commercial**", "Commercials, Smart Money (🔴 Red)", "Producers, merchants and hedgers with a business use for the physical. **Contrarian:** They buy into falling markets (locking in cheap prices) and sell into rising markets."],
+    ["**Non-Commercial**", "Large Specs, Trend Followers (🔵 Blue)", "Reportable traders with no hedging exemption: hedge funds and CTAs. **Trend-following:** Typically hold the largest net longs at market tops and largest net shorts at bottoms."],
+    ["**Non-Reportable**", "Small Specs, Dumb Money (🟡 Yellow)", "Positions below the CFTC reporting threshold, mostly retail. They follow trends but notoriously hold peak positions exactly when the trend reverses."]
 ]
 
 # -- Core Metrics --
 core_headers = ["Indicator", "What it Measures", "How to Trade It"]
 core_rows = [
-    ["**COT Index**", "Scales net positioning from `0` to `100` over the lookback.", "Buy signal: Comms near 100 while Specs near 0. Sell signal: Exact opposite."],
+    ["**COT Index**", "Scales net positioning from `0` to `100` over the lookback.", "Buy signal: Commercial near 100 while Non-Commercial and Non-Reportable near 0. Sell signal: Exact opposite."],
     ["**Positioning Z-Score**", "Standard deviations from the historical mean.", "Scan Heatmap for readings beyond `+/- 2.0` to find extremes."],
     ["**Net Position % of OI**", "Raw net position / Total Open Interest.", "Gauges true magnitude (e.g., 50k contracts means more in a 100k OI market than 1M OI)."],
     ["**Movement Index**", "Velocity/Rate of change of Commercial positioning.", "Massive positive spikes during price dips signal aggressive dip-buying."],
     ["**WILLCO Index**", "Comm net position as % of total OI, indexed 0-100.", "Readings `>80` suggest accumulation. Readings `<20` suggest distribution."],
-    ["**Large Trader Sentiment**", "Williams LATE index. Large Spec net position scaled `0` to `100` over a fixed 15-week window.", "Contrarian. Readings `>=80` mean funds are crowded long late in an advance. `<=20` means they are crowded short."],
+    ["**Non-Commercial Sentiment**", "Williams LATE (Large Trader) index. Non-Commercial net position scaled `0` to `100` over a fixed 15-week window.", "Contrarian. Readings `>=80` mean funds are crowded long late in an advance. `<=20` means they are crowded short."],
     ["**COT MACD**", "MACD applied to Comm Net Position (leading momentum).", "Leading crossovers. Fast line crossing above Signal line predicts bottoms."],
     ["**Spearman Correlation**", "Rolling rank correlation between closing price and each group's net position, over the selected lookback.", "Commercials normally run negative because they sell into strength. A swing toward positive flags a hedging regime shift worth a closer look."],
     ["**Max Pain Curve**", "ETF options gravity well & Delta Intrinsic Value (ΔIV).", "Trade the magnetic pull of Dealer hedging toward the Max Pain strike."],

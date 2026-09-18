@@ -27,8 +27,13 @@ they are good at is *layout*, and that is where the ideas are.
   Active Setups strip.
 - Basis doctrine (raw contracts vs net/OI) is richer than the report's, which has no
   basis concept at all.
-- Three legs are kept separate (Commercial / Large Spec / Small Trader), and the
+- Three legs are kept separate (Commercial / Non-Commercial / Non-Reportable), and the
   Categories page splits Legacy further into Disaggregated and TFF.
+
+Naming note, 2026-09-17: the app now labels the three Legacy legs with the CFTC's own
+category names (Commercial, Non-Commercial, Non-Reportable; `viz_constants.LEG_LABELS`
+is the one table). Passages below that predate this say "Large Specs" / "Small Traders"
+for the second and third leg; they describe the same series and are left as written.
 
 ## What the report does that we do not
 

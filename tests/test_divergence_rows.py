@@ -55,7 +55,7 @@ def test_each_read_comes_from_its_own_column_family():
 
 
 def test_a_leg_the_gate_does_not_read_is_absent_from_the_read():
-    """NPF's CS gate drops Large Specs, so its cell must not print one even though
+    """NPF's CS gate drops Non-Commercials, so its cell must not print one even though
     the frame carries the column."""
     rows, _, _ = dr.build_rows(frame(record(comm=96, comm_norm=62)), show_all=True)
     by_key = {r.key: r for r in markets(rows)[0].reads}
@@ -213,7 +213,7 @@ def test_leg_spread_covers_every_leg_and_skips_uncarried_ones():
     """The emphasis generalized from the Commercial leg once the default view
     became the two CLS models, where every leg is the same gate on two bases.
     The guard that matters: a leg only ONE shown column carries (NPF CS drops
-    Large Specs; equities carry Commercials alone) has no pair to disagree, so
+    Non-Commercials; equities carry Commercials alone) has no pair to disagree, so
     it must never light a value against a dash."""
     read = dr.ModelRead
     reads = (read(key="a", comm=37.0, lrg=65.0, sml=24.0),
