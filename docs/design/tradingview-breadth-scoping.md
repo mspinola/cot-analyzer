@@ -352,3 +352,14 @@ Recorded rather than rewritten above, so the reasoning stays legible.
 - **The panel honours the board's date selector only when the reader has gone back in
   time.** The selector defaults to the newest COT Tuesday, which for a daily panel is up to
   a week stale; the newest report means "now".
+- **A second, page-sized consumer of the same series.** The `/internals` page
+  (`src/pages/analytics/internals.py`, reads in `src/components/market_internals.py`)
+  recreates the Caruso Insights market overview: the FOMO and net-highs reads above, plus
+  Nasdaq advancing against declining (`USI:ADVQ` / `USI:DECLQ`, registered as `NASDAQ_ADV` /
+  `NASDAQ_DEC`; `DECQ` does not resolve), JNK against its 20-day average, XLP/QQQ against its
+  50-day, 20-session up/down volume for QQQ and SPY, and nine asset rows. It reads the same
+  daily frames and the same cotmetrics classifiers; it is a page because the view it
+  recreates is one, where the breadth panel is the two series the crowd board could not
+  carry. DIA, USO, JNK and IBIT ride the equities task; the two count series ride the
+  routine like every other registry series symbol. A TradingView pane of the same six reads
+  is `npf/scripts/pine/market_overview.pine`; the two are twins and change together.

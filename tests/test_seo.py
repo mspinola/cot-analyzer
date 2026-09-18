@@ -26,6 +26,7 @@ PUBLIC_PAGES = {
     '/heatmap': 'analytics/heatmap.py',
     '/strip': 'analytics/strip.py',
     '/crowd': 'analytics/crowd.py',
+    '/internals': 'analytics/internals.py',
     '/exposure': 'analytics/exposure.py',
     '/oi_alignment': 'analytics/oi_alignment.py',
     '/analysis': 'analytics/analysis.py',
