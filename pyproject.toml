@@ -41,8 +41,18 @@ dependencies = [
     # multiplier in force that week, and reads the regime table that marketdata
     # 0.2.0 introduced. Against 0.1.0 cotmetrics raises rather than silently
     # pricing the Russell's pre-2016 weeks at half their true notional.
-    "crucible-marketdata>=0.2.0",
-    # Floor is 0.12.0 because the model selectors offer `models.NPF_CLS_95_5` and the
+    #
+    # 0.3.0 is the floor since the crowd page's breadth panel reads the `series`
+    # domain (NASDAQ_FOMO_5D and the new-highs counts). Against 0.2.0 the domain
+    # does not exist: the registry refuses those symbols at import and the whole
+    # route registry goes down with it, `use_pages` importing every page at boot.
+    "crucible-marketdata>=0.3.0",
+    # Floor is 0.13.0 because the crowd page's breadth panel calls
+    # `indicators.fomo_zones` and `net_highs_regime`. Against 0.12.x those do not
+    # exist, and the AttributeError lands in the render callback of a page the
+    # route registry has already accepted, so the board draws and the panel dies.
+    #
+    # 0.12.0 was the floor because the model selectors offer `models.NPF_CLS_95_5` and the
     # Crowding Strip reads its verdict off the matrix at `const.SETUP_NPF_CLS_COL`
     # (plus the "Lrg Index Norm" column that gate draws). Against 0.11.0 the model
     # does not exist, so viz_constants raises AttributeError at import and, because
@@ -89,7 +99,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.12.0",
+    "cotmetrics[options]>=0.13.0",
 ]
 
 [project.optional-dependencies]
