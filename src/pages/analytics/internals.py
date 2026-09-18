@@ -115,7 +115,10 @@ def _fomo_figure(read, colors):
                              hoverinfo="skip"))
     layout = _base_layout(200)
     layout["yaxis"]["range"] = [0, 100]
+    # A month of sessions: day-and-month ticks, no year on one tick and not the
+    # others, which is what plotly's automatic date format produced.
     layout["xaxis"]["nticks"] = 4
+    layout["xaxis"]["tickformat"] = "%b %e"
     fig.update_layout(**layout)
     return fig
 
