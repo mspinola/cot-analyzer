@@ -78,8 +78,8 @@ def test_fomo_zone_labels_are_cotmetrics_zones_in_the_views_words(values, label,
     assert read.verdict == verdict
 
 
-def test_fomo_change_is_on_the_day_and_the_path_is_a_month():
-    values = list(np.linspace(40, 60, 40)) + [32.23, 46.66]
+def test_fomo_change_is_on_the_day_and_the_path_is_a_year():
+    values = list(np.linspace(40, 60, 300)) + [32.23, 46.66]
     read = mi.fomo_read(_series(values)["Close"])
     assert read.value == pytest.approx(46.66)
     assert read.change == pytest.approx(14.43)
@@ -158,6 +158,35 @@ def test_rotation_below_its_average_is_growth_leading_risk_on():
     assert not read.above and read.label == "Risk on" and read.verdict == mi.POSITIVE
 
 
+def test_the_credit_leg_reads_the_dividend_adjusted_tier():
+    """JNK distributes ~6.7% a year monthly, so an ex-dividend notch in the raw
+    price reads as a break of the 20-day average. Measured on the real store: the
+    raw and adjusted verdicts disagree on about a quarter of sessions in a year,
+    and every disagreement in two years is raw-says-risk-off, because a downward
+    notch can only push the price under its average. The rotation ratio is on the
+    same tier for the dividend-gap reason. Up/down volume is NOT: there the notch
+    flips almost no session (0 of QQQ's, 1 of SPY's in two years)."""
+    assert mi.CREDIT_TIER == "total"
+    assert mi.ROTATION_TIER == "total"
+    assert mi.ASSET_TIER == "split"
+
+
+def test_a_monthly_distribution_notch_alone_flips_the_credit_verdict():
+    """The defect the tier change exists to prevent, in one session. A credit price
+    drifting gently up sits above its 20-day average; a single drop the size of
+    JNK's mean monthly instalment (0.56% of price) puts it below, with nothing about
+    credit having changed. On a dividend-adjusted series that session is unchanged
+    and the read stays risk on, which is why CREDIT_TIER is the total tier."""
+    base = list(np.linspace(95.5, 96.0, 30))
+    adjusted = mi.trend_read("credit", "JNK", _series(base + [96.0])["Close"],
+                             20, risk_on_above=True)
+    raw = mi.trend_read("credit", "JNK",
+                        _series(base + [96.0 * (1 - 0.0056)])["Close"],
+                        20, risk_on_above=True)
+    assert adjusted.above and adjusted.verdict == mi.POSITIVE
+    assert not raw.above and raw.verdict == mi.NEGATIVE
+
+
 def test_too_short_a_series_for_the_average_is_no_read():
     assert mi.trend_read("credit", "JNK", _series([1] * 20)["Close"], 20, True) is None
 
@@ -200,12 +229,22 @@ def test_updown_window_is_the_last_twenty_completed_sessions_plus_one_for_the_fi
     assert mi.updown_read("QQQ", longer).ratio == pytest.approx(mi.updown_read("QQQ", frame).ratio)
 
 
-@pytest.mark.parametrize("ratio, label", [
-    (1.6, "Heavy accumulation"), (1.12, "Accumulation"), (1.0, "Balanced"),
-    (0.8, "Distribution"), (0.60, "Heavy distribution"),
+@pytest.mark.parametrize("ratio, label, verdict", [
+    (1.6, "Heavy accumulation", mi.POSITIVE),
+    (1.12, "Accumulation", mi.POSITIVE),
+    (1.0, "Accumulation", mi.POSITIVE),      # the centre itself is net buying
+    (0.99, "Distribution", mi.NEGATIVE),
+    (0.8, "Distribution", mi.NEGATIVE),
+    (0.60, "Heavy distribution", mi.NEGATIVE),
 ])
-def test_updown_labels_are_this_pages_own_cutoffs(ratio, label):
-    assert mi.updown_label(ratio)[0] == label
+def test_updown_turns_at_agis_centre_line_with_this_pages_heavy_tiers(ratio, label, verdict):
+    """The verdict turns at one, which is agi's definition rather than a tuned
+    threshold: the ratio is up volume over down volume and one is where they
+    balance. There is no neutral band, and a session just over one reads as net
+    buying here exactly as it does there. The heavy tiers are this page's own
+    emphasis and move no verdict."""
+    assert mi.updown_label(ratio) == (label, verdict)
+    assert mi.UPDOWN_CENTRE == 1.0
 
 
 # ── assets ────────────────────────────────────────────────────────────────────
