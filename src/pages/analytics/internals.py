@@ -112,15 +112,18 @@ def _fomo_figure(read, colors):
     for level, color in ((indicators.FOMO_EXHAUSTION_MIN, colors.bear),
                          (indicators.FOMO_FEAR_MAX, colors.bull)):
         fig.add_hline(y=level, line=dict(color=color, width=1, dash="dot"), opacity=0.6)
+    # Thinner than the other charts on purpose: a year of a series this whippy is a
+    # dense band in a third-width card, and the zone crossings are what has to stay
+    # legible through it.
     fig.add_trace(go.Scatter(x=list(dates), y=list(values), mode="lines",
-                             line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1.5),
+                             line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1),
                              hoverinfo="skip"))
     layout = _base_layout(200)
     layout["yaxis"]["range"] = [0, 100]
-    # A month of sessions: day-and-month ticks, no year on one tick and not the
-    # others, which is what plotly's automatic date format produced.
-    layout["xaxis"]["nticks"] = 4
-    layout["xaxis"]["tickformat"] = "%b %e"
+    # A year of sessions at agi's zoom, so the ticks are months. Fixed rather than
+    # automatic: plotly's own format put the year on one tick and not the others.
+    layout["xaxis"]["nticks"] = 5
+    layout["xaxis"]["tickformat"] = "%b"
     fig.update_layout(**layout)
     return fig
 
@@ -141,7 +144,7 @@ def fomo_card(read, colors):
         ], className="d-flex align-items-center"),
         dcc.Graph(figure=_fomo_figure(read, colors), config=GRAPH_CONFIG),
         html.Div([
-            html.Span("Past month"),
+            html.Span("Past year"),
             html.Span(f"{indicators.FOMO_EXHAUSTION_MIN:.0f} stretched · "
                       f"{indicators.FOMO_FEAR_MAX:.0f} washed out",
                       style={"float": "right"}),

@@ -21,6 +21,16 @@ and the ETF bars the equities task fetches nightly. Six reads, each one card:
 weekly row), so this module reads the daily frames and never goes through
 `tape_context.weekly_close`.
 
+**agi owns the design of the Caruso reads; this page owns how they are drawn.**
+Four of the reads here are the exposure inputs M-106 names, and agi's `/market`
+screen is the authority on what each one IS: which series, which adjustment, which
+threshold. Where the two differ, agi wins and this module follows. What stays this
+page's own is presentation, which is why the credit card draws a price and its
+average where agi draws the gap, and why the reads sit in cards rather than a gauge
+row. cot-analyzer cannot import agi (it is private, and this repo is public), so the
+definitions are restated here with agi's module named beside each one; a restatement
+that drifts is a defect in this file, not a difference of opinion.
+
 **Published cutoffs where one exists, labeled inputs where none does.** The FOMO
 zones and the three-day net-highs regime are cotmetrics' transcriptions of the SWG.
 The advancing-share, up/down-volume and moving-average cutoffs have no source in the
@@ -84,17 +94,26 @@ ROTATION_NUMER, ROTATION_DENOM, ROTATION_TIER, ROTATION_AVERAGE = "XLP", "QQQ", 
 UPDOWN_SYMBOLS, UPDOWN_SESSIONS = ("QQQ", "SPY"), 20
 ASSET_SYMBOLS = ("QQQ", "SPY", "DIA", "IWM", "USO", "GLD", "TLT", "JNK", "IBIT")
 ASSET_TIER = "split"
-# Sessions drawn: a quarter for the paths, the FOMO chart a month like the view.
+# Sessions drawn: a quarter for the price paths. The FOMO chart is a YEAR, agi's
+# zoom on the same gauge: a month shows the last wiggle, and the zone visits this
+# read exists to locate are only legible against a year of them.
 PATH_SESSIONS = 63
-FOMO_PATH_SESSIONS = 22
+FOMO_PATH_SESSIONS = 252
 
 # ── this page's own cutoffs (no rulebook source; see the module docstring) ─────
 
 #: Share of issues advancing that reads as a broad advance, and its mirror.
 ADVANCE_BROAD, ADVANCE_WEAK = 0.60, 0.40
-#: Up/down volume ratio edges, symmetric in log terms (1.5 and 1/1.5).
-UPDOWN_HEAVY_ACCUMULATION, UPDOWN_ACCUMULATION = 1.5, 1.05
-UPDOWN_DISTRIBUTION, UPDOWN_HEAVY_DISTRIBUTION = 0.95, 1 / 1.5
+#: Where up/down volume turns from net buying to net selling. ONE, and it is not
+#: this page's to tune: agi's `updown_volume` calls it "the ratio's own definition"
+#: rather than a threshold, since the ratio is up volume over down volume and one
+#: is the level where they balance. This module previously carried an invented dead
+#: zone from 0.95 to 1.05, which made a ratio of 1.02 read "Balanced" here and "net
+#: buying" there for the same session.
+UPDOWN_CENTRE = 1.0
+#: Emphasis only, and this page's own: how far past the centre reads as heavy. The
+#: pair is symmetric in log terms (1.5 and 1/1.5) and moves no verdict.
+UPDOWN_HEAVY_ACCUMULATION, UPDOWN_HEAVY_DISTRIBUTION = 1.5, 1 / 1.5
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -360,15 +379,15 @@ def trend_read(key, symbol, series, sessions, risk_on_above):
 
 
 def updown_label(ratio):
+    """The badge and the verdict. The verdict turns at UPDOWN_CENTRE, agi's
+    definition; the heavy tiers are this page's emphasis and change nothing."""
     if ratio >= UPDOWN_HEAVY_ACCUMULATION:
         return "Heavy accumulation", POSITIVE
-    if ratio >= UPDOWN_ACCUMULATION:
+    if ratio >= UPDOWN_CENTRE:
         return "Accumulation", POSITIVE
     if ratio <= UPDOWN_HEAVY_DISTRIBUTION:
         return "Heavy distribution", NEGATIVE
-    if ratio <= UPDOWN_DISTRIBUTION:
-        return "Distribution", NEGATIVE
-    return "Balanced", NEUTRAL
+    return "Distribution", NEGATIVE
 
 
 def updown_read(symbol, frame, sessions=UPDOWN_SESSIONS):

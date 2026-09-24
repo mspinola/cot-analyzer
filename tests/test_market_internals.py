@@ -78,8 +78,8 @@ def test_fomo_zone_labels_are_cotmetrics_zones_in_the_views_words(values, label,
     assert read.verdict == verdict
 
 
-def test_fomo_change_is_on_the_day_and_the_path_is_a_month():
-    values = list(np.linspace(40, 60, 40)) + [32.23, 46.66]
+def test_fomo_change_is_on_the_day_and_the_path_is_a_year():
+    values = list(np.linspace(40, 60, 300)) + [32.23, 46.66]
     read = mi.fomo_read(_series(values)["Close"])
     assert read.value == pytest.approx(46.66)
     assert read.change == pytest.approx(14.43)
@@ -229,12 +229,22 @@ def test_updown_window_is_the_last_twenty_completed_sessions_plus_one_for_the_fi
     assert mi.updown_read("QQQ", longer).ratio == pytest.approx(mi.updown_read("QQQ", frame).ratio)
 
 
-@pytest.mark.parametrize("ratio, label", [
-    (1.6, "Heavy accumulation"), (1.12, "Accumulation"), (1.0, "Balanced"),
-    (0.8, "Distribution"), (0.60, "Heavy distribution"),
+@pytest.mark.parametrize("ratio, label, verdict", [
+    (1.6, "Heavy accumulation", mi.POSITIVE),
+    (1.12, "Accumulation", mi.POSITIVE),
+    (1.0, "Accumulation", mi.POSITIVE),      # the centre itself is net buying
+    (0.99, "Distribution", mi.NEGATIVE),
+    (0.8, "Distribution", mi.NEGATIVE),
+    (0.60, "Heavy distribution", mi.NEGATIVE),
 ])
-def test_updown_labels_are_this_pages_own_cutoffs(ratio, label):
-    assert mi.updown_label(ratio)[0] == label
+def test_updown_turns_at_agis_centre_line_with_this_pages_heavy_tiers(ratio, label, verdict):
+    """The verdict turns at one, which is agi's definition rather than a tuned
+    threshold: the ratio is up volume over down volume and one is where they
+    balance. There is no neutral band, and a session just over one reads as net
+    buying here exactly as it does there. The heavy tiers are this page's own
+    emphasis and move no verdict."""
+    assert mi.updown_label(ratio) == (label, verdict)
+    assert mi.UPDOWN_CENTRE == 1.0
 
 
 # ── assets ────────────────────────────────────────────────────────────────────
