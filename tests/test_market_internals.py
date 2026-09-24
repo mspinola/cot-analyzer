@@ -158,6 +158,35 @@ def test_rotation_below_its_average_is_growth_leading_risk_on():
     assert not read.above and read.label == "Risk on" and read.verdict == mi.POSITIVE
 
 
+def test_the_credit_leg_reads_the_dividend_adjusted_tier():
+    """JNK distributes ~6.7% a year monthly, so an ex-dividend notch in the raw
+    price reads as a break of the 20-day average. Measured on the real store: the
+    raw and adjusted verdicts disagree on about a quarter of sessions in a year,
+    and every disagreement in two years is raw-says-risk-off, because a downward
+    notch can only push the price under its average. The rotation ratio is on the
+    same tier for the dividend-gap reason. Up/down volume is NOT: there the notch
+    flips almost no session (0 of QQQ's, 1 of SPY's in two years)."""
+    assert mi.CREDIT_TIER == "total"
+    assert mi.ROTATION_TIER == "total"
+    assert mi.ASSET_TIER == "split"
+
+
+def test_a_monthly_distribution_notch_alone_flips_the_credit_verdict():
+    """The defect the tier change exists to prevent, in one session. A credit price
+    drifting gently up sits above its 20-day average; a single drop the size of
+    JNK's mean monthly instalment (0.56% of price) puts it below, with nothing about
+    credit having changed. On a dividend-adjusted series that session is unchanged
+    and the read stays risk on, which is why CREDIT_TIER is the total tier."""
+    base = list(np.linspace(95.5, 96.0, 30))
+    adjusted = mi.trend_read("credit", "JNK", _series(base + [96.0])["Close"],
+                             20, risk_on_above=True)
+    raw = mi.trend_read("credit", "JNK",
+                        _series(base + [96.0 * (1 - 0.0056)])["Close"],
+                        20, risk_on_above=True)
+    assert adjusted.above and adjusted.verdict == mi.POSITIVE
+    assert not raw.above and raw.verdict == mi.NEGATIVE
+
+
 def test_too_short_a_series_for_the_average_is_no_read():
     assert mi.trend_read("credit", "JNK", _series([1] * 20)["Close"], 20, True) is None
 

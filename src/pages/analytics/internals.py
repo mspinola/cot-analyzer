@@ -46,11 +46,13 @@ BIG_STYLE = {"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "1.9rem", "fontWeight"
 DETAIL_STYLE = {"color": vc.TEXT_COLOR, "fontSize": "0.8rem"}
 GRAPH_CONFIG = {"displayModeBar": False, "responsive": True, "staticPlot": True}
 FOOTER = ("Breadth counts and shares are TradingView's published daily series, "
-          "delivered by the producer box's routine; prices are the equities store "
-          "(split tier; the XLP/QQQ ratio on the total tier). Up/down volume covers "
-          "the last 20 completed sessions. Context, not signal: nothing on this page "
-          "has been through the evaluation ladder. Information only, not investment "
-          "advice.")
+          "delivered by the producer box's routine; prices are the equities store. "
+          "The credit read and the XLP/QQQ ratio are dividend-adjusted, because an "
+          "ex-dividend notch in a raw price reads as a break of a moving average; "
+          "the table and the up/down volume sessions are prices as traded. Up/down "
+          "volume covers the last 20 completed sessions. Context, not signal: "
+          "nothing on this page has been through the evaluation ladder. Information "
+          "only, not investment advice.")
 
 
 def _colors():

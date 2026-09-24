@@ -54,12 +54,33 @@ NET_HIGHS_SYMBOLS = (
     ("NYSE", "NYSE_NH52W", "NYSE_NL52W"),
 )
 ADVANCING_SYMBOL, DECLINING_SYMBOL = "NASDAQ_ADV", "NASDAQ_DEC"
-# The credit leg on the split tier: the read is the ETF's PRICE against its own
-# average, and a total-return series would put the monthly distribution into both.
-CREDIT_SYMBOL, CREDIT_TIER, CREDIT_AVERAGE = "JNK", "split", 20
+# The credit leg on the TOTAL tier, and this is not a preference. JNK distributes
+# about 6.7% a year in monthly instalments of roughly 0.56% of its price, so every
+# ex-dividend date puts a notch in the raw price that has nothing to do with credit
+# conditions, and a 20-day average test reads that notch as a breakdown. Measured on
+# this store: over the last year the raw and adjusted series disagree on the
+# above/below verdict on 24.6% of sessions, and over two years the disagreement is
+# 98 sessions of raw-says-risk-off against 0 the other way, because a recurring
+# downward notch can only push the price under its average. Caruso states the
+# adjustment as a condition of the read ("if you don't adjust for dividends it looks
+# very different"), and agi's `jnk_leg` preserves the worked example where the raw
+# series inverted the July 2026 conclusion. JNK has never made a capital-gains
+# distribution, so the total tier IS the dividend-adjusted series.
+#
+# This file previously read the split tier, on the reasoning that a total-return
+# series "would put the monthly distribution into both" the price and the average.
+# That is wrong: the notch is a discontinuity in the price which the trailing
+# average smooths over 20 sessions, so it opens a gap rather than cancelling.
+CREDIT_SYMBOL, CREDIT_TIER, CREDIT_AVERAGE = "JNK", "total", 20
 # The ratio on the total tier, the tape_context rule: XLP distributes ~2.5%/yr
 # against QQQ's <1%, so a split-tier ratio drifts in QQQ's favor.
 ROTATION_NUMER, ROTATION_DENOM, ROTATION_TIER, ROTATION_AVERAGE = "XLP", "QQQ", "total", 50
+# Up/down volume and the asset table stay on the split tier: an up session is a
+# close above the prior close, and the classification is what a reader would see on
+# a chart. Checked rather than assumed, since the credit leg above turned on exactly
+# this question: over the last two years an ex-dividend notch flips the up/down
+# classification on 0 of QQQ's sessions and 1 of SPY's, against 98 verdict flips on
+# JNK. The difference is the distribution rate, under 1% a year here against 6.7%.
 UPDOWN_SYMBOLS, UPDOWN_SESSIONS = ("QQQ", "SPY"), 20
 ASSET_SYMBOLS = ("QQQ", "SPY", "DIA", "IWM", "USO", "GLD", "TLT", "JNK", "IBIT")
 ASSET_TIER = "split"
