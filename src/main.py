@@ -1,3 +1,4 @@
+import datetime
 import logging
 import multiprocessing
 import os
@@ -6,6 +7,7 @@ import signal
 import sys
 import threading
 import time
+import zoneinfo
 
 import cotmetrics.utils as utils
 
@@ -75,6 +77,35 @@ log.addFilter(DropScannerNoise())
 
 STORE_POLL_SECONDS = 5 * 60
 
+# Tighter polling while the Friday release is landing. The CFTC publishes at 15:30 ET;
+# the Windows producer's Friday task polls from 15:25 every 2 minutes for 45 minutes
+# (scheduler\run-cot.cmd --poll), then pushes the store here. The window covers that
+# plus sync time. Other weekdays are deliberately left out: in a holiday week the
+# release moves to a later day, but the producer only polls on Fridays, so that data
+# reaches this box with the next 08:10 catch-up and a window here would find nothing.
+RELEASE_POLL_SECONDS = 30
+RELEASE_WINDOW_ET = (datetime.time(15, 25), datetime.time(16, 30))
+EASTERN = zoneinfo.ZoneInfo("America/New_York")
+
+
+def seconds_until_next_poll(now):
+    """How long the store poller sleeps before its next tick, given an aware `now`.
+
+    RELEASE_POLL_SECONDS inside the Friday release window, STORE_POLL_SECONDS outside
+    it, and never past the window's start, so a 5-minute sleep begun at 15:24 does not
+    carry the first tick to 15:29.
+    """
+    et = now.astimezone(EASTERN)
+    start, end = RELEASE_WINDOW_ET
+    if et.weekday() != 4:
+        return STORE_POLL_SECONDS
+    if start <= et.time() < end:
+        return RELEASE_POLL_SECONDS
+    if et.time() < start:
+        until_start = (datetime.datetime.combine(et.date(), start, EASTERN) - et).total_seconds()
+        return max(1, min(STORE_POLL_SECONDS, until_start))
+    return STORE_POLL_SECONDS
+
 
 def warm_page_caches():
     """Every page warmer, one thread, in dependency order.
@@ -116,10 +147,13 @@ def store_poll_loop():
     first visitor after a release pays the rebuild. With it, an unattended
     app is current before anyone arrives.
 
-    Every 5 minutes, always, rather than a window around the Friday release. The store
-    is a replica fed by a producer push, so it can advance at times no schedule here
-    predicts (revisions, a backfill, a manual run, a late release). The check itself is
-    one small JSON read, so a window would buy nothing and could only be wrong.
+    Every 5 minutes, always, and every 30 seconds inside the Friday release window
+    (see seconds_until_next_poll). The always-on baseline is the part that must not
+    become a window: the store is a replica fed by a producer push, so it can advance
+    at times no schedule here predicts (revisions, a backfill, a manual run, a late
+    release). The window only tightens it, so being wrong about the window costs
+    minutes, never a missed week. A tick is two small JSON reads (status.json and the
+    email ledger), so the faster cadence is free.
 
     It is also where the weekly email fires from, for the same reason it is where the
     refresh fires from: this box does not download COT, so noticing the store moved is
@@ -138,12 +172,14 @@ def store_poll_loop():
     # question, and it is invisible otherwise. Under --debug there are two, and only
     # the one serving requests is any use.
     utils.cot_logger.info(
-        f"Store poller started in pid {os.getpid()} (every {STORE_POLL_SECONDS}s).")
+        f"Store poller started in pid {os.getpid()} (every {STORE_POLL_SECONDS}s, "
+        f"every {RELEASE_POLL_SECONDS}s Fridays {RELEASE_WINDOW_ET[0]:%H:%M}-"
+        f"{RELEASE_WINDOW_ET[1]:%H:%M} ET).")
     # Once, here, not per tick: the disabled outcome is otherwise invisible (see
     # weekly_email_trigger.startup_message), and every five minutes would be spam.
     utils.cot_logger.info(weekly_email_trigger.startup_message())
     while True:
-        time.sleep(STORE_POLL_SECONDS)
+        time.sleep(seconds_until_next_poll(datetime.datetime.now(EASTERN)))
         new_week = False
         outcome = None
         try:
