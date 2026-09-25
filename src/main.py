@@ -121,12 +121,15 @@ def warm_page_caches():
     from pages.analytics.crowd import warm_caches as warm_crowd_caches
     from pages.analytics.divergence import warm_caches as warm_divergence_caches
     from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
+    from pages.home import warm_caches as warm_home_caches
 
     # The newest weekly report first: the email links to it and crawlers reach it
     # first, so it is the page a reader is most likely to be waiting on. It costs
     # the crowd warmer nothing, since both build the same per-market frames and
     # whichever runs second finds them cached. See weekly_reports.warm_newest.
     weekly_reports.warm_newest()
+    # Then the landing page, the most visited. Its cards ride on the same frames.
+    warm_home_caches()
     warm_crowd_caches()
     warm_heatmap_caches()
     warm_divergence_caches()

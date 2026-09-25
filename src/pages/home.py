@@ -1,4 +1,3 @@
-import threading
 from datetime import datetime
 from functools import lru_cache
 
@@ -369,10 +368,18 @@ def lazy_load_accordion(active_items, lookback, palette_name, filter_types, mode
     return outputs, loaded_store
 
 
-# Pre-warm the cache for the default home page load in the background
+def warm_caches():
+    """Build the home page's cards for the last session's settings, every class.
 
-
-def _prewarm_cache():
+    Called by main.warm_page_caches, at boot and again after a new week (db_time
+    keys every entry, so a release invalidates them all). It used to start its own
+    thread at import, which raced the page warmer for the GIL while both built the
+    same per-market frames: measured on the VPS 2026-09-25, the home prewarm and
+    the queued weekly-report requests all finished together ~3.5 minutes after
+    boot. Now it runs in the warmer's one thread, after the weekly report, and
+    only in the process that serves requests (the import ran it in both under
+    --debug's reloader).
+    """
     import json
     import os
     try:
@@ -406,7 +413,6 @@ def _prewarm_cache():
     except Exception as e:
         utils.cot_logger.error(f"Error prewarming cache: {e}")
 
-threading.Thread(target=_prewarm_cache, daemon=True).start()
 
 @callback(
     Output('home_signals_accordion', 'active_item'),
