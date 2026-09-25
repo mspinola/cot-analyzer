@@ -1,4 +1,4 @@
-"""The boot and release warmer runs the newest weekly report first.
+"""The boot and release warmer runs the newest weekly report first, then home.
 
 The weekly email links to that page and crawlers reach it before any other, so
 it is the one a reader is most likely waiting on after a restart or a release.
@@ -25,6 +25,7 @@ def test_the_newest_weekly_report_is_warmed_first(monkeypatch):
     # dotted path: once another test imports app_cot, Dash's page loader puts the
     # page modules in sys.modules without binding them on their parent package.
     for module, name in (("weekly_reports", "weekly"),
+                         ("pages.home", "home"),
                          ("pages.analytics.crowd", "crowd"),
                          ("pages.analytics.heatmap", "heatmap"),
                          ("pages.analytics.divergence", "divergence")):
@@ -33,4 +34,4 @@ def test_the_newest_weekly_report_is_warmed_first(monkeypatch):
         monkeypatch.setattr(sys.modules[module], attr,
                             lambda name=name: calls.append(name))
     main.warm_page_caches()
-    assert calls == ["weekly", "crowd", "heatmap", "divergence"]
+    assert calls == ["weekly", "home", "crowd", "heatmap", "divergence"]
