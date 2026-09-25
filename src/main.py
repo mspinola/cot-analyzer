@@ -106,7 +106,7 @@ def store_poll_loop():
 
     The navbar callback polls the same way and is the primary trigger, but dcc.Interval
     is client-side: it only ticks while a browser tab is open. Without this loop the
-    first visitor after a release pays the ~90 second rebuild. With it, an unattended
+    first visitor after a release pays the rebuild. With it, an unattended
     app is current before anyone arrives.
 
     Every 5 minutes, always, rather than a window around the Friday release. The store
@@ -137,17 +137,11 @@ def store_poll_loop():
     utils.cot_logger.info(weekly_email_trigger.startup_message())
     while True:
         time.sleep(STORE_POLL_SECONDS)
+        new_week = False
         try:
-            if get_indexer().refresh_if_stale():
+            new_week = get_indexer().refresh_if_stale()
+            if new_week:
                 utils.cot_logger.info("Store poller: picked up a new COT week.")
-                # The new week keys every entry in the crowd board's and the
-                # heatmap's join caches, so the refresh just invalidated them
-                # all; re-warm in the background so the first visitor of the new
-                # week does not pay the cold renders. A thread rather than
-                # inline, to keep this loop's tick short.
-                threading.Thread(
-                    target=warm_page_caches, name="page-warmer", daemon=True
-                ).start()
 
             # After the refresh, never before: refresh_if_stale blocks until the index
             # matches the store, so by here the matrix the email builds is the new
@@ -165,6 +159,19 @@ def store_poll_loop():
             # is worse than no poller, because the navbar still looks like it is
             # watching. Log and wait for the next tick.
             utils.cot_logger.error(f"Store poller failed, will retry: {e}")
+
+        # The new week keys every entry in the crowd board's and the heatmap's join
+        # caches, so the refresh just invalidated them all; re-warm in the background
+        # so the first visitor of the new week does not pay the cold renders. A thread,
+        # to keep this loop's tick short. AFTER the email, deliberately: the warmers
+        # are CPU-bound Python in this process, and started first they contended for
+        # the GIL with the email's matrix build, so the email a subscriber is waiting
+        # for queued behind cache fills for pages nobody had opened yet. Outside the
+        # try, so a failed send still warms the pages.
+        if new_week:
+            threading.Thread(
+                target=warm_page_caches, name="page-warmer", daemon=True
+            ).start()
 
 
 def daily_options_update_scheduler():
