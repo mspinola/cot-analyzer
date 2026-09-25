@@ -86,9 +86,16 @@ def warm_page_caches():
     the function because a page module needs the Dash app instantiated, and the
     poller below runs in the process that did that.
     """
+    import weekly_reports
     from pages.analytics.crowd import warm_caches as warm_crowd_caches
     from pages.analytics.divergence import warm_caches as warm_divergence_caches
     from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
+
+    # The newest weekly report first: the email links to it and crawlers reach it
+    # first, so it is the page a reader is most likely to be waiting on. It costs
+    # the crowd warmer nothing, since both build the same per-market frames and
+    # whichever runs second finds them cached. See weekly_reports.warm_newest.
+    weekly_reports.warm_newest()
     warm_crowd_caches()
     warm_heatmap_caches()
     warm_divergence_caches()
@@ -138,6 +145,7 @@ def store_poll_loop():
     while True:
         time.sleep(STORE_POLL_SECONDS)
         new_week = False
+        outcome = None
         try:
             new_week = get_indexer().refresh_if_stale()
             if new_week:
@@ -168,7 +176,11 @@ def store_poll_loop():
         # the GIL with the email's matrix build, so the email a subscriber is waiting
         # for queued behind cache fills for pages nobody had opened yet. Outside the
         # try, so a failed send still warms the pages.
-        if new_week:
+        #
+        # Also after a send on a tick that saw no new week: a browser tab's navbar
+        # poll can consume refresh_if_stale's True (see the docstring), and the send
+        # still goes out on this tick, linking to a weekly report nothing warmed.
+        if new_week or outcome == "sent":
             threading.Thread(
                 target=warm_page_caches, name="page-warmer", daemon=True
             ).start()

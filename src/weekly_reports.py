@@ -29,6 +29,7 @@ Three decisions:
 """
 import functools
 import re
+import threading
 from datetime import datetime
 
 import cotmetrics.constants as const
@@ -137,7 +138,43 @@ def report_page(week):
     weeks = published_weeks()
     if week not in weeks:
         return None
-    return _rendered(week, weeks[0])
+    # One render at a time. lru_cache does not coalesce concurrent misses, so
+    # without this every request that arrives while a page is cold builds the
+    # whole matrix again in parallel, and on a GIL-bound box N parallel builds
+    # finish together N times late. With it, a waiter gets the page the first
+    # render cached. See warm_newest for the case that made this matter.
+    with _render_lock:
+        return _rendered(week, weeks[0])
+
+
+_render_lock = threading.Lock()
+
+
+def warm_newest():
+    """Render the newest published week so no reader pays its cold build.
+
+    The newest page is the one the weekly email links to and the one crawlers
+    reach first from /weekly and the sitemap, so it is the page a cold render
+    hurts most. Measured 2026-09-25 right after a restart on the VPS: 504 at
+    nginx's 60s, then 200 in 54s. What that cost was NOT a missing cache between
+    this page's explicit-date matrix and the boards' newest-week one (they share
+    `get_symbols_data`'s cache, and building one after the other costs ~0.1s
+    locally). It is the first build of that per-market frame in a fresh process,
+    ~3.5s locally and roughly 9x that on the VPS, paid several times over while
+    the home-page prewarm, the crowd warmer and every piled-up request each built
+    it in parallel. Called first by main.warm_page_caches, so after a restart the
+    page is ready as soon as the first build is, and after a release it rides on
+    the matrix the weekly email just built. Failures are logged and swallowed,
+    the warmers' rule.
+    """
+    try:
+        weeks = published_weeks()
+        if not weeks:
+            return
+        report_page(weeks[0])
+        utils.cot_logger.info(f"weekly pages: warmed {weeks[0]}.")
+    except Exception as e:
+        utils.cot_logger.warning(f"weekly pages: warm failed, first reader pays: {e}")
 
 
 @functools.lru_cache(maxsize=WEEKS_PUBLISHED + 8)
@@ -145,9 +182,10 @@ def _rendered(week, newest_date):
     """The finished page, cached per (week, newest release).
 
     Measured on the deployment the day these shipped: a COLD render exceeded a
-    30-second timeout from the outside (the matrix build for an explicit
-    target_date shares no cache with the boards, which ask for the newest week
-    as None), then 3-7s once warm. A crawler walking 104 cold pages meets that
+    30-second timeout from the outside, then 3-7s once warm (the cold cost is
+    the per-market frame build, see warm_newest; an earlier note here blamed a
+    cache the explicit-date matrix did not share, which measurement did not
+    bear out). A crawler walking 104 cold pages meets that
     wall on every one, and these pages exist FOR crawlers. The page for a week
     is immutable once built, except that a new release moves the prev/next
     strip on the newest page and the store can restate on a revision, which is

@@ -144,3 +144,61 @@ def test_a_release_rebuilds_a_cached_page(stubbed, monkeypatch):
     monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Advanced())
     weekly_reports.report_page("2026-08-18")
     assert builds == ["2026-08-18", "2026-08-18"]  # the release rebuilt it
+
+
+def test_concurrent_cold_requests_build_the_page_once(stubbed, monkeypatch):
+    """lru_cache does not coalesce concurrent misses. Measured on the VPS after
+    a restart: several requests for the cold newest page each built the matrix
+    in parallel and all finished ~54s later. The render lock makes the waiters
+    read the page the first build cached."""
+    import threading
+    import time
+
+    builds = []
+
+    def slow_matrix(**kw):
+        builds.append(kw.get("target_date"))
+        time.sleep(0.2)  # wide enough for every thread to arrive mid-build
+        return _frame()
+
+    monkeypatch.setattr(weekly_reports, "get_matrix_data", slow_matrix)
+    pages = []
+    threads = [threading.Thread(
+        target=lambda: pages.append(weekly_reports.report_page("2026-08-25")))
+        for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert builds == ["2026-08-25"]
+    assert len(pages) == 4 and len(set(pages)) == 1
+
+
+def test_warm_newest_fills_the_newest_page(stubbed, monkeypatch):
+    builds = []
+
+    def counting_matrix(**kw):
+        builds.append(kw.get("target_date"))
+        return _frame()
+
+    monkeypatch.setattr(weekly_reports, "get_matrix_data", counting_matrix)
+    weekly_reports.warm_newest()
+    assert builds == [WEEKS[0]]  # the newest week, the one the email links to
+    weekly_reports.report_page(WEEKS[0])
+    assert builds == [WEEKS[0]]  # and the reader gets the cached page
+
+
+def test_warm_newest_never_raises(stubbed, monkeypatch):
+    class _Empty:
+        def get_available_dates(self):
+            return []
+
+    monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Empty())
+    weekly_reports.warm_newest()  # no weeks: a no-op
+
+    def boom(**kw):
+        raise RuntimeError("store away")
+
+    monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Indexer())
+    monkeypatch.setattr(weekly_reports, "get_matrix_data", boom)
+    weekly_reports.warm_newest()  # a failed build is logged, never a traceback
