@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from cotmetrics import categories as cot_categories
+from cotmetrics import constants as cm_const
 from cotmetrics import flows
 
 import components.category_traces as ct
@@ -71,6 +72,22 @@ def _frame(report, n=80, seed=3):
                                                  dtype="boolean")
     df[flows.counterparty_flow_col()] = rng.normal(0, 5000, n)
     df[flows.counterparty_flow_z_col()] = _warmup(rng.normal(0, 1, n))
+    # The level pair and the state, through cotmetrics' own functions so the frame
+    # is shaped exactly as build_flow_frame shapes it.
+    for spec in specs:
+        level = df[cot_categories.index_col(spec, HEADER)].shift(1)
+        df[flows.flow_from_level_col(spec, HEADER)] = level
+        df[flows.flow_level_mark_col(spec, HEADER)] = flows.level_marks(
+            df[flows.flow_z_col(spec)], level)
+    opinion = specs[2:5]
+    signs = [flows.flow_signs(df[flows.flow_z_col(s)]) for s in opinion]
+    for spec, sign in zip(opinion, signs):
+        df[flows.flow_sign_col(spec)] = sign
+    df[cm_const.FLOW_N_ACTIVE] = sum((x != 0).astype("Int64") for x in signs)
+    df[cm_const.FLOW_STATE] = flows.flow_state(*signs, report=report)
+    df.attrs["lookback_header"] = HEADER
+    df.attrs["lookback_weeks"] = 52
+    df.attrs["flow_level_weeks"] = 52
     df.attrs["report"] = report
     df.attrs["flow_roles"] = {
         "report": report,
@@ -134,6 +151,8 @@ def test_every_panel_draws_a_trace_per_category(report, plot_id):
     if plot_id == "flow":
         # One heatmap carries every category as a row, plus the counterparty. The
         # composite's tick label is the bare word; its members are in the hover.
+        # The level markers ride beside it as one annotation trace.
+        drawn = [t for t in drawn if t.name != "Level marks"]
         assert len(drawn) == 1 and drawn[0].type == "heatmap"
         assert list(drawn[0].y) == [s.label for s in series] + ["Counterparty"]
         assert list(drawn[0].x) == list(df.index)
@@ -299,10 +318,10 @@ def test_index_panel_keeps_its_fixed_scale():
 
 
 def _facet(df, series, plots, show_price=True):
-    rows, cols = ct.facet_shape(plots, series, show_price)
+    rows, cols = ct.facet_shape(plots, series, show_price, frame=df)
     fig = layout_helpers.get_make_subplots_for_facets(
-        rows, cols, ct.facet_titles(plots, series, show_price),
-        ct.facet_specs(plots, series, show_price))
+        rows, cols, ct.facet_titles(plots, series, show_price, frame=df),
+        ct.facet_specs(plots, series, show_price, frame=df))
     return ct.build_facet_figure(fig, df, series, plots, HEADER, PALETTE,
                                  show_price=show_price), rows, cols
 
@@ -319,12 +338,18 @@ def test_facet_gives_each_category_its_own_row(report):
     plots = ["net_pos", "index", "flow"]
     fig, rows, cols = _facet(df, series, plots)
 
-    # 5 categories + a price row + an open-interest row (net_pos is selected).
-    assert rows == len(series) + 2
+    # 5 categories + a price row + an open-interest row (net_pos is selected)
+    # + the flow column's counterparty row and state strip (flow is selected).
+    assert rows == len(series) + 4
     assert cols == len(plots)
 
+    # One series per cell. The level markers and the split-week ticks annotate
+    # the series in their cell rather than being series of their own.
+    annotations = {"Level marks", "Split weeks"}
     per_cell = {}
     for t in fig.data:
+        if t.name in annotations:
+            continue
         per_cell.setdefault(t.yaxis, []).append(t)
     assert all(len(v) == 1 for v in per_cell.values()), \
         "a faceted cell must hold exactly one series"
@@ -712,12 +737,13 @@ def test_flow_heatmap_skips_a_category_missing_flow_columns():
 
 @pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
 def test_flow_facet_is_one_row_heatmap_per_category(report):
-    """In small multiples each cell is a one-row heatmap; the composite is not a row."""
+    """In small multiples each category cell is a one-row heatmap, composite apart."""
     df = _frame(report)
     series = ct.category_series(report, None, PALETTE, frame=df)
     fig, rows, cols = _facet(df, series, ["flow"], show_price=False)
-    maps = [t for t in fig.data if t.type == "heatmap"]
-    assert len(maps) == len(series)
+    # The category rows only: the counterparty row and the state strip under them
+    # are context rows, tested on their own below.
+    maps = [t for t in fig.data if t.type == "heatmap"][:len(series)]
     assert [list(m.y) for m in maps] == [[s.label] for s in series]
     assert not any("Counterparty" in label for m in maps for label in m.y)
     assert all(m.showscale is False for m in maps)
@@ -790,3 +816,186 @@ def test_flow_heatmap_has_no_colorbar_and_no_price():
     entries = {t.name for t in fig.data if t.x is not None and len(t.x)
                and t.x[0] is None}
     assert entries == {s.label for s in series}
+
+
+# --- PR 3: level markers, the counterparty context row, the state strip ----------
+
+def _marks(fig):
+    got = [t for t in fig.data if t.name == "Level marks"]
+    assert len(got) <= 1
+    return got[0] if got else None
+
+
+def test_level_markers_sit_on_exactly_the_marked_cells():
+    """A triangle per cell whose active flow left an extreme; up for the top.
+
+    The marks are cotmetrics' (flows.flow_level_mark_col), so the view draws what
+    the frame says and computes nothing. The composite has no range index of its
+    own and so never carries a marker.
+    """
+    report = cot_categories.REPORT_DISAGG
+    fig, df, series = _flow_figure(report)
+    marks = _marks(fig)
+    want = []
+    for s in series:
+        m = df[flows.flow_level_mark_col(s.spec, HEADER)]
+        for date, v in zip(df.index, m):
+            if not pd.isna(v) and v != 0:
+                want.append((date, s.label, "triangle-up" if v > 0 else "triangle-down"))
+    assert want, "the test frame must carry some marks"
+    got = list(zip(marks.x, marks.y, marks.marker.symbol))
+    assert sorted(got) == sorted(want)
+    assert "Counterparty" not in set(marks.y)
+    assert marks.hoverinfo == "skip"
+    assert marks.showlegend is False
+
+
+def test_marked_cells_name_their_level_and_unmarked_cells_do_not():
+    report = cot_categories.REPORT_DISAGG
+    fig, df, series = _flow_figure(report)
+    hm = _heatmap(fig)
+    for r, s in enumerate(series):
+        mark = df[flows.flow_level_mark_col(s.spec, HEADER)]
+        level = df[flows.flow_from_level_col(s.spec, HEADER)]
+        for i, text in enumerate(hm.text[r]):
+            if text is None:
+                continue
+            marked = not pd.isna(mark.iloc[i]) and mark.iloc[i] != 0
+            if marked:
+                assert f"from level {level.iloc[i]:.0f} of the 52-week range" in text
+            else:
+                assert "from level" not in text
+
+
+def test_no_markers_when_the_frame_has_no_level_columns():
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    df = df.drop(columns=[c for c in df.columns
+                          if cm_const.FLOW_LEVEL_MARK in c or cm_const.FLOW_FROM_LEVEL in c])
+    fig, _, _ = _flow_figure(report, df=df)
+    assert _marks(fig) is None
+    assert not any("from level" in (c or "") for row in _heatmap(fig).text for c in row)
+
+
+def _facet_flow(df=None, plots=("flow",), show_price=True):
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report) if df is None else df
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig, rows, cols = _facet(df, series, list(plots), show_price=show_price)
+    return fig, df, series, rows, cols
+
+
+def _strip(fig):
+    got = [t for t in fig.data if t.name == "Flow state"]
+    assert len(got) <= 1
+    return got[0] if got else None
+
+
+def test_facet_flow_adds_the_counterparty_row_and_the_state_strip_under_price():
+    fig, df, series, rows, cols = _facet_flow()
+    assert rows == len(series) + 3  # price, counterparty, strip
+    names = [ct.facet_context_rows(["flow"], True, df)[i][0] for i in range(3)]
+    assert names == ["price", "counterparty", "state"]
+
+    composite = [t for t in fig.data if t.type == "heatmap" and list(t.y) == ["Counterparty"]]
+    assert len(composite) == 1
+    assert composite[0].text[-1][-1].startswith(_counterparty_hover_label(
+        cot_categories.REPORT_DISAGG))
+
+    strip = _strip(fig)
+    assert list(strip.y) == [0, 1, 2]
+    values = {v for lane in strip.z for v in lane if v is not None}
+    assert values <= {-1.0, 0.0, 1.0}
+    # Lanes follow the opinion order cotmetrics recorded, and warm-up weeks are blank.
+    opinion = df.attrs["flow_roles"]["opinion"]
+    by_key = {s.key: s for s in cot_categories.categories_for(cot_categories.REPORT_DISAGG)}
+    for lane, key in zip(strip.z, opinion):
+        sign = df[flows.flow_sign_col(by_key[key])]
+        assert [None if pd.isna(v) else float(v) for v in sign] == list(lane)
+    assert all(v is None for lane in strip.z for v in lane[:WARMUP])
+    assert strip.showscale is False and strip.hoverongaps is False
+
+
+def test_state_strip_ticks_only_the_split_weeks():
+    """Mixed all-active signs get a tick; moving together, PARTIAL and QUIET do not."""
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    state = pd.Series([None] * len(df), index=df.index, dtype=object)
+    state.iloc[WARMUP:] = flows.FLOW_STATE_QUIET
+    state.iloc[40] = "VALUE_ACCUM"
+    state.iloc[41] = "BROAD_ACCUM"
+    state.iloc[42] = flows.FLOW_STATE_PARTIAL
+    state.iloc[50] = "MM_SELL_OTHERS_BUY"
+    df[cm_const.FLOW_STATE] = state
+    fig, _, _, _, _ = _facet_flow(df=df)
+    ticks = [t for t in fig.data if t.name == "Split weeks"]
+    assert len(ticks) == 1
+    assert [pd.Timestamp(x) for x in ticks[0].x] == [df.index[40], df.index[50]]
+    # Above the three lanes, never over them.
+    assert all(y < -0.5 for y in ticks[0].y)
+    assert ticks[0].hoverinfo == "skip"
+
+
+def test_state_strip_hover_says_label_not_signal():
+    fig, df, _, _, _ = _facet_flow()
+    strip = _strip(fig)
+    texts = [c for lane in strip.text for c in lane if c]
+    assert texts
+    named = [t for t in texts if not t.startswith("no state")]
+    assert named and all("a vocabulary label, not a signal" in t for t in named)
+    assert all("positions as of" in t for t in texts)
+
+
+def test_ineligible_market_gets_no_strip_row_and_no_empty_row():
+    """TFF equities, rates and crypto carry z cells and no state (ADR-0005)."""
+    df = _frame(cot_categories.REPORT_DISAGG).drop(columns=[cm_const.FLOW_STATE])
+    fig, _, series, rows, _ = _facet_flow(df=df)
+    assert rows == len(series) + 2  # price and counterparty only
+    assert _strip(fig) is None
+    assert not ct.has_state_strip(df)
+
+
+def test_flow_context_rows_leave_other_columns_empty_but_keep_their_dates():
+    """Only the flow column has a composite and a state to draw.
+
+    The other cells in those rows stay empty, and the bottom row still carries the
+    date labels for its column, because hiding a bottom cell's x-axis would take
+    the whole column's dates with it.
+    """
+    fig, df, series, rows, cols = _facet_flow(plots=("net_pos", "flow"))
+    assert cols == 2
+    context = ct.facet_context_rows(["net_pos", "flow"], True, df)
+    first = len(series) + 1
+    rows_of = {row_id: first + i for i, (row_id, *_rest) in enumerate(context)}
+    for row_id in ("counterparty", "state"):
+        r = rows_of[row_id]
+        refs = fig.get_subplot(r, 1)
+        axis_name = refs.yaxis.plotly_name.replace("yaxis", "y")
+        in_col1 = [t for t in fig.data if t.yaxis == axis_name]
+        # Exactly one trace, with no points: plotly.js drops a subplot no trace
+        # references, and with it the row label and the column's dates.
+        assert len(in_col1) == 1, row_id
+        assert all(v is None for v in in_col1[0].y)
+        assert in_col1[0].hoverinfo == "skip"
+        assert refs.yaxis.showticklabels is False
+        assert refs.yaxis.title.text in {"Counterparty", "Flow state"}
+    bottom_x = fig.get_subplot(rows, 1).xaxis
+    assert bottom_x.showticklabels is not False
+
+
+def test_pr3_copy_never_ranks_or_forecasts():
+    """The marker and strip copy obeys the panel's copy rule and says nothing about
+    what follows a flow or a state."""
+    banned = ("mover", "biggest move", "unusual", "next", "follow", "expect",
+              "forecast", "predict", "bullish", "bearish", "likely", "edge")
+    fig, _, _, _, _ = _facet_flow()
+    texts = [c for lane in _strip(fig).text for c in lane if c]
+    flow_fig, _, _ = _flow_figure(cot_categories.REPORT_DISAGG)
+    texts += [c for row in _heatmap(flow_fig).text for c in row if c]
+    # What a reader sees: hover text and trace names. Docstrings are left out on
+    # purpose, since they have to name the rule to explain it.
+    texts += [t.name for t in list(fig.data) + list(flow_fig.data) if t.name]
+    for text in texts:
+        low = text.lower().replace("not a signal", "")
+        assert not any(b in low for b in banned), text
+        assert "signal" not in low, text

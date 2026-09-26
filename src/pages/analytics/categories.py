@@ -25,7 +25,7 @@ import components.category_traces as ct
 import components.plot_layout as layout_helpers
 import viz_config
 import viz_constants as vc
-from components import config_fold, controls
+from components import config_fold, controls, flow_copy
 
 dash.register_page(
     __name__,
@@ -377,11 +377,13 @@ def render_category_stack(palette_name, asset, report, selected_categories,
     if faceted:
         # Rows are categories and columns are panels, so the Cols control does not
         # apply: the column count is the number of panels selected.
-        num_rows, num_cols = ct.facet_shape(plots, series, show_price)
+        # The frame goes in so a market without a counterparty composite or a
+        # state (TFF equities, rates, crypto) gets no empty flow context row.
+        num_rows, num_cols = ct.facet_shape(plots, series, show_price, frame=df)
         fig = layout_helpers.get_make_subplots_for_facets(
             num_rows, num_cols,
-            ct.facet_titles(plots, series, show_price),
-            ct.facet_specs(plots, series, show_price))
+            ct.facet_titles(plots, series, show_price, frame=df),
+            ct.facet_specs(plots, series, show_price, frame=df))
         fig = ct.build_facet_figure(fig, df, series, plots, lookback_header, palette,
                                     show_price=show_price)
         height = layout_helpers.get_facet_figure_height(num_rows, num_cols)
@@ -422,13 +424,34 @@ def render_category_stack(palette_name, asset, report, selected_categories,
     if not show_legend:
         fig.update_layout(showlegend=False)
 
-    return dcc.Graph(figure=fig,
-                     id='categories_main_graph',
-                     config={
-                         'scrollZoom': False,
-                         'doubleClick': 'reset',
-                         'displayModeBar': not app_utils.is_mobile(),
-                         'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
-                         'displaylogo': False,
-                         'responsive': True},
-                     style={'width': '100%'})
+    graph = dcc.Graph(figure=fig,
+                      id='categories_main_graph',
+                      config={
+                          'scrollZoom': False,
+                          'doubleClick': 'reset',
+                          'displayModeBar': not app_utils.is_mobile(),
+                          'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d'],
+                          'displaylogo': False,
+                          'responsive': True},
+                      style={'width': '100%'})
+    if "flow" not in plots:
+        return graph
+    return [graph, _flow_caption(df, lookback_header)]
+
+
+def _flow_caption(df, lookback_header):
+    """The latest week in words under the graph, when the flow panel is shown.
+
+    Written by components.flow_copy from the frame alone; this page adds only the
+    markup.
+    """
+    sentences = flow_copy.week_in_words(df, lookback_header)
+    if not sentences:
+        return html.Div()
+    return html.Div(
+        [html.P(sentences[0], style={'marginBottom': '0.35rem',
+                                     'color': vc.BRIGHTER_TEXT_COLOR})]
+        + [html.P(s, style={'marginBottom': '0.2rem'}) for s in sentences[1:]],
+        id='categories_flow_caption',
+        style={'fontSize': '0.8rem', 'color': vc.TEXT_COLOR, 'maxWidth': '900px',
+               'margin': '0.5rem auto 1rem', 'padding': '0 16px'})

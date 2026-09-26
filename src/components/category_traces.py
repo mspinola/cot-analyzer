@@ -438,8 +438,9 @@ FLOW_COLORSCALE = [
 ]
 
 # One heatmap row: the tick label the axis shows, the fuller name the hover opens
-# with, and the columns the cells and hover read.
-FlowRow = namedtuple("FlowRow", "label hover_label z dnet dlong dshort thin")
+# with, and the columns the cells, the hover and the level markers read.
+FlowRow = namedtuple("FlowRow",
+                     "label hover_label z dnet dlong dshort thin level mark")
 
 
 def _counterparty_label(df):
@@ -472,7 +473,7 @@ def _counterparty_label(df):
     return f"Counterparty ({' + '.join(names)})"
 
 
-def _flow_rows(df, series, with_counterparty=True):
+def _flow_rows(df, series, lookback_header=None, with_counterparty=True):
     """The rows to draw, in order: the selected cohorts, then the counterparty.
 
     The composite row is drawn whether or not the checklist selected its members.
@@ -487,6 +488,10 @@ def _flow_rows(df, series, with_counterparty=True):
     took 243 px on gold and 334 px on silver, a quarter to a third of the width from
     every panel, not only this one. The hover has no such cost, so that is where the
     members are named.
+
+    The level columns carry the page's lookback header (cotmetrics.flows: the level
+    is the range index the page draws, one week earlier), so without a header a row
+    simply has no markers.
     """
     rows = []
     for s in series:
@@ -501,6 +506,10 @@ def _flow_rows(df, series, with_counterparty=True):
             dlong=flows.flow_long_col(s.spec),
             dshort=flows.flow_short_col(s.spec),
             thin=flows.flow_thin_col(s.spec),
+            level=(flows.flow_from_level_col(s.spec, lookback_header)
+                   if lookback_header is not None else None),
+            mark=(flows.flow_level_mark_col(s.spec, lookback_header)
+                  if lookback_header is not None else None),
         ))
     z = flows.counterparty_flow_z_col()
     if with_counterparty and z in df.columns:
@@ -509,9 +518,9 @@ def _flow_rows(df, series, with_counterparty=True):
             hover_label=_counterparty_label(df),
             z=z,
             dnet=flows.counterparty_flow_col(),
-            # The composite is a sum of nets, so it has no legs and no thin flag of
-            # its own; the hover for it stops at the net and the z.
-            dlong=None, dshort=None, thin=None,
+            # The composite is a sum of nets, so it has no legs, no thin flag and
+            # no range index of its own; the hover for it stops at the net and the z.
+            dlong=None, dshort=None, thin=None, level=None, mark=None,
         ))
     return rows
 
@@ -538,9 +547,15 @@ def _flow_hover_text(df, rows):
     board's ranking is of index-point changes in the Legacy Commercial positioning
     index, a different quantity on a different report, and the two must not read as
     the same thing.
+
+    A marked cell (see _level_markers) adds the level its flow departed from, and
+    nothing about what came after it.
     """
     def _bool(v):
         return (not pd.isna(v)) and bool(v)
+
+    weeks = df.attrs.get("flow_level_weeks") or df.attrs.get("lookback_weeks")
+    span = f"{weeks}-week range" if weeks else "lookback range"
 
     out = []
     for row in rows:
@@ -549,6 +564,8 @@ def _flow_hover_text(df, rows):
         dlong = df[row.dlong] if row.dlong and row.dlong in df.columns else None
         dshort = df[row.dshort] if row.dshort and row.dshort in df.columns else None
         thin = df[row.thin] if row.thin and row.thin in df.columns else None
+        mark = df[row.mark] if row.mark and row.mark in df.columns else None
+        level = df[row.level] if row.level and row.level in df.columns else None
         cells = []
         for i, date in enumerate(df.index):
             zv = z.iloc[i]
@@ -571,9 +588,57 @@ def _flow_hover_text(df, rows):
             if thin is not None and _bool(thin.iloc[i]):
                 text += (f"<br>thin: typical week under "
                          f"{const.FLOW_MIN_STD_CONTRACTS} contracts, read the count")
+            if mark is not None and level is not None and _bool(mark.iloc[i]) \
+                    and not pd.isna(level.iloc[i]):
+                text += f"<br>from level {level.iloc[i]:.0f} of the {span}"
             cells.append(text)
         out.append(cells)
     return out
+
+
+# The marker sits on the cell, so it has to read on cyan, orange and grey alike:
+# near-white with a background-coloured edge. Never a palette slot, for the reason
+# FLOW_COLORSCALE gives.
+FLOW_MARK_COLOR = vc.BRIGHTER_TEXT_COLOR
+FLOW_MARK_EDGE = vc.BACKGROUND_COLOR
+
+
+def _level_markers(fig, df, rows, row, col, facet=False):
+    """A triangle on each cell whose active flow left an extreme of the range.
+
+    Up for the top of the range (the prior week's index above
+    const.FLOW_LEVEL_HIGH), down for the bottom (below FLOW_LEVEL_LOW); the cell's
+    colour already says which way the cohort moved. The marks come from cotmetrics
+    (`flows.flow_level_mark_col`), which read the page's own range index, so the
+    level a marker points at is the level the Positioning Index panel draws.
+
+    Hover is skipped: the cell under the marker already carries the level in its
+    hover, and under hovermode "x unified" a second entry would repeat it.
+    Context for reading a cell; nothing here says what followed a flow from an
+    extreme, because the cells that motivated the cutoffs were descriptive and on
+    gold alone.
+    """
+    xs, ys, symbols = [], [], []
+    for r in rows:
+        if not r.mark or r.mark not in df.columns:
+            continue
+        mark = df[r.mark]
+        hit = mark.notna().to_numpy() & (mark.fillna(0).to_numpy() != 0)
+        for date, m in zip(df.index[hit], mark[hit]):
+            xs.append(date)
+            ys.append(r.label)
+            symbols.append("triangle-up" if m > 0 else "triangle-down")
+    if not xs:
+        return fig
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode="markers",
+        marker=dict(symbol=symbols, size=6 if facet else 7, color=FLOW_MARK_COLOR,
+                    line=dict(width=1, color=FLOW_MARK_EDGE)),
+        hoverinfo="skip",
+        name="Level marks",
+        showlegend=False,
+    ), row=row, col=col)
+    return fig
 
 
 def _flow_heatmap(fig, df, rows, row, col, facet=False):
@@ -611,7 +676,7 @@ def _flow_heatmap(fig, df, rows, row, col, facet=False):
                      autorange="reversed", fixedrange=True, showgrid=False,
                      zeroline=False, tickfont=dict(size=9), title=None,
                      showticklabels=not facet)
-    return fig
+    return _level_markers(fig, df, rows, row, col, facet=facet)
 
 
 def get_category_flow_heatmap(fig, df, series, lookback_header, row, col, palette,
@@ -634,7 +699,7 @@ def get_category_flow_heatmap(fig, df, series, lookback_header, row, col, palett
     Colour is polarity, never a palette slot, and the state and z are caption
     vocabulary: nothing here carries a forward return or a verdict.
     """
-    rows = _flow_rows(df, series)
+    rows = _flow_rows(df, series, lookback_header)
     if not rows:
         return fig
     _flow_heatmap(fig, df, rows, row, col)
@@ -646,13 +711,132 @@ def get_category_flow_row(fig, df, series, lookback_header, row, col, palette,
     """The facet form: a one-row heatmap for the single cohort in the cell.
 
     No composite row here. In small multiples every row is one category and the
-    counterparty is context, which is a row of its own (the next PR's context row),
-    the same way price and open interest are rows rather than overlays.
+    counterparty is context, a row of its own under price (facet_context_rows), the
+    same way price and open interest are rows rather than overlays.
     """
-    rows = _flow_rows(df, series, with_counterparty=False)
+    rows = _flow_rows(df, series, lookback_header, with_counterparty=False)
     if not rows:
         return fig
     return _flow_heatmap(fig, df, rows, row, col, facet=True)
+
+
+def get_counterparty_flow_row(fig, df, row, col):
+    """The facet context row: the counterparty composite as a one-row heatmap.
+
+    The overlay panel ends with this row; in small multiples it is its own row
+    under the category rows, drawn only in the flow column, because the composite
+    has a flow and no positioning series for the other panels to draw.
+    """
+    rows = _flow_rows(df, [])
+    if not rows:
+        return fig
+    return _flow_heatmap(fig, df, rows, row, col, facet=True)
+
+
+# The strip paints signs, not z: three values, so three exact colours from the same
+# polarity pair as the heatmap, with the grey midpoint for "inside one sd".
+FLOW_SIGN_COLORSCALE = FLOW_COLORSCALE
+FLOW_SPLIT_COLOR = vc.BRIGHTER_TEXT_COLOR
+# The split-week ticks ride a fourth lane above the three, at this y.
+_SPLIT_LANE_Y = -0.9
+
+
+def _opinion_specs(df):
+    """The three cohorts the state is read from, in the order cotmetrics used.
+
+    From the frame's own roles, not the checklist: the state is a fact about all
+    three whether or not the reader switched one off.
+    """
+    roles = df.attrs.get("flow_roles") or {}
+    report = roles.get("report")
+    if report not in categories.REPORT_CHOICES:
+        return []
+    by_key = {s.key: s for s in categories.categories_for(report)}
+    specs = [by_key[k] for k in roles.get("opinion") or () if k in by_key]
+    return [s for s in specs if flows.flow_sign_col(s) in df.columns]
+
+
+def has_state_strip(df):
+    """True when the frame carries a state to draw: a state-eligible market."""
+    return (df is not None and const.FLOW_STATE in df.columns
+            and len(_opinion_specs(df)) == 3)
+
+
+def _strip_hover_text(df, specs):
+    states = df[const.FLOW_STATE]
+    out = []
+    for s in specs:
+        z = df[flows.flow_z_col(s)]
+        sign = df[flows.flow_sign_col(s)]
+        cells = []
+        for i, date in enumerate(df.index):
+            if pd.isna(sign.iloc[i]):
+                cells.append(None)
+                continue
+            v = int(sign.iloc[i])
+            zv = z.iloc[i]
+            move = ("net buying" if v > 0 else "net selling" if v < 0
+                    else "inside one sd")
+            state = states.iloc[i]
+            when = (f"{date.strftime('%A')} {date.strftime('%Y-%m-%d')}"
+                    if hasattr(date, "strftime") else str(date))
+            head = (f"{state}: a vocabulary label, not a signal"
+                    if isinstance(state, str) else "no state this week")
+            cells.append(f"{head}<br>positions as of {when}<br>"
+                         f"{s.label} {move} (z {zv:+.2f})")
+        out.append(cells)
+    return out
+
+
+def get_flow_state_strip(fig, df, row, col):
+    """Three lanes, one per opinion cohort, coloured by the sign of its flow.
+
+    Up or down past one sd in the polarity pair, inside one sd in grey, the warm-up
+    blank. The weeks whose state has the three cohorts all active and split (the
+    gold doc's mixed signs; `flows.DIVERGENT_FLOW_STATES`) get a tick in a thin lane
+    above the three. The plan asked for a line-only box around the week; in the
+    running app a facet column gives one to two pixels a week, where a one-pixel
+    outline is the whole cell and the box painted over the very lanes it was meant
+    to frame. BROAD_ACCUM and BROAD_LIQUID get no tick: everyone moving together is
+    visible in the lanes without help.
+
+    Lanes read top-down in the opinion order cotmetrics recorded, which is the
+    order the cohort rows above them take. No tick labels in a facet cell, for the
+    reason the flow rows give; the hover names the lane.
+
+    The state is caption vocabulary. Its pre-registered test failed, so the hover
+    and the page caption say so beside every name.
+    """
+    specs = _opinion_specs(df)
+    if len(specs) != 3 or const.FLOW_STATE not in df.columns:
+        return fig
+    z = []
+    for s in specs:
+        z.append([None if pd.isna(v) else float(v) for v in df[flows.flow_sign_col(s)]])
+    fig.add_trace(go.Heatmap(
+        x=df.index, y=[0, 1, 2], z=z,
+        text=_strip_hover_text(df, specs),
+        hovertemplate="%{text}<extra></extra>",
+        zmin=-1, zmax=1, zmid=0,
+        colorscale=FLOW_SIGN_COLORSCALE,
+        xgap=0, ygap=1, hoverongaps=False, showscale=False,
+        name="Flow state", showlegend=False,
+    ), row=row, col=col)
+
+    split = df[const.FLOW_STATE].isin(flows.DIVERGENT_FLOW_STATES).to_numpy()
+    if split.any():
+        dates = df.index[split]
+        fig.add_trace(go.Scatter(
+            x=dates, y=[_SPLIT_LANE_Y] * len(dates), mode="markers",
+            marker=dict(symbol="line-ns", size=7,
+                        line=dict(width=2, color=FLOW_SPLIT_COLOR)),
+            hoverinfo="skip", name="Split weeks", showlegend=False,
+        ), row=row, col=col)
+
+    fig.update_yaxes(row=row, col=col, type="linear", range=[2.6, -1.4],
+                     fixedrange=True, showgrid=False, zeroline=False,
+                     showticklabels=False, title=None)
+    return fig
 
 
 # --- the page's plot vocabulary --------------------------------------------------
@@ -781,36 +965,54 @@ def build_panel(plot_id, fig, df, series, lookback_header, row, col, palette,
 
 # --- small multiples --------------------------------------------------------------
 
-def facet_context_rows(plots, show_price):
-    """The non-category rows: price, and open interest when Net Positions is shown.
+# The two flow context rows, drawn only in the flow column (see build_facet_figure).
+FLOW_CONTEXT_ROWS = ("counterparty", "state")
 
-    Both are context for the categories rather than categories themselves, and in the
-    overlay view both ride a second y-axis. Two scales on one plot align arbitrarily,
-    which invents a correlation the data does not contain, so here each gets its own
-    row against the same x. Faceting has already produced the row structure, so this
-    costs nothing.
+
+def facet_context_rows(plots, show_price, frame=None):
+    """The non-category rows: price, open interest with Net Positions, and the flow
+    column's counterparty row and state strip.
+
+    Price and open interest are context for the categories rather than categories
+    themselves, and in the overlay view both ride a second y-axis. Two scales on one
+    plot align arbitrarily, which invents a correlation the data does not contain,
+    so here each gets its own row against the same x. Faceting has already produced
+    the row structure, so this costs nothing.
+
+    With the flow panel selected, the counterparty composite is a row of its own
+    (the other side is never off the page) and the state strip sits under it, on a
+    state-eligible market only. `frame` decides both when given: a market without
+    the composite or without a state gets no empty row for it. Without a frame the
+    rows are assumed present, which is what a shape computed before the data is
+    loaded has to assume.
     """
     rows = []
     if show_price:
         rows.append(("price", const.CLOSING_PRICE, "Price", vc.CATEGORY_PRICE_SLOT))
     if "net_pos" in plots:
         rows.append(("oi", const.OPEN_INTEREST, "Open Interest", vc.CATEGORY_OI_SLOT))
+    if "flow" in plots:
+        if frame is None or flows.counterparty_flow_z_col() in frame.columns:
+            rows.append(("counterparty", flows.counterparty_flow_z_col(),
+                         "Counterparty", None))
+        if frame is None or has_state_strip(frame):
+            rows.append(("state", const.FLOW_STATE, "Flow state", None))
     return rows
 
 
-def facet_shape(plots, series, show_price):
+def facet_shape(plots, series, show_price, frame=None):
     """Grid shape for the faceted view: a row per category, a column per panel."""
-    rows = len(series) + len(facet_context_rows(plots, show_price))
+    rows = len(series) + len(facet_context_rows(plots, show_price, frame))
     return max(1, rows), max(1, len(plots))
 
 
-def facet_titles(plots, series, show_price):
+def facet_titles(plots, series, show_price, frame=None):
     """Panel names on the top row only; every other cell is unlabelled.
 
     Category identity rides on the y-axis title of the first column instead, so it is
     stated once per row rather than repeated in every cell.
     """
-    rows, cols = facet_shape(plots, series, show_price)
+    rows, cols = facet_shape(plots, series, show_price, frame)
     titles = []
     for r in range(rows):
         for c in range(cols):
@@ -818,8 +1020,8 @@ def facet_titles(plots, series, show_price):
     return titles
 
 
-def facet_specs(plots, series, show_price):
-    rows, cols = facet_shape(plots, series, show_price)
+def facet_specs(plots, series, show_price, frame=None):
+    rows, cols = facet_shape(plots, series, show_price, frame)
     return [[{"secondary_y": False} for _ in range(cols)] for _ in range(rows)]
 
 
@@ -833,7 +1035,7 @@ def build_facet_figure(fig, df, series, plots, lookback_header, palette,
     carries its own label, which is the relief the palette checks ask for on the two
     shipped palettes whose lightened siblings sit near the chroma floor.
     """
-    _, cols = facet_shape(plots, series, show_price)
+    _, cols = facet_shape(plots, series, show_price, df)
 
     def label_axis(text, r, c):
         fig.update_yaxes(title_text=text if c == 1 else "", row=r, col=c,
@@ -848,11 +1050,34 @@ def build_facet_figure(fig, df, series, plots, lookback_header, palette,
             # Row identity, stated once, in text rather than by colour alone.
             label_axis(s.label, r, c)
 
-    for i, (_, column, label, slot) in enumerate(
-            facet_context_rows(plots, show_price)):
+    flow_col = plots.index("flow") + 1 if "flow" in plots else None
+    for i, (row_id, column, label, slot) in enumerate(
+            facet_context_rows(plots, show_price, df)):
         if column not in df.columns:
             continue
         r = len(series) + 1 + i
+        if row_id in FLOW_CONTEXT_ROWS:
+            # Only the flow column has something to draw here. The other cells
+            # keep their x-axis, since the bottom row carries the date labels for
+            # its column, and lose their y ticks and grid so they read as empty.
+            for c in range(1, cols + 1):
+                if c == flow_col:
+                    draw = (get_counterparty_flow_row if row_id == "counterparty"
+                            else get_flow_state_strip)
+                    draw(fig, df, r, c)
+                else:
+                    # plotly.js draws only the subplots some trace references, so
+                    # a cell left with no trace loses its axes, the row label
+                    # label_axis puts on column 1, and, in the bottom row, the
+                    # column's dates. A trace with no points keeps the cell.
+                    fig.add_trace(go.Scatter(
+                        x=[df.index[0], df.index[-1]], y=[None, None],
+                        mode="markers", hoverinfo="skip", showlegend=False,
+                        name=""), row=r, col=c)
+                    fig.update_yaxes(row=r, col=c, showticklabels=False,
+                                     showgrid=False, zeroline=False, fixedrange=True)
+                label_axis(label, r, c)
+            continue
         for c in range(1, cols + 1):
             add_trace_to_all(fig, df, column, r, c, label, palette[slot], 0,
                              opacity=0.9)
