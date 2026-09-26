@@ -319,6 +319,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             var liveAxes = {};
             (figure.data || []).forEach(function(t) { liveAxes[axisKeyOf(t)] = true; });
+            // A heatmap's axis is a grid, not a scale: its rows are categories or fixed
+            // lanes (the /categories flow panel and state strip), and fitting it to
+            // the points in a window paired lane numbers with report dates and turned
+            // the strip upside down. Leave every axis that carries one alone.
+            (figure.data || []).forEach(function(t) {
+                if (t.type === 'heatmap') { delete liveAxes[axisKeyOf(t)]; }
+            });
 
             // A figure may ship its own rules in layout.meta.refit: which axes are
             // fitted at all, and the ratio at which a price panel earns a log scale.

@@ -83,20 +83,38 @@ def cohort_sentence(df, spec, i, lookback_header):
         text += (f", z not readable (under {const.FLOW_Z_MIN_PERIODS} weeks of "
                  f"history, or no week-to-week variation)")
     else:
-        text += f", z {z:+.1f} against its own {const.FLOW_Z_WEEKS}-week sd"
-        if abs(z) <= const.FLOW_ACTIVE_Z:
+        # Two decimals, as the hover prints: at one, 1.04 (active) and 0.96 (not)
+        # both read "+1.0". "Inside one sd" is cotmetrics' sign, not a comparison
+        # made here, and only the opinion cohorts carry one.
+        text += f", z {z:+.2f} against its own {const.FLOW_Z_WEEKS}-week sd"
+        if _value(df, flows.flow_sign_col(spec), i) == 0:
             text += ", inside one sd"
     if _value(df, flows.flow_thin_col(spec), i):
         text += (f"; thin, its typical week is under {const.FLOW_MIN_STD_CONTRACTS} "
                  f"contracts, so read the count rather than the z")
-    mark = _value(df, flows.flow_level_mark_col(spec, lookback_header), i)
-    level = _value(df, flows.flow_from_level_col(spec, lookback_header), i)
-    if mark and level is not None:
-        where = "top" if mark > 0 else "bottom"
-        weeks = _weeks(df)
-        span = f"{weeks}-week range" if weeks else "lookback range"
-        text += f", from level {level:.0f}, the {where} of its {span}"
+    if lookback_header is not None:
+        mark = _value(df, flows.flow_level_mark_col(spec, lookback_header), i)
+        level = _value(df, flows.flow_from_level_col(spec, lookback_header), i)
+        if mark and level is not None:
+            # Worded from the mark, with the level to one decimal, so 19.6 cannot
+            # print as "20, the bottom" against a strict below-20 rule.
+            where = (f"above {const.FLOW_LEVEL_HIGH}" if mark > 0
+                     else f"below {const.FLOW_LEVEL_LOW}")
+            text += f", leaving level {level:.1f} ({where}) of its {_span(df)}"
     return text + "."
+
+
+def _span(df):
+    weeks = _weeks(df)
+    return f"{weeks}-week range" if weeks else "lookback range"
+
+
+def marker_key(df):
+    """What the triangles mean, once, in words."""
+    return (f"A triangle marks an active week (beyond one sd) that left the top "
+            f"(up, the index above {const.FLOW_LEVEL_HIGH} the week before) or the "
+            f"bottom (down, below {const.FLOW_LEVEL_LOW}) of the cohort's "
+            f"{_span(df)}.")
 
 
 def _by_key(report):
@@ -117,18 +135,31 @@ def counterparty_sentence(df, roles, report, i):
                 "members is in the report.")
     names = " + ".join(s.label for s in members)
     source = roles.get("source") or ""
+    label = categories.REPORT_LABELS.get(report, report)
     if source == flow_roles.SOURCE_MEASURED:
         why = "measured as this market's counterparty"
+    elif source == flow_roles.SOURCE_UNSTABLE:
+        why = (f"the {label} default, since this market's own roles did not hold "
+               f"steady enough to measure")
     else:
-        why = (f"the {categories.REPORT_LABELS.get(report, report)} default, since "
-               f"this market's own roles did not hold steady enough to measure")
+        why = f"the {label} default; this market's roles were not measured"
     phrase = _net_phrase(_value(df, column, i))
     if phrase is None:
         return f"On the other side, {names} ({why}): no reading this week."
     text = f"On the other side, {names} ({why}) {phrase}"
     z = _value(df, flows.counterparty_flow_z_col(), i)
     if z is not None:
-        text += f", z {z:+.1f}"
+        text += f", z {z:+.2f}"
+    # Where the measured set shares a cohort with the opinion set (Other
+    # Reportable on silver, copper, orange juice), that cohort's flow is in the
+    # sentence above and in this one, so the printed figures do not sum to zero.
+    # Say so rather than let the sum-to-zero line below contradict them.
+    opinion = set(roles.get("opinion") or ())
+    both = [s.label for s in members if s.key in opinion]
+    if both:
+        text += (f". {' and '.join(both)} {'is' if len(both) == 1 else 'are'} also "
+                 f"one of the cohorts above, so {'its' if len(both) == 1 else 'their'} "
+                 f"flow is counted on both sides here")
     return text + "."
 
 
@@ -141,8 +172,12 @@ def neither_side_sentence(df, roles, report, i):
     specs = _present(df, keys, report)
     if not specs:
         return None
-    parts = [f"{s.label} {_signed(_value(df, flows.flow_col(s), i))}" for s in specs]
-    return f"On neither side: {', '.join(parts)} contracts net."
+    parts = []
+    for s in specs:
+        v = _value(df, flows.flow_col(s), i)
+        parts.append(f"{s.label} {_signed(v)} contracts net" if v is not None
+                     else f"{s.label} no reading this week")
+    return f"On neither side: {', '.join(parts)}."
 
 
 def sum_to_zero_sentence(df, report):
@@ -150,14 +185,14 @@ def sum_to_zero_sentence(df, report):
     if not all(flows.flow_col(s) in df.columns for s in specs):
         return None
     return ("Every contract bought was sold by someone, so the net changes of all "
-            "the cohorts sum to zero each week.")
+            "the cohorts, each counted once, sum to zero each week.")
 
 
 def state_sentence(df, roles, report, i):
     if not roles.get("state_eligible", False) or const.FLOW_STATE not in df.columns:
         return ("No state is named on this market: its cohorts do not split into "
-                "opinion and counterparty the way the state assumes (ADR-0005), so "
-                "the cells are drawn and not labelled.")
+                "opinion and counterparty the way the state assumes, so the cells "
+                "are drawn and not labelled.")
     state = df[const.FLOW_STATE].iloc[i]
     if state is None or (isinstance(state, float) and pd.isna(state)):
         return "No state this week: an opinion cohort's z is not readable yet."
@@ -208,15 +243,21 @@ def week_in_words(df, lookback_header, i=None):
     opinion = _present(df, roles.get("opinion") or (), report)
     if not opinion:
         return []
-    i = latest_row(df) if i is None else i
+    latest = i is None
+    i = latest_row(df) if latest else i
     out = [f"Positions as of {_when(df.index[i])} against the report before: each "
            f"cohort's net change in contracts, and its z against its own "
            f"{const.FLOW_Z_WEEKS}-week sd of weekly changes."]
+    if latest and i < len(df) - 1:
+        out.append(f"The newest report, {_when(df.index[-1])}, has no reading for "
+                   f"these cohorts (a gap or a contract switch), so this is the "
+                   f"week before it.")
     out += [cohort_sentence(df, s, i, lookback_header) for s in opinion]
     out.append(counterparty_sentence(df, roles, report, i))
     for sentence in (neither_side_sentence(df, roles, report, i),
                      sum_to_zero_sentence(df, report),
-                     state_sentence(df, roles, report, i)):
+                     state_sentence(df, roles, report, i),
+                     marker_key(df) if lookback_header is not None else None):
         if sentence:
             out.append(sentence)
     return out

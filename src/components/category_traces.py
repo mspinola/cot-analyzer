@@ -590,7 +590,7 @@ def _flow_hover_text(df, rows):
                          f"{const.FLOW_MIN_STD_CONTRACTS} contracts, read the count")
             if mark is not None and level is not None and _bool(mark.iloc[i]) \
                     and not pd.isna(level.iloc[i]):
-                text += f"<br>from level {level.iloc[i]:.0f} of the {span}"
+                text += f"<br>from level {level.iloc[i]:.1f} of the {span}"
             cells.append(text)
         out.append(cells)
     return out
@@ -769,7 +769,7 @@ def _strip_hover_text(df, specs):
         z = df[flows.flow_z_col(s)]
         sign = df[flows.flow_sign_col(s)]
         cells = []
-        for i, date in enumerate(df.index):
+        for i in range(len(df)):
             if pd.isna(sign.iloc[i]):
                 cells.append(None)
                 continue
@@ -778,12 +778,12 @@ def _strip_hover_text(df, specs):
             move = ("net buying" if v > 0 else "net selling" if v < 0
                     else "inside one sd")
             state = states.iloc[i]
-            when = (f"{date.strftime('%A')} {date.strftime('%Y-%m-%d')}"
-                    if hasattr(date, "strftime") else str(date))
             head = (f"{state}: a vocabulary label, not a signal"
                     if isinstance(state, str) else "no state this week")
-            cells.append(f"{head}<br>positions as of {when}<br>"
-                         f"{s.label} {move} (z {zv:+.2f})")
+            # No date line: the unified hover's header already carries it, and
+            # three lanes over the full history made this the page's largest
+            # payload (about half a megabyte on gold).
+            cells.append(f"{head}<br>{s.label} {move} (z {zv:+.2f})")
         out.append(cells)
     return out
 
@@ -969,9 +969,44 @@ def build_panel(plot_id, fig, df, series, lookback_header, row, col, palette,
 FLOW_CONTEXT_ROWS = ("counterparty", "state")
 
 
-def facet_context_rows(plots, show_price, frame=None):
-    """The non-category rows: price, open interest with Net Positions, and the flow
-    column's counterparty row and state strip.
+def counterparty_members(df):
+    """The counterparty's member specs whose flow the frame carries, in role order."""
+    roles = (df.attrs.get("flow_roles") or {}) if df is not None else {}
+    report = roles.get("report")
+    if report not in categories.REPORT_CHOICES:
+        return []
+    by_key = {s.key: s for s in categories.categories_for(report)}
+    return [by_key[k] for k in roles.get("counterparty") or ()
+            if k in by_key and flows.flow_col(by_key[k]) in df.columns]
+
+
+def needs_counterparty_row(df, series):
+    """A composite row in small multiples, unless it would repeat a row on the page.
+
+    Where the counterparty is one cohort (the report defaults, and most TFF markets)
+    and that cohort is already a row, a composite row is the same cells again two
+    rows further down; that cohort's own row is labelled as the counterparty instead
+    (`facet_row_label`). A multi-member composite (gold's Producer/Merchant plus
+    Swap Dealers), or a single member the checklist switched off, gets its row.
+    """
+    if df is None or flows.counterparty_flow_z_col() not in df.columns:
+        return False
+    members = counterparty_members(df)
+    shown = {s.key for s in series}
+    return not (len(members) == 1 and members[0].key in shown)
+
+
+def facet_row_label(df, s):
+    """A category row's axis title, naming it the counterparty where it is the one."""
+    members = counterparty_members(df)
+    if len(members) == 1 and members[0].key == s.key:
+        return f"{s.label}<br>(counterparty)"
+    return s.label
+
+
+def facet_context_rows(plots, show_price, frame, series=()):
+    """The non-category rows: the flow column's counterparty row and state strip,
+    then price, then open interest with Net Positions.
 
     Price and open interest are context for the categories rather than categories
     themselves, and in the overlay view both ride a second y-axis. Two scales on one
@@ -979,34 +1014,35 @@ def facet_context_rows(plots, show_price, frame=None):
     so here each gets its own row against the same x. Faceting has already produced
     the row structure, so this costs nothing.
 
-    With the flow panel selected, the counterparty composite is a row of its own
-    (the other side is never off the page) and the state strip sits under it, on a
-    state-eligible market only. `frame` decides both when given: a market without
-    the composite or without a state gets no empty row for it. Without a frame the
-    rows are assumed present, which is what a shape computed before the data is
-    loaded has to assume.
+    With the flow panel selected, the counterparty is on the page: as its own
+    composite row directly under the cohorts it is the other side of, or, where it
+    is a single cohort already drawn, as that cohort's row (needs_counterparty_row).
+    The state strip follows it, on a state-eligible market only. Price and open
+    interest come last, so the bottom row carries every column's dates. `frame`
+    is required: the rows depend on the market, and a shape computed without it
+    would leave an empty row where the market has no composite or no state.
     """
     rows = []
+    if "flow" in plots:
+        if needs_counterparty_row(frame, series):
+            rows.append(("counterparty", flows.counterparty_flow_z_col(),
+                         "Counterparty", None))
+        if has_state_strip(frame):
+            rows.append(("state", const.FLOW_STATE, "Flow state", None))
     if show_price:
         rows.append(("price", const.CLOSING_PRICE, "Price", vc.CATEGORY_PRICE_SLOT))
     if "net_pos" in plots:
         rows.append(("oi", const.OPEN_INTEREST, "Open Interest", vc.CATEGORY_OI_SLOT))
-    if "flow" in plots:
-        if frame is None or flows.counterparty_flow_z_col() in frame.columns:
-            rows.append(("counterparty", flows.counterparty_flow_z_col(),
-                         "Counterparty", None))
-        if frame is None or has_state_strip(frame):
-            rows.append(("state", const.FLOW_STATE, "Flow state", None))
     return rows
 
 
-def facet_shape(plots, series, show_price, frame=None):
+def facet_shape(plots, series, show_price, frame):
     """Grid shape for the faceted view: a row per category, a column per panel."""
-    rows = len(series) + len(facet_context_rows(plots, show_price, frame))
+    rows = len(series) + len(facet_context_rows(plots, show_price, frame, series))
     return max(1, rows), max(1, len(plots))
 
 
-def facet_titles(plots, series, show_price, frame=None):
+def facet_titles(plots, series, show_price, frame):
     """Panel names on the top row only; every other cell is unlabelled.
 
     Category identity rides on the y-axis title of the first column instead, so it is
@@ -1020,7 +1056,7 @@ def facet_titles(plots, series, show_price, frame=None):
     return titles
 
 
-def facet_specs(plots, series, show_price, frame=None):
+def facet_specs(plots, series, show_price, frame):
     rows, cols = facet_shape(plots, series, show_price, frame)
     return [[{"secondary_y": False} for _ in range(cols)] for _ in range(rows)]
 
@@ -1048,18 +1084,19 @@ def build_facet_figure(fig, df, series, plots, lookback_header, palette,
                         show_price=False, showlegend=False, y_range=y_range,
                         facet=True)
             # Row identity, stated once, in text rather than by colour alone.
-            label_axis(s.label, r, c)
+            label_axis(facet_row_label(df, s) if "flow" in plots else s.label, r, c)
 
     flow_col = plots.index("flow") + 1 if "flow" in plots else None
     for i, (row_id, column, label, slot) in enumerate(
-            facet_context_rows(plots, show_price, df)):
+            facet_context_rows(plots, show_price, df, series)):
         if column not in df.columns:
             continue
         r = len(series) + 1 + i
         if row_id in FLOW_CONTEXT_ROWS:
             # Only the flow column has something to draw here. The other cells
-            # keep their x-axis, since the bottom row carries the date labels for
-            # its column, and lose their y ticks and grid so they read as empty.
+            # keep their x-axis (the bottom row carries the date labels for its
+            # column when price and open interest are off) and lose their y ticks
+            # and grid so they read as empty.
             for c in range(1, cols + 1):
                 if c == flow_col:
                     draw = (get_counterparty_flow_row if row_id == "counterparty"

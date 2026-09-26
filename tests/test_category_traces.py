@@ -743,7 +743,10 @@ def test_flow_facet_is_one_row_heatmap_per_category(report):
     fig, rows, cols = _facet(df, series, ["flow"], show_price=False)
     # The category rows only: the counterparty row and the state strip under them
     # are context rows, tested on their own below.
-    maps = [t for t in fig.data if t.type == "heatmap"][:len(series)]
+    all_maps = [t for t in fig.data if t.type == "heatmap"]
+    # The categories, then the composite row and the strip; nothing else.
+    assert len(all_maps) == len(series) + 2
+    maps = all_maps[:len(series)]
     assert [list(m.y) for m in maps] == [[s.label] for s in series]
     assert not any("Counterparty" in label for m in maps for label in m.y)
     assert all(m.showscale is False for m in maps)
@@ -862,7 +865,7 @@ def test_marked_cells_name_their_level_and_unmarked_cells_do_not():
                 continue
             marked = not pd.isna(mark.iloc[i]) and mark.iloc[i] != 0
             if marked:
-                assert f"from level {level.iloc[i]:.0f} of the 52-week range" in text
+                assert f"from level {level.iloc[i]:.1f} of the 52-week range" in text
             else:
                 assert "from level" not in text
 
@@ -891,11 +894,11 @@ def _strip(fig):
     return got[0] if got else None
 
 
-def test_facet_flow_adds_the_counterparty_row_and_the_state_strip_under_price():
+def test_facet_flow_puts_the_counterparty_and_the_strip_right_under_the_cohorts():
     fig, df, series, rows, cols = _facet_flow()
-    assert rows == len(series) + 3  # price, counterparty, strip
-    names = [ct.facet_context_rows(["flow"], True, df)[i][0] for i in range(3)]
-    assert names == ["price", "counterparty", "state"]
+    assert rows == len(series) + 3  # counterparty, strip, price
+    names = [r[0] for r in ct.facet_context_rows(["flow"], True, df, series)]
+    assert names == ["counterparty", "state", "price"]
 
     composite = [t for t in fig.data if t.type == "heatmap" and list(t.y) == ["Counterparty"]]
     assert len(composite) == 1
@@ -943,7 +946,8 @@ def test_state_strip_hover_says_label_not_signal():
     assert texts
     named = [t for t in texts if not t.startswith("no state")]
     assert named and all("a vocabulary label, not a signal" in t for t in named)
-    assert all("positions as of" in t for t in texts)
+    # The date is the unified hover's header, not repeated in every lane.
+    assert not any("positions as of" in t for t in texts)
 
 
 def test_ineligible_market_gets_no_strip_row_and_no_empty_row():
@@ -964,7 +968,7 @@ def test_flow_context_rows_leave_other_columns_empty_but_keep_their_dates():
     """
     fig, df, series, rows, cols = _facet_flow(plots=("net_pos", "flow"))
     assert cols == 2
-    context = ct.facet_context_rows(["net_pos", "flow"], True, df)
+    context = ct.facet_context_rows(["net_pos", "flow"], True, df, series)
     first = len(series) + 1
     rows_of = {row_id: first + i for i, (row_id, *_rest) in enumerate(context)}
     for row_id in ("counterparty", "state"):
@@ -999,3 +1003,40 @@ def test_pr3_copy_never_ranks_or_forecasts():
         low = text.lower().replace("not a signal", "")
         assert not any(b in low for b in banned), text
         assert "signal" not in low, text
+
+
+def _single_member(df, key):
+    df.attrs["flow_roles"] = {**df.attrs["flow_roles"], "counterparty": (key,)}
+    return df
+
+
+def test_a_one_cohort_counterparty_is_labelled_on_its_own_row_not_repeated():
+    """DOW's counterparty is Dealer/Intermediary alone: a composite row would be the
+    first row again, two rows further down. Its own row says what it is instead."""
+    report = cot_categories.REPORT_DISAGG
+    df = _single_member(_frame(report), "producer_merchant")
+    fig, _, series, rows, _ = _facet_flow(df=df)
+    assert rows == len(series) + 2  # strip and price, no composite row
+    assert not [t for t in fig.data if t.type == "heatmap" and list(t.y) == ["Counterparty"]]
+    titles = [fig.layout["yaxis" + ("" if r == 1 else str(r))].title.text
+              for r in range(1, len(series) + 1)]
+    assert titles[0] == "Producer/Merchant<br>(counterparty)"
+    assert all("(counterparty)" not in t for t in titles[1:])
+
+
+def test_a_one_cohort_counterparty_switched_off_still_gets_its_row():
+    report = cot_categories.REPORT_DISAGG
+    df = _single_member(_frame(report), "producer_merchant")
+    keys = [s.key for s in cot_categories.categories_for(report)][1:]
+    series = ct.category_series(report, keys, PALETTE, frame=df)
+    assert ct.needs_counterparty_row(df, series)
+    fig, rows, _ = _facet(df, series, ["flow"], show_price=False)
+    assert [t for t in fig.data if t.type == "heatmap" and list(t.y) == ["Counterparty"]]
+
+
+def test_facet_rows_are_labelled_only_when_flow_is_shown():
+    report = cot_categories.REPORT_DISAGG
+    df = _single_member(_frame(report), "producer_merchant")
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig, _, _ = _facet(df, series, ["net_pos"])
+    assert fig.layout.yaxis.title.text == "Producer/Merchant"

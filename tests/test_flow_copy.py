@@ -59,14 +59,29 @@ def test_cohort_sentence_reports_net_legs_and_z_from_the_frame():
     df.loc[df.index[i], flows.flow_long_col(spec)] = -2_000
     df.loc[df.index[i], flows.flow_short_col(spec)] = 10_345
     df.loc[df.index[i], flows.flow_z_col(spec)] = -1.84
+    df.loc[df.index[i], flows.flow_sign_col(spec)] = -1
     text = fc.cohort_sentence(df, spec, i, HEADER)
     assert text.startswith(f"{spec.label} net sold 12,345 contracts")
     assert "(longs -2,000, shorts +10,345)" in text
-    assert "z -1.8 against its own 52-week sd" in text
+    assert "z -1.84 against its own 52-week sd" in text
     assert "inside one sd" not in text
 
     df.loc[df.index[i], flows.flow_z_col(spec)] = 0.4
+    df.loc[df.index[i], flows.flow_sign_col(spec)] = 0
     assert "inside one sd" in fc.cohort_sentence(df, spec, i, HEADER)
+
+
+def test_z_at_the_threshold_prints_what_the_sign_says():
+    """1.04 is active and 0.96 is not; at one decimal both read "+1.0"."""
+    df = _frame(DISAGG)
+    spec = _opinion(df)[0]
+    i = len(df) - 1
+    for z, sign, inside in ((1.04, 1, False), (0.96, 0, True), (1.0, 0, True)):
+        df.loc[df.index[i], flows.flow_z_col(spec)] = z
+        df.loc[df.index[i], flows.flow_sign_col(spec)] = sign
+        text = fc.cohort_sentence(df, spec, i, HEADER)
+        assert f"z {z:+.2f}" in text
+        assert ("inside one sd" in text) is inside
 
 
 def test_cohort_sentence_names_a_marked_level_and_only_a_marked_one():
@@ -78,14 +93,17 @@ def test_cohort_sentence_names_a_marked_level_and_only_a_marked_one():
     df[mark] = df[mark].astype("Int64")
     df.loc[df.index[i], level] = 87.4
     df.loc[df.index[i], mark] = 1
-    assert "from level 87, the top of its 52-week range" in fc.cohort_sentence(
+    assert "leaving level 87.4 (above 80) of its 52-week range" in fc.cohort_sentence(
         df, spec, i, HEADER)
-    df.loc[df.index[i], level] = 12.0
+    # 19.6 is below 20 and must not print as "20".
+    df.loc[df.index[i], level] = 19.6
     df.loc[df.index[i], mark] = -1
-    assert "from level 12, the bottom of its 52-week range" in fc.cohort_sentence(
+    assert "leaving level 19.6 (below 20) of its 52-week range" in fc.cohort_sentence(
         df, spec, i, HEADER)
     df.loc[df.index[i], mark] = 0
-    assert "from level" not in fc.cohort_sentence(df, spec, i, HEADER)
+    assert "leaving level" not in fc.cohort_sentence(df, spec, i, HEADER)
+    # No header, no level, no error.
+    assert "leaving level" not in fc.cohort_sentence(df, spec, i, None)
 
 
 def test_masked_and_warm_up_weeks_say_why_there_is_no_reading():
@@ -115,6 +133,24 @@ def test_counterparty_is_always_named_with_its_members_and_its_source():
     text = fc.counterparty_sentence(df, roles, DISAGG, len(df) - 1)
     assert "default" in text and "did not hold steady" in text
 
+    roles = {**roles, "source": flow_roles.SOURCE_DEFAULT}
+    text = fc.counterparty_sentence(df, roles, DISAGG, len(df) - 1)
+    assert "were not measured" in text and "did not hold steady" not in text
+
+
+def test_a_cohort_on_both_sides_is_said_to_be_counted_twice():
+    """Silver, copper and orange juice measure Other Reportable into the
+    counterparty while it is also an opinion cohort, so the printed figures do not
+    sum to zero; the caption has to say why."""
+    df = _frame(DISAGG)
+    roles = {**df.attrs["flow_roles"],
+             "counterparty": ("producer_merchant", "swap", "other_reportable")}
+    text = fc.counterparty_sentence(df, roles, DISAGG, len(df) - 1)
+    assert "Other Reportable is also one of the cohorts above" in text
+    assert "counted on both sides" in text
+    plain = fc.counterparty_sentence(df, df.attrs["flow_roles"], DISAGG, len(df) - 1)
+    assert "both sides" not in plain
+
     out = fc.week_in_words(df, HEADER)
     assert any(s.startswith("On the other side") for s in out)
 
@@ -126,6 +162,10 @@ def test_neither_side_lists_the_neutral_cohorts():
                               "neutral": ("swap",)}
     text = fc.neither_side_sentence(df, df.attrs["flow_roles"], DISAGG, len(df) - 1)
     assert text.startswith("On neither side: Swap Dealers ")
+    swap = _by_key(DISAGG)["swap"]
+    df.loc[df.index[-1], flows.flow_col(swap)] = float("nan")
+    text = fc.neither_side_sentence(df, df.attrs["flow_roles"], DISAGG, len(df) - 1)
+    assert "Swap Dealers no reading this week" in text and "n/a" not in text
     # None when every cohort is either opinion or counterparty.
     roles = {**df.attrs["flow_roles"], "counterparty": ("producer_merchant", "swap"),
              "neutral": ()}
@@ -163,14 +203,26 @@ def test_state_sentence_warm_up_and_ineligible():
     roles = {**df.attrs["flow_roles"], "state_eligible": False}
     text = fc.state_sentence(df, roles, DISAGG, len(df) - 1)
     assert text.startswith("No state is named on this market")
-    assert "ADR-0005" in text
 
 
-def test_latest_row_skips_trailing_weeks_with_no_flow():
+def test_latest_row_skips_trailing_weeks_with_no_flow_and_says_so():
     df = _frame(DISAGG)
     for spec in _opinion(df):
         df.loc[df.index[-2:], flows.flow_col(spec)] = float("nan")
     assert fc.latest_row(df) == len(df) - 3
+    out = fc.week_in_words(df, HEADER)
+    assert out[1].startswith("The newest report,")
+    assert df.index[-3].strftime("%Y-%m-%d") in out[0]
+
+
+def test_caption_ends_with_the_marker_key_and_survives_no_header():
+    df = _frame(DISAGG)
+    out = fc.week_in_words(df, HEADER)
+    assert out[-1].startswith("A triangle marks")
+    assert "above 80" in out[-1] and "below 20" in out[-1]
+    assert "52-week range" in out[-1]
+    bare = fc.week_in_words(df, None)
+    assert bare and not bare[-1].startswith("A triangle")
 
 
 def test_frames_without_flow_roles_give_no_caption():
@@ -194,7 +246,7 @@ def test_copy_never_ranks_or_forecasts_on_any_week(report):
             low = sentence.lower()
             assert not any(b in low for b in BANNED), sentence
             assert "signal" not in low.replace("not a signal", ""), sentence
-            assert "—" not in sentence, sentence
+            assert "\u2014" not in sentence, sentence
 
 
 def test_caption_renders_under_the_graph_only_with_the_flow_panel(monkeypatch):
