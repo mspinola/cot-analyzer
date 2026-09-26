@@ -641,13 +641,16 @@ def _level_markers(fig, df, rows, row, col, facet=False):
     return fig
 
 
-def _flow_heatmap(fig, df, rows, row, col, facet=False):
+def _flow_heatmap(fig, df, rows, row, col, facet=False, dense=None):
     # The gap is a property of the cell width, not of the trace. Measured at an
     # 857 px figure: the overlay gives 3.7 px a week over the 156-week window, so a
     # 1 px gap still leaves cells; a facet column gives 2.1 px a week (328 px for
     # the column), where 1 px is half of every cell and the panel reads as
     # hairlines; a phone opens on 52 weeks at about 6 px a cell, a sixth of it gap.
-    dense = facet or app_utils.is_mobile()
+    # The flow view passes dense=True: in the running app its full-width panel at
+    # one pixel of gap a week read as a comb rather than as runs of colour.
+    if dense is None:
+        dense = facet or app_utils.is_mobile()
     fig.add_trace(go.Heatmap(
         x=df.index,
         y=[r.label for r in rows],
@@ -836,6 +839,68 @@ def get_flow_state_strip(fig, df, row, col):
     fig.update_yaxes(row=row, col=col, type="linear", range=[2.6, -1.4],
                      fixedrange=True, showgrid=False, zeroline=False,
                      showticklabels=False, title=None)
+    return fig
+
+
+# --- the flow view -----------------------------------------------------------------
+# Three full-width panels on one time axis, the Cowork mockup (cotmetrics
+# docs/design/cot-flows.md, PR 3): price with open interest, every selected cohort's
+# flow with the counterparty row and the level markers, and every cohort's
+# positioning index. Price gets the tallest panel because it is what the other two
+# are read against.
+FLOW_VIEW_ROW_HEIGHTS = [0.36, 0.32, 0.32]
+FLOW_VIEW_SPECS = [[{"secondary_y": True}], [{"secondary_y": False}],
+                   [{"secondary_y": False}]]
+FLOW_VIEW_BAND_OPACITY = 0.35
+
+
+def _level_weeks(df):
+    return df.attrs.get("flow_level_weeks") or df.attrs.get("lookback_weeks")
+
+
+def flow_view_titles(df):
+    weeks = _level_weeks(df)
+    span = f"{weeks}w range" if weeks else "range"
+    return [
+        "Price and Open Interest",
+        (f"Weekly Flow z ({const.FLOW_Z_WEEKS}w sd)   "
+         f"\u25b2 left above {const.FLOW_LEVEL_HIGH}, "
+         f"\u25bc left below {const.FLOW_LEVEL_LOW} of the {span}"),
+        f"Positioning Index ({span})",
+    ]
+
+
+def build_flow_view(fig, df, series, lookback_header, palette):
+    """Fill a three-row figure made with FLOW_VIEW_SPECS and FLOW_VIEW_ROW_HEIGHTS.
+
+    The index panel is shaded above FLOW_LEVEL_HIGH and below FLOW_LEVEL_LOW, and
+    only here: those are the cutoffs the triangles in the panel above use, so the
+    shading is the key to the markers. The Positioning Index panel elsewhere on the
+    page stays unshaded for the reason its docstring gives, and nothing in this view
+    shades a setup gate.
+    """
+    if const.CLOSING_PRICE in df.columns:
+        add_trace_to_all(fig, df, const.CLOSING_PRICE, 1, 1, "Price",
+                         palette[vc.CATEGORY_PRICE_SLOT], 1, opacity=0.95)
+        _primary_axis(fig, 1, 1, "Price",
+                      y_range=_fit_range(df, [const.CLOSING_PRICE]))
+    if const.OPEN_INTEREST in df.columns:
+        add_trace_to_all(fig, df, const.OPEN_INTEREST, 1, 1, "Open Interest",
+                         palette[vc.CATEGORY_OI_SLOT], 0, secondary=True,
+                         opacity=0.6, dash="dot")
+        fig.update_yaxes(title="OI", row=1, col=1, secondary_y=True,
+                         showgrid=False, zeroline=False, fixedrange=True,
+                         range=_fit_range(df, [const.OPEN_INTEREST]))
+
+    rows = _flow_rows(df, series, lookback_header)
+    if rows:
+        _flow_heatmap(fig, df, rows, 2, 1, dense=True)
+
+    get_category_index_plot(fig, df, series, lookback_header, 3, 1, palette,
+                            show_price=False, showlegend=True)
+    for y0, y1 in ((const.FLOW_LEVEL_HIGH, 100), (0, const.FLOW_LEVEL_LOW)):
+        fig.add_hrect(y0=y0, y1=y1, row=3, col=1, line_width=0, layer="below",
+                      fillcolor=vc.GRID_COLOR, opacity=FLOW_VIEW_BAND_OPACITY)
     return fig
 
 

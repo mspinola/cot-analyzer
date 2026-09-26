@@ -277,3 +277,34 @@ def test_caption_renders_under_the_graph_only_with_the_flow_panel(monkeypatch):
     out = page.render_category_stack(palette, "Gold", DISAGG, keys, ["net_pos"],
                                      "52", "1", vc.LAYOUT_FACET)
     assert not isinstance(out, list)
+
+
+def test_flow_view_renders_three_panels_with_the_caption_and_locks_its_controls(
+        monkeypatch):
+    import dash
+    from dash import html
+
+    dash.Dash(__name__, use_pages=True, pages_folder="")
+    import pages.analytics.categories as page
+
+    df = _frame(DISAGG)
+
+    class _Indexer:
+        def get_category_data(self, asset, report, lookback):
+            return df
+
+    monkeypatch.setattr(page, "get_indexer", lambda: _Indexer())
+    keys = [s.key for s in cot_categories.categories_for(DISAGG)]
+    palette = sorted(viz_config.get_palette_names())[0]
+    # The plot selector is ignored: net_pos alone still gives the flow view.
+    out = page.render_category_stack(palette, "Gold", DISAGG, keys, ["net_pos"],
+                                     "52", "1", vc.LAYOUT_FLOW)
+    graph, caption = out
+    titles = [a.text for a in graph.figure.layout.annotations]
+    assert titles[0] == "Price and Open Interest"
+    assert titles[1].startswith("Weekly Flow z")
+    assert titles[2].startswith("Positioning Index")
+    assert isinstance(caption, html.Div) and caption.children
+
+    assert page.lock_controls_for_flow_view(vc.LAYOUT_FLOW) == (True, True)
+    assert page.lock_controls_for_flow_view(vc.LAYOUT_FACET) == (False, False)

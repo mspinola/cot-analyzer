@@ -338,6 +338,17 @@ def set_default_columns(pathname, current_val):
 
 
 @callback(
+    Output('categories_plot_selector', 'disabled'),
+    Output('categories_columns_selector', 'disabled'),
+    Input('categories_layout_selector', 'value'),
+)
+def lock_controls_for_flow_view(layout_mode):
+    """The Flow view is a fixed figure; say so by greying out what it ignores."""
+    flow_view = layout_mode == vc.LAYOUT_FLOW
+    return flow_view, flow_view
+
+
+@callback(
     Output('categories_stack', 'children'),
     Input('session_palette_theme_asset_store', 'data'),
     Input('categories_asset_selector', 'value'),
@@ -373,8 +384,20 @@ def render_category_stack(palette_name, asset, report, selected_categories,
     show_price = True
     lookback_header = df.attrs.get("lookback_header", " Custom")
     faceted = layout_mode == vc.LAYOUT_FACET
+    flow_view = layout_mode == vc.LAYOUT_FLOW
 
-    if faceted:
+    if flow_view:
+        # A fixed three-panel figure, so the plot selector and Cols do not apply
+        # (the callback below greys them out).
+        num_rows, num_cols = 3, 1
+        fig = layout_helpers.get_make_subplots_for_plots(
+            num_rows, num_cols, ct.flow_view_titles(df), ct.FLOW_VIEW_SPECS,
+            row_heights=ct.FLOW_VIEW_ROW_HEIGHTS)
+        fig = ct.build_flow_view(fig, df, series, lookback_header, palette)
+        plots = ["flow"]
+        height = None
+        show_legend = True
+    elif faceted:
         # Rows are categories and columns are panels, so the Cols control does not
         # apply: the column count is the number of panels selected.
         # The frame goes in so a market without a counterparty composite or a
@@ -413,7 +436,9 @@ def render_category_stack(palette_name, asset, report, selected_categories,
         show_legend = True
 
     fig = layout_helpers.get_update_xaxes_for_plots(fig, df)
-    if faceted:
+    if faceted or flow_view:
+        # Dates under the bottom panel only; the flow view's three panels share
+        # one time axis, as small multiples do.
         fig = layout_helpers.hide_inner_facet_xlabels(fig, num_rows, num_cols)
 
     weeks = df.attrs.get("lookback_weeks")

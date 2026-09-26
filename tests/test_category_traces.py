@@ -1040,3 +1040,62 @@ def test_facet_rows_are_labelled_only_when_flow_is_shown():
     series = ct.category_series(report, None, PALETTE, frame=df)
     fig, _, _ = _facet(df, series, ["net_pos"])
     assert fig.layout.yaxis.title.text == "Producer/Merchant"
+
+
+# --- the flow view (the Cowork mockup) -------------------------------------------
+
+def _flow_view(report=cot_categories.REPORT_DISAGG, df=None):
+    df = _frame(report) if df is None else df
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig = layout_helpers.get_make_subplots_for_plots(
+        3, 1, ct.flow_view_titles(df), ct.FLOW_VIEW_SPECS,
+        row_heights=ct.FLOW_VIEW_ROW_HEIGHTS)
+    return ct.build_flow_view(fig, df, series, HEADER, PALETTE), df, series
+
+
+def test_flow_view_is_price_then_flow_then_index_on_one_time_axis():
+    fig, df, series = _flow_view()
+    by_axis = {}
+    for t in _named_traces(fig):
+        by_axis.setdefault(t.yaxis, []).append(t)
+    price = [t for t in fig.data if t.name == "Price" and t.x is not None and len(t.x)
+             and t.x[0] is not None]
+    oi = [t for t in fig.data if t.name == "Open Interest"]
+    assert len(price) == 1 and len(oi) == 1
+    assert price[0].yaxis == "y" and oi[0].yaxis == "y2"  # OI on the secondary axis
+    hm = _heatmap(fig)
+    assert hm.yaxis == "y3"
+    assert list(hm.y) == [s.label for s in series] + ["Counterparty"]
+    assert _marks(fig) is not None and _marks(fig).yaxis == "y3"
+    assert hm.xgap == 0  # a full-width comb otherwise
+    index_lines = [t for t in _named_traces(fig) if t.yaxis == "y4"]
+    assert {t.name for t in index_lines} == {s.label for s in series}
+    assert list(fig.layout.yaxis4.range) == [0, 100]
+    # One shared time axis: every other x-axis matches the same one.
+    matches = {fig.layout[k].matches for k in fig.layout if k.startswith("xaxis")}
+    assert len(matches - {None}) == 1
+
+
+def test_flow_view_shades_exactly_the_marker_cutoffs_on_the_index_panel():
+    fig, _, _ = _flow_view()
+    rects = [s for s in fig.layout.shapes if s.type == "rect"]
+    spans = sorted((r.y0, r.y1) for r in rects)
+    assert spans == [(0, cm_const.FLOW_LEVEL_LOW), (cm_const.FLOW_LEVEL_HIGH, 100)]
+    assert all(r.yref == "y4" for r in rects)
+
+
+def test_flow_view_titles_name_the_window_and_the_triangles():
+    df = _frame(cot_categories.REPORT_DISAGG)
+    titles = ct.flow_view_titles(df)
+    assert titles[0] == "Price and Open Interest"
+    assert "52w sd" in titles[1] and "▲" in titles[1] and "▼" in titles[1]
+    assert "above 80" in titles[1] and "below 20" in titles[1]
+    assert "52w range" in titles[2]
+    assert all("—" not in t for t in titles)
+
+
+def test_flow_view_keeps_price_panel_when_the_frame_has_no_open_interest():
+    df = _frame(cot_categories.REPORT_TFF).drop(columns=["Open Interest"])
+    fig, _, _ = _flow_view(cot_categories.REPORT_TFF, df=df)
+    assert not [t for t in fig.data if t.name == "Open Interest"]
+    assert [t for t in fig.data if t.name == "Price"]
