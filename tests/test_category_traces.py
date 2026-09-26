@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from cotmetrics import categories as cot_categories
+from cotmetrics import flows
 
 import components.category_traces as ct
 import components.plot_layout as layout_helpers
@@ -56,7 +57,52 @@ def _frame(report, n=80, seed=3):
         if spec.traders_long_col:
             df[cot_categories.traders_long_col(spec)] = rng.integers(5, 90, n)
             df[cot_categories.traders_short_col(spec)] = rng.integers(5, 90, n)
+
+    # The flow family, shaped as cotmetrics.flows.build_flow_frame shapes it, so a
+    # builder reading a column the frame lacks fails here and not in production.
+    # The warm-up is NaN for the first FLOW_Z_MIN_PERIODS rows, as the real z is.
+    specs = cot_categories.categories_for(report)
+    for i, spec in enumerate(specs):
+        df[flows.flow_col(spec)] = rng.normal(0, 5000, n)
+        df[flows.flow_long_col(spec)] = rng.normal(0, 5000, n)
+        df[flows.flow_short_col(spec)] = rng.normal(0, 5000, n)
+        df[flows.flow_z_col(spec)] = _warmup(rng.normal(0, 1, n))
+        df[flows.flow_thin_col(spec)] = pd.array([i == THIN_SPEC_INDEX] * n,
+                                                 dtype="boolean")
+    df[flows.counterparty_flow_col()] = rng.normal(0, 5000, n)
+    df[flows.counterparty_flow_z_col()] = _warmup(rng.normal(0, 1, n))
+    df.attrs["report"] = report
+    df.attrs["flow_roles"] = {
+        "report": report,
+        "symbol": "GC" if report == cot_categories.REPORT_DISAGG else "6E",
+        "counterparty": tuple(s.key for s in specs[:2]),
+        "opinion": tuple(s.key for s in specs[2:5]),
+        "state_eligible": True,
+        "source": "measured",
+    }
     return df
+
+
+# Which category the store-free frame flags as thin, by report order.
+THIN_SPEC_INDEX = 1
+WARMUP = 26
+
+
+def _warmup(values):
+    values = np.asarray(values, dtype=float)
+    values[:WARMUP] = np.nan
+    return values
+
+
+def _is_blank(v):
+    return v is None or (isinstance(v, float) and np.isnan(v))
+
+
+def _counterparty_hover_label(report):
+    """The composite's hover title: the bare tick label plus its summed members."""
+    labels = {s.key: s.label for s in cot_categories.categories_for(report)}
+    members = [labels[k] for k in _frame(report).attrs["flow_roles"]["counterparty"]]
+    return f"Counterparty ({' + '.join(members)})"
 
 
 def _figure(plot_id, show_price=True):
@@ -85,6 +131,14 @@ def test_every_panel_draws_a_trace_per_category(report, plot_id):
     labels = {s.label for s in series}
     drawn = _named_traces(fig)
     assert drawn, plot_id
+    if plot_id == "flow":
+        # One heatmap carries every category as a row, plus the counterparty. The
+        # composite's tick label is the bare word; its members are in the hover.
+        assert len(drawn) == 1 and drawn[0].type == "heatmap"
+        assert list(drawn[0].y) == [s.label for s in series] + ["Counterparty"]
+        assert list(drawn[0].x) == list(df.index)
+        assert drawn[0].text[-1][-1].startswith(_counterparty_hover_label(report))
+        return
     # Every drawn series belongs to a selected category or is the price/OI overlay.
     assert {t.name for t in drawn} <= labels | {"Price", "Open Interest"}
     assert labels & {t.name for t in drawn}
@@ -262,7 +316,7 @@ def test_facet_gives_each_category_its_own_row(report):
     """
     df = _frame(report)
     series = ct.category_series(report, None, PALETTE, frame=df)
-    plots = ["net_pos", "index"]
+    plots = ["net_pos", "index", "flow"]
     fig, rows, cols = _facet(df, series, plots)
 
     # 5 categories + a price row + an open-interest row (net_pos is selected).
@@ -452,3 +506,287 @@ def test_no_price_entry_is_invented_when_nothing_drew_one():
 
     ct.ensure_price_legend_entry(fig, PALETTE)
     assert not [t for t in fig.data if t.name == "Price"]
+
+
+# --- the weekly flow heatmap ------------------------------------------------------
+
+def _flow_figure(report, selected=None, show_price=False, showlegend=False, df=None):
+    df = _frame(report) if df is None else df
+    series = ct.category_series(report, selected, PALETTE, frame=df)
+    fig = ct.build_panel("flow", _figure("flow", show_price=show_price), df, series,
+                         HEADER, 1, 1, PALETTE, show_price=show_price,
+                         showlegend=showlegend)
+    return fig, df, series
+
+
+def _heatmap(fig):
+    maps = [t for t in fig.data if t.type == "heatmap"]
+    assert len(maps) == 1
+    return maps[0]
+
+
+@pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
+def test_flow_heatmap_rows_follow_report_order_and_end_with_the_counterparty(report):
+    """Rows read top-down in checklist order, and the composite names its members.
+
+    The members are per market, so a fixed "Commercials" label would be wrong on
+    half the universe; the row has to say what was summed. It says so in the hover,
+    not on the axis: the tick text sets the left margin every panel in the stack
+    shares, and the full member label took a third of the figure width on silver.
+    """
+    fig, df, series = _flow_figure(report)
+    hm = _heatmap(fig)
+    assert list(hm.y) == [s.label for s in series] + ["Counterparty"]
+    members = [s.label for s in cot_categories.categories_for(report)[:2]]
+    composite = hm.text[-1][-1]
+    assert composite.startswith(_counterparty_hover_label(report)), composite
+    assert all(m in composite for m in members)
+    assert not any(m in hm.y[-1] for m in members)
+    # First cohort on top, the way the checklist lists them.
+    assert fig.layout.yaxis.autorange == "reversed"
+    assert fig.layout.yaxis.type == "category"
+
+
+def test_flow_heatmap_always_draws_the_counterparty_row():
+    """The other side is never off the page, whatever the checklist says."""
+    report = cot_categories.REPORT_DISAGG
+    keys = [s.key for s in cot_categories.categories_for(report)]
+    fig, _, series = _flow_figure(report, selected={keys[2]})
+    hm = _heatmap(fig)
+    assert len(series) == 1
+    assert len(hm.y) == 2
+    assert hm.y[-1].startswith("Counterparty")
+
+    # A frame without the composite draws the cohorts alone and does not raise.
+    df = _frame(report).drop(columns=[flows.counterparty_flow_col(),
+                                      flows.counterparty_flow_z_col()])
+    fig, _, series = _flow_figure(report, selected={keys[2]}, df=df)
+    hm = _heatmap(fig)
+    assert list(hm.y) == [series[0].label]
+
+
+def test_flow_heatmap_is_diverging_and_clipped():
+    """Colour is polarity, so it comes from the validated pair, never a palette slot.
+
+    Clipped for display only: the z in the hover is the metric, the paint saturates
+    at three sigma so one outlier week cannot wash every ordinary week to grey.
+    """
+    fig, _, _ = _flow_figure(cot_categories.REPORT_DISAGG)
+    hm = _heatmap(fig)
+    assert (hm.zmin, hm.zmax, hm.zmid) == (-3, 3, 0)
+    scale = [c.lower() for _, c in hm.colorscale]
+    assert scale[0] == vc.CATEGORY_DIVERGING_DOWN.lower()
+    assert scale[-1] == vc.CATEGORY_DIVERGING_UP.lower()
+    # Every palette the page can select, with the sibling tints each one derives.
+    # One known coincidence, older than this panel: the validated pair IS Solarized
+    # cyan and orange (viz_constants spells the hex out), and the Solarized palette
+    # carries that cyan in a slot, so under it the momentum columns and this scale
+    # already share a hue with one cohort. That belongs to viz_constants, so the
+    # check names it as the only palette allowed to collide rather than skipping it.
+    collisions = {}
+    for name in viz_config.get_palette_names():
+        pal = viz_config.get_palette(name)
+        identity = {c.lower() for c in pal} | {ct.sibling_color(c).lower() for c in pal}
+        if identity & set(scale):
+            collisions[name] = identity & set(scale)
+    assert set(collisions) <= {"Solarized"}, \
+        f"a polarity stop borrowed an identity colour: {collisions}"
+    # The midpoint is a real grey composited over the plot background, not the
+    # background itself: a dead band erases the runs the panel exists to show.
+    assert scale[1] not in (vc.BACKGROUND_COLOR.lower(), "#000000")
+    assert scale[1] == ct._composite_over(ct.DIM_TEXT, vc.BACKGROUND_COLOR).lower()
+    assert ct._composite_over("rgba(255, 255, 255, 0.35)", "#1a1a1a") == "#6a6a6a"
+
+
+def test_flow_heatmap_keeps_warmup_blank():
+    """No reading is a blank cell, not a zero and not a hover."""
+    fig, _, _ = _flow_figure(cot_categories.REPORT_TFF)
+    hm = _heatmap(fig)
+    assert hm.hoverongaps is False
+    for z_row, t_row in zip(hm.z, hm.text):
+        assert all(_is_blank(v) for v in z_row[:WARMUP])
+        assert all(v is None for v in t_row[:WARMUP])
+        assert not any(_is_blank(v) for v in z_row[WARMUP:])
+        assert all(isinstance(v, str) for v in t_row[WARMUP:])
+
+
+def test_flow_hover_names_both_legs_and_the_week():
+    """The hover is pre-rendered: plotly 6.9 printed %{z:+.2f} raw under x unified.
+
+    The weekday comes from the index, not a fixed "Tuesday": holiday weeks move the
+    as-of day, and the fixture's Friday-dated index has to read "Friday" for the
+    same reason gold's thirteen Mondays have to read "Monday".
+    """
+    fig, df, series = _flow_figure(cot_categories.REPORT_DISAGG)
+    hm = _heatmap(fig)
+    assert hm.hovertemplate == "%{text}<extra></extra>"
+    cell = hm.text[0][-1]
+    last = df.index[-1]
+    for word in ("contracts", "longs", "shorts", "positions as of", "52-week",
+                 series[0].label, last.strftime("%A"), last.strftime("%Y-%m-%d")):
+        assert word in cell, cell
+    assert "Tuesday" not in cell and "published" not in cell, cell
+    # The composite is a sum of nets, so it has no legs to name.
+    composite = hm.text[-1][-1]
+    assert "longs" not in composite and "shorts" not in composite
+    assert "contracts" in composite and "52-week" in composite
+    # An explicit sign on every count, checked on the numbers themselves (the ISO
+    # date carries a "-" of its own, so the cell as a whole proves nothing).
+    net = cell.split("net ")[1].split(" contracts")[0]
+    longs = cell.split("longs ")[1].split(",")[0]
+    shorts = cell.split("shorts ")[1].split(")")[0]
+    assert all(v[0] in "+-" for v in (net, longs, shorts)), cell
+    assert composite.split("net ")[1][0] in "+-", composite
+
+
+def test_flow_contracts_format_is_signed_with_thousands_separators():
+    """The formatter, pinned directly: the fixture's draws can land under 1,000."""
+    assert ct._contracts(1234567.0) == "+1,234,567"
+    assert ct._contracts(-5.0) == "-5"
+    assert ct._contracts(0.0) == "+0"
+    assert ct._contracts(float("nan")) == "n/a"
+    assert ct._contracts(pd.NA) == "n/a"
+
+
+def test_flow_counterparty_names_only_the_members_present():
+    """The label says what was summed, which is the present subset of the measured set.
+
+    cotmetrics records the full measured member tuple in attrs but sums only the
+    members whose columns the frame carries, so a market lacking a cohort must not
+    claim to have summed it.
+    """
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    keep, drop = cot_categories.categories_for(report)[:2]
+    assert drop.key in df.attrs["flow_roles"]["counterparty"]
+    df = df.drop(columns=[c for c in df.columns if c.startswith(drop.prefix)])
+    fig, _, series = _flow_figure(report, df=df)
+    assert drop.label not in {s.label for s in series}
+    hm = _heatmap(fig)
+    assert hm.y[-1] == "Counterparty"
+    composite = hm.text[-1][-1]
+    assert composite.startswith(f"Counterparty ({keep.label})<br>"), composite
+    assert drop.label not in composite
+    # A frame with no roles at all has no members to name.
+    bare = _frame(report)
+    bare.attrs = {}
+    assert ct._counterparty_label(bare) == "Counterparty"
+
+
+def test_flow_hover_marks_thin_cells():
+    fig, _, series = _flow_figure(cot_categories.REPORT_DISAGG)
+    hm = _heatmap(fig)
+    thin_row = [i for i, s in enumerate(series)
+                if s.key == cot_categories.categories_for(
+                    cot_categories.REPORT_DISAGG)[THIN_SPEC_INDEX].key][0]
+    assert "thin" in hm.text[thin_row][-1]
+    assert "read the count" in hm.text[thin_row][-1]
+    for i, row in enumerate(hm.text):
+        if i != thin_row:
+            assert "thin" not in row[-1]
+
+
+def test_flow_heatmap_selecting_fewer_categories_drops_rows():
+    report = cot_categories.REPORT_TFF
+    keys = [s.key for s in cot_categories.categories_for(report)]
+    full = _heatmap(_flow_figure(report)[0])
+    two = _heatmap(_flow_figure(report, selected=set(keys[:2]))[0])
+    assert len(full.y) == len(keys) + 1
+    assert len(two.y) == 3
+    assert list(two.y)[:2] == list(full.y)[:2]
+
+
+def test_flow_heatmap_skips_a_category_missing_flow_columns():
+    report = cot_categories.REPORT_DISAGG
+    df = _frame(report)
+    swap = next(s for s in cot_categories.categories_for(report) if s.key == "swap")
+    flow_family = ("Flow", "dNet", "dLong", "dShort")
+    df = df.drop(columns=[c for c in df.columns if c.startswith(swap.prefix)
+                          and any(f in c for f in flow_family)])
+    fig, _, series = _flow_figure(report, df=df)
+    hm = _heatmap(fig)
+    assert swap.label in {s.label for s in series}
+    assert swap.label not in hm.y
+    assert len(hm.y) == len(series)  # four cohorts plus the counterparty
+
+
+@pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
+def test_flow_facet_is_one_row_heatmap_per_category(report):
+    """In small multiples each cell is a one-row heatmap; the composite is not a row."""
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig, rows, cols = _facet(df, series, ["flow"], show_price=False)
+    maps = [t for t in fig.data if t.type == "heatmap"]
+    assert len(maps) == len(series)
+    assert [list(m.y) for m in maps] == [[s.label] for s in series]
+    assert not any("Counterparty" in label for m in maps for label in m.y)
+    assert all(m.showscale is False for m in maps)
+    # The cell is a fraction of the figure, about 2 px a week, so no gap; and the
+    # cohort is named once, by the axis title label_axis sets, not by a tick too.
+    assert all(m.xgap == 0 for m in maps)
+    for m in maps:
+        axis = fig.layout["yaxis" + m.yaxis[1:]]
+        assert axis.showticklabels is False
+        assert axis.title.text in {s.label for s in series}
+
+
+def test_flow_heatmap_is_denser_on_a_phone_and_still_names_the_members():
+    """At phone width the gap goes; the labels do not change, and the hover keeps the
+    members, because the reader rule (the other side is never off the page) means
+    nothing when the other side is unnamed.
+    """
+    import flask
+
+    report = cot_categories.REPORT_DISAGG
+    desktop_fig = _flow_figure(report)[0]
+    desktop = _heatmap(desktop_fig)
+    assert desktop.xgap == 1
+    assert desktop_fig.layout.yaxis.showticklabels is not False
+    app = flask.Flask("x")
+    ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
+    with app.test_request_context(headers={"User-Agent": ua}):
+        fig, _, series = _flow_figure(report)
+    phone = _heatmap(fig)
+    assert phone.xgap == 0
+    assert list(phone.y) == list(desktop.y) == [s.label for s in series] + ["Counterparty"]
+    assert phone.text[-1][-1].startswith(_counterparty_hover_label(report))
+    assert fig.layout.yaxis.showticklabels is not False
+
+
+def test_flow_panel_has_no_secondary_axis_and_states_its_window():
+    assert not ct.uses_secondary_y("flow", True)
+    assert not ct.uses_secondary_y("flow", False)
+    assert "52" in ct.labels_for()["flow"]
+    assert list(ct.CATEGORY_SPECS)[-1] == "flow"
+    assert "flow" not in ct.DEFAULT_PLOTS
+
+
+def test_flow_copy_never_says_mover():
+    """The Home board ranks index-point changes of the Legacy Commercial leg.
+
+    A flow z is contracts against a cohort's own history, a different quantity, so
+    the panel's copy must never borrow the board's ranking words.
+    """
+    banned = ("mover", "biggest move", "unusual")
+    fig, _, _ = _flow_figure(cot_categories.REPORT_DISAGG)
+    hm = _heatmap(fig)
+    texts = [ct.labels_for()["flow"], hm.name]
+    texts += [c for row in hm.text for c in row if c]
+    texts += [f.__doc__ or "" for f in (ct.get_category_flow_heatmap,
+                                         ct.get_category_flow_row, ct._flow_rows,
+                                         ct._flow_hover_text, ct._counterparty_label)]
+    for text in texts:
+        low = text.lower()
+        assert not any(b in low for b in banned), text
+
+
+def test_flow_heatmap_has_no_colorbar_and_no_price():
+    fig, _, series = _flow_figure(cot_categories.REPORT_DISAGG, show_price=True,
+                                  showlegend=True)
+    hm = _heatmap(fig)
+    assert hm.showscale is False
+    assert not [t for t in fig.data if t.name == "Price"]
+    # The stack's legend still carries the categories when this panel leads it.
+    entries = {t.name for t in fig.data if t.x is not None and len(t.x)
+               and t.x[0] is None}
+    assert entries == {s.label for s in series}
