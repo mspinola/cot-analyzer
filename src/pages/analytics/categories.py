@@ -22,6 +22,7 @@ from dash import Input, Output, State, callback, clientside_callback, dcc, html,
 
 import app_utils
 import components.category_traces as ct
+import components.flow_traces as ft
 import components.plot_layout as layout_helpers
 import viz_config
 import viz_constants as vc
@@ -338,6 +339,17 @@ def set_default_columns(pathname, current_val):
 
 
 @callback(
+    Output('categories_plot_selector', 'disabled'),
+    Output('categories_columns_selector', 'disabled'),
+    Input('categories_layout_selector', 'value'),
+)
+def lock_controls_for_flow_view(layout_mode):
+    """The Flow view is a fixed figure; grey out what it ignores."""
+    flow_view = layout_mode == vc.LAYOUT_FLOW
+    return flow_view, flow_view
+
+
+@callback(
     Output('categories_stack', 'children'),
     Input('session_palette_theme_asset_store', 'data'),
     Input('categories_asset_selector', 'value'),
@@ -373,8 +385,19 @@ def render_category_stack(palette_name, asset, report, selected_categories,
     show_price = True
     lookback_header = df.attrs.get("lookback_header", " Custom")
     faceted = layout_mode == vc.LAYOUT_FACET
+    flow_view = layout_mode == vc.LAYOUT_FLOW
 
-    if faceted:
+    if flow_view:
+        # A fixed three-panel figure: the plot selector and Cols do not apply, and
+        # the callback below greys them out.
+        num_rows, num_cols = 3, 1
+        fig = layout_helpers.get_make_subplots_for_plots(
+            num_rows, num_cols, ft.flow_view_titles(df), ft.FLOW_VIEW_SPECS,
+            row_heights=ft.FLOW_VIEW_ROW_HEIGHTS)
+        fig = ft.build_flow_view(fig, df, series, lookback_header, palette)
+        height = None
+        show_legend = True
+    elif faceted:
         # Rows are categories and columns are panels, so the Cols control does not
         # apply: the column count is the number of panels selected.
         num_rows, num_cols = ct.facet_shape(plots, series, show_price)
@@ -411,7 +434,10 @@ def render_category_stack(palette_name, asset, report, selected_categories,
         show_legend = True
 
     fig = layout_helpers.get_update_xaxes_for_plots(fig, df)
-    if faceted:
+    if flow_view:
+        fig = ft.set_window(fig, df)
+    if faceted or flow_view:
+        # Dates under the bottom panel only: the panels share one time axis.
         fig = layout_helpers.hide_inner_facet_xlabels(fig, num_rows, num_cols)
 
     weeks = df.attrs.get("lookback_weeks")

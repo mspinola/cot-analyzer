@@ -47,8 +47,8 @@ dependencies = [
     # does not exist: the registry refuses those symbols at import and the whole
     # route registry goes down with it, `use_pages` importing every page at boot.
     "crucible-marketdata>=0.3.0",
-    # Floor is 0.15.0 because category_traces imports `cotmetrics.flows` for the
-    # Weekly Flow panel on /categories. Against 0.14.x the module does not exist,
+    # Floor is 0.15.0 because flow_traces imports `cotmetrics.flows` for the Flow
+    # view on /categories. Against 0.14.x the module does not exist,
     # and since `use_pages` imports every page module at startup that ImportError
     # takes down the whole route registry rather than one panel, the same failure
     # the 0.7.0 paragraph records.

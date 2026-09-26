@@ -291,10 +291,15 @@ CATEGORY_DIVERGING_DOWN = "#cb4b16"  # SOLARIZED_DARK_ORANGE
 # How the page arranges the categories.
 LAYOUT_OVERLAY = "overlay"
 LAYOUT_FACET = "facet"
-LAYOUT_CHOICES = (LAYOUT_OVERLAY, LAYOUT_FACET)
+# /categories only: price with open interest, the weekly cohort flow heatmap and the
+# positioning index as three full-width panels on one time axis (components.
+# flow_traces). A fixed figure, so it ignores the plot selector and Cols.
+LAYOUT_FLOW = "flow"
+LAYOUT_CHOICES = (LAYOUT_OVERLAY, LAYOUT_FACET, LAYOUT_FLOW)
 LAYOUT_LABELS = {
     LAYOUT_OVERLAY: "Overlay",
     LAYOUT_FACET: "Small multiples",
+    LAYOUT_FLOW: "Flow view",
 }
 CATEGORY_PRICE_SLOT = 3
 CATEGORY_OI_SLOT = 4

@@ -16,18 +16,15 @@ is the thing that makes the rest of those tests possible.
 """
 
 import math
-import re
 from collections import namedtuple
 
 import cotmetrics.categories as categories
 import cotmetrics.constants as const
-import cotmetrics.flows as flows
 import pandas as pd
 import plotly.graph_objects as go
 
-import app_utils
 import viz_constants as vc
-from components.plot_colors import DIM_TEXT, darken_hex, lighten_hex, relative_luminance
+from components.plot_colors import darken_hex, lighten_hex, relative_luminance
 from components.plot_layout import visible_weeks
 from components.plot_traces import (
     PRICE_OVERLAY_VISIBILITY,
@@ -394,267 +391,6 @@ def get_category_momentum_columns(fig, df, series, lookback_header, row, col, pa
     return fig
 
 
-# --- the weekly flow heatmap ------------------------------------------------------
-
-# Display clip for the colour scale only. The metric is never clipped: a z of +5 is
-# still +5 in the hover, it just paints as saturated as +3 does, because past three
-# sigma the eye cannot rank the shades anyway and letting one outlier week own the
-# scale would wash every ordinary week to grey.
-FLOW_Z_CLIP = 3.0
-
-
-def _composite_over(rgba, hex_bg):
-    """The opaque colour an rgba() paints when laid over an opaque hex background.
-
-    Plotly's colorscale takes no alpha channel per stop in a useful way (the stop
-    would blend with whatever the heatmap sits on, which is the paper, not the panel
-    background), so the translucent grey the rest of the app uses for "nothing to
-    say" has to be flattened onto the plot background first.
-    """
-    m = re.match(r"rgba?\(([^)]*)\)", str(rgba))
-    parts = [float(x) for x in m.group(1).split(",")] if m else []
-    if len(parts) < 3:
-        return hex_bg
-    alpha = parts[3] if len(parts) > 3 else 1.0
-    h = str(hex_bg).lstrip("#")
-    bg = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
-    out = [round(b + (c - b) * alpha) for c, b in zip(parts[:3], bg)]
-    return "#{:02x}{:02x}{:02x}".format(*out)
-
-
-# Three stops: DOWN, grey, UP. Polarity, not identity, for the same reason
-# get_category_momentum_columns gives: every palette slot already names a cohort or
-# a series, so a cell painted in slot 1 would say "this is Managed Money" when it
-# means "this cohort sold". The midpoint is a grey composited from DIM_TEXT over the
-# plot background rather than the background itself: the prototype (cotmetrics
-# docs/design/cot-flows.md, section 7) painted |z| < 1 as background and the panel
-# lost the multi-week runs of mild same-sign flow it exists to show, leaving a few
-# isolated sticks. Grey keeps the runs visible and still lets the two and three
-# sigma cells stand out.
-FLOW_COLORSCALE = [
-    [0.0, vc.CATEGORY_DIVERGING_DOWN],
-    [0.5, _composite_over(DIM_TEXT, vc.BACKGROUND_COLOR)],
-    [1.0, vc.CATEGORY_DIVERGING_UP],
-]
-
-# One heatmap row: the tick label the axis shows, the fuller name the hover opens
-# with, and the columns the cells and hover read.
-FlowRow = namedtuple("FlowRow", "label hover_label z dnet dlong dshort thin")
-
-
-def _counterparty_label(df):
-    """Name the composite by what was summed, so the row says what it holds.
-
-    The members are per market (cotmetrics.flow_roles: Producer/Merchant plus Swap
-    Dealers on gold, Producer/Merchant alone on corn), so a fixed label would be
-    wrong on half the universe. Read from the frame's own attrs rather than from the
-    selected series: the members and the report they belong to are written into
-    `flow_roles` together, by the same call that built the composite column, whereas
-    `series` is whatever subset the checklist left and in a facet cell is one
-    category, which says nothing about the report. A frame without those attrs has
-    no members to name, so it gets the bare word.
-
-    What was summed is the PRESENT subset of the measured set: cotmetrics adds only
-    the members whose columns the frame carries, and records the full measured tuple
-    in attrs regardless, so a member is named here only when its dNet is in the
-    frame. Otherwise a market lacking a cohort would claim to have summed it.
-    """
-    roles = df.attrs.get("flow_roles") or {}
-    report = roles.get("report")
-    members = roles.get("counterparty") or ()
-    if not members or report not in categories.REPORT_CHOICES:
-        return "Counterparty"
-    by_key = {s.key: s for s in categories.categories_for(report)}
-    names = [by_key[k].label for k in members
-             if k in by_key and flows.flow_col(by_key[k]) in df.columns]
-    if not names:
-        return "Counterparty"
-    return f"Counterparty ({' + '.join(names)})"
-
-
-def _flow_rows(df, series, with_counterparty=True):
-    """The rows to draw, in order: the selected cohorts, then the counterparty.
-
-    The composite row is drawn whether or not the checklist selected its members.
-    That is the reader rule the panel exists for: a week's flow only means something
-    against who took the other side, so the other side is never off the page. A
-    cohort whose flow columns the frame lacks is skipped, matching every other
-    panel's treatment of a missing category.
-
-    The composite's tick label is the bare word and its members go in the hover.
-    The tick text sets the figure-level left margin (plotly automargin), which every
-    panel in the stack shares: measured at an 857 px figure, the full member label
-    took 243 px on gold and 334 px on silver, a quarter to a third of the width from
-    every panel, not only this one. The hover has no such cost, so that is where the
-    members are named.
-    """
-    rows = []
-    for s in series:
-        z = flows.flow_z_col(s.spec)
-        if z not in df.columns:
-            continue
-        rows.append(FlowRow(
-            label=s.label,
-            hover_label=s.label,
-            z=z,
-            dnet=flows.flow_col(s.spec),
-            dlong=flows.flow_long_col(s.spec),
-            dshort=flows.flow_short_col(s.spec),
-            thin=flows.flow_thin_col(s.spec),
-        ))
-    z = flows.counterparty_flow_z_col()
-    if with_counterparty and z in df.columns:
-        rows.append(FlowRow(
-            label="Counterparty",
-            hover_label=_counterparty_label(df),
-            z=z,
-            dnet=flows.counterparty_flow_col(),
-            # The composite is a sum of nets, so it has no legs and no thin flag of
-            # its own; the hover for it stops at the net and the z.
-            dlong=None, dshort=None, thin=None,
-        ))
-    return rows
-
-
-def _contracts(v):
-    return "n/a" if pd.isna(v) else f"{v:+,.0f}"
-
-
-def _flow_hover_text(df, rows):
-    """Every cell's hover, rendered here rather than by a hovertemplate format.
-
-    Under hovermode "x unified" plotly 6.9 printed the heatmap's `%{z:+.2f}` as the
-    raw float (cotmetrics docs/design/cot-flows.md, section 7), so the text is built
-    in Python and the template is just `%{text}`. None where the z is NaN, so that
-    with hoverongaps off the warm-up and the masked weeks say nothing at all rather
-    than "n/a".
-
-    The weekday is read from the index rather than written as "Tuesday": the CFTC
-    moves the as-of day on holiday weeks (gold's history holds 13 Mondays and a
-    Wednesday among 1,045 Tuesdays), and a caption that contradicts the date beside
-    it is worse than none. The release day is not stated for the same reason.
-
-    The sentence is deliberately about this cohort against its own history. The Home
-    board's ranking is of index-point changes in the Legacy Commercial positioning
-    index, a different quantity on a different report, and the two must not read as
-    the same thing.
-    """
-    def _bool(v):
-        return (not pd.isna(v)) and bool(v)
-
-    out = []
-    for row in rows:
-        z = df[row.z]
-        dnet = df[row.dnet] if row.dnet in df.columns else None
-        dlong = df[row.dlong] if row.dlong and row.dlong in df.columns else None
-        dshort = df[row.dshort] if row.dshort and row.dshort in df.columns else None
-        thin = df[row.thin] if row.thin and row.thin in df.columns else None
-        cells = []
-        for i, date in enumerate(df.index):
-            zv = z.iloc[i]
-            if pd.isna(zv):
-                cells.append(None)
-                continue
-            if hasattr(date, "strftime"):
-                when = f"{date.strftime('%A')} {date.strftime('%Y-%m-%d')}"
-            else:
-                when = str(date)
-            net = _contracts(dnet.iloc[i]) if dnet is not None else "n/a"
-            legs = ""
-            if dlong is not None and dshort is not None:
-                legs = (f" (longs {_contracts(dlong.iloc[i])}, "
-                        f"shorts {_contracts(dshort.iloc[i])})")
-            text = (f"{row.hover_label}<br>"
-                    f"positions as of {when}<br>"
-                    f"net {net} contracts{legs}<br>"
-                    f"z {zv:+.2f} vs own {const.FLOW_Z_WEEKS}-week sd")
-            if thin is not None and _bool(thin.iloc[i]):
-                text += (f"<br>thin: typical week under "
-                         f"{const.FLOW_MIN_STD_CONTRACTS} contracts, read the count")
-            cells.append(text)
-        out.append(cells)
-    return out
-
-
-def _flow_heatmap(fig, df, rows, row, col, facet=False):
-    # The gap is a property of the cell width, not of the trace. Measured at an
-    # 857 px figure: the overlay gives 3.7 px a week over the 156-week window, so a
-    # 1 px gap still leaves cells; a facet column gives 2.1 px a week (328 px for
-    # the column), where 1 px is half of every cell and the panel reads as
-    # hairlines; a phone opens on 52 weeks at about 6 px a cell, a sixth of it gap.
-    dense = facet or app_utils.is_mobile()
-    fig.add_trace(go.Heatmap(
-        x=df.index,
-        y=[r.label for r in rows],
-        z=[df[r.z].astype(float).tolist() for r in rows],
-        text=_flow_hover_text(df, rows),
-        hovertemplate="%{text}<extra></extra>",
-        zmin=-FLOW_Z_CLIP,
-        zmax=FLOW_Z_CLIP,
-        zmid=0,
-        colorscale=FLOW_COLORSCALE,
-        xgap=0 if dense else 1,
-        ygap=1,
-        hoverongaps=False,
-        # No colorbar: the stack's 10 px right margin clips one, and the panel title
-        # states the scale.
-        showscale=False,
-        name="Weekly Flow",
-        showlegend=False,
-    ), row=row, col=col)
-    # Category axis, first cohort on top so the rows read in checklist order; a
-    # heatmap otherwise stacks its first row at the bottom. In a facet cell the row
-    # identity is already the axis title build_facet_figure sets, as it is for the
-    # momentum columns, so the tick label would name the cohort twice and cost the
-    # narrow column a hundred pixels.
-    fig.update_yaxes(row=row, col=col, secondary_y=False, type="category",
-                     autorange="reversed", fixedrange=True, showgrid=False,
-                     zeroline=False, tickfont=dict(size=9), title=None,
-                     showticklabels=not facet)
-    return fig
-
-
-def get_category_flow_heatmap(fig, df, series, lookback_header, row, col, palette,
-                              show_price=False, showlegend=False):
-    """Week-over-week net change per cohort, as z against its own trailing sd.
-
-    A heatmap rather than five more lines: the reading is a run of same-sign weeks
-    across cohorts, and that is a pattern in a grid, not a crossing of lines. Rows
-    are the selected cohorts in report order, then the counterparty composite, which
-    is always drawn (see _flow_rows). The z is the cohort's dNet over the trailing
-    `const.FLOW_Z_WEEKS`-week sd of its own dNet, computed in cotmetrics.flows; the
-    window is fixed there and does not follow the page's lookback, which is why the
-    panel title states it.
-
-    `show_price` is accepted and ignored, as the trader-count panel does: a line over
-    a heatmap is unreadable, and the price row is a facet context row. The legend is
-    still drawn on request so a stack led by this panel carries the category
-    entries.
-
-    Colour is polarity, never a palette slot, and the state and z are caption
-    vocabulary: nothing here carries a forward return or a verdict.
-    """
-    rows = _flow_rows(df, series)
-    if not rows:
-        return fig
-    _flow_heatmap(fig, df, rows, row, col)
-    return _legend(fig, series, showlegend, palette, show_price=False)
-
-
-def get_category_flow_row(fig, df, series, lookback_header, row, col, palette,
-                          show_price=False, showlegend=False):
-    """The facet form: a one-row heatmap for the single cohort in the cell.
-
-    No composite row here. In small multiples every row is one category and the
-    counterparty is context, which is a row of its own (the next PR's context row),
-    the same way price and open interest are rows rather than overlays.
-    """
-    rows = _flow_rows(df, series, with_counterparty=False)
-    if not rows:
-        return fig
-    return _flow_heatmap(fig, df, rows, row, col, facet=True)
-
-
 # --- the page's plot vocabulary --------------------------------------------------
 # id -> (label, builder, when the cell needs a secondary y-axis)
 #
@@ -674,9 +410,6 @@ CATEGORY_SPECS = {
     "long_short": ("Gross Long / Short", get_category_long_short_plot, SECONDARY_WITH_PRICE),
     "spread": ("Spreading", get_category_spread_plot, SECONDARY_WITH_PRICE),
     "traders": ("Trader Counts", get_category_traders_plot, SECONDARY_NEVER),
-    # Appended last: the picker persists plot ids per session, in this order.
-    "flow": (f"Weekly Flow z ({const.FLOW_Z_WEEKS}w sd, clipped +/-{FLOW_Z_CLIP:g})",
-             get_category_flow_heatmap, SECONDARY_NEVER),
 }
 
 DEFAULT_PLOTS = ["net_pos", "index"]
@@ -698,10 +431,6 @@ _PANEL_COLUMNS = {
     "spread": (lambda s, h: [categories.spread_col(s)], False, None),
     "traders": (lambda s, h: [categories.traders_long_col(s),
                               categories.traders_short_col(s)], False, None),
-    # Present because shared_range indexes every id in facet mode and KeyErrors
-    # otherwise. The range it computes is ignored: the flow builders take no
-    # y_range, since a heatmap's colour scale is its scale and is already shared.
-    "flow": (lambda s, h: [flows.flow_z_col(s)], True, None),
 }
 
 # In small multiples each row holds one series, so a change reads better as a column
@@ -709,7 +438,6 @@ _PANEL_COLUMNS = {
 # would occlude one another.
 _FACET_BUILDERS = {
     "momentum": get_category_momentum_columns,
-    "flow": get_category_flow_row,
 }
 
 

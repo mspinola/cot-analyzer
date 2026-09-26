@@ -113,7 +113,8 @@ def get_make_subplots_for_facets(rows, cols, titles, specs):
     )
 
 
-def get_make_subplots_for_plots(rows, cols, titles, specs, shared_xaxes=True):
+def get_make_subplots_for_plots(rows, cols, titles, specs, shared_xaxes=True,
+                                row_heights=None):
     if rows > 1:
         # vertical_spacing is a fraction of the plot area, not of the figure, so the
         # denominator has to be the plot area or the gap comes out short.
@@ -128,7 +129,8 @@ def get_make_subplots_for_plots(rows, cols, titles, specs, shared_xaxes=True):
         vertical_spacing=v_spacing,
         horizontal_spacing=0.08,
         subplot_titles=titles,
-        specs=specs
+        specs=specs,
+        row_heights=row_heights,
     )
     return fig
 
