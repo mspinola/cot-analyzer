@@ -82,6 +82,10 @@ class PlotCtx:
     showlegend: bool = True
     setup_comms_only: bool = False
     smooth_indexing: bool = False
+    # CotIndexer.get_speculator_data for this asset and lookback, set by the page on
+    # a raw-basis index panel only (the speculator series is contracts-basis). None
+    # draws the panel exactly as before.
+    speculator: object = None
 
 
 # When a panel needs a secondary y-axis.
@@ -144,9 +148,13 @@ def _index(ctx):
     comm, lrg, sml = ctx.idx_cols
     low = ctx.model.low if ctx.model else None
     high = ctx.model.high if ctx.model else None
-    return h.get_index_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
-                            ctx.palette, low, high, ctx.show_price,
-                            ctx.smooth_indexing)
+    fig = h.get_index_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
+                           ctx.palette, low, high, ctx.show_price,
+                           ctx.smooth_indexing)
+    if ctx.speculator is not None:
+        import components.speculator_traces as st
+        fig = st.add_speculator(fig, ctx.speculator, ctx.row, ctx.col, ctx.palette)
+    return fig
 
 
 def _setup_highlight(ctx):

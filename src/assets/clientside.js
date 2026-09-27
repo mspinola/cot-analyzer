@@ -319,6 +319,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             var liveAxes = {};
             (figure.data || []).forEach(function(t) { liveAxes[axisKeyOf(t)] = true; });
+            // An axis carrying a heatmap is a fixed grid, not a scale to fit: the
+            // Positioning Index panel's speculator flow strip sits below its zero,
+            // and fitting the axis to the lines in a zoomed window cut the strip off.
+            (figure.data || []).forEach(function(t) {
+                if (t.type === 'heatmap') { delete liveAxes[axisKeyOf(t)]; }
+            });
 
             // A figure may ship its own rules in layout.meta.refit: which axes are
             // fitted at all, and the ratio at which a price panel earns a log scale.
