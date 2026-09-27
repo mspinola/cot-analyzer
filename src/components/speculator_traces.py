@@ -118,6 +118,33 @@ def strip_hover(df, label):
     return [cells]
 
 
+def line_hover(df, idx_col):
+    """The Speculator line's hover per week: its index, then that week's flow.
+
+    Under hovermode "x unified" a heatmap cell reports only when the cursor is on
+    the strip itself, so hovering the lines never showed the week's move. Carrying
+    the flow z and the net contracts on the line puts level and move in one box
+    at any date. None where the index is NaN (the lookback warm-up), so that week
+    stays silent as before; a readable index with no z yet shows the index alone.
+    """
+    idx = df[idx_col]
+    z = df[flows.flow_z_col(SPEC)] if flows.flow_z_col(SPEC) in df.columns else None
+    dnet = df[flows.flow_col(SPEC)] if flows.flow_col(SPEC) in df.columns else None
+    out = []
+    for i in range(len(df)):
+        v = idx.iloc[i]
+        if pd.isna(v):
+            out.append(None)
+            continue
+        text = f"{v:.0f}"
+        if z is not None and not pd.isna(z.iloc[i]):
+            text += f" \u00b7 flow z {z.iloc[i]:+.2f}"
+            if dnet is not None and not pd.isna(dnet.iloc[i]):
+                text += f" (net {dnet.iloc[i]:+,.0f} contracts)"
+        out.append(text)
+    return out
+
+
 def add_speculator(fig, df, row, col, palette):
     """Add the Speculator line, its flow strip and the panel note to an index panel.
 
@@ -137,7 +164,7 @@ def add_speculator(fig, df, row, col, palette):
             x=df.index, y=df[idx], mode="lines",
             name=f"Speculator ({label})", legendgroup="speculator",
             line=dict(color=palette[vc.SPECULATOR_SLOT], width=2.2),
-            hovertemplate="%{y:.0f}", showlegend=True,
+            text=line_hover(df, idx), hovertemplate="%{text}", showlegend=True,
         ), row=row, col=col, secondary_y=False)
 
     if has_strip:

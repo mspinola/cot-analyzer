@@ -132,6 +132,34 @@ def test_strip_scale_is_diverging_with_zero_near_the_background():
     assert int(red[0:2], 16) > int(red[4:6], 16)       # selling is red
 
 
+def test_line_hover_carries_the_weeks_flow_beside_the_index():
+    """Hovering the lines shows level and move together: the strip only reports
+    when the cursor is on it."""
+    spec_df = _spec_frame()
+    # A week with an index but no readable z (a masked or zero-sd week): the hover
+    # shows the index alone rather than a blank or a zero.
+    spec_df.loc[spec_df.index[-1], flows.flow_z_col(SPEC)] = float("nan")
+    line = _by_name(_index_panel(spec_df), "Speculator (Managed Money)")
+    assert line.hovertemplate == "%{text}"
+    idx = spec_df[flows.index_col(SPEC, spec_df.attrs["lookback_header"])]
+    z = spec_df[flows.flow_z_col(SPEC)]
+    dnet = spec_df[flows.flow_col(SPEC)]
+    seen_flow = seen_index_only = False
+    for i, text in enumerate(line.text):
+        if pd.isna(idx.iloc[i]):
+            assert text is None
+            continue
+        assert text.startswith(f"{idx.iloc[i]:.0f}")
+        if pd.isna(z.iloc[i]):
+            assert text == f"{idx.iloc[i]:.0f}"
+            seen_index_only = True
+        else:
+            assert text == (f"{idx.iloc[i]:.0f} \u00b7 flow z {z.iloc[i]:+.2f} "
+                            f"(net {dnet.iloc[i]:+,.0f} contracts)")
+            seen_flow = True
+    assert seen_flow and seen_index_only
+
+
 def test_strip_hover_carries_z_and_net_contracts():
     spec_df = _spec_frame()
     strip = _by_name(_index_panel(spec_df), "Speculator flow z")
