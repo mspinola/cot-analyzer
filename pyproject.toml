@@ -47,11 +47,11 @@ dependencies = [
     # does not exist: the registry refuses those symbols at import and the whole
     # route registry goes down with it, `use_pages` importing every page at boot.
     "crucible-marketdata>=0.3.0",
-    # Floor is 0.15.0 because the Positioning Index panel on /analysis calls
-    # `CotIndexer.get_speculator_data` (and speculator_traces imports
-    # `cotmetrics.flows`). Against 0.14.x the method does not exist and the
+    # Floor is 0.15.1 because the Positioning Index panel on /analysis calls
+    # `CotIndexer.get_commercial_flow_data` (and flow_strip imports
+    # `cotmetrics.flows`). Against 0.15.0 the method does not exist and the
     # AttributeError lands in the stack's render callback, so the whole stack
-    # fails rather than one line.
+    # fails rather than one strip.
     #
     # 0.13.0 was the floor because the crowd page's breadth panel calls
     # `indicators.fomo_zones` and `net_highs_regime`. Against 0.12.x those do not
@@ -105,7 +105,7 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.15.0",
+    "cotmetrics[options]>=0.15.1",
 ]
 
 [project.optional-dependencies]

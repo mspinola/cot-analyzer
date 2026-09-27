@@ -82,10 +82,10 @@ class PlotCtx:
     showlegend: bool = True
     setup_comms_only: bool = False
     smooth_indexing: bool = False
-    # CotIndexer.get_speculator_data for this asset and lookback, set by the page on
-    # a raw-basis index panel only (the speculator series is contracts-basis). None
-    # draws the panel exactly as before.
-    speculator: object = None
+    # CotIndexer.get_commercial_flow_data for this asset, set by the page on a
+    # raw-basis index panel only (the flow is in contracts). None draws the panel
+    # exactly as before.
+    flow: object = None
 
 
 # When a panel needs a secondary y-axis.
@@ -151,9 +151,9 @@ def _index(ctx):
     fig = h.get_index_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
                            ctx.palette, low, high, ctx.show_price,
                            ctx.smooth_indexing)
-    if ctx.speculator is not None:
-        import components.speculator_traces as st
-        fig = st.add_speculator(fig, ctx.speculator, ctx.row, ctx.col, ctx.palette)
+    if ctx.flow is not None:
+        import components.flow_strip as fs
+        fig = fs.add_flow_strip(fig, ctx.flow, ctx.row, ctx.col)
     return fig
 
 

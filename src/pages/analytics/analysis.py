@@ -521,11 +521,11 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs, shared_xaxes=is_shared_x)
     fig = registry.apply_title_hints(fig, [resolve(p)[0] for p in selected_plots])
 
-    # The Speculator series (cotmetrics' one role series per market) rides on the
-    # raw-basis Positioning Index panel; only fetched when that panel is drawn.
-    speculator = None
+    # The Commercial leg's weekly flow strip rides on the raw-basis Positioning Index
+    # panel; only fetched when that panel is drawn. No lookback: its window is fixed.
+    flow = None
     if any(resolve(p) == ("index", const.BASIS_RAW) for p in selected_plots):
-        speculator = get_indexer().get_speculator_data(asset, lookback)
+        flow = get_indexer().get_commercial_flow_data(asset)
 
     plot_idx = 0
     for r in range(1, num_rows + 1):
@@ -569,9 +569,8 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                     net_cols=(comm_net, lrg_net, sml_net), y_title=net_y_title,
                     range_weeks=controls.lookback_weeks(lookback, asset),
                     setup_comms_only=setup_comms_only,
-                    speculator=(speculator if (p == "index"
-                                               and basis_view == const.BASIS_RAW)
-                                else None))
+                    flow=(flow if (p == "index" and basis_view == const.BASIS_RAW)
+                          else None))
                 fig = spec.build(ctx) or fig
                 if spec.decorate:
                     ctx.fig = fig
