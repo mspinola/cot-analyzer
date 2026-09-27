@@ -296,10 +296,6 @@ LAYOUT_LABELS = {
     LAYOUT_OVERLAY: "Overlay",
     LAYOUT_FACET: "Small multiples",
 }
-# The Speculator line on the /analysis Positioning Index panel (components.
-# speculator_traces). Slots 0-2 are the three Legacy legs; 5 is free on that page
-# (only Exposure uses it, for volume) and differs from all three in every palette.
-SPECULATOR_SLOT = 5
 CATEGORY_PRICE_SLOT = 3
 CATEGORY_OI_SLOT = 4
 
