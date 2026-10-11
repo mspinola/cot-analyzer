@@ -448,12 +448,20 @@ def _visit_worker():
             utils.cot_logger.error(f"visit worker failed on {row.get('path')}: {e}")
 
 
-def _enqueue_visit(kind, path):
+_REFERRER_FROM_REQUEST = object()
+
+
+def _enqueue_visit(kind, path, referrer=_REFERRER_FROM_REQUEST):
     """Build a visit row from the CURRENT flask request and hand it to the worker.
 
     Must run inside a request context (a before_request hook or a callback, both
     qualify). The worker is started lazily rather than at import so importing this
     module (tests, tooling) starts no thread and writes nothing.
+
+    `referrer` defaults to the request's own: kept on a landing, dropped on a
+    pageview (see the row below). The beacon passes one explicitly, None
+    included, because on that request the Referer header names the external
+    page itself, not where its visitor came from.
     """
     global _visit_worker_started
     ip_addr = visitors.client_ip(request.headers.get('X-Forwarded-For'),
@@ -469,7 +477,8 @@ def _enqueue_visit(kind, path):
         'is_bot': bot,
         # The referrer on a callback POST is just our own page url; only the
         # document load carries where the visitor actually came from.
-        'referrer': request.referrer if kind == 'landing' else None,
+        'referrer': ((request.referrer if kind == 'landing' else None)
+                     if referrer is _REFERRER_FROM_REQUEST else referrer),
     })
     with _visit_worker_lock:
         if not _visit_worker_started:
@@ -493,11 +502,40 @@ def record_visit():
         '/_dash-component-suites/',
         '/assets/',
         '/favicon.ico',
-        '/_favicon.ico'
+        '/_favicon.ico',
+        # The external-page beacon logs its OWN rows (below); the request that
+        # carries it is not a visit to this site.
+        routing.BEACON_PATH,
     ]
 
     if not any(request.path.startswith(path) for path in ignored_paths):
         _enqueue_visit('landing', request.path)
+
+
+@app.server.route(routing.BEACON_PATH)
+def external_page_beacon():
+    """Log a view of a page served from another origin; see routing.BEACON_PATH.
+
+    The DBMF dashboard is a static page on GitHub Pages: no server, no hook, no
+    access log. It loads this pixel once per document load with `p` naming the
+    page and `r` carrying its `document.referrer`, and the result is exactly the
+    pair of rows one of this app's own document loads produces: a 'landing'
+    carrying the referrer and a 'pageview' that the admin page counts (the two
+    kinds are never summed; see the visit-capture note above). Everything after
+    the enqueue is shared: the forwarded client address, the daily visitor hash,
+    the geolocation cache, the datacenter flag. A visitor who opens both sites
+    on one day is therefore one visitor id across them.
+
+    `p` is matched against an allowlist and `r` is cleaned, because both are
+    query values anyone can write. An unlisted `p` still gets the pixel: the
+    answer is for the browser, and there is nothing to tell a stranger.
+    """
+    path = routing.external_page_path(request.args.get('p'))
+    if path:
+        _enqueue_visit('landing', path,
+                       referrer=visitors.clean_referrer(request.args.get('r')))
+        _enqueue_visit('pageview', path)
+    return routing.PIXEL_GIF, 200, {'Content-Type': 'image/gif'}
 
 
 # The dropdown pages, as data, so the items and the active-state wiring below

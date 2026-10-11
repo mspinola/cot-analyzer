@@ -1,5 +1,5 @@
 """The pure half of visitor tracking: ip parsing, bot classification, visitor ids."""
-from visitors import client_ip, is_bot, visitor_id
+from visitors import clean_referrer, client_ip, is_bot, visitor_id
 
 # ── client_ip ─────────────────────────────────────────────────────────────────
 
@@ -76,3 +76,29 @@ def test_the_id_is_short_hex():
 
 def test_today_is_the_default_day():
     assert visitor_id('1.2.3.4', 'ua') == visitor_id('1.2.3.4', 'ua')
+
+
+# ── clean_referrer ────────────────────────────────────────────────────────────
+
+def test_a_web_address_is_kept_as_reported():
+    assert clean_referrer('https://example.com/post?x=1') == 'https://example.com/post?x=1'
+    assert clean_referrer('http://example.com/') == 'http://example.com/'
+
+
+def test_an_empty_referrer_is_a_direct_visit():
+    """None, not '', so a direct visit reads the same whether it arrived via the
+    Referer header or the beacon's query value."""
+    assert clean_referrer('') is None
+    assert clean_referrer(None) is None
+    assert clean_referrer('   ') is None
+
+
+def test_anything_but_a_web_address_is_dropped():
+    """The query value is bounded by whoever wrote the URL, not by a browser."""
+    for value in ['javascript:alert(1)', '<img src=x>', 'example.com', 'ftp://x/y',
+                  'drop table visitor_logs']:
+        assert clean_referrer(value) is None, value
+
+
+def test_a_long_referrer_is_truncated():
+    assert len(clean_referrer('https://x/' + 'a' * 5000)) == 512

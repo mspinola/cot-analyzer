@@ -49,6 +49,23 @@ def is_bot(user_agent):
     return any(marker in ua for marker in BOT_MARKERS)
 
 
+def clean_referrer(value, limit=512):
+    """A referrer a client REPORTED (the beacon's `r` query value), or None.
+
+    A browser-set Referer header is bounded by the browser; a query value is
+    bounded by whoever wrote the URL. Keep it only when it looks like a web
+    address, and never longer than `limit`, so the referrer column cannot be
+    used to park arbitrary text in the admin table. Empty means a direct visit,
+    which is None rather than '' to match what the Referer header gives.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    if not value.lower().startswith(('http://', 'https://')):
+        return None
+    return value[:limit]
+
+
 def visitor_id(ip, user_agent, day=None):
     """A daily-rotating pseudonymous id: sha256 of day, ip and user agent, 16 hex chars.
 

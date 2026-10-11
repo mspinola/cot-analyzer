@@ -446,6 +446,22 @@ block rather than a warning. Only enable it once renewal is dependable: single a
 record, `certbot renew --dry-run` passing, `certbot.timer` active. Shorten `max-age` to
 something like `300` while testing if you want an easy way back.
 
+### Views of pages this app does not serve
+
+The DBMF dashboard at `dbmf.bluemagicai.com` is a static page on GitHub Pages: no
+server, no hook, no access log. Its views reach the same `visitor_logs` table and the
+same /admin charts through a one-pixel beacon, `GET /seen.gif?p=dbmf&r=<referrer>`,
+which the publish step in the `dbmf-tracker` repo (`deploy/publish_pages.py`) appends to
+the page. The app answers with a 1x1 GIF and writes the same two rows one of its own
+document loads writes: a `landing` carrying the referrer and a `pageview` the admin
+page counts, under path `/dbmf`. The `p` value is matched against an allowlist in
+`routing.EXTERNAL_PAGES` (add a key there to admit another external page) and `r` is
+kept only when it looks like a web address. Nothing to configure on the box: the route
+is part of the app and rides the same nginx `proxy_pass`, so `X-Forwarded-For` reaches
+it like any other request. Two limits worth knowing: an ad blocker that drops the
+pixel drops the view, and a client that fetches HTML without loading images never
+appears, which for that page is the bot filter.
+
 ## 9. GoatCounter analytics (optional)
 
 Client-side analytics beside the app's own visit log, not replacing it: the built-in

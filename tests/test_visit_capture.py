@@ -53,6 +53,73 @@ def test_a_null_pathname_logs_nothing(captured):
     assert captured == []
 
 
+# ── what the external-page beacon logs ───────────────────────────────────────
+#
+# These go through the test client rather than calling the view, because the
+# interesting half is what the OTHER hooks do with the request: the unknown-path
+# guard must admit it and `record_visit` must not log it as a landing on top of
+# the rows the beacon writes itself.
+
+@pytest.fixture
+def captured_rows(monkeypatch):
+    rows = []
+    monkeypatch.setattr(app_cot, '_enqueue_visit',
+                        lambda kind, path, **kw: rows.append((kind, path, kw)))
+    return rows
+
+
+def test_a_dbmf_page_load_is_a_landing_plus_a_pageview(captured_rows):
+    """The same pair one of this app's own document loads produces: the landing
+    carries the external page's referrer, the pageview is what the admin page
+    counts. No third row for the pixel request itself."""
+    client = app_cot.app.server.test_client()
+    resp = client.get('/seen.gif?p=dbmf&r=https%3A%2F%2Fexample.com%2Fpost')
+    assert resp.status_code == 200
+    assert resp.content_type == 'image/gif'
+    assert resp.headers['Cache-Control'] == 'no-store'
+    assert captured_rows == [
+        ('landing', '/dbmf', {'referrer': 'https://example.com/post'}),
+        ('pageview', '/dbmf', {}),
+    ]
+
+
+def test_a_direct_dbmf_visit_has_no_referrer(captured_rows):
+    """`document.referrer` is '' on a direct visit; the row must say None, as the
+    Referer header would, not the dbmf page's own address from this request."""
+    client = app_cot.app.server.test_client()
+    client.get('/seen.gif?p=dbmf&r=',
+               headers={'Referer': 'https://dbmf.bluemagicai.com/'})
+    assert captured_rows[0] == ('landing', '/dbmf', {'referrer': None})
+
+
+def test_an_unlisted_page_gets_the_pixel_and_no_row(captured_rows):
+    client = app_cot.app.server.test_client()
+    for query in ['', '?p=', '?p=shell.php', '?p=DBMF']:
+        resp = client.get('/seen.gif' + query)
+        assert resp.status_code == 200, query
+    assert captured_rows == []
+
+
+def test_the_pixel_is_a_real_one_by_one_gif():
+    import io
+
+    import routing
+    assert routing.PIXEL_GIF[:6] == b'GIF89a' and routing.PIXEL_GIF[-1:] == b';'
+    Image = pytest.importorskip('PIL.Image')
+    assert Image.open(io.BytesIO(routing.PIXEL_GIF)).size == (1, 1)
+
+
+def test_an_explicit_referrer_wins_over_the_request_header(monkeypatch):
+    monkeypatch.setattr(app_cot, '_visit_worker_started', True)
+    with app_cot.app.server.test_request_context(
+            '/seen.gif', headers={'User-Agent': 'Mozilla/5.0',
+                                  'Referer': 'https://dbmf.bluemagicai.com/'}):
+        app_cot._enqueue_visit('landing', '/dbmf', referrer=None)
+        app_cot._enqueue_visit('landing', '/dbmf', referrer='https://t.co/x')
+    assert app_cot._visit_queue.get_nowait()['referrer'] is None
+    assert app_cot._visit_queue.get_nowait()['referrer'] == 'https://t.co/x'
+
+
 # ── what reaches the queue ────────────────────────────────────────────────────
 
 def test_the_enqueued_row_carries_identity_and_referrer(monkeypatch):

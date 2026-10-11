@@ -25,6 +25,16 @@ SERVED_PREFIXES = (
     '/static/',
 )
 
+#: The view beacon: a one-pixel image a page served from ANOTHER origin loads so
+#: its views land in the same visitor log as this app's pages. The first such
+#: page is the DBMF dashboard, a static GitHub Pages site under the same domain
+#: (dbmf.bluemagicai.com) with no server of its own, so nothing on that side can
+#: run `record_visit`. The name is deliberately bland: the common blocklists
+#: match /beacon, /track, /pixel.gif and /collect, and a request they drop is a
+#: view never counted. Named in EXTRA_PATHS below so the unknown-path guard
+#: admits it.
+BEACON_PATH = '/seen.gif'
+
 #: Real paths belonging to no page: the browser's automatic favicon request, Dash's
 #: own copy of it, the email-link and crawler endpoints (plain Flask routes in
 #: app_cot, which `app.routes` does not list because it only knows Dash's own),
@@ -33,7 +43,28 @@ SERVED_PREFIXES = (
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
                          '/confirm', '/unsubscribe', '/graphs',
                          '/robots.txt', '/sitemap.xml',
-                         '/manifest.webmanifest', '/sw.js'})
+                         '/manifest.webmanifest', '/sw.js',
+                         BEACON_PATH})
+
+#: Which external pages the beacon will log, keyed by the `p` query value the
+#: page sends, valued by the path recorded for it. An ALLOWLIST, not a
+#: passthrough: the query string is anyone's to write, and the visitor log must
+#: never carry a string a stranger chose. An unlisted key is answered with the
+#: pixel and logged as nothing.
+EXTERNAL_PAGES = {'dbmf': '/dbmf'}
+
+#: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
+#: 204 keeps a plain <img> beacon from logging a broken-image error in the
+#: visitor's console; pinned by test_visit_capture through PIL.
+PIXEL_GIF = (b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff'
+             b'!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00'
+             b'\x00\x02\x02D\x01\x00;')
+
+
+def external_page_path(key):
+    """The path the visitor log records for an external page's beacon, or None."""
+    return EXTERNAL_PAGES.get(key or '')
+
 
 #: Operator surfaces and internal viewers: out of the sitemap, disallowed in
 #: robots.txt. A search result should never land a visitor on the admin login
@@ -221,6 +252,12 @@ def cache_policy(path, fingerprinted, content_type):
     # worker script's HTTP cache at a day, but explicit beats capped).
     if path in ('/manifest.webmanifest', '/sw.js'):
         return 'no-cache'
+    # The view beacon counts document loads, so a cached pixel is a view that
+    # never reached the log. `no-store`, not `no-cache`: a revalidation is a
+    # request too, but one the browser may answer from its own copy on a
+    # back/forward navigation without asking.
+    if path == BEACON_PATH:
+        return 'no-store'
     # A DATED weekly report barely changes once its week has passed (a store
     # revision or a copy tweak, both rare), and its cold render is the most
     # expensive page this app serves, so a day of public caching is cheap

@@ -11,7 +11,14 @@ are passed in, so nothing here needs a Dash app or a store.
 """
 import pytest
 
-from routing import is_known_path, is_vendor_sourcemap, not_found_page
+from routing import (
+    BEACON_PATH,
+    cache_policy,
+    external_page_path,
+    is_known_path,
+    is_vendor_sourcemap,
+    not_found_page,
+)
 
 # What the live app carries, as of the page registry at the time of writing. The nested
 # and the underscored ones are the interesting entries: a naive "one path segment"
@@ -74,7 +81,8 @@ def test_the_browsers_automatic_favicon_request_is_not_a_probe(path):
 
 @pytest.mark.parametrize("path", ['/confirm', '/unsubscribe',
                                   '/robots.txt', '/sitemap.xml',
-                                  '/weekly', '/weekly/2026-08-25'])
+                                  '/weekly', '/weekly/2026-08-25',
+                                  '/seen.gif'])
 def test_the_flask_route_endpoints_are_served(path):
     """Plain Flask routes on app.server (see app_cot), which `app.routes` does
     not list; without this membership every link in a subscription email 404s
@@ -152,3 +160,18 @@ def test_the_404_body_is_small_and_navigable():
     assert len(body) < 2000
     assert 'href="/"' in body
     assert '404' in body
+
+
+# ── the external-page beacon ──────────────────────────────────────────────────
+
+def test_the_beacon_logs_only_allowlisted_pages():
+    """`p` is a query value anyone can write. The log records the path the
+    allowlist names for it, never the value itself."""
+    assert external_page_path('dbmf') == '/dbmf'
+    for key in ['', None, 'DBMF', '/dbmf', 'shell.php', '<script>']:
+        assert external_page_path(key) is None, key
+
+
+def test_the_beacon_is_never_cached():
+    """A cached pixel is a document load that never reached the log."""
+    assert cache_policy(BEACON_PATH, False, 'image/gif') == 'no-store'
