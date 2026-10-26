@@ -109,6 +109,19 @@ MARK_W = 72
 #: Commercials are the leg every gate reads; the others are context for it.
 COMM_DOT_R, SPEC_DOT_R = 3.0, 2.3
 
+#: Stem widths. A bare dot has no length, so every reading drew the same amount of
+#: ink whatever its value, which is why the first marks conveyed nothing. The stem
+#: is `strip_traces`' lollipop: it runs from the neutral midpoint to the value, so
+#: distance from neutral becomes a length the eye reads without measuring, and a
+#: market sitting near 50 draws almost none. signal_cards found the spec lanes
+#: unreadable as bare ticks for the same reason and restored their stems at half
+#: width; the Commercial lollipop stays the heaviest mark by stem weight and head
+#: size together.
+COMM_STEM_PX, SPEC_STEM_PX = 2.0, 1.0
+#: The head is the datum and takes full-strength colour; the stem is context and is
+#: knocked back, the proportion strip_traces uses for the same two parts.
+STEM_ALPHA = 0.55
+
 #: The gate band drawn behind each lane. This is what makes a mark readable at this
 #: size, and leaving it out was the real defect rather than the dimensions: precision
 #: is not the question a sweep asks, "is this leg through the gate" is, and a tinted
@@ -157,6 +170,11 @@ class LegMark:
     short: str
     value: float
     direction: int
+    #: The leg's own colour, for the legs that carry one. None means "take the
+    #: verdict colour", which is what Commercials do: palette slot 0 IS the bear
+    #: red, so colouring that lane by identity drew a bullish reading in red.
+    #: signal_cards reached the same split (COMM_LANE_TAKES_LEG_COLOUR = False).
+    hue: str = None
 
 
 @dataclass(frozen=True)
@@ -394,6 +412,7 @@ def leg_marks(legs, colors, lanes, band):
     def at(index_value):
         return pad + span * max(0.0, min(100.0, float(index_value))) / 100
 
+    mid_x = at(50)
     parts = []
     for i, leg in enumerate(legs):
         top = LANE_PX * i + 1
@@ -415,12 +434,20 @@ def leg_marks(legs, colors, lanes, band):
         if leg.value is None or leg.value != leg.value:
             continue
         lean = verdict(score(leg.value), leg.direction)
-        hue = colors.dim if lean == 0 else (colors.bull if lean > 0 else colors.bear)
-        r = COMM_DOT_R if i == 0 else SPEC_DOT_R
-        parts.append(f'<circle cx="{at(leg.value):.1f}" cy="{y:.1f}" r="{r}" '
-                     f'fill="{hue}"/>')
-    mid = at(50)
-    parts.append(f'<line x1="{mid:.1f}" y1="0" x2="{mid:.1f}" y2="{height}" '
+        if leg.hue:
+            hue = leg.hue
+        else:
+            hue = (colors.dim if lean == 0
+                   else (colors.bull if lean > 0 else colors.bear))
+        x = at(leg.value)
+        # The stem first, so the head sits on top of it rather than behind it.
+        parts.append(
+            f'<line x1="{mid_x:.1f}" y1="{y:.1f}" x2="{x:.1f}" y2="{y:.1f}" '
+            f'stroke="{hex_to_rgba(hue, STEM_ALPHA)}" stroke-linecap="round" '
+            f'stroke-width="{COMM_STEM_PX if i == 0 else SPEC_STEM_PX}"/>')
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" '
+                     f'r="{COMM_DOT_R if i == 0 else SPEC_DOT_R}" fill="{hue}"/>')
+    parts.append(f'<line x1="{mid_x:.1f}" y1="0" x2="{mid_x:.1f}" y2="{height}" '
                  f'stroke="{AXIS_RULE}" stroke-width="1"/>')
 
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{MARK_W}" '

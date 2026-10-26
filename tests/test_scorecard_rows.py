@@ -353,6 +353,61 @@ def test_the_mark_carries_no_unescaped_hash():
     assert "#" not in sr.mark_img(svg).src
 
 
+def _stems(svg):
+    """Lane stems only: the axis rule is vertical and the lane rule has no width."""
+    return [m for m in re.findall(
+        r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="[\d.]+" '
+        r'stroke="([^"]+)" stroke-linecap="round" stroke-width="([\d.]+)"', svg)]
+
+
+def test_a_leg_draws_a_stem_from_neutral_to_its_value():
+    """A bare dot has no length, so every reading drew the same ink whatever its
+    value, which is why the first marks conveyed nothing. The stem turns distance
+    from neutral into a length the eye reads without measuring."""
+    svg, _ = marks((sr.LegMark("Comm", 95, sr.BULL_HIGH),), 1)
+    (x1, _, x2, _, _), = _stems(svg)
+    span = sr.MARK_W - 4
+    assert float(x1) == pytest.approx(2 + span * 0.5, abs=0.1)   # neutral
+    assert float(x2) == pytest.approx(2 + span * 0.95, abs=0.1)  # the value
+
+
+def _stem_length(svg):
+    x1, _, x2, _, _ = _stems(svg)[0]
+    return abs(float(x2) - float(x1))
+
+
+def test_a_market_near_neutral_draws_almost_no_ink():
+    """strip_traces' reason for the lollipop: the neutral majority recedes on its
+    own, instead of every market drawing an equally loud mark."""
+    near = _stem_length(marks((sr.LegMark("Comm", 52, sr.BULL_HIGH),), 1)[0])
+    far = _stem_length(marks((sr.LegMark("Comm", 97, sr.BULL_HIGH),), 1)[0])
+    assert near < 2 and far > 15
+
+
+def test_the_commercial_stem_outweighs_the_speculator_stems():
+    """signal_cards' finding: spec lanes need stems too or they are bare ticks on an
+    empty track, but the Commercial lollipop stays the heaviest mark."""
+    svg, _ = marks((sr.LegMark("Comm", 90, sr.BULL_HIGH),
+                    sr.LegMark("NonRept", 10, sr.BULL_LOW)), 2)
+    comm, spec = _stems(svg)
+    assert float(comm[4]) > float(spec[4])
+
+
+def test_a_leg_with_its_own_colour_keeps_it():
+    """Speculator lanes carry the app's leg colour; their verdict is the zone the
+    dot lands in, so identity here costs nothing."""
+    svg, _ = marks((sr.LegMark("NonComm", 90, sr.BULL_LOW, hue="#60A5FA"),), 1)
+    assert "96, 165, 250" in svg          # the stem, knocked back
+    assert 'fill="#60A5FA"' in svg        # the head, full strength
+
+
+def test_the_head_is_brighter_than_its_stem():
+    """The head is the datum and the stem is context, the split strip_traces draws."""
+    svg, _ = marks((sr.LegMark("Comm", 90, sr.BULL_HIGH),), 1)
+    assert f'fill="{BULL_HEX}"' in svg
+    assert f"{sr.STEM_ALPHA}" in _stems(svg)[0][3]
+
+
 def _zones(svg):
     return re.findall(r'<rect x="([\d.]+)" y="\d+" width="([\d.]+)"[^>]*'
                       r'fill="rgba\((\d+), (\d+), (\d+)', svg)

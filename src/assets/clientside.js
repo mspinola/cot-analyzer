@@ -68,6 +68,118 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          * part of the page), and a control in a picture is the one thing on it
          * that cannot be acted on.
          */
+        /**
+         * The Scorecard as one PNG: caption, teaching and every card.
+         *
+         * The Divergence export's shape, because this page is the same kind of
+         * thing: HTML tables whose marks are data-URI images, so the clone IS the
+         * picture and no Plotly snapshot pass is needed. Two differences.
+         *
+         * It WAITS FOR THE IMAGES. Divergence carries a handful of sparklines and
+         * gets away with a fixed delay; a full board here is about 126 marks and
+         * paths, and html2canvas measures rather than waits, so an <img> still
+         * decoding paints as nothing. The clone's images are fresh elements with
+         * their own decode, hence the explicit gate rather than a longer timeout.
+         *
+         * And each card scrolls in its OWN box rather than the page having one, so
+         * the width has to come from the widest scroller anywhere inside, not from
+         * the container: a clone at container width would export the clipped view
+         * those boxes exist to avoid.
+         */
+        export_scorecard_image: function(n_clicks, model_key, target_date) {
+            if (!n_clicks) { return window.dash_clientside.no_update; }
+            if (typeof html2canvas === 'undefined') {
+                console.error("html2canvas is not loaded.");
+                return window.dash_clientside.no_update;
+            }
+            var container = document.getElementById("scorecard_export_container");
+            if (!container) {
+                console.error("Could not find the scorecard export container.");
+                return window.dash_clientside.no_update;
+            }
+
+            var width = container.clientWidth;
+            Array.prototype.forEach.call(
+                container.querySelectorAll('*'), function(node) {
+                    if (node.scrollWidth > width) { width = node.scrollWidth; }
+                });
+
+            var clone = container.cloneNode(true);
+            clone.style.position = 'absolute';
+            clone.style.left = '-9999px';
+            clone.style.top = '-9999px';
+            clone.style.width = (width + 40) + 'px';
+            clone.style.backgroundColor = '#1a1a1a';
+            clone.style.padding = '20px';
+
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('*'), function(node) {
+                    if (node.style && (node.style.overflowX || node.style.overflow)) {
+                        node.style.overflow = 'visible';
+                        node.style.overflowX = 'visible';
+                        node.style.maxHeight = 'none';
+                    }
+                });
+            // The teaching rides along whether or not the reader opened it: it is
+            // the only thing saying that a number and its colour may disagree, and
+            // which legs this model gates on.
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('.collapse'), function(node) {
+                    node.classList.add('show');
+                    node.style.height = 'auto';
+                    node.style.visibility = 'visible';
+                });
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('button'), function(node) {
+                    node.parentNode.removeChild(node);
+                });
+
+            var themeContainer = document.getElementById("theme-container")
+                || document.body;
+            themeContainer.appendChild(clone);
+
+            var pending = [];
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('img'), function(img) {
+                    if (img.complete && img.naturalWidth) { return; }
+                    pending.push(new Promise(function(resolve) {
+                        img.onload = resolve;
+                        img.onerror = resolve;
+                    }));
+                });
+
+            Promise.all(pending).then(function() {
+                return html2canvas(clone, {
+                    backgroundColor: "#1a1a1a",
+                    scale: 2,
+                    useCORS: true,
+                    logging: false
+                });
+            }).then(function(canvas) {
+                themeContainer.removeChild(clone);
+                var stamp = target_date;
+                if (!stamp) {
+                    var today = new Date();
+                    stamp = today.getFullYear() + '-'
+                        + String(today.getMonth() + 1).padStart(2, '0') + '-'
+                        + String(today.getDate()).padStart(2, '0');
+                }
+                var model = (model_key || 'model')
+                    .replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                var link = document.createElement('a');
+                link.download = 'cot_scorecard_' + model + '_' + stamp + '.png';
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            }).catch(function(err) {
+                console.error("html2canvas failed on the scorecard clone: ", err);
+                if (clone.parentNode === themeContainer) {
+                    themeContainer.removeChild(clone);
+                }
+            });
+
+            return window.dash_clientside.no_update;
+        },
+
         export_divergence_image: function(n_clicks, target_date) {
             if (!n_clicks) { return window.dash_clientside.no_update; }
             if (typeof html2canvas === 'undefined') {
