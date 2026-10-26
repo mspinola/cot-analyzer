@@ -50,13 +50,20 @@ rule, so the layout is testable without a store, a palette file or a browser.
 """
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from urllib.parse import quote
 
 import cotmetrics.constants as const
 from dash import html
 
 import viz_constants as vc
-from components.plot_colors import blend_over, cell_text_colour, hex_to_rgba
+from components.plot_colors import (
+    INK_BRIGHT,
+    INK_PIVOT,
+    blend_over,
+    hex_to_rgba,
+    relative_luminance,
+)
 
 #: The card's one scale. A 0-100 range index maps to -SCALE..+SCALE, which is two
 #: characters at most and is what lets rows of different origin sit in one column.
@@ -81,6 +88,10 @@ NEUTRAL_INK = "#aeb1df"
 #: `direction` on a row: which end of its native scale is the bullish side, or
 #: NO_DIRECTION when the model establishes none and the row must not be hued.
 BULL_HIGH, BULL_LOW, NO_DIRECTION = 1, -1, 0
+
+#: The faintest a verdict cell tints. Low enough that a +1 barely lifts off the page,
+#: which is the point: the fill is what says "look here".
+FILL_MIN_ALPHA = 0.12
 
 SPARK_W, SPARK_H, SPARK_PAD = 58, 18, 2.5
 
@@ -180,6 +191,50 @@ def verdict(value, direction):
     return 1 if value * direction > 0 else -1
 
 
+#: The ramp is quantised so two cells a step apart cannot differ by an invisible
+#: fraction of a percent, and so the cap is expressible on the same grid.
+ALPHA_STEP = 0.001
+
+
+def _floor_alpha(alpha):
+    return int(alpha / ALPHA_STEP) * ALPHA_STEP
+
+
+@lru_cache(maxsize=32)
+def fill_alpha_cap(hue, background=vc.BACKGROUND_COLOR):
+    """The strongest blend of `hue` that still takes the BRIGHT ink.
+
+    Capping the ramp here is what keeps one ink across the whole card, and that is a
+    legibility rule serving a SALIENCE one. Choosing ink per cell by contrast is
+    correct and still reads backwards: on a dark page a luminous glyph draws the eye
+    and a dark glyph recedes, so the moment the brightest cells flip to dark ink the
+    text treatment runs opposite to the fill, and a +1 in bright ink on near-black
+    out-shouts a +10 in dark ink. Contrast is symmetric and salience is not, which is
+    why a contrast sweep cannot catch it.
+
+    So the fill never gets bright enough to need the other ink. Magnitude is carried
+    by the fill alone, monotonically, and every number is drawn the same way.
+    Measured: this lands every palette and pole at 4.11:1 or better.
+    """
+    if relative_luminance(blend_over(hue, 1.0, background)) <= INK_PIVOT:
+        return 1.0
+    low, high = 0.0, 1.0
+    for _ in range(24):  # 1e-7, far finer than a hex channel resolves
+        mid = (low + high) / 2
+        if relative_luminance(blend_over(hue, mid, background)) <= INK_PIVOT:
+            low = mid
+        else:
+            high = mid
+    # Onto the same grid the ramp quantises to, DOWNWARD. Rounding to three places
+    # can round up across the boundary, and blend_over rounds each channel to an
+    # integer besides, so a cap that is under the pivot as a float can land a hair
+    # over it once drawn. Step down until the colour actually drawn is under.
+    cap = _floor_alpha(low)
+    while cap > 0 and relative_luminance(blend_over(hue, cap, background)) > INK_PIVOT:
+        cap = round(cap - ALPHA_STEP, 3)
+    return cap
+
+
 def cell_style(value, direction, colors):
     """The style for one score cell. Fill when there is a verdict, ink when not."""
     if value is None:
@@ -194,13 +249,16 @@ def cell_style(value, direction, colors):
                 "fontWeight": 500 + 100 * round(weight)}
     if lean == 0:
         return {"color": colors.dim}
-    # The COMPOSITED fill, not an rgba() over the page: the ink has to be chosen from
-    # the resulting colour's luminance, and an rgba value's luminance depends on what
-    # it lands on. Picking ink by how far the value sits from neutral is the bug this
-    # replaced, and it only looked right on the one palette whose bull slot is dark.
-    fill = blend_over(colors.bull if lean > 0 else colors.bear,
-                      round(0.10 + 0.72 * weight, 2))
-    return {"backgroundColor": fill, "color": cell_text_colour(fill)}
+    # One ink for every cell, with the fill capped so it stays legible against it.
+    # See fill_alpha_cap for why the ink must not vary: per-cell ink inverts the
+    # card's attention ordering even when every cell passes a contrast check.
+    hue = colors.bull if lean > 0 else colors.bear
+    cap = fill_alpha_cap(hue)
+    fill = blend_over(hue, _floor_alpha(FILL_MIN_ALPHA
+                                       + (cap - FILL_MIN_ALPHA) * weight))
+    return {"backgroundColor": fill, "color": INK_BRIGHT,
+            # Reinforces the fill rather than competing with it.
+            "fontWeight": 500 + 100 * round(2 * weight)}
 
 
 def with_ink(style):
@@ -292,14 +350,17 @@ def setup_cell(state, colors):
     if state not in _SETUP_TEXT:
         return _EMPTY, {"color": colors.dim}
     text, lean = _SETUP_TEXT[state]
+    hue = colors.bull if lean > 0 else colors.bear
+    cap = fill_alpha_cap(hue)
+    # The same capped ramp a score cell uses, at two fixed stops, so the chip sits in
+    # the card's one ordering rather than beside it.
     strong = state in (const.SETUP_BULL, const.SETUP_BEAR)
-    # Same rule as a score cell: a full SETUP is the brightest fill on the card, so
-    # it is the one most likely to be printed in white on near-white.
-    fill = blend_over(colors.bull if lean > 0 else colors.bear,
-                      0.85 if strong else 0.30)
+    fill = blend_over(hue, cap if strong
+                      else _floor_alpha(FILL_MIN_ALPHA + 0.35 * cap))
     return (
         f"{text} {'↑' if lean > 0 else '↓'}",
-        {"backgroundColor": fill, "color": cell_text_colour(fill),
+        {"backgroundColor": fill, "color": INK_BRIGHT,
+         "fontWeight": 700 if strong else 600,
          "fontSize": "0.65rem", "letterSpacing": "0.3px"},
     )
 

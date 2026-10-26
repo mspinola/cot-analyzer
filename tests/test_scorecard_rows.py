@@ -25,6 +25,7 @@ import components.scorecard_rows as sr
 import viz_config
 import viz_constants as vc
 from components.plot_colors import (
+    INK_PIVOT,
     GridColors,
     blend_over,
     grid_colors,
@@ -193,6 +194,64 @@ def test_the_directionless_ink_is_legible_on_the_page(palette_name):
         ink = blend_over(sr.NEUTRAL_INK, alpha)
         assert _contrast(ink, vc.BACKGROUND_COLOR) >= 4.5, (
             f"{palette_name}: {ink} on the page at value {value}")
+
+
+# ── salience: the card's attention ordering must match its magnitudes ────────
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+def test_the_ink_never_changes_with_magnitude(palette_name):
+    """The bug a contrast sweep cannot catch.
+
+    Choosing ink per cell by contrast is correct and reads backwards: on a dark page
+    a luminous glyph draws the eye and a dark one recedes, so once the brightest
+    cells flip to dark ink the text runs opposite to the fill and a +1 in bright ink
+    out-shouts a +10 in dark ink. Contrast is symmetric; salience is not. One ink for
+    every cell is what keeps the fill the only thing saying "look here".
+    """
+    colors = grid_colors(viz_config.get_palette(palette_name))
+    inks = {sr.cell_style(v, d, colors)["color"]
+            for d in (sr.BULL_HIGH, sr.BULL_LOW)
+            for v in range(-10, 11) if v}
+    assert len(inks) == 1, f"{palette_name}: ink varies with magnitude ({inks})"
+
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+def test_no_fill_is_bright_enough_to_need_the_other_ink(palette_name):
+    """What makes one ink legal: the ramp is capped at the pivot, so the dark ink is
+    never the better choice. If a fill crosses it, the single-ink rule above has
+    become a contrast bug instead of a salience fix."""
+    colors = grid_colors(viz_config.get_palette(palette_name))
+    for direction in (sr.BULL_HIGH, sr.BULL_LOW):
+        for value in range(-10, 11):
+            style = sr.cell_style(value, direction, colors)
+            fill = style.get("backgroundColor")
+            if fill is not None:
+                assert relative_luminance(fill) <= INK_PIVOT + 1e-6, (
+                    f"{palette_name}: {fill} at {value} crosses the ink pivot")
+
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+def test_the_gate_chip_shares_the_cards_ink(palette_name):
+    """The chip is the brightest thing on the card, so it is where a second ink would
+    do the most damage to the ordering."""
+    colors = grid_colors(viz_config.get_palette(palette_name))
+    inks = {sr.setup_cell(state, colors)[1]["color"]
+            for state in (const.SETUP_BULL, const.SETUP_BEAR,
+                          const.SETUP_NEAR_BULL, const.SETUP_NEAR_BEAR)}
+    assert inks == {sr.cell_style(10, sr.BULL_HIGH, colors)["color"]}
+
+
+@pytest.mark.parametrize("palette_name", PALETTES)
+def test_a_bigger_number_always_draws_a_stronger_cell(palette_name):
+    """Fill and weight both rise with magnitude, so nothing about a +10 is quieter
+    than a +1. This is the ordering the single ink exists to protect."""
+    colors = grid_colors(viz_config.get_palette(palette_name))
+    for direction in (sr.BULL_HIGH, sr.BULL_LOW):
+        styles = [sr.cell_style(v, direction, colors) for v in range(1, 11)]
+        lifts = [_lift(st) for st in styles]
+        weights = [st["fontWeight"] for st in styles]
+        assert lifts == sorted(lifts), f"{palette_name}: fill not monotonic"
+        assert weights == sorted(weights), f"{palette_name}: font weight not monotonic"
 
 
 # ── a fill means a verdict exists ────────────────────────────────────────────

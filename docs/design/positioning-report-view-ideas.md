@@ -1322,6 +1322,44 @@ this app does not survive, and nothing warns you. The failure is silent, it look
 a colour-choice problem rather than a cascade problem, and it sent the first round of
 this fix after the wrong cause.
 
+### Per-cell ink inverted the card's attention ordering (2026-10-26)
+
+Reported straight after the contrast fix above: "the mix of white and black text seems
+to reverse the eye catching desire, the black +10 is overshadowed by the white +1."
+Correct, and it is a different failure from the one before it. Every cell now passed a
+contrast check and the card still read backwards.
+
+**Contrast is symmetric; salience is not.** On a dark page a luminous glyph advances
+and a dark glyph recedes, so choosing ink per cell by contrast means the brightest
+fills get dark text and the faintest get bright text. The fill ramp says "+10 matters
+most" while the ink ramp says the opposite, and the ink wins on a small glyph. No
+contrast sweep can catch this, because contrast scores a cell in isolation and this is
+a property of the ordering ACROSS cells.
+
+**The fix is to cap the fill rather than switch the ink.** `fill_alpha_cap` finds the
+strongest blend of a hue that still takes the bright ink, by bisection against
+`INK_PIVOT`, and the ramp runs from a bare tint up to that cap. One ink for the whole
+card, so magnitude is carried by the fill alone and every number is drawn identically.
+Font weight rises with magnitude too (500 to 700), reinforcing rather than competing.
+
+The cost is vividness: a full-strength cell is now `#298664` on Muted rather than
+`#2fb282`, because that is as bright as green can get while the cream ink still holds
+4:1 on it. It is still the brightest cell on the card, which is all the ordering needs.
+Measured across every palette and pole, the capped maximum lands at luminance 0.183 to
+0.187 and contrast 4.11 to 4.18.
+
+One quantisation trap: the cap has to be floored onto the alpha grid, not rounded.
+`round(cap, 3)` can round UP across the boundary, and `blend_over` then rounds each
+channel to an integer besides, so a cap that is under the pivot as a float lands a
+hair over it once drawn (0.1855 against a pivot of 0.1851). `_floor_alpha` plus a
+step-down loop against the colour actually produced is what holds it.
+
+Pinned by four invariants a contrast test cannot express: the ink is identical at every
+magnitude, no fill crosses the pivot, the gate chip shares the card's ink, and fill
+strength and font weight both rise monotonically with the number. Live re-check: one
+distinct ink across the card, ramp luminance 0.027 at |1| to 0.184 at |10|, worst
+contrast 4.15.
+
 Pinned by a palette sweep over every shipped palette, both poles and every step of the
 ramp. The floor is 4.0:1 for a filled cell, which is what the app's ink pair allows:
 the pivot caps at 4.14, and reaching WCAG's 4.5 would need pure black and white ink,
