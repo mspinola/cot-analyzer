@@ -48,7 +48,8 @@ import cotmetrics.constants as const
 import plotly.graph_objects as go
 
 import viz_constants as vc
-from components.plot_colors import hex_to_rgba, relative_luminance
+from components.plot_colors import blend_over as _blend_over
+from components.plot_colors import cell_text_colour, hex_to_rgba
 
 # The chip says the same two words the Active Setups strip says, imported rather
 # than restated so the app keeps one vocabulary for a verdict's tiers.
@@ -303,26 +304,6 @@ def figure_height(rows):
 
 # ── colour ────────────────────────────────────────────────────────────────────
 
-def _blend_over(hex_color, alpha, background):
-    """`hex_color` composited over `background` at `alpha`, as a hex string.
-
-    The board needs the RESULTING colour, not an rgba string, because the cell text
-    picks its own colour by the fill's luminance, and luminance of an rgba value
-    depends on what it lands on.
-    """
-    h = str(hex_color).lstrip("#")
-    b = str(background).lstrip("#")
-    if len(h) != 6 or len(b) != 6:
-        return hex_color
-    try:
-        fg = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
-        bg = [int(b[i:i + 2], 16) for i in (0, 2, 4)]
-    except ValueError:
-        return hex_color
-    return "#{:02x}{:02x}{:02x}".format(
-        *(round(bg[i] + (fg[i] - bg[i]) * alpha) for i in range(3)))
-
-
 def cell_base(background=vc.BACKGROUND_COLOR):
     """The resting fill of a neutral cell."""
     return _blend_over(vc.BRIGHTER_TEXT_COLOR, CELL_BASE_LIFT, background)
@@ -346,15 +327,6 @@ def cell_fill(value, colors, background=vc.BACKGROUND_COLOR):
     span = (const.INDEX_NEUTRAL - CELL_DEADBAND)
     alpha = min(1.0, (magnitude - CELL_DEADBAND) / span) * CELL_MAX_BLEND
     return _blend_over(pole, alpha, background)
-
-
-def cell_text_colour(fill):
-    """Ink for the number printed on `fill`: the app's bright text on a dark cell,
-    near-black on a light one. The threshold is luminance, not blend strength,
-    because palettes disagree about how bright their bull and bear slots are."""
-    if relative_luminance(fill) > 0.35:
-        return "#101418"
-    return vc.BRIGHTER_TEXT_COLOR
 
 
 def delta_colour(move, colors):

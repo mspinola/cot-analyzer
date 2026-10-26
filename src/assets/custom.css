@@ -1339,3 +1339,19 @@ a.setup-card:focus-visible {
 .card:has(.dash-dropdown[aria-expanded="true"]) {
     z-index: 1000;
 }
+
+/* ── The Scorecard's cells paint their own ink ────────────────────────────────
+   Every other table in the app is happy with the theme's blanket
+   `tbody td { color: var(--text-muted) !important }` above, because no other table
+   colours cells individually. The Scorecard does: each cell's ink is chosen from the
+   luminance of its own fill, so a mid-grey forced over the top is unreadable on a
+   bright verdict cell (measured at 1.01:1 before this rule existed).
+
+   React cannot emit `!important` in an inline style, so the cell carries its ink in
+   a custom property and this rule is what applies it. The `table.` prefix is load
+   bearing: without it this has the same specificity as the theme rule and would win
+   only by sitting later in the file, which is not a property worth depending on. */
+table.scorecard-card tbody td {
+    color: var(--scorecard-ink, var(--text-muted)) !important;
+    border-bottom: 0 !important;
+}

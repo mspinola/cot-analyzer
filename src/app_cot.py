@@ -61,6 +61,7 @@ _NOSCRIPT_BLOCK = '''<noscript>
             <p><a href="/heatmap">Signal Heatmap</a> ·
             <a href="/strip">Crowding Strip</a> ·
             <a href="/crowd">Crowdedness Board</a> ·
+            <a href="/scorecard">Asset Class Scorecard</a> ·
             <a href="/exposure">Dollar Exposure</a> ·
             <a href="/oi_alignment">Open Interest Charts</a> ·
             <a href="/analysis">Market Charts</a> ·
@@ -617,6 +618,8 @@ navbar = dbc.Navbar(
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="exact")),
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
                     dbc.NavItem(dbc.NavLink("Crowd", href="/crowd", active="exact")),
+                    dbc.NavItem(dbc.NavLink("Scorecard", href="/scorecard",
+                                            active="exact")),
                     dbc.NavItem(dbc.NavLink("Exposure", href="/exposure", active="exact")),
                     # Top level rather than in the dropdown: this is the detail page
                     # every board's market click and deep link lands on, so it is the
