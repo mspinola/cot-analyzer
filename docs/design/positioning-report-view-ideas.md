@@ -1548,3 +1548,30 @@ single-column rule still wins whatever is chosen, because two cards on a phone i
 nine markets in 180px. The value is clamped to the offered choices before it reaches
 CSS: a custom property is substituted before the declaration is parsed, so a bad one
 would break the whole grid rather than one card.
+
+### Export PNG (2026-10-26)
+
+The Divergence page's machinery rather than the Strip's, because this page is the
+same kind of thing: HTML tables whose marks are data-URI images, so the DOM clone IS
+the picture and there is no Plotly snapshot pass to do first.
+
+Two differences, both forced by what the Scorecard is.
+
+**It waits for the images rather than for a timer.** Divergence carries a handful of
+sparklines and gets away with a fixed delay. A full board here is **126** marks and
+paths, and `exportBoardImage` already records why that matters: html2canvas measures
+rather than waits, so an `<img>` still decoding paints as nothing. The clone's images
+are fresh elements with their own decode, so the export gates on all of them
+resolving.
+
+**The width comes from the widest scroller anywhere inside, not from the container.**
+Each card scrolls in its own box rather than the page having one, so a clone at
+container width would export exactly the clipped view those boxes exist to avoid.
+Measured on the live board: container 904px against a widest scroller of 928px, and
+the PNG came out 1936px wide, which is (928 + 40) x 2.
+
+Verified end to end by intercepting the download: a 1.68MB PNG named
+`cot_scorecard_npf_2026-10-20.png` in 0.9s, 1936x5836, 959 distinct colours sampled
+and 68% of sampled pixels off the background, so the marks are in it rather than the
+blank rectangle a missed decode would have produced. The clone is removed on both the
+success and the failure path; nothing was left in the DOM afterwards.

@@ -49,7 +49,7 @@ import pandas as pd
 from cotmetrics.indexer import get_indexer
 from cotmetrics.indicators import calculate_range_index
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, callback, dcc, html
+from dash import Input, Output, State, callback, clientside_callback, dcc, html
 
 import components.scorecard_rows as scorecard_rows
 import viz_config
@@ -70,6 +70,19 @@ dash.register_page(
 class_filter.register('scorecard_class_selector')
 controls.register_model('scorecard_model_selector')
 controls.register_target_date('scorecard_date_selector')
+
+# The PNG export, the Divergence page's machinery rather than the Strip's: this page
+# has no Plotly on it, so the DOM clone IS the picture. Model and date ride along only
+# to name the file. See export_scorecard_image in clientside.js for why it waits on
+# the images instead of on a timer.
+clientside_callback(
+    "window.dash_clientside.clientside.export_scorecard_image",
+    Output('scorecard_download_img_btn', 'n_clicks'),
+    Input('scorecard_download_img_btn', 'n_clicks'),
+    State('scorecard_model_selector', 'value'),
+    State('scorecard_date_selector', 'value'),
+    prevent_initial_call=True,
+)
 
 #: How many cards sit side by side above the 992px breakpoint. A MAXIMUM rather than
 #: a fixed count: below the breakpoint the stylesheet collapses to one whatever is
@@ -363,27 +376,44 @@ def layout(**kwargs):
                 ], width=12),
             ], className="mt-3"),
 
-            dbc.Row([
-                dbc.Col([
-                    html.P(id='scorecard_caption',
-                           style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                  'fontStyle': 'italic', 'marginBottom': '4px'}),
-                    help_fold.wrap('scorecard', html.P(
-                        id='scorecard_help',
-                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                               'fontStyle': 'italic', 'marginBottom': '4px'})),
-                ], xs=12),
-            ]),
+            # Everything the PNG captures lives inside this div, the help fold's
+            # toggle included: the export strips buttons from its clone, the
+            # Divergence container's rule.
+            html.Div(id='scorecard_export_container', children=[
+                dbc.Row([
+                    dbc.Col([
+                        html.P(id='scorecard_caption',
+                               style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                      'fontStyle': 'italic', 'marginBottom': '4px'}),
+                        help_fold.wrap('scorecard', html.P(
+                            id='scorecard_help',
+                            style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
+                                   'fontStyle': 'italic', 'marginBottom': '4px'})),
+                    ], xs=True),
+                    dbc.Col([
+                        dbc.Button("📸 Export PNG",
+                                   id="scorecard_download_img_btn",
+                                   style={"color": vc.TEXT_COLOR},
+                                   size="sm"),
+                        dbc.Tooltip(
+                            "Every card as one image, with the caption and the "
+                            "how-to-read text. Cards that pan sideways on screen "
+                            "are exported whole.",
+                            target="scorecard_download_img_btn",
+                            placement="bottom"),
+                    ], xs="auto"),
+                ]),
 
-            dbc.Row([
-                dbc.Col(
-                    dcc.Loading(
-                        id="loading-scorecard",
-                        type="dot",
-                        children=html.Div(id='scorecard_container'),
-                        color=vc.BRIGHTER_TEXT_COLOR,
-                    ),
-                    width=12),
+                dbc.Row([
+                    dbc.Col(
+                        dcc.Loading(
+                            id="loading-scorecard",
+                            type="dot",
+                            children=html.Div(id='scorecard_container'),
+                            color=vc.BRIGHTER_TEXT_COLOR,
+                        ),
+                        width=12),
+                ]),
             ]),
         ], fluid=True),
     ])
