@@ -95,6 +95,35 @@ FILL_MIN_ALPHA = 0.12
 
 SPARK_W, SPARK_H, SPARK_PAD = 58, 18, 2.5
 
+#: One leg's lane in a positioning mark, and the mark's drawing width. The lane is
+#: the /strip and home-card idiom: legs are told apart by WHERE they sit, never by
+#: colour, which this card reserves for the verdict. signal_cards learned the same
+#: lesson the hard way, since palette slot 0 (the Commercial leg's colour) is the
+#: bear red, so a bullish Commercial reading drew a red dot.
+#: Lane height matches the home card's, and the mark is drawn wide and scaled to the
+#: cell rather than pinned at a fixed pixel width. Both were too small first time:
+#: at 44x7 per lane the mark was HEIGHT-limited, so a 67px cell still drew a 44px
+#: axis, 0.44px per index point, and two dots a few points apart were one smudge.
+LANE_PX = 11
+MARK_W = 72
+#: Commercials are the leg every gate reads; the others are context for it.
+COMM_DOT_R, SPEC_DOT_R = 3.0, 2.3
+
+#: The gate band drawn behind each lane. This is what makes a mark readable at this
+#: size, and leaving it out was the real defect rather than the dimensions: precision
+#: is not the question a sweep asks, "is this leg through the gate" is, and a tinted
+#: zone answers that at any resolution. Alpha from signal_cards, which calibrated it
+#: on screen; the zone here is one lane rather than the full strip height, so it sits
+#: at the top of their range -- but no higher, because a wide band is a LOT of tint:
+#: NPF's 80/20 gate puts 40% of every lane inside a zone, where Raw PF's 95/5 puts
+#: 10%. Calibrated against the wide one, where the dots have to stay the thing the
+#: eye lands on.
+ZONE_ALPHA = 0.12
+#: NOT a fainter grey. signal_cards found a near-black midline invisible on a card,
+#: which "left every dot measured from nothing"; the same applies in a table cell.
+AXIS_RULE = "rgba(255, 255, 255, 0.22)"
+LANE_RULE = "rgba(255, 255, 255, 0.10)"
+
 #: Minimum observations before a path is worth drawing. Below this the shape is noise
 #: wearing a long name, and the cell says nothing rather than implying a trend.
 SPARK_MIN_POINTS = 8
@@ -117,6 +146,20 @@ class ScoreRow:
 
 
 @dataclass(frozen=True)
+class LegMark:
+    """One leg's reading inside a positioning mark.
+
+    `direction` is that leg's own bullish end, so the dot takes the card's verdict
+    colour by the same rule a number cell does: high Commercials are the bull side,
+    high speculators are the bear side under positioning fade.
+    """
+
+    short: str
+    value: float
+    direction: int
+
+
+@dataclass(frozen=True)
 class SparkRow:
     """A row drawn as a path. No direction, by construction: see the module docstring."""
 
@@ -127,11 +170,16 @@ class SparkRow:
 
 
 #: The measured row set. Order is anchor first, then by how much the row adds.
+#: Positioning levels are drawn as ONE row of marks rather than a number row per
+#: leg. Which legs appear is the MODEL's answer, not this module's: every gate reads
+#: Commercials, the speculator legs are exactly `model.spec_legs`, and an equity
+#: index contract gates on Commercials alone. Drawing a leg the gate does not read
+#: puts a condition on the card the verdict above it never checked, and omitting one
+#: it does read leaves a verdict unexplained. `signal_cards.strip_legs` and
+#: `strip_traces.LEG_COLUMNS` are the two surfaces that already follow this; the page
+#: builds the list and hands it over in MarketRead.legs.
 SCORE_ROWS = (
-    ScoreRow("comm", "Commercial Index", BULL_HIGH),
     ScoreRow("comm_move", "Commercial 6wk move", BULL_HIGH, rho=0.15),
-    ScoreRow("nonrept", "Non-Reportable Index", BULL_LOW, rho=-0.34,
-             note="high is bearish"),
 )
 
 SPARK_ROWS = (
@@ -166,6 +214,9 @@ class MarketRead:
     state: str = const.SETUP_NONE
     scores: dict = field(default_factory=dict)
     paths: dict = field(default_factory=dict)
+    #: LegMark per gated leg, Commercials first. Empty draws nothing rather than
+    #: an empty axis, the sparkline rule.
+    legs: tuple = ()
     date: str = ""
 
 
@@ -320,6 +371,67 @@ def sparkline(values):
     return svg, int(round(100 * (clean[-1] - low) / span))
 
 
+def leg_marks(legs, colors, lanes, band):
+    """One market's gated legs as a tiny lane chart, or (None, None).
+
+    Each leg gets a lane; the dot sits at that leg's index along a 0-100 axis, with a
+    faint rule at the neutral midpoint. Identity is the lane, never the colour: the
+    colour is the leg's own verdict, so a Commercial dot high in its range and a
+    speculator dot low in its range both draw bullish, which is the same thing the
+    number cells say and the reason the two can be read together.
+
+    `lanes` is the card's widest leg count, passed in so every cell in the row is the
+    same height and the rows below stay aligned. A market with fewer legs than the
+    card (an equity index contract, which gates on Commercials alone) simply draws
+    fewer, rather than being padded with lanes that mean nothing.
+    """
+    if not legs:
+        return None, None
+    height = LANE_PX * max(lanes, 1)
+    high, low = band
+    pad, span = 2, MARK_W - 4
+
+    def at(index_value):
+        return pad + span * max(0.0, min(100.0, float(index_value))) / 100
+
+    parts = []
+    for i, leg in enumerate(legs):
+        top = LANE_PX * i + 1
+        lane_h = LANE_PX - 2
+        y = LANE_PX * i + LANE_PX / 2
+        # Each END of the lane is a gate extreme, tinted by what reaching it would
+        # MEAN for this leg. High Commercials and low speculators are both the bull
+        # side, so a setup lights every lane green whichever end its dot sits at.
+        for edge_x, edge_w, is_bull_end in (
+                (at(0), at(low) - at(0), leg.direction == BULL_LOW),
+                (at(high), at(100) - at(high), leg.direction == BULL_HIGH)):
+            hue = colors.bull if is_bull_end else colors.bear
+            parts.append(
+                f'<rect x="{edge_x:.1f}" y="{top}" width="{edge_w:.1f}" '
+                f'height="{lane_h}" rx="1.5" '
+                f'fill="{hex_to_rgba(hue, ZONE_ALPHA)}"/>')
+        parts.append(f'<line x1="{pad}" y1="{y:.1f}" x2="{MARK_W - pad}" '
+                     f'y2="{y:.1f}" stroke="{LANE_RULE}" stroke-width="1"/>')
+        if leg.value is None or leg.value != leg.value:
+            continue
+        lean = verdict(score(leg.value), leg.direction)
+        hue = colors.dim if lean == 0 else (colors.bull if lean > 0 else colors.bear)
+        r = COMM_DOT_R if i == 0 else SPEC_DOT_R
+        parts.append(f'<circle cx="{at(leg.value):.1f}" cy="{y:.1f}" r="{r}" '
+                     f'fill="{hue}"/>')
+    mid = at(50)
+    parts.append(f'<line x1="{mid:.1f}" y1="0" x2="{mid:.1f}" y2="{height}" '
+                 f'stroke="{AXIS_RULE}" stroke-width="1"/>')
+
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{MARK_W}" '
+           f'height="{height}" viewBox="0 0 {MARK_W} {height}">'
+           + "".join(parts) + "</svg>")
+    title = ", ".join(
+        f"{leg.short} {int(round(leg.value))}" for leg in legs
+        if leg.value is not None and leg.value == leg.value)
+    return svg, f"{title} (0 at the window low, 100 at its high)"
+
+
 def spark_img(svg):
     """The path as an <img>, so a cell costs no Graph and no extra dependency.
 
@@ -330,9 +442,33 @@ def spark_img(svg):
     unescaped hex colour truncates the document at that point and the cell renders
     as a broken image rather than as an error anything would catch.
     """
+    return svg_img(svg, SPARK_H)
+
+
+def mark_img(svg):
+    """The leg mark, scaled to the cell rather than pinned at a pixel width.
+
+    `height: auto` with a max width is what lets the drawing use the whole cell: the
+    aspect ratio is preserved, so a wider cell buys horizontal resolution AND bigger
+    dots together, and the cap stops a two-market card drawing one enormous mark.
+    """
     return html.Img(
         src="data:image/svg+xml;utf8," + quote(svg, safe="/:=\"' <>,.-()"),
-        style={"width": "100%", "height": f"{SPARK_H}px", "display": "block"},
+        style={"width": "100%", "maxWidth": f"{MARK_W}px", "height": "auto",
+               "display": "block", "margin": "0 auto"},
+    )
+
+
+def svg_img(svg, height):
+    """An inline SVG as an <img>, so a cell costs no Graph and no new dependency.
+
+    '#' is deliberately NOT in the safe set. In a URI it opens a fragment, so one
+    unescaped hex colour truncates the document at that point and the cell renders as
+    a broken image rather than as an error anything would catch.
+    """
+    return html.Img(
+        src="data:image/svg+xml;utf8," + quote(svg, safe="/:=\"' <>,.-()"),
+        style={"width": "100%", "height": f"{height}px", "display": "block"},
     )
 
 
@@ -421,6 +557,22 @@ def _block(title, note, span):
         colSpan=span, style=with_ink(_BLOCK_STYLE))])
 
 
+def card_min_px(market_count):
+    """The narrowest the card can be drawn before it starts scrolling sideways.
+
+    Public because the PAGE decides the two-column layout and needs to know which
+    cards will not fit a half column. Derived from the same two constants the table
+    is built from, so the layout and the table cannot disagree about a card's width.
+    """
+    return _label_px() + _MIN_COL_WIDTH * market_count
+
+
+#: A card wider than this is given a whole row rather than squeezed into a column.
+#: It is the usable half-column at the 992px breakpoint, less the grid gap and the
+#: container's padding. Only the nine-market Currencies card exceeds it today.
+GRID_COLUMN_PX = 460
+
+
 def build_table(reads, model, colors):
     """The card. Pure over `reads` plus a colour set; no store, no palette file."""
     span = len(reads) + 1
@@ -437,8 +589,36 @@ def build_table(reads, model, colors):
         title="The model's own verdict, on its own tuned window. Every row below "
               "is a uniform 52 weeks, so the two windows differ.")] + setup_cells))
 
-    body.append(_block("Positioning", "number is the level, colour is the verdict",
+    body.append(_block("Positioning",
+                       "lane is the leg, shaded ends are the gate",
                        span))
+
+    # The leg row: one mark per market, one lane per leg the model gates on. Lanes
+    # are sized to the WIDEST market on this card so the row has one height and the
+    # rows under it stay aligned.
+    lanes = max((len(r.legs) for r in reads), default=0)
+    if lanes:
+        cells = []
+        for read in reads:
+            svg, title = leg_marks(read.legs, colors, lanes, model.band)
+            if svg is None:
+                cells.append(html.Td(_EMPTY, style=with_ink(
+                    {**_CELL_STYLE, "color": colors.dim})))
+            else:
+                cells.append(html.Td(
+                    mark_img(svg),
+                    style={**_CELL_STYLE, "padding": "3px 2px", "lineHeight": "0",
+                           "cursor": "help"},
+                    title=title))
+        # Named by the legs actually drawn, in lane order, so the mark needs no key.
+        order = next((r.legs for r in reads if len(r.legs) == lanes), ())
+        body.append(html.Tr([html.Td(
+            " / ".join(leg.short for leg in order), style=with_ink(_LABEL_STYLE),
+            title="One lane per leg this model gates on, Commercials first. The dot "
+                  "sits at that leg's range index; the faint rule is the midpoint. "
+                  "Colour is the leg's own verdict, so a high Commercial reading and "
+                  "a low speculator reading both draw bullish.")] + cells))
+
     for row in SCORE_ROWS:
         cells = []
         for read in reads:
@@ -472,7 +652,7 @@ def build_table(reads, model, colors):
         className="scorecard-card",
         style={"borderCollapse": "separate", "borderSpacing": "2px",
                "width": "100%", "tableLayout": "fixed",
-               "minWidth": f"{_label_px() + _MIN_COL_WIDTH * len(reads)}px",
+               "minWidth": f"{card_min_px(len(reads))}px",
                "maxWidth": "980px", "margin": "0 auto"})
     # The scroll lives on THIS wrapper, never on the body: a page-level overflow-x
     # is what the mobile work had to undo elsewhere in this app, and it breaks

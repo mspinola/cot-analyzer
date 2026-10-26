@@ -1416,3 +1416,94 @@ would turn the card back into a grid of charts, which is the compactness this fo
 adopted for. The "pinned or just arrived" question is sharper for positioning than for
 price, so if it is worth answering there, it wants its own treatment rather than a
 sparkline bolted onto a verdict cell.
+
+### Two columns, and the legs become one row of marks (2026-10-26)
+
+Two changes to the Scorecard, the second of which fixed a defect the first had
+nothing to do with.
+
+**Two columns.** Nine stacked cards is a lot of scrolling for a surface whose point
+is a fast sweep, and most asset classes are three to five markets wide, so a single
+column wasted most of a desktop's width. `.scorecard-grid` goes two across at 992px,
+Bootstrap's lg and the breakpoint `.setup-grid` already uses, and one below. A card
+wider than a half column takes the whole row instead of being squeezed: that is
+Currencies alone today at nine markets (576px against a ~476px column), every other
+class fitting. `grid-auto-flow: dense` lets a later narrow card fill the gap beside a
+full-width one. Nine rows become five, and no table scrolls sideways at 1400px.
+
+**The legs became one row of marks, and the card had been drawing the wrong set.**
+Asked how the Strip's single-line leg view or the home card's lane view would look
+here. Reading both to answer turned up that neither draws "the three legs": they ask
+the MODEL which legs it gates on. `strip_traces.LEG_COLUMNS` and
+`signal_cards.strip_legs` agree on the rule, and `strip_legs` states it:
+
+> an NPF card has no Non-Commercial lane because NPF's CS gate never reads that leg,
+> and an equity index card has none at all because those gate on Commercials alone
+
+The Scorecard had two fixed rows, Commercials and Non-Reportables. That matches NPF
+and is wrong under both CLS gates, **including Raw PF, the model the page opens on**,
+which reads all three. So the card was hiding a gate input: a market with extreme
+Commercials and no chip had no visible explanation.
+
+The rho measurement that dropped the Non-Commercial row is still right and was the
+wrong test to apply. It says the leg adds little INFORMATION (-0.98 against
+Commercials, a near-mirror by construction). The strip's rule exists for a different
+reason, which is that a gate input has to be visible to explain a verdict. Low
+information content is not grounds for hiding a condition the gate checked.
+
+Drawn as the home card's lanes rather than the Strip's single line, because a row
+here is a metric and a column is a market, so the Strip's row-of-marks maps onto a
+CELL of marks: one lane per gated leg, Commercials on top and larger, each dot at its
+leg's range index against a faint midpoint rule. **Identity is the lane, never the
+colour**, which keeps the card's one colour rule intact and sidesteps the trap
+`signal_cards` hit, that palette slot 0 (the Commercial leg's own colour) IS the bear
+red, so a bullish Commercial reading drew a red dot. Colour stays the verdict, so a
+Commercial dot high in its range and a speculator dot low in its range both draw
+bullish, and a mark whose dots disagree is a market whose legs disagree.
+
+Net effect is one fewer row (two number rows become one mark row) while showing MORE
+legs. Resolution is the cost: the mark is 44px for a 0-100 axis, 0.44px per index
+point, with dots 4.8px and 3.6px across, so the figures live on hover like every
+other provenance on this card.
+
+Pinned in `tests/test_scorecard_legs.py`: the leg set per model, Commercials always
+first, every speculator leg reading low as bullish, an equity index contract on
+Commercials alone under every model, and a leg the frame cannot supply keeping its
+lane so the card cannot silently claim a two-leg gate where there is a three-leg one.
+
+### The leg mark needed the gate band, not just more pixels (2026-10-26)
+
+First cut of the mark was two dots on a bare lane, and it did not convey anything.
+Asked whether the row should be double height and show the full strip. Nearly: the
+height helps, but it was the second-order fix.
+
+**What was actually missing was the zone.** The home card's gate strip is readable at
+~150px of axis not because of the width but because each end carries a tinted band at
+the gate threshold. That turns the question from "what is this value" into "is this
+leg through the gate", and the second survives any resolution. A sweep surface only
+ever asks the second. Leaving it out was the defect; the dimensions were a symptom.
+
+**Height did buy width, which is the part that was not obvious.** The mark is an
+`<img>` with the aspect ratio preserved, so a 44x14 drawing in a 67px cell was
+HEIGHT-limited and still drew a 44px axis: 0.44px per index point, which is why two
+dots a few points apart were one smudge. Going to `height: auto` with a max width
+lets the cell drive both dimensions together, so the mark now draws 72x22 at 0.68px
+per point, with bigger dots, and the row height roughly doubles as a by-product
+rather than as the goal.
+
+**Each lane's bands are oriented by that leg's own direction**, which is the one
+place this departs from the home card. There the bear band is always left and the
+bull band always right. Here Commercials reach the bull side at the HIGH end and
+speculators at the LOW end, so tinting both lanes the same way round would draw a
+bull setup as half red. Per-lane orientation makes "every dot in a green band" mean
+"bull setup" whichever end each dot sits at, which is exactly the sweep the card is
+for, and it keeps the surface's one colour rule.
+
+Two numbers borrowed and one re-derived: `model.band` supplies the thresholds, so a
+95/5 gate draws a thin band and an 80/20 gate a wide one; the midline is
+`rgba(255,255,255,0.22)` because `signal_cards` found a near-black rule invisible on
+a card, which "left every dot measured from nothing", and a table cell is the same
+background. The zone alpha is 0.12 rather than their 0.11: the zone here is one lane
+instead of the full strip height, but NPF's 80/20 gate still puts 40% of every lane
+inside a band, so it is calibrated against the wide gate where the dots have to stay
+what the eye lands on.
