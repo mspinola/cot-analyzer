@@ -14,11 +14,13 @@ to be inferred. Flipping would be the alternative, and it costs the thing that m
 the number worth printing: a flipped cell can no longer be checked against the CFTC
 file or against anybody else's table.
 
-**A fill means a verdict exists.** `PositioningModel.setup_state` reads three
-positioning indices and no price term, so the gates say nothing about whether a high
-price-in-range is the bullish side. Rows the model gives no direction therefore draw
-no block. They keep the neutral hue as ink, because a saturated fill carrying no
-verdict pulls the same weight as one that does and inverts the card's hierarchy.
+**A fill means the GATE's answer, and nothing else on the card fills.** Once the
+positioning levels became lollipop marks, the one filled number row left was the
+Commercial six-week move, which is the least load-bearing row here: it took all of
+the eye's attention while the anchor it is secondary to drew thin marks. So the only
+block is the Setup chip, the one row that has been through a gate, and everything
+below it is INK on the page. Direction still reads from colour and magnitude from the
+numeral and its weight; what goes is the block that was out-shouting the marks.
 
 **Directionless rows are drawn as paths, not numbers.** A sparkline asserts nothing
 about a distribution, which is exactly right for a row with no tested direction, and
@@ -88,6 +90,10 @@ NEUTRAL_INK = "#aeb1df"
 #: `direction` on a row: which end of its native scale is the bullish side, or
 #: NO_DIRECTION when the model establishes none and the row must not be hued.
 BULL_HIGH, BULL_LOW, NO_DIRECTION = 1, -1, 0
+
+#: The faintest a verdict NUMBER may be drawn. Measured: below this a pole colour
+#: drops under 4.5:1 against the page on at least one shipped palette.
+INK_MIN_ALPHA = 0.90
 
 #: The faintest a verdict cell tints. Low enough that a +1 barely lifts off the page,
 #: which is the point: the fill is what says "look here".
@@ -305,7 +311,7 @@ def fill_alpha_cap(hue, background=vc.BACKGROUND_COLOR):
 
 
 def cell_style(value, direction, colors):
-    """The style for one score cell. Fill when there is a verdict, ink when not."""
+    """The style for one score cell. Ink, never a fill: see the module docstring."""
     if value is None:
         return {"color": colors.dim}
     weight = abs(value) / SCALE
@@ -318,15 +324,14 @@ def cell_style(value, direction, colors):
                 "fontWeight": 500 + 100 * round(weight)}
     if lean == 0:
         return {"color": colors.dim}
-    # One ink for every cell, with the fill capped so it stays legible against it.
-    # See fill_alpha_cap for why the ink must not vary: per-cell ink inverts the
-    # card's attention ordering even when every cell passes a contrast check.
+    # The pole colour as ink on the page. The alpha floor is measured, not chosen:
+    # below 0.90 a pole drops under 4.5:1 against the page on at least one shipped
+    # palette, the bear red being the binding case. That leaves opacity almost no
+    # range, so MAGNITUDE is carried by the numeral and the weight, and colour is
+    # left to carry direction alone.
     hue = colors.bull if lean > 0 else colors.bear
-    cap = fill_alpha_cap(hue)
-    fill = blend_over(hue, _floor_alpha(FILL_MIN_ALPHA
-                                       + (cap - FILL_MIN_ALPHA) * weight))
-    return {"backgroundColor": fill, "color": INK_BRIGHT,
-            # Reinforces the fill rather than competing with it.
+    return {"color": hex_to_rgba(hue, round(INK_MIN_ALPHA
+                                            + (1 - INK_MIN_ALPHA) * weight, 2)),
             "fontWeight": 500 + 100 * round(2 * weight)}
 
 

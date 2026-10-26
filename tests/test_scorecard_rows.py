@@ -49,25 +49,47 @@ def read(symbol="6A", state=const.SETUP_NONE, **scores):
 
 def _rgb(hex_color):
     h = str(hex_color).lstrip("#")
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return tuple(str(int(h[i:i + 2], 16)) for i in (0, 2, 4))
 
 
 def _distance(a, b):
-    return sum((x - y) ** 2 for x, y in zip(_rgb(a), _rgb(b))) ** 0.5
+    return sum((int(x) - int(y)) ** 2 for x, y in zip(_rgb(a), _rgb(b))) ** 0.5
 
 
-def _is_hue(style, hex_color):
-    """Which pole the cell leans toward.
+def _ink_alpha(style):
+    return float(str(style["color"]).rsplit(",", 1)[1].rstrip(") "))
 
-    A fill is the pole composited over the page, so it is never equal to the pole.
-    Asking which pole it is NEARER keeps this independent of the blend formula and
-    of any one palette's hues.
+
+def _composited_ink(style):
+    """What the browser will actually paint: the ink over the page.
+
+    A partly transparent colour's contrast depends on what it lands on, so the
+    rgba has to be composited before it can be measured.
     """
+    channels = str(style["color"])[5:].split(",")[:3]
+    hex_ink = "#" + "".join("%02x" % int(c) for c in channels)
+    return blend_over(hex_ink, _ink_alpha(style))
+
+
+def _is_fill_hue(style, hex_color):
+    """Which pole a FILL leans toward. Only the gate chip fills now, and its fill is
+    the pole composited over the page, so it is never equal to the pole: ask which
+    one it is nearer, independent of the blend formula and of any palette's hues."""
     fill = style.get("backgroundColor")
     if fill is None:
         return False
     other = BEAR_HEX if hex_color == BULL_HEX else BULL_HEX
     return _distance(fill, hex_color) < _distance(fill, other)
+
+
+def _is_hue(style, hex_color):
+    """Which pole a NUMBER leans toward, read off its ink.
+
+    Numbers no longer fill, so the pole is carried by `color` as an rgba of the hue
+    itself rather than as a blend over the page.
+    """
+    ink = str(style.get("color", ""))
+    return ink.startswith(f"rgba({', '.join(_rgb(hex_color))}")
 
 
 def _lift(style):
@@ -136,13 +158,15 @@ def test_the_anchor_row_is_the_one_where_sign_and_colour_agree():
 
 
 def test_colour_weight_follows_magnitude_not_sign():
-    """Further from neutral is never fainter. The sweep is only honest if that holds
-    on both poles, so check each against the page background rather than each other:
-    the two hues sit at different distances from it to begin with."""
-    for direction_hue in (sr.BULL_HIGH, sr.BULL_LOW):
+    """Further from neutral is never quieter. With the fill gone the opacity ramp is
+    nearly flat (the 4.5:1 floor leaves it 0.90 to 1.00), so the weight is what has
+    to carry this, on both poles."""
+    for direction in (sr.BULL_HIGH, sr.BULL_LOW):
         for value in (2, 6):
-            assert (_lift(sr.cell_style(value, direction_hue, COLORS))
-                    < _lift(sr.cell_style(value + 4, direction_hue, COLORS)))
+            lo = sr.cell_style(value, direction, COLORS)
+            hi = sr.cell_style(value + 4, direction, COLORS)
+            assert lo["fontWeight"] <= hi["fontWeight"]
+            assert _ink_alpha(lo) <= _ink_alpha(hi)
 
 
 # ── the numbers stay readable on every palette ───────────────────────────────
@@ -163,7 +187,7 @@ FILLED_FLOOR = 4.0
     (10, sr.BULL_HIGH), (-10, sr.BULL_HIGH), (10, sr.BULL_LOW), (-10, sr.BULL_LOW),
     (7, sr.BULL_HIGH), (-7, sr.BULL_HIGH),
 ])
-def test_a_number_is_legible_on_its_own_fill(palette_name, value, direction):
+def test_a_number_is_legible_as_ink_on_the_page(palette_name, value, direction):
     """The bug this pins: ink was chosen by how far the value sat from neutral, so
     the brightest cells printed white on near-white. The shipped palettes put their
     bull slot anywhere from 0.28 (Solarized) to 0.72 luminance (Vibrant, Cyberpunk,
@@ -171,8 +195,8 @@ def test_a_number_is_legible_on_its_own_fill(palette_name, value, direction):
     the palette the design mock used. Every palette, both poles, worst-case weight."""
     colors = grid_colors(viz_config.get_palette(palette_name))
     style = sr.cell_style(value, direction, colors)
-    assert _contrast(style["color"], style["backgroundColor"]) >= FILLED_FLOOR, (
-        f"{palette_name}: {style['color']} on {style['backgroundColor']}")
+    assert _contrast(_composited_ink(style), vc.BACKGROUND_COLOR) >= 4.5, (
+        f"{palette_name}: {style['color']} on the page")
 
 
 @pytest.mark.parametrize("palette_name", PALETTES)
@@ -203,20 +227,21 @@ def test_the_directionless_ink_is_legible_on_the_page(palette_name):
 # ── salience: the card's attention ordering must match its magnitudes ────────
 
 @pytest.mark.parametrize("palette_name", PALETTES)
-def test_the_ink_never_changes_with_magnitude(palette_name):
-    """The bug a contrast sweep cannot catch.
+def test_no_number_cell_ever_fills(palette_name):
+    """The card's hierarchy in one assertion.
 
-    Choosing ink per cell by contrast is correct and reads backwards: on a dark page
-    a luminous glyph draws the eye and a dark one recedes, so once the brightest
-    cells flip to dark ink the text runs opposite to the fill and a +1 in bright ink
-    out-shouts a +10 in dark ink. Contrast is symmetric; salience is not. One ink for
-    every cell is what keeps the fill the only thing saying "look here".
+    Once the positioning levels became lollipop marks, the single filled number row
+    left was the six-week move, the least load-bearing row on the card, and it took
+    all of the eye's attention while the anchor it is secondary to drew thin marks.
+    A fill now means the GATE's answer and nothing else, so the Setup chip is the
+    only block. Give a number back its fill and the inversion returns.
     """
     colors = grid_colors(viz_config.get_palette(palette_name))
-    inks = {sr.cell_style(v, d, colors)["color"]
-            for d in (sr.BULL_HIGH, sr.BULL_LOW)
-            for v in range(-10, 11) if v}
-    assert len(inks) == 1, f"{palette_name}: ink varies with magnitude ({inks})"
+    for direction in (sr.BULL_HIGH, sr.BULL_LOW, sr.NO_DIRECTION):
+        for value in range(-10, 11):
+            style = sr.cell_style(value, direction, colors)
+            assert "backgroundColor" not in style, (
+                f"{palette_name}: a number filled at {value}")
 
 
 @pytest.mark.parametrize("palette_name", PALETTES)
@@ -235,27 +260,29 @@ def test_no_fill_is_bright_enough_to_need_the_other_ink(palette_name):
 
 
 @pytest.mark.parametrize("palette_name", PALETTES)
-def test_the_gate_chip_shares_the_cards_ink(palette_name):
-    """The chip is the brightest thing on the card, so it is where a second ink would
-    do the most damage to the ordering."""
+def test_the_gate_chip_is_the_only_thing_that_fills(palette_name):
+    """It is the one row that has been through a gate, so it is the one row allowed
+    to shout. One ink across all four of its states, for the salience reason: a chip
+    that flipped to dark ink at full strength would recede exactly where it matters.
+    """
     colors = grid_colors(viz_config.get_palette(palette_name))
-    inks = {sr.setup_cell(state, colors)[1]["color"]
-            for state in (const.SETUP_BULL, const.SETUP_BEAR,
-                          const.SETUP_NEAR_BULL, const.SETUP_NEAR_BEAR)}
-    assert inks == {sr.cell_style(10, sr.BULL_HIGH, colors)["color"]}
+    styles = [sr.setup_cell(st, colors)[1]
+              for st in (const.SETUP_BULL, const.SETUP_BEAR,
+                         const.SETUP_NEAR_BULL, const.SETUP_NEAR_BEAR)]
+    assert all("backgroundColor" in st for st in styles)
+    assert len({st["color"] for st in styles}) == 1
 
 
 @pytest.mark.parametrize("palette_name", PALETTES)
 def test_a_bigger_number_always_draws_a_stronger_cell(palette_name):
-    """Fill and weight both rise with magnitude, so nothing about a +10 is quieter
-    than a +1. This is the ordering the single ink exists to protect."""
+    """Nothing about a +10 is quieter than a +1, on either pole."""
     colors = grid_colors(viz_config.get_palette(palette_name))
     for direction in (sr.BULL_HIGH, sr.BULL_LOW):
         styles = [sr.cell_style(v, direction, colors) for v in range(1, 11)]
-        lifts = [_lift(st) for st in styles]
         weights = [st["fontWeight"] for st in styles]
-        assert lifts == sorted(lifts), f"{palette_name}: fill not monotonic"
-        assert weights == sorted(weights), f"{palette_name}: font weight not monotonic"
+        alphas = [_ink_alpha(st) for st in styles]
+        assert weights == sorted(weights), f"{palette_name}: weight not monotonic"
+        assert alphas == sorted(alphas), f"{palette_name}: alpha not monotonic"
 
 
 # ── a fill means a verdict exists ────────────────────────────────────────────
@@ -551,7 +578,7 @@ def test_the_whole_path_survives_the_uri_encoding():
 def test_the_gate_row_prints_the_models_own_answer(state, text, hex_color):
     got, style = sr.setup_cell(state, COLORS)
     assert got == text
-    assert _is_hue(style, hex_color)
+    assert _is_fill_hue(style, hex_color)
 
 
 def test_a_near_setup_draws_fainter_than_a_setup():
