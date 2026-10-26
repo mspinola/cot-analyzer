@@ -1575,3 +1575,37 @@ Verified end to end by intercepting the download: a 1.68MB PNG named
 and 68% of sampled pixels off the background, so the marks are in it rather than the
 blank rectangle a missed decode would have produced. The clone is removed on both the
 success and the failure path; nothing was left in the DOM afterwards.
+
+### A fill now means the gate's answer, and nothing else (2026-10-26)
+
+Reported straight after the lollipops landed: with the positioning levels drawn as
+marks, the Commercial six-week move was the only filled number left and it took all
+of the eye's attention. Correct, and self-inflicted: the fill rule was written when
+the levels were filled numbers too, so the move sat in the same weight class as the
+anchor. Turning the anchor into thin marks and leaving the move as a block made the
+least load-bearing row on the card the loudest thing on it.
+
+This is the third salience inversion on this surface and they all have the same
+shape: a rule that was right when written, left in place while the thing around it
+changed. The first was per-cell ink against the fill ramp, the second was neutral
+rows drawn as saturated blocks, this one is a secondary row keeping a block the
+primary rows gave up.
+
+**So the Setup chip is the only thing on the card that fills.** It is the one row
+that has been through a gate, which makes it the one row entitled to shout.
+Everything below it is ink on the page: direction from the colour, magnitude from
+the numeral and its weight.
+
+The opacity ramp went nearly flat as a consequence, and that is measured rather than
+chosen. A pole colour as ink needs alpha 0.90 before it clears 4.5:1 against the
+page on every shipped palette, the bear red being the binding case (its full-strength
+reading is 5.32:1, the thinnest margin of any pole). So the ramp runs 0.90 to 1.00
+and carries almost nothing; the numeral and the font weight do the work instead.
+
+Live check: 8 filled cells on a full board, every one a Setup chip, and 42 inked
+numbers with a worst contrast of 5.32:1.
+
+The invariant that replaces "a fill means a verdict exists" is `no number cell ever
+fills`, pinned across every palette, both poles and every step. Giving a number back
+its fill is what would bring the inversion back, so that is the thing held by test
+rather than the colours.
