@@ -1507,3 +1507,44 @@ background. The zone alpha is 0.12 rather than their 0.11: the zone here is one 
 instead of the full strip height, but NPF's 80/20 gate still puts 40% of every lane
 inside a band, so it is calibrated against the wide gate where the dots have to stay
 what the eye lands on.
+
+### The dots needed stems, and the columns became a choice (2026-10-26)
+
+**A bare dot has no length.** The mark still did not read after the gate bands went
+in, and the reason is in `strip_traces`' own docstring, which had the answer all
+along:
+
+> A stem from the neutral midpoint says the one thing that survives the
+> normalization: how far from neutral, and which way. It also makes the neutral
+> majority recede on its own, since a market sitting near 50 draws almost no ink.
+
+Every dot drew the same amount of ink whatever its value, so a market at 52 was as
+loud as one at 97 and the eye had nothing to rank. The lollipop fixes that without
+any extra width, because the information is carried by a LENGTH rather than by a
+position the reader has to measure against a rule.
+
+`signal_cards` had already hit the same wall from the other side and recorded it:
+copying `/strip`'s Commercials-only bar left the speculator lanes "as a bare tick on
+an empty track", which "takes away the thing the lollipop was wanted for". Their fix
+is this one: every leg gets a stem, the speculator stems at half the Commercial's
+width, so the Commercial lollipop stays the heaviest mark by stem weight and head
+size together. The head takes full-strength colour and the stem is knocked back,
+`strip_traces`' split between the datum and its context.
+
+**Leg colour, finally resolved the way the rest of the app does it.** Commercials
+take the VERDICT colour and the speculator legs take their own palette slots (1 and
+2), which is exactly `COMM_LANE_TAKES_LEG_COLOUR = False`. The reason that constant
+exists is that palette slot 0 IS the bear red, so colouring the Commercial lane by
+identity drew a bullish reading in red. Identity costs nothing on the speculator
+lanes here because their verdict is already carried by the zone the dot lands in, so
+the card keeps its one colour rule where it matters and gains the app's shared leg
+vocabulary everywhere else.
+
+**One or two columns is now the reader's choice.** The automatic breakpoint was
+right about the narrow end and presumptuous about the wide one. The control sets a
+MAXIMUM via `--scorecard-cols`, the same custom-property split `.setup-grid` uses
+(the count is Python's fact, the breakpoint is the stylesheet's), and below 992px the
+single-column rule still wins whatever is chosen, because two cards on a phone is
+nine markets in 180px. The value is clamped to the offered choices before it reaches
+CSS: a custom property is substituted before the declaration is parsed, so a bad one
+would break the whole grid rather than one card.

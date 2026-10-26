@@ -56,7 +56,7 @@ import viz_config
 import viz_constants as vc
 from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
-from components.strip_traces import SETUP_COLUMN
+from components.strip_traces import LEG_PALETTE_SLOT, SETUP_COLUMN
 
 dash.register_page(
     __name__, path='/scorecard',
@@ -70,6 +70,12 @@ dash.register_page(
 class_filter.register('scorecard_class_selector')
 controls.register_model('scorecard_model_selector')
 controls.register_target_date('scorecard_date_selector')
+
+#: How many cards sit side by side above the 992px breakpoint. A MAXIMUM rather than
+#: a fixed count: below the breakpoint the stylesheet collapses to one whatever is
+#: chosen, because two cards on a phone is nine markets in 180px.
+COLUMN_CHOICES = (1, 2)
+DEFAULT_COLUMNS = 2
 
 #: The uniform lookback every row below the gate reads. A string, because that is what
 #: `get_symbols_data` takes; `cotmetrics.constants.LB_52` is the same window spelled
@@ -115,7 +121,7 @@ def _clean(value):
     return None if value is None or value != value else float(value)
 
 
-def _read_for(asset, record, basis, model, newest_date, target_date):
+def _read_for(asset, record, basis, model, newest_date, target_date, palette):
     """A MarketRead at the week the card is showing, or None.
 
     Each market on its own dates rather than one global row position, the Heatmap's
@@ -139,7 +145,7 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
 
     instrument = get_indexer().get_instrument_from_name(asset)
     return scorecard_rows.MarketRead(
-        legs=_legs_for(latest, record, model),
+        legs=_legs_for(latest, record, model, palette),
         symbol=getattr(instrument, "symbol", "") or "",
         asset=asset,
         state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
@@ -155,7 +161,7 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
 _SPEC_LEGS = ((models.LEG_LARGE, "noncomm"), (models.LEG_SMALL, "nonrept"))
 
 
-def _legs_for(latest, record, model):
+def _legs_for(latest, record, model, palette):
     """The legs this model gates on for this market, Commercials first.
 
     The rule is `signal_cards.strip_legs`', and it is not "the three legs": every
@@ -166,6 +172,9 @@ def _legs_for(latest, record, model):
     read leaves a verdict unexplained. The card had the second failure until this
     existed, showing two fixed legs under a three-leg gate.
     """
+    # No hue: Commercials take the VERDICT colour. Palette slot 0 is the bear red,
+    # so colouring that lane by identity draws a bullish reading in red, which is
+    # the bug signal_cards records at COMM_LANE_TAKES_LEG_COLOUR.
     legs = [scorecard_rows.LegMark(vc.LEG_SHORT[vc.LEG_COMM],
                                    _clean(latest.get("comm")),
                                    scorecard_rows.BULL_HIGH)]
@@ -173,9 +182,13 @@ def _legs_for(latest, record, model):
         return tuple(legs)
     for leg, key in _SPEC_LEGS:
         if leg in model.spec_legs:
-            legs.append(scorecard_rows.LegMark(vc.LEG_SHORT[leg],
-                                               _clean(latest.get(key)),
-                                               scorecard_rows.BULL_LOW))
+            legs.append(scorecard_rows.LegMark(
+                vc.LEG_SHORT[leg], _clean(latest.get(key)),
+                scorecard_rows.BULL_LOW,
+                # The app's own colour for this leg, so the lanes read as the same
+                # legs the Strip and the home card draw. Their verdict is carried by
+                # the zone the dot lands in, so identity here costs nothing.
+                hue=palette[LEG_PALETTE_SLOT[leg]]))
     return tuple(legs)
 
 
@@ -207,6 +220,16 @@ def warm_caches():
     except Exception as e:  # noqa: BLE001 -- a warmer must never fail a boot
         utils.cot_logger.warning(
             f"scorecard: cache warm failed, first render pays: {e}")
+
+
+def _columns(value):
+    """The chosen column count as a CSS value, defaulting rather than raising.
+
+    A custom property is substituted before the declaration is parsed, so repeat()
+    takes one as its count; a bad value would break the whole grid rather than one
+    card, which is why it is clamped to the offered choices here.
+    """
+    return str(value if value in COLUMN_CHOICES else DEFAULT_COLUMNS)
 
 
 def caption(report_date, model, skipped):
@@ -302,6 +325,23 @@ def layout(**kwargs):
                                 ], xs=6, md=3, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
+                                    html.Label("Columns",
+                                               style={**vc.label_style,
+                                                      "fontSize": "0.8rem",
+                                                      "textTransform": "uppercase"}),
+                                    dbc.RadioItems(
+                                        persistence='session',
+                                        id='scorecard_cols_selector',
+                                        options=[{"label": str(c), "value": c}
+                                                 for c in COLUMN_CHOICES],
+                                        value=DEFAULT_COLUMNS,
+                                        inline=True,
+                                        style={"color": vc.BRIGHTER_TEXT_COLOR,
+                                               "fontSize": "0.85rem"},
+                                    ),
+                                ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
+
+                                dbc.Col([
                                     html.Label("Asset Classes",
                                                style={**vc.label_style,
                                                       "fontSize": "0.8rem",
@@ -356,9 +396,10 @@ def layout(**kwargs):
     [Input('scorecard_class_selector', 'value'),
      Input('global_model_store', 'data'),
      Input('session_palette_theme_asset_store', 'data'),
-     Input('scorecard_date_selector', 'value')],
+     Input('scorecard_date_selector', 'value'),
+     Input('scorecard_cols_selector', 'value')],
 )
-def render_scorecard(asset_classes, model_key, palette_name, target_date):
+def render_scorecard(asset_classes, model_key, palette_name, target_date, columns):
     # Resolved before the early exits so the fold teaches even over an empty page.
     model = models.resolve(model_key)
     if not asset_classes:
@@ -377,14 +418,16 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date):
 
     available = get_indexer().get_available_dates()
     newest = available[0] if available else None
-    colors = grid_colors(viz_config.get_palette(palette_name))
+    palette = viz_config.get_palette(palette_name)
+    colors = grid_colors(palette)
 
     cards, unreadable, report_date = [], [], None
     for asset_class, group in df.groupby("Asset Class", sort=True):
         reads = []
         for record in group.to_dict("records"):
             asset = record.get("Asset")
-            read = _read_for(asset, record, model.basis, model, newest, target_date)
+            read = _read_for(asset, record, model.basis, model, newest,
+                             target_date, palette)
             if read is None:
                 unreadable.append(asset)
             else:
@@ -413,7 +456,10 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date):
         # The cap rises with the column count so a two-up layout is not squeezed
         # into the width that suited a single column.
         html.Div(cards, className="scorecard-grid",
-                 style={"maxWidth": "1600px", "margin": "0 auto"}),
+                 # The count is Python's fact and the breakpoint is the
+                 # stylesheet's, the split .setup-grid already draws.
+                 style={"maxWidth": "1600px", "margin": "0 auto",
+                        "--scorecard-cols": _columns(columns)}),
         caption(target_date or report_date, model, sorted(set(unreadable))),
         help_text(model),
     )
