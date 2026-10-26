@@ -121,6 +121,7 @@ def warm_page_caches():
     from pages.analytics.crowd import warm_caches as warm_crowd_caches
     from pages.analytics.divergence import warm_caches as warm_divergence_caches
     from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
+    from pages.analytics.scorecard import warm_caches as warm_scorecard_caches
     from pages.home import warm_caches as warm_home_caches
 
     # The newest weekly report first: the email links to it and crawlers reach it
@@ -133,6 +134,9 @@ def warm_page_caches():
     warm_crowd_caches()
     warm_heatmap_caches()
     warm_divergence_caches()
+    # Last: its frames are the uniform-window twins of the ones above rather than
+    # the same entries, so unlike the others it does not ride on a warm cache.
+    warm_scorecard_caches()
 
 
 def store_poll_loop():

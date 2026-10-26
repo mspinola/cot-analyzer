@@ -1108,3 +1108,311 @@ on a single market, where it has nothing to qualify.
 **The floor.** `cotmetrics>=0.9.0`, and it is a correctness floor of the loudest kind:
 against 0.8.0 the keyword does not exist, so the call raises `TypeError` on every render
 of the page and no setting of the control avoids it.
+
+## A fourth report: the FX currency scorecard (2026-10-26)
+
+A one-screen FX scorecard, reviewed from a screenshot. Columns are eight currencies.
+Rows are grouped into two blocks, "Positioning and Sentiment" (CFTC level as % of OI,
+CFTC 4-week change, a daily sentiment index, 1-month and 6-month risk reversals, a
+proprietary positioning measure) and "Momentum" (RSI, deviation from the 20-day,
+deviation from the 100-day). Every cell is an integer roughly in -10..+10 with a
+diverging red/blue background, and a summary block on top carries one "Positioning" and
+one "Momentum" score per currency, which reproduces as the unweighted mean of the rows
+beneath it on seven of eight columns.
+
+The format is the idea. Nine rows by eight columns is a whole asset class, levels and
+change and tape, in less vertical space than one of our plots, and it is readable
+because every cell is the same kind of number. Nothing here computes anything
+`cotmetrics` does not already compute.
+
+### What translates, and what does not
+
+**The column axis is an asset class, not the universe.** Eight currencies fit; 47
+markets do not. `Currencies` is the natural first card at nine markets (6A 6B 6C 6E 6J
+6M 6N 6S DX), and the existing `class_filter` already supplies the control.
+
+**One window across every column.** The per-market `CustomLookbackWeeks` in
+`cotmetrics-config/params.yaml` are tuned individually (6B at 30 weeks, 6E at 90), so a
+card built on them would put nine differently-defined numbers in one row and invite
+exactly the comparison they do not support. The card uses the uniform 52-week lookback.
+This is a real cost: the tuned window is the one the book trades, so the card and the
+book can disagree about the same market, and the caption has to say so.
+
+**The number is the level, the colour is the verdict.** On the FX scorecard a spec
+level of -9 means specs are short, printed as a bearish number for that currency. Under
+positioning fade the same fact is the bullish side, so the two presentations disagree
+about the sign of the same reading.
+
+The first draft resolved this by flipping the speculator rows so that sign and colour
+always agreed, tagging the label "flipped". That was wrong, and wrong in a way this repo
+had already settled twice: `strip_traces` states the rule outright, that the lollipop's
+POSITION is the level and its COLOUR is the verdict and the two disagreeing is the
+interesting case rather than a defect, and the Heatmap's index cells follow it. Flipping
+makes the printed number stop being the reading anyone can check against the CFTC file
+or against an outside table, in order to save the reader an inference the colour was
+already making for them.
+
+So nothing on the card is sign-flipped. A Non-Reportable index of -9 is small specs
+washed out, prints as -9, and draws green. What the row label carries is not a "flipped"
+tag but which end is bearish, which is a fact about the leg rather than a warning about
+the rendering.
+
+Note this is the opposite of `/crowd`'s convention, where colour IS value, and that
+departure is documented in `board_traces`. A third surface has to pick one and say which
+in its caption; this one picks the strip's, because the card's whole job is a fast scan
+for agreement across rows and colour is the faster channel for that.
+
+**A hue requires a verdict, which costs the tape rows theirs.** Once colour means the
+verdict rather than the level, every coloured row needs a direction the model actually
+establishes. `PositioningModel.setup_state` takes `(comm_idx, lrg_idx, sml_idx)` and no
+price term, so the gates say nothing about whether a high price-in-range is the bullish
+side. The first draft had quietly assigned those rows "positive is bullish", which is a
+trend reading smuggled onto a fade book's surface. They draw no verdict now, like the
+open interest row. The alternative is asserting a direction nobody has tested.
+
+**A fill means a verdict; rows without one keep the hue as ink.** Drawing the
+directionless rows as saturated neutral blocks was the next mistake, caught on review
+(2026-10-26): a filled cell at magnitude 10 pulls the same weight whatever its hue, so
+three blocks carrying no verdict competed with the three that did and inverted the
+card's hierarchy. The fix keeps the hue and drops the block. Those rows print their
+number in the neutral colour, weighted by magnitude, so they read as reference. Fill
+is now a categorical signal in its own right: a block means the model has an opinion
+about this row, and half the card has none.
+
+**Correlations moved to the label tooltip in the same pass.** Carrying rho on the face
+of every row cost more scan time than it bought, and the card is meant to be read in
+one glance. Only a note that changes how the NUMBER is read stays visible, which today
+is one phrase on one row ("high is bearish" on Non-Reportable). Provenance belongs on
+hover; the rho table above is the durable record of it.
+
+**No averaged summary score.** The source's top block is an unweighted mean of
+heterogeneous rows, which is a composite nobody has tested, and this stack has already
+paid for one of those: crowdmon closed with no positive result after four pre-registered
+tests against exactly that shape. The card's top row is the model gate instead
+(`pos_idx_setup_*`), which is the only row on the surface that has been through the
+ladder. Everything under it is description. That inverts the source's logic in the
+direction this repo can defend: there the summary is invented and the detail is real,
+here the summary is the only tested thing.
+
+### The measurement that cut the card in half
+
+The source gets six positioning rows out of six genuinely different sources (CFTC, an
+options skew at two tenors, a survey, a proprietary book). We have one report read
+through legs that are algebraically tied, so the same layout would print one fact
+several times and look like several opinions.
+
+Measured before drawing: within-market Spearman against the Commercial Index, median
+over 42 markets with at least ten years of weekly reports each, OI-normalized basis, on
+the alias columns the card actually draws. Every figure below is on the NATIVE series,
+matching the card's own no-flip rule. Only the magnitude answers "how much does this row
+add"; the sign says which way the row runs against the anchor, and a negative one on a
+speculator leg is the mirror relationship, not a contradiction.
+
+| candidate row | rho vs Commercial Index | on the card |
+|---|---|---|
+| Open interest z-score | -0.07 | yes, as non-directional context |
+| Commercial 6wk move | +0.15 | yes |
+| Non-Reportable Index | -0.34 | yes |
+| 13wk price change | -0.37 | yes |
+| Price in 52wk range | -0.54 | yes |
+| Spec long concentration | -0.73 | no |
+| Commercial z-score, range-indexed | +0.76 | no |
+| Non-Commercial Index | -0.98 | no |
+| `willco` | +1.00 | no |
+
+That table was first written on the oriented series, so the two speculator legs appeared
+at +0.34 and +0.98. The numbers were right about magnitude and wrong about sign, and
+they stayed wrong for exactly as long as the card was flipping those rows. Printing a
+correlation measured on a flipped series beside an unflipped row is the same error as
+the flip itself, one level up.
+
+Two of these are worth stating on their own.
+
+**`willco` is the Commercial Index.** Median within-market rho 1.0000, and after the
+card's -10..+10 mapping the two print the same cell in 99.7% of market-weeks. It is
+also identical on both bases for all 42 markets, because
+`CotIndexer` builds it from `COMM_PCT_OI`, which is already normalized, so the basis
+selector does not move it. Any surface offering both rows and a basis control is making
+two promises it does not keep.
+
+**The Non-Commercial Index is the most misleading row available**, and it was most
+misleading in the flipped presentation. Net positions across the three legs sum to zero
+and Non-Reportable is small, so Commercial and Non-Commercial are near mirrors by
+construction, at rho -0.98. Flipped, it printed a different cell from the Commercial
+Index in 58% of weeks: cell by cell it read as an independent second opinion while being
+the same series. Drawn natively it is the Commercial row's near-exact negative, which at
+least looks like what it is. Either way it is off the card. Non-Reportable is the only
+other leg carrying its own information (-0.34), which is why it is the one that stayed.
+
+So the honest card is six rows, not nine. Getting back to nine needs sources that are
+actually separate, and three exist in this stack already: the four scored ratios in
+`components/tape_context.py`, the options surface behind `cotmetrics.options_data`, and
+the Supplemental report's Index Trader share, which per cotdata's
+`cross-report-comparability.md` is carved out of all three Legacy legs rather than
+nested inside one, making it the only genuinely different partition we hold.
+
+### Status
+
+Shipped as `/scorecard` on 2026-10-26: `pages/analytics/scorecard.py` is the data
+join, the controls and the caption, `components/scorecard_rows.py` owns the row set,
+the colour rule and the drawing, and `tests/test_scorecard_rows.py` pins the four
+invariants that break into something which still renders. The measurement script and
+the mock generator were session artifacts and are not committed; the rho table above
+is the durable record, reproducible from `get_symbols_data(asset, '52',
+basis='oi_norm')` plus `calculate_range_index` at window 53.
+
+What the build added beyond the sketch:
+
+- **One card per asset class, not one per selection.** The column axis is a complex,
+  so selecting all nine renders nine cards rather than a 42-column table.
+- **A scroll wrapper with a sticky label column.** Nine markets inside a phone's
+  375px is about twenty pixels a column, which runs the symbols together and wraps
+  the gate chip onto two lines. Below a 44px floor the card scrolls instead of
+  compressing, and the row labels stay pinned so they do not scroll away with the
+  markets. The overflow is on the card's own wrapper and never on the body, which is
+  both the mobile-work rule in this repo and a requirement of `position: sticky`.
+- Two defects caught in the browser rather than by the suite, both now pinned by
+  test: a raw `#` in the sparkline's data URI opened a URI fragment and truncated
+  every path to a broken image with nothing raised anywhere; and under
+  `table-layout: fixed` the column widths come from the HEADER row, so a label width
+  set only on the body let the labels run under the first market's column.
+
+Verified live at the 2026-10-20 report: nine cards, 84 sparklines, no broken images,
+`overflow-x: visible` on the body, and the warmer reporting 42 markets.
+
+### The numbers were unreadable, for two separate reasons (2026-10-26)
+
+Reported as "the numbers in the brighter green boxes are not readable", on 6A's
+Commercial Index. Measuring it on the live DOM gave **1.01:1**, which is invisible
+rather than dim, and the investigation turned up two independent causes. The first
+guess, that the ink rule was mischoosing, was right but was not what the reader was
+looking at.
+
+**1. The ink pivot was miscalibrated, in shared code.** `cell_text_colour` picked
+between `#E2E8F0` and `#101418` at a hardcoded fill luminance of 0.35. For that pair
+of inks the two are equally legible at luminance 0.185 (the geometric mean of their
+offset luminances), and that crossover is also the worst case. Every fill between
+0.185 and 0.35 was therefore printed in the dimmer of the two available inks, worst
+on the palettes with a bright bull slot. The pivot is now derived from the ink
+constants rather than written down, so it follows them.
+
+This was a pre-existing defect in `board_traces`, which the Scorecard inherited when
+the helper moved to `plot_colors` to avoid a second copy. The Crowdedness Board gets
+the fix too, and visibly: its Vibrant/Cyberpunk/CMR bull cells go from 2.67:1 to
+6.43:1, Muted from 3.50 to 4.90.
+
+Measured bull-slot luminance per palette, which is why no single hardcoded threshold
+was ever going to work: Solarized 0.28, Muted 0.50, Vibrant/Cyberpunk/CMR 0.72. The
+design mock had been drawn in Solarized, the one palette where the old rule happened
+to choose correctly.
+
+**2. A theme rule was overriding the ink entirely, which is what the reader saw.**
+`custom.css` sets `color: var(--text-muted) !important` on every `tbody td` under
+both themes. Every other table in the app is fine with that, because no other table
+colours cells individually. The Scorecard's cells carried the correct ink inline and
+had it replaced with a mid-grey, which is the 1.01:1. React cannot emit `!important`
+in an inline style, so each cell now carries its ink twice: `color`, and a
+`--scorecard-ink` custom property that one scoped rule applies. The rule is written
+`table.scorecard-card tbody td` rather than `.scorecard-card tbody td` because the
+latter ties with the theme rule on specificity and would win only by sitting later in
+the file.
+
+**Worth knowing for the next per-cell-coloured table**: an inline colour on a `td` in
+this app does not survive, and nothing warns you. The failure is silent, it looks like
+a colour-choice problem rather than a cascade problem, and it sent the first round of
+this fix after the wrong cause.
+
+### Per-cell ink inverted the card's attention ordering (2026-10-26)
+
+Reported straight after the contrast fix above: "the mix of white and black text seems
+to reverse the eye catching desire, the black +10 is overshadowed by the white +1."
+Correct, and it is a different failure from the one before it. Every cell now passed a
+contrast check and the card still read backwards.
+
+**Contrast is symmetric; salience is not.** On a dark page a luminous glyph advances
+and a dark glyph recedes, so choosing ink per cell by contrast means the brightest
+fills get dark text and the faintest get bright text. The fill ramp says "+10 matters
+most" while the ink ramp says the opposite, and the ink wins on a small glyph. No
+contrast sweep can catch this, because contrast scores a cell in isolation and this is
+a property of the ordering ACROSS cells.
+
+**The fix is to cap the fill rather than switch the ink.** `fill_alpha_cap` finds the
+strongest blend of a hue that still takes the bright ink, by bisection against
+`INK_PIVOT`, and the ramp runs from a bare tint up to that cap. One ink for the whole
+card, so magnitude is carried by the fill alone and every number is drawn identically.
+Font weight rises with magnitude too (500 to 700), reinforcing rather than competing.
+
+The cost is vividness: a full-strength cell is now `#298664` on Muted rather than
+`#2fb282`, because that is as bright as green can get while the cream ink still holds
+4:1 on it. It is still the brightest cell on the card, which is all the ordering needs.
+Measured across every palette and pole, the capped maximum lands at luminance 0.183 to
+0.187 and contrast 4.11 to 4.18.
+
+One quantisation trap: the cap has to be floored onto the alpha grid, not rounded.
+`round(cap, 3)` can round UP across the boundary, and `blend_over` then rounds each
+channel to an integer besides, so a cap that is under the pivot as a float lands a
+hair over it once drawn (0.1855 against a pivot of 0.1851). `_floor_alpha` plus a
+step-down loop against the colour actually produced is what holds it.
+
+Pinned by four invariants a contrast test cannot express: the ink is identical at every
+magnitude, no fill crosses the pivot, the gate chip shares the card's ink, and fill
+strength and font weight both rise monotonically with the number. Live re-check: one
+distinct ink across the card, ramp luminance 0.027 at |1| to 0.184 at |10|, worst
+contrast 4.15.
+
+Pinned by a palette sweep over every shipped palette, both poles and every step of the
+ramp. The floor is 4.0:1 for a filled cell, which is what the app's ink pair allows:
+the pivot caps at 4.14, and reaching WCAG's 4.5 would need pure black and white ink,
+a change to a constant the Crowdedness Board shares. The unfilled rows do clear 4.5,
+after the neutral violet was lightened from `#6c71c4` (3.98:1 at full strength, so a
+transparent ramp built on it bottomed out at 2.1) to `#aeb1df`, which stays at least
+130 RGB units from every palette's bull and bear slot. Live re-check: 135 cells, none
+below 4.0, worst 4.20.
+
+Two things to settle before this becomes a page: whether the uniform-window cost is
+acceptable given the book trades the tuned windows, and whether the gate row should show
+the model's verdict or stay off a surface whose other rows are untested description.
+
+A third, raised by the colour convention: only three rows carry a fill, and two of them
+are the Commercial Index and its own six-week move. If that reads as too thin a coloured
+surface, the fix is more independent SOURCES rather than more views of this one, and the
+three candidates are named above. It is not more hues.
+
+### Sparklines on the directionless rows (2026-10-26)
+
+Asked whether the tape rows could be sparklines or whiskers instead of numbers. The
+whisker half is already settled above, under "Would box-and-whisker present better?",
+and nothing about this card changes it: quartiles over about ten effective observations
+are confidently imprecise, and `crucible`'s tearsheets already spend the whisker idiom
+on confidence intervals.
+
+But that section also names the gap a box fails to close, and it is the one that
+matters here: a box discards time, so a market pinned at an extreme for four months and
+one that arrived this week still look identical. A sparkline is the only instrument in
+the list that closes it, and the property that disqualifies the box helps it. Lag-1
+autocorrelation of 0.956 makes quartiles unstable and makes a path SMOOTH, so the
+series that reads worst as a distribution reads best as a line.
+
+It also fits the card's epistemic split exactly. These rows have no tested direction,
+which is why they carry no hue; a sparkline is the natural partner to that, because it
+describes without claiming. So the card ended up with two registers rather than one
+scale: coloured blocks where the model has an opinion, paths where it does not.
+
+**Two rows became one, with more in it.** "Price in 52wk range" and "13wk price change"
+were both summaries of a single price path, correlated 0.35 with each other. One
+sparkline of the 52 weekly closes carries both and a third thing besides: where the dot
+ends against the faint midpoint rule is the range reading (verified against the numbers
+it replaced, all nine currency columns agree, 6A 72% against the old +4 and DX 93%
+against +9), the slope of the last quarter is the 13-week change, and the shape is the
+duration neither number could show. The open interest row became a sparkline on the
+same argument. Net effect is seven rows to five, with more information on the card.
+
+Figures moved to hover, consistent with the rho decision: the sparkline's own tooltip
+gives its percentile, the row label's gives the correlation.
+
+Not extended to the positioning rows, deliberately. They carry verdicts, the fill is
+what encodes that, and a path under a coloured block is muddy. Sparklines everywhere
+would turn the card back into a grid of charts, which is the compactness this format was
+adopted for. The "pinned or just arrived" question is sharper for positioning than for
+price, so if it is worth answering there, it wants its own treatment rather than a
+sparkline bolted onto a verdict cell.

@@ -92,6 +92,68 @@ def hex_to_rgba(hex_color, alpha):
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
+def blend_over(hex_color, alpha, background=vc.BACKGROUND_COLOR):
+    """`hex_color` composited over `background` at `alpha`, as a hex string.
+
+    Callers that print text on the result need the RESULTING colour rather than an
+    rgba string, because the luminance of an rgba value depends on what it lands on,
+    and the ink has to be chosen from the luminance.
+    """
+    h = str(hex_color).lstrip("#")
+    b = str(background).lstrip("#")
+    if len(h) != 6 or len(b) != 6:
+        return hex_color
+    try:
+        fg = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+        bg = [int(b[i:i + 2], 16) for i in (0, 2, 4)]
+    except ValueError:
+        return hex_color
+    return "#{:02x}{:02x}{:02x}".format(
+        *(round(bg[i] + (fg[i] - bg[i]) * alpha) for i in range(3)))
+
+
+#: The two inks a filled cell can print in.
+INK_DARK = "#101418"
+INK_BRIGHT = vc.BRIGHTER_TEXT_COLOR
+
+
+def _ink_pivot():
+    """The fill luminance at which both inks are equally legible.
+
+    WCAG contrast is (Lh + 0.05) / (Ll + 0.05). Setting the bright ink's ratio equal
+    to the dark ink's and solving gives the geometric mean of the two inks' offset
+    luminances, so the pivot follows the inks instead of being a number someone has
+    to remember to re-tune when they change.
+
+    It matters because the pivot is also the WORST case: a fill sitting there is as
+    far as a fill can get from both inks at once. Any other threshold moves some
+    band of fills onto the dimmer of the two choices. This was previously pinned at
+    0.35 against a pivot of ~0.185, which put every fill between the two on the wrong
+    ink and bottomed out at 2.5:1, worst on the palettes with a bright bull slot.
+    """
+    offset = ((relative_luminance(INK_BRIGHT) + 0.05)
+              * (relative_luminance(INK_DARK) + 0.05)) ** 0.5
+    return offset - 0.05
+
+
+INK_PIVOT = _ink_pivot()
+
+
+def cell_text_colour(fill):
+    """Ink for a number printed on `fill`: the app's bright text on a dark cell,
+    near-black on a light one.
+
+    The threshold is LUMINANCE, not blend strength, because the shipped palettes
+    disagree about how bright their bull and bear slots are: the bull slot runs from
+    0.28 (Solarized) to 0.72 (Vibrant, Cyberpunk, CMR). A rule keyed on how far a
+    value sits from neutral therefore reads correctly on one palette and prints white
+    on near-white on the others.
+    """
+    if relative_luminance(fill) > INK_PIVOT:
+        return INK_DARK
+    return INK_BRIGHT
+
+
 # ── palette -> the app's verdict colours ──────────────────────────────────────
 
 # Neutral dimmed colour for a cell, or a bar, with nothing to say.
