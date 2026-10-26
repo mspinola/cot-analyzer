@@ -14,6 +14,8 @@ The last one is the reason the two tape rows could be collapsed into one path at
 If it stops holding, the card is showing a shape whose position means something other
 than the number the design note claims it carries.
 """
+import re
+
 import cotmetrics.constants as const
 import cotmetrics.models as models
 import pytest
@@ -40,8 +42,9 @@ COLORS = GridColors(bull=BULL_HEX, bear=BEAR_HEX,
 
 def read(symbol="6A", state=const.SETUP_NONE, **scores):
     paths = scores.pop("paths", {})
-    return sr.MarketRead(symbol=symbol, asset=symbol, state=state,
-                         scores=scores, paths=paths, date="2026-10-20")
+    legs = scores.pop("legs", (sr.LegMark("Comm", 50, sr.BULL_HIGH),))
+    return sr.MarketRead(symbol=symbol, asset=symbol, state=state, scores=scores,
+                         paths=paths, legs=legs, date="2026-10-20")
 
 
 def _rgb(hex_color):
@@ -109,15 +112,16 @@ def test_a_number_carries_its_own_sign():
 
 # ── colour is the verdict, not the value ─────────────────────────────────────
 
-def test_a_low_non_reportable_reading_prints_negative_and_draws_bullish():
-    """THE invariant. Small specs washed out is the bullish side under positioning
-    fade, so the cell reads -9 and draws the bull hue. Flipping the number to make
-    sign and colour agree is what this card deliberately does not do."""
-    row = next(r for r in sr.SCORE_ROWS if r.key == "nonrept")
-    assert row.direction == sr.BULL_LOW
-    value = sr.score(6)
-    assert sr.cell_text(value) == "-9"
-    assert _is_hue(sr.cell_style(value, row.direction, COLORS), BULL_HEX)
+def test_a_low_speculator_reading_sits_left_and_draws_bullish():
+    """THE invariant, now carried by the leg mark. Specs washed out is the bullish
+    side under positioning fade, so the dot sits at the LOW end of its lane and takes
+    the bull hue. Position and colour disagreeing is the informative case."""
+    svg, _ = marks((sr.LegMark("Comm", 94, sr.BULL_HIGH),
+         sr.LegMark("NonRept", 6, sr.BULL_LOW)), 2)
+    dots = re.findall(r'<circle cx="([\d.]+)"[^>]*fill="([^"]+)"', svg)
+    (comm_x, comm_fill), (spec_x, spec_fill) = dots
+    assert float(spec_x) < float(comm_x)        # low in its range
+    assert spec_fill == comm_fill == BULL_HEX   # both the bullish side
 
 
 def test_a_high_non_reportable_reading_prints_positive_and_draws_bearish():
@@ -285,22 +289,133 @@ def test_verdict_is_the_whole_colour_rule(value, direction, expected):
     assert sr.verdict(value, direction) == expected
 
 
+# ── the leg mark ─────────────────────────────────────────────────────────────
+
+BAND = models.NPF.band          # (80, 20)
+
+
+def marks(legs, lanes, band=BAND):
+    return sr.leg_marks(legs, COLORS, lanes, band)
+
+
+def _dots(svg):
+    return re.findall(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" '
+                      r'fill="([^"]+)"', svg)
+
+
+def test_commercials_lead_and_draw_larger():
+    """Commercials are the leg every gate reads; the others are context for it, the
+    same weighting signal_cards gives them."""
+    svg, _ = marks((sr.LegMark("Comm", 80, sr.BULL_HIGH),
+                   sr.LegMark("NonRept", 20, sr.BULL_LOW)), 2)
+    (_, comm_y, comm_r, _), (_, spec_y, spec_r, _) = _dots(svg)
+    assert float(comm_y) < float(spec_y)     # top lane
+    assert float(comm_r) > float(spec_r)
+
+
+def test_a_leg_sits_where_its_index_says():
+    for value, expected in ((0, 2.0), (50, sr.MARK_W / 2), (100, sr.MARK_W - 2)):
+        svg, _ = marks((sr.LegMark("Comm", value, sr.BULL_HIGH),), 1)
+        assert float(_dots(svg)[0][0]) == pytest.approx(expected, abs=0.1)
+
+
+def test_the_row_is_as_tall_as_the_widest_market_on_the_card():
+    """Every cell in the row shares a height, or the rows below stop lining up. A
+    market with fewer legs draws fewer rather than being padded."""
+    one, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),), 3)
+    three, _ = marks(tuple(sr.LegMark(n, 50, sr.BULL_HIGH)
+                             for n in ("Comm", "NonComm", "NonRept")), 3)
+    assert f'height="{sr.LANE_PX * 3}"' in one
+    assert f'height="{sr.LANE_PX * 3}"' in three
+    assert len(_dots(one)) == 1 and len(_dots(three)) == 3
+
+
+def test_a_market_with_no_gated_legs_draws_nothing():
+    assert marks((), 2) == (None, None)
+
+
+def test_a_missing_leg_reading_draws_no_dot_but_keeps_its_lane():
+    svg, title = marks((sr.LegMark("Comm", None, sr.BULL_HIGH),
+                           sr.LegMark("NonRept", 20, sr.BULL_LOW)), 2)
+    assert len(_dots(svg)) == 1
+    assert "Comm" not in title and "NonRept 20" in title
+
+
+def test_the_numbers_are_on_hover():
+    _, title = marks((sr.LegMark("Comm", 94.4, sr.BULL_HIGH),
+                         sr.LegMark("NonRept", 6.2, sr.BULL_LOW)), 2)
+    assert "Comm 94" in title and "NonRept 6" in title
+
+
+def test_the_mark_carries_no_unescaped_hash():
+    """Same data-URI trap as the sparkline: a raw '#' truncates the document."""
+    svg, _ = marks((sr.LegMark("Comm", 80, sr.BULL_HIGH),), 1)
+    assert "#" not in sr.mark_img(svg).src
+
+
+def _zones(svg):
+    return re.findall(r'<rect x="([\d.]+)" y="\d+" width="([\d.]+)"[^>]*'
+                      r'fill="rgba\((\d+), (\d+), (\d+)', svg)
+
+
+def _rgb_of(hex_color):
+    h = hex_color.lstrip("#")
+    return tuple(str(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+
+
+def test_each_lane_carries_the_gates_band_at_both_ends():
+    """The zone is what makes the mark readable at this size. Precision is not the
+    question a sweep asks; "is this leg through the gate" is, and a tinted end
+    answers it at any resolution. Leaving it out was the real defect the first time,
+    not the dimensions."""
+    svg, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),), 1, band=(80, 20))
+    zones = _zones(svg)
+    assert len(zones) == 2
+    widths = sorted(round(float(w)) for _, w, *_ in zones)
+    span = sr.MARK_W - 4
+    assert widths == [round(span * 0.2), round(span * 0.2)]
+
+
+def test_the_band_follows_the_model_not_the_card():
+    narrow, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),), 1, band=(95, 5))
+    wide, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),), 1, band=(80, 20))
+    assert float(_zones(narrow)[0][1]) < float(_zones(wide)[0][1])
+
+
+def test_a_legs_bull_end_is_tinted_bull_whichever_end_it_is():
+    """Commercials reach the bull side at the HIGH end and speculators at the LOW
+    end, so a setup lights every lane green whichever end its dot sits at. Tinting
+    both lanes the same way round would make a bull setup read half red."""
+    svg, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),
+                    sr.LegMark("NonRept", 50, sr.BULL_LOW)), 2, band=(80, 20))
+    comm_lo, comm_hi, spec_lo, spec_hi = _zones(svg)
+    bull, bear = _rgb_of(BULL_HEX), _rgb_of(BEAR_HEX)
+    assert tuple(comm_hi[2:]) == bull and tuple(comm_lo[2:]) == bear
+    assert tuple(spec_lo[2:]) == bull and tuple(spec_hi[2:]) == bear
+
+
+def test_the_midline_is_bright_enough_to_measure_from():
+    """signal_cards found a near-black midline invisible on a card, which left every
+    dot measured from nothing. A table cell is the same background."""
+    svg, _ = marks((sr.LegMark("Comm", 50, sr.BULL_HIGH),), 1)
+    assert sr.AXIS_RULE in svg
+
+
 # ── the measured row set ─────────────────────────────────────────────────────
 
-def test_the_duplicate_rows_stayed_off_the_card():
+def test_the_card_keeps_one_number_row_and_two_paths():
     """willco reproduces the Commercial Index at rho 1.00 and prints the same cell in
     99.7% of weeks; the Non-Commercial index is its near-mirror at -0.98. Both, plus
     the range-indexed z-score and spec concentration, were measured off the card. A
     row reappearing here is a claim that the measurement changed."""
     keys = {r.key for r in sr.SCORE_ROWS} | {r.key for r in sr.SPARK_ROWS}
-    assert keys == {"comm", "comm_move", "nonrept", "price", "oi"}
+    assert keys == {"comm_move", "price", "oi"}
 
 
-def test_the_anchor_row_carries_no_correlation_with_itself():
-    anchor = sr.SCORE_ROWS[0]
-    assert anchor.key == "comm"
-    assert anchor.rho is None
-    assert "measured against" in sr.row_tooltip(anchor.rho)
+def test_the_anchor_tooltip_names_itself():
+    """The levels moved into the leg mark, so no numbered row is the anchor any more.
+    The tooltip for a row without a correlation still has to say why."""
+    assert "measured against" in sr.row_tooltip(None)
 
 
 def test_every_other_row_states_what_it_adds():
@@ -418,17 +533,18 @@ def test_every_market_gets_one_column_on_every_row():
              read("6E", comm=98, comm_move=40, nonrept=30, paths={}),
              read("6J", comm=7, comm_move=20, nonrept=55, paths={})]
     rows = _data_rows(_table(reads))
-    assert len(rows) == 1 + len(sr.SCORE_ROWS) + len(sr.SPARK_ROWS)
+    # setup chip, the leg mark, the numbered rows, the paths
+    assert len(rows) == 2 + len(sr.SCORE_ROWS) + len(sr.SPARK_ROWS)
     for row in rows:
         assert len(row.children) == len(reads) + 1
 
 
-def test_a_market_with_no_path_still_draws_its_scores():
+def test_a_market_with_no_path_still_draws_its_positioning():
     """The price store and the COT store are separate deliveries. A market whose bars
-    have not landed must lose its sparkline, not its positioning row."""
-    rows = _data_rows(_table([read("6A", comm=94, comm_move=70, nonrept=6, paths={})]))
-    scored = rows[1:1 + len(sr.SCORE_ROWS)]
-    assert [r.children[1].children for r in scored] == ["+9", "+4", "-9"]
+    have not landed must lose its sparklines, not its positioning."""
+    rows = _data_rows(_table([read("6A", comm_move=70, paths={},
+                                   legs=(sr.LegMark("Comm", 94, sr.BULL_HIGH),))]))
+    assert rows[2].children[1].children == "+4"   # the 6wk move survived
     for row in rows[-len(sr.SPARK_ROWS):]:
         assert row.children[1].children == sr._EMPTY
 

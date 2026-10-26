@@ -99,6 +99,7 @@ def _market_frame(asset, basis, newest_date):
     # normalized header, because the basis argument moves the aliases and not the
     # underlying net-position columns.
     out["comm"] = df.get("comms_idx")
+    out["noncomm"] = df.get("lrg_idx")
     out["nonrept"] = df.get("sml_idx")
     # Index momentum is a POINT change of a bounded index, so it is not already on the
     # 0-100 scale the card's cells need; range-index it over the shared window.
@@ -138,6 +139,7 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
 
     instrument = get_indexer().get_instrument_from_name(asset)
     return scorecard_rows.MarketRead(
+        legs=_legs_for(latest, record, model),
         symbol=getattr(instrument, "symbol", "") or "",
         asset=asset,
         state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
@@ -145,6 +147,36 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
         paths=paths,
         date=frame.index[-1].strftime('%Y-%m-%d'),
     )
+
+
+#: Which column carries each speculator leg's index, and which end of it is bullish.
+#: Both legs read LOW as the bull side under positioning fade, the mirror of
+#: Commercials.
+_SPEC_LEGS = ((models.LEG_LARGE, "noncomm"), (models.LEG_SMALL, "nonrept"))
+
+
+def _legs_for(latest, record, model):
+    """The legs this model gates on for this market, Commercials first.
+
+    The rule is `signal_cards.strip_legs`', and it is not "the three legs": every
+    gate reads Commercials, the speculator legs are exactly `model.spec_legs` (NPF's
+    CS gate never reads Non-Commercials), and an equity index contract gates on
+    Commercials ALONE whatever the model. Drawing a leg the gate does not read puts a
+    condition on the card the verdict above it never checked; omitting one it does
+    read leaves a verdict unexplained. The card had the second failure until this
+    existed, showing two fixed legs under a three-leg gate.
+    """
+    legs = [scorecard_rows.LegMark(vc.LEG_SHORT[vc.LEG_COMM],
+                                   _clean(latest.get("comm")),
+                                   scorecard_rows.BULL_HIGH)]
+    if record.get(const.IS_EQUITY_COL):
+        return tuple(legs)
+    for leg, key in _SPEC_LEGS:
+        if leg in model.spec_legs:
+            legs.append(scorecard_rows.LegMark(vc.LEG_SHORT[leg],
+                                               _clean(latest.get(key)),
+                                               scorecard_rows.BULL_LOW))
+    return tuple(legs)
 
 
 def warm_caches():
@@ -211,19 +243,29 @@ def help_text(model):
     use opposite conventions, and a reader moving between them in one session will
     otherwise read one of the two backwards.
     """
+    # Prose, not a list: setup_leg_phrase names the SPECULATOR legs the gate
+    # requires and returns None where it requires none (equities). Commercials are
+    # named separately because every gate reads them.
+    spec = vc.setup_leg_phrase(model)
+    legs = f"Commercials and {spec}" if spec else "Commercials"
     return (
-        f"Each numbered cell is that row's reading as a range index over the same "
-        f"52 weekly reports (0 at the window's low, 100 at its high), rewritten as "
-        f"-{scorecard_rows.SCALE} to +{scorecard_rows.SCALE} so rows of different "
-        f"origin share one scale. Nothing is sign-flipped: a number is always its "
-        f"own native level, and the COLOUR carries what that level means under "
-        f"{model.title}. So a Non-Reportable index of -9 is small specs washed out, "
-        f"which is the bullish side, and the cell reads -9 while drawing the bull "
-        f"hue. A number and its colour disagreeing is the informative case, not a "
-        f"defect, and it is the same rule the Crowding Strip follows and the "
-        f"OPPOSITE of the Crowdedness Board, where colour is the cell's own value. "
-        f"A cell with a FILL is a row the model gives a direction; the gates read "
-        f"three positioning indices and no price term, so price and open interest "
+        f"Every reading is a range index over the same 52 weekly reports (0 at the "
+        f"window's low, 100 at its high). The positioning row draws them as marks: "
+        f"one lane per leg {model.title} gates on, which is {legs}, Commercials "
+        f"always on top, each dot sitting at that leg's index with a faint rule at "
+        f"the midpoint. An equity index contract gates on Commercials alone, so its "
+        f"mark has one lane. Hover a mark for the figures. The lane says WHICH leg; "
+        f"the colour says what that leg's reading means under {model.title}, so a "
+        f"Commercial dot high in its range and a speculator dot low in its range "
+        f"both draw bullish, because crowded speculators are the side this book "
+        f"fades. A mark whose dots disagree is a market whose legs disagree, which "
+        f"is usually why a crowded row carries no chip. Numbered rows use the same "
+        f"colour rule on a -{scorecard_rows.SCALE} to +{scorecard_rows.SCALE} "
+        f"scale, nothing sign-flipped, which is what the Crowding Strip does and "
+        f"the OPPOSITE of the Crowdedness Board, where colour is the cell's own "
+        f"value. A cell with a FILL is a row the model gives a direction; the gates "
+        f"read "
+        f"those positioning indices and no price term, so price and open interest "
         f"have no verdict to carry and are drawn as paths instead, each over the "
         f"same 52 weeks with a faint rule at the midpoint of its own range and a "
         f"dot on the latest week. Hover any row label for how much that row adds "
@@ -350,12 +392,16 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date):
         if not reads:
             continue
         report_date = report_date or reads[0].date
+        # A class too wide for a half column takes the whole row rather than
+        # scrolling sideways inside one. How many markets a class holds is this
+        # layer's fact; where the breakpoint sits is the stylesheet's.
+        wide = scorecard_rows.card_min_px(len(reads)) > scorecard_rows.GRID_COLUMN_PX
         cards.append(html.Div([
             html.H2(asset_class,
                     style={"fontSize": "1rem", "fontWeight": "600",
                            "color": vc.BRIGHTER_TEXT_COLOR, "margin": "0 0 6px"}),
             scorecard_rows.build_table(reads, model, colors),
-        ], className="mb-4"))
+        ], className="mb-2" + (" scorecard-wide" if wide else "")))
 
     if not cards:
         return (html.P("No data available.",
@@ -363,7 +409,11 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date):
                 "", help_text(model))
 
     return (
-        html.Div(cards, style={"maxWidth": "980px", "margin": "0 auto"}),
+        # Two across from 992px up, one below; see .scorecard-grid in custom.css.
+        # The cap rises with the column count so a two-up layout is not squeezed
+        # into the width that suited a single column.
+        html.Div(cards, className="scorecard-grid",
+                 style={"maxWidth": "1600px", "margin": "0 auto"}),
         caption(target_date or report_date, model, sorted(set(unreadable))),
         help_text(model),
     )
