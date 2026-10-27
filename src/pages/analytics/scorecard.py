@@ -321,12 +321,15 @@ def layout(**kwargs):
                 dbc.Col([
                     dbc.Card(
                         dbc.CardBody([
+                            # Widths sum to 12 at md and 10 at lg, so the row
+                            # never wraps and no control stretches far past its
+                            # content.
                             config_fold.wrap('scorecard', dbc.Row([
                                 dbc.Col([
                                     controls.label("Target Date"),
                                     controls.target_date_dropdown(
                                         'scorecard_date_selector'),
-                                ], xs=12, md=4, className="mb-3 mb-md-0 px-md-2"),
+                                ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
                                     controls.label("Model"),
@@ -362,7 +365,7 @@ def layout(**kwargs):
                                     class_filter.control(
                                         'scorecard_class_selector',
                                         get_indexer().get_asset_classes()),
-                                ], xs=12, md=5, className="px-md-2"),
+                                ], xs=12, md=4, lg=3, className="px-md-2"),
                             ], align="center")),
                         ]),
                         className="mb-2 shadow-sm",
