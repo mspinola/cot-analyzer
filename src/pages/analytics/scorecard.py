@@ -483,9 +483,13 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
         # layer's fact; where the breakpoint sits is the stylesheet's.
         wide = scorecard_rows.card_min_px(len(reads)) > scorecard_rows.GRID_COLUMN_PX
         cards.append(html.Div([
+            # Centred in the table's own box, so it sits over its table at any
+            # width rather than at the page's left edge.
             html.H2(asset_class,
                     style={"fontSize": "1rem", "fontWeight": "600",
-                           "color": vc.BRIGHTER_TEXT_COLOR, "margin": "0 0 6px"}),
+                           "color": vc.BRIGHTER_TEXT_COLOR, "textAlign": "center",
+                           "maxWidth": f"{scorecard_rows.CARD_MAX_PX}px",
+                           "margin": "0 auto 6px"}),
             scorecard_rows.build_table(reads, model, colors),
         ], className="mb-2" + (" scorecard-wide" if wide else "")))
 

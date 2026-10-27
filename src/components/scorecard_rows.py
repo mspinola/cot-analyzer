@@ -600,6 +600,12 @@ def card_min_px(market_count):
     return _label_px() + _MIN_COL_WIDTH * market_count
 
 
+#: The widest a card's table draws, centred in whatever it sits in. The page gives
+#: the class heading the same box so the heading centres over ITS table: left
+#: aligned to the page, a 980px table in a 1600px single column left the heading
+#: hundreds of pixels from the data it names.
+CARD_MAX_PX = 980
+
 #: A card wider than this is given a whole row rather than squeezed into a column.
 #: It is the usable half-column at the 992px breakpoint, less the grid gap and the
 #: container's padding. Only the nine-market Currencies card exceeds it today.
@@ -688,7 +694,7 @@ def build_table(reads, model, colors):
         style={"borderCollapse": "separate", "borderSpacing": "2px",
                "width": "100%", "tableLayout": "fixed",
                "minWidth": f"{card_min_px(len(reads))}px",
-               "maxWidth": "980px", "margin": "0 auto"})
+               "maxWidth": f"{CARD_MAX_PX}px", "margin": "0 auto"})
     # The scroll lives on THIS wrapper, never on the body: a page-level overflow-x
     # is what the mobile work had to undo elsewhere in this app, and it breaks
     # position: sticky for everything inside it.
