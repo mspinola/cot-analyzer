@@ -234,7 +234,8 @@ class MarketRead:
     symbol: str
     asset: str
     #: The model's verdict, from the matrix frame. Its window is the model's own
-    #: tuned lookback, NOT the uniform one the rows below use; the caption says so.
+    #: tuned lookback, NOT the uniform one the score and path rows use; the caption
+    #: says so. `legs` share this window, because they are there to explain it.
     state: str = const.SETUP_NONE
     scores: dict = field(default_factory=dict)
     paths: dict = field(default_factory=dict)
@@ -618,8 +619,9 @@ def build_table(reads, model, colors):
         setup_cells.append(html.Td(text, style=with_ink({**_CELL_STYLE, **style})))
     body.append(html.Tr([html.Td(
         "Setup", style=_LABEL_STYLE,
-        title="The model's own verdict, on its own tuned window. Every row below "
-              "is a uniform 52 weeks, so the two windows differ.")] + setup_cells))
+        title="The model's own verdict, on its own tuned window. The leg marks "
+              "share that window; the numbered and path rows are a uniform 52 "
+              "weeks, so the two windows differ.")] + setup_cells))
 
     body.append(_block("Positioning",
                        "lane is the leg, shaded ends are the gate",
@@ -647,7 +649,8 @@ def build_table(reads, model, colors):
         body.append(html.Tr([html.Td(
             " / ".join(leg.short for leg in order), style=with_ink(_LABEL_STYLE),
             title="One lane per leg this model gates on, Commercials first. The dot "
-                  "sits at that leg's range index; the faint rule is the midpoint. "
+                  "sits at that leg's range index on the model's own window, the "
+                  "reading the gate checked; the faint rule is the midpoint. "
                   "Colour is the leg's own verdict, so a high Commercial reading and "
                   "a low speculator reading both draw bullish.")] + cells))
 
