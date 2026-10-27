@@ -73,7 +73,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          *
          * The Divergence export's shape, because this page is the same kind of
          * thing: HTML tables whose marks are data-URI images, so the clone IS the
-         * picture and no Plotly snapshot pass is needed. Two differences.
+         * picture and no Plotly snapshot pass is needed. Three differences.
          *
          * It WAITS FOR THE IMAGES. Divergence carries a handful of sparklines and
          * gets away with a fixed delay; a full board here is about 126 marks and
@@ -85,6 +85,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          * the width has to come from the widest scroller anywhere inside, not from
          * the container: a clone at container width would export the clipped view
          * those boxes exist to avoid.
+         *
+         * Which leaves the third: those boxes pin the label column, and a pin is
+         * measured against a scrollport the clone no longer has. Unpinned below,
+         * for the reason spelled out there.
          */
         export_scorecard_image: function(n_clicks, model_key, target_date) {
             if (!n_clicks) { return window.dash_clientside.no_update; }
@@ -137,6 +141,22 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             var themeContainer = document.getElementById("theme-container")
                 || document.body;
             themeContainer.appendChild(clone);
+
+            // And the label column has to be UNPINNED, after the clone is in the
+            // document so a computed style exists to read. The card pins the row
+            // names with position: sticky so they stay put while the markets
+            // scroll under them, which resolves against the nearest scrollport;
+            // the overflow pass above has just made that the viewport, and the
+            // clone sits at left: -9999px. "left: 0" then means "do not go left of
+            // the viewport", so every label was shoved back to the far end of its
+            // own row and the exported board carried the left column on the right.
+            // Nothing in a still picture scrolls, so the pin has no work to do.
+            Array.prototype.forEach.call(
+                clone.querySelectorAll('*'), function(node) {
+                    if (window.getComputedStyle(node).position === 'sticky') {
+                        node.style.position = 'static';
+                    }
+                });
 
             var pending = [];
             Array.prototype.forEach.call(
