@@ -14,14 +14,19 @@ complex. Stacking classes into one table would put corn beside the yen under a h
 row that means nothing, so each selected class gets its own card with its own columns.
 Selecting all nine renders nine cards rather than one 42-column table.
 
-**One window across every column, and it is NOT the model's.** `cotmetrics-config`
-tunes `CustomLookbackWeeks` per market (the pound at 30 weeks, the euro at 90), which
-is right for a gate and wrong for a row: nine differently-defined numbers side by side
-invite exactly the comparison they do not support. Every row below the gate therefore
-reads the uniform 52-week lookback. The gate row does not, because its verdict has to
-be the same verdict every other surface in the app shows, and that one is computed on
-the model's own window. The two windows differ, the caption says so, and that is a
-real cost of the format rather than a detail to reconcile.
+**Two windows, split by what each row is for.** `cotmetrics-config` tunes
+`CustomLookbackWeeks` per market (the pound at 30 weeks, the euro at 90), which is
+right for a gate and wrong for a comparison row: nine differently-defined numbers side
+by side invite exactly the comparison they do not support. So the descriptive rows
+(the Commercial move, price, open interest) read a uniform 52-week lookback. The gate
+row does not, because its verdict has to be the same verdict every other surface in
+the app shows, and that one is computed on the model's own window. Neither do the leg
+marks, because their job is to EXPLAIN that verdict: drawn on 52 weeks they showed
+6A's Non-Reportables at 27, comfortably on the bull side, under a blank chip whose
+real blocker was the same leg at 55 on the 80-week window the gate read. A mark that
+contradicts the verdict above it is worse than no mark. The caption names both
+windows, and the split is a real cost of the format rather than a detail to
+reconcile.
 
 Where the arithmetic lives, since this repo computes no metrics of its own: the level
 rows are `get_symbols_data`'s own alias columns for the model's basis, the Commercial
@@ -56,7 +61,7 @@ import viz_config
 import viz_constants as vc
 from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
-from components.strip_traces import LEG_PALETTE_SLOT, SETUP_COLUMN
+from components.strip_traces import LEG_COLUMNS, LEG_PALETTE_SLOT, SETUP_COLUMN
 
 dash.register_page(
     __name__, path='/scorecard',
@@ -113,13 +118,8 @@ def _market_frame(asset, basis, newest_date):
         return None
 
     out = pd.DataFrame(index=df.index)
-    # The alias columns already follow `basis`, so these are the model's own series.
-    # Re-deriving them from "Comm Net Pos" would quietly draw the RAW basis under a
-    # normalized header, because the basis argument moves the aliases and not the
-    # underlying net-position columns.
-    out["comm"] = df.get("comms_idx")
-    out["noncomm"] = df.get("lrg_idx")
-    out["nonrept"] = df.get("sml_idx")
+    # The leg levels are NOT read here: they come from the matrix row, on the
+    # model's own window, so they explain the chip (see `_legs_for`).
     # Index momentum is a POINT change of a bounded index, so it is not already on the
     # 0-100 scale the card's cells need; range-index it over the shared window.
     if "comm_momentum" in df:
@@ -158,7 +158,7 @@ def _read_for(asset, record, basis, model, newest_date, target_date, palette):
 
     instrument = get_indexer().get_instrument_from_name(asset)
     return scorecard_rows.MarketRead(
-        legs=_legs_for(latest, record, model, palette),
+        legs=_legs_for(record, model, palette),
         symbol=getattr(instrument, "symbol", "") or "",
         asset=asset,
         state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
@@ -168,13 +168,12 @@ def _read_for(asset, record, basis, model, newest_date, target_date, palette):
     )
 
 
-#: Which column carries each speculator leg's index, and which end of it is bullish.
-#: Both legs read LOW as the bull side under positioning fade, the mirror of
-#: Commercials.
-_SPEC_LEGS = ((models.LEG_LARGE, "noncomm"), (models.LEG_SMALL, "nonrept"))
+#: The speculator legs in lane order. Both read LOW as the bull side under positioning
+#: fade, the mirror of Commercials.
+_SPEC_LEGS = (models.LEG_LARGE, models.LEG_SMALL)
 
 
-def _legs_for(latest, record, model, palette):
+def _legs_for(record, model, palette):
     """The legs this model gates on for this market, Commercials first.
 
     The rule is `signal_cards.strip_legs`', and it is not "the three legs": every
@@ -184,19 +183,26 @@ def _legs_for(latest, record, model, palette):
     condition on the card the verdict above it never checked; omitting one it does
     read leaves a verdict unexplained. The card had the second failure until this
     existed, showing two fixed legs under a three-leg gate.
+
+    The values come from the matrix row, `strip_traces.LEG_COLUMNS`' columns for this
+    model: the model's basis on the model's tuned window, the readings the gate in
+    the same row evaluated. Any other window can put a dot on the wrong side of a
+    threshold the gate saw it on, which is the one thing a mark under a verdict must
+    never do.
     """
+    columns = LEG_COLUMNS[model.key]
     # No hue: Commercials take the VERDICT colour. Palette slot 0 is the bear red,
     # so colouring that lane by identity draws a bullish reading in red, which is
     # the bug signal_cards records at COMM_LANE_TAKES_LEG_COLOUR.
     legs = [scorecard_rows.LegMark(vc.LEG_SHORT[vc.LEG_COMM],
-                                   _clean(latest.get("comm")),
+                                   _clean(record.get(columns["comm"])),
                                    scorecard_rows.BULL_HIGH)]
     if record.get(const.IS_EQUITY_COL):
         return tuple(legs)
-    for leg, key in _SPEC_LEGS:
+    for leg in _SPEC_LEGS:
         if leg in model.spec_legs:
             legs.append(scorecard_rows.LegMark(
-                vc.LEG_SHORT[leg], _clean(latest.get(key)),
+                vc.LEG_SHORT[leg], _clean(record.get(columns.get(leg))),
                 scorecard_rows.BULL_LOW,
                 # The app's own colour for this leg, so the lanes read as the same
                 # legs the Strip and the home card draw. Their verdict is carried by
@@ -249,8 +255,8 @@ def caption(report_date, model, skipped):
     """The line under the cards: the FACTS of this render and nothing more.
 
     The two windows get named explicitly rather than left to the fold, because a
-    reader comparing a Setup chip here against the Heatmap's needs to know the rows
-    below it are measured on a different lookback than the chip.
+    reader comparing a Setup chip here against the Heatmap's needs to know which
+    rows share the chip's lookback and which do not.
     """
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
@@ -264,10 +270,11 @@ def caption(report_date, model, skipped):
                    f"not shown: {', '.join(sorted(skipped))}.")
     return (
         f"Positioning as of Tuesday {pretty}, measured as {basis} "
-        f"({model.title}'s basis). The Setup row is {model.title}'s verdict on its "
-        f"own tuned window; every row below it is a uniform 52 weeks, so that the "
-        f"columns can be compared. Colour is the model's verdict, not the cell's "
-        f"own value.{dropped}"
+        f"({model.title}'s basis). The Setup row and the leg marks under it are on "
+        f"{model.title}'s own tuned window, so the marks show what the verdict "
+        f"read; the rows below them are a uniform 52 weeks, so that the columns can "
+        f"be compared. Colour is the model's verdict, not the cell's own "
+        f"value.{dropped}"
     )
 
 
@@ -285,8 +292,11 @@ def help_text(model):
     spec = vc.setup_leg_phrase(model)
     legs = f"Commercials and {spec}" if spec else "Commercials"
     return (
-        f"Every reading is a range index over the same 52 weekly reports (0 at the "
-        f"window's low, 100 at its high). The positioning row draws them as marks: "
+        f"Every reading is a range index, 0 at the window's low and 100 at its "
+        f"high. The positioning row draws the legs as marks, on {model.title}'s own "
+        f"tuned window (it differs by market), because those are the readings its "
+        f"gate checked; every row below the marks uses the same 52 weekly reports "
+        f"across all markets, so those can be compared side by side. The marks: "
         f"one lane per leg {model.title} gates on, which is {legs}, Commercials "
         f"always on top, each dot sitting at that leg's index with a faint rule at "
         f"the midpoint. An equity index contract gates on Commercials alone, so its "
@@ -299,10 +309,10 @@ def help_text(model):
         f"colour rule on a -{scorecard_rows.SCALE} to +{scorecard_rows.SCALE} "
         f"scale, nothing sign-flipped, which is what the Crowding Strip does and "
         f"the OPPOSITE of the Crowdedness Board, where colour is the cell's own "
-        f"value. A cell with a FILL is a row the model gives a direction; the gates "
-        f"read "
-        f"those positioning indices and no price term, so price and open interest "
-        f"have no verdict to carry and are drawn as paths instead, each over the "
+        f"value. Only the Setup chip is filled, because it is the only row that has "
+        f"been through the gate. The gates read positioning indices and no price "
+        f"term, so price and open interest have no verdict to carry and are drawn "
+        f"as paths instead, each over the "
         f"same 52 weeks with a faint rule at the midpoint of its own range and a "
         f"dot on the latest week. Hover any row label for how much that row adds "
         f"over the Commercial Index, and any path for its figure. A trailing window "
@@ -473,9 +483,13 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
         # layer's fact; where the breakpoint sits is the stylesheet's.
         wide = scorecard_rows.card_min_px(len(reads)) > scorecard_rows.GRID_COLUMN_PX
         cards.append(html.Div([
+            # Centred in the table's own box, so it sits over its table at any
+            # width rather than at the page's left edge.
             html.H2(asset_class,
                     style={"fontSize": "1rem", "fontWeight": "600",
-                           "color": vc.BRIGHTER_TEXT_COLOR, "margin": "0 0 6px"}),
+                           "color": vc.BRIGHTER_TEXT_COLOR, "textAlign": "center",
+                           "maxWidth": f"{scorecard_rows.CARD_MAX_PX}px",
+                           "margin": "0 auto 6px"}),
             scorecard_rows.build_table(reads, model, colors),
         ], className="mb-2" + (" scorecard-wide" if wide else "")))
 

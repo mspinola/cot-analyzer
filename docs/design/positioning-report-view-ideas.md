@@ -1609,3 +1609,43 @@ The invariant that replaces "a fill means a verdict exists" is `no number cell e
 fills`, pinned across every palette, both poles and every step. Giving a number back
 its fill is what would bring the inversion back, so that is the thing held by test
 rather than the colours.
+
+### The leg marks move to the gate's window (2026-10-26)
+
+The question was why 6A carried no NEAR chip under Raw PF on 2026-10-20 with its
+Commercials at 100. The answer was in the near rule (`cotmetrics.utils.setup_state`):
+a near bull needs Commercials at 90 or above, at least one speculator leg within 5 of
+its gate, **and no leg past neutral the wrong way**. On 6A's tuned 80-week window,
+Non-Commercials read 0 and Non-Reportables 55, so the third clause refused it. It was
+one point from qualifying the week before (51).
+
+The card could not show that. Its leg marks were drawn on the uniform 52-week window
+the descriptive rows use, where the same leg read **27**, comfortably on the bull side,
+and on that window 6A would have been near. So the marks drew a picture the chip above
+them contradicted, which defeats the reason they exist: a gate input has to be visible
+to explain a verdict (the leg-set decision above).
+
+6A was not a one-off. Re-running every chip on 2026-10-20 through `setup_state` with
+the 52-week leg readings gave a different state on **22 of 126 market-model pairs**
+(4 of 42 under Raw PF, 9 under NPF, 9 under NPF 3-leg), in both directions: Wheat
+carries an NPF SETUP chip that its 52-week dots would have called nothing, and the
+Mexican peso a blank chip over 52-week dots that read as a full setup. With the marks
+on the gate's own columns the same check agrees on 126 of 126, on 2026-10-20,
+2026-09-15 and 2026-06-16 alike.
+
+The marks now read the matrix row's own columns, `strip_traces.LEG_COLUMNS` per model,
+which are the readings the gate evaluated: the model's basis on the model's tuned
+window. The split is now by purpose. **The chip and the marks that explain it share
+the model's window. The rows meant for side-by-side comparison (the Commercial move,
+price, open interest) keep the uniform 52 weeks.** The caption and the help fold name
+both.
+
+The cost is that two markets' dots are no longer on one scale (6A on 80 weeks, 6B on
+30). That is the comparison the uniform window existed to support, and it is given up
+on this one row deliberately, because a mark that disagrees with the verdict above it
+is worse than one that cannot be compared across columns.
+
+One edge left as it is: the matrix rounds its index columns to integers, while the
+gate evaluates the unrounded values, so a leg at 50.4 draws on the midline under a
+verdict that read it as past neutral. That is half a point at the threshold and is
+not worth a second data path.
