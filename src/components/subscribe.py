@@ -20,11 +20,11 @@ import viz_constants as vc
 def card():
     return dbc.Card(
         dbc.CardBody([
-            html.H5("Get the weekly Signal Matrix by email",
+            html.H5("Get the weekly Crowdedness Board by email",
                     style={"color": vc.BRIGHTER_TEXT_COLOR}),
             html.P(
                 "One email per COT week, sent when the new CFTC report lands: "
-                "the same Signal Matrix the Heatmap shows, with the CSV "
+                "the same Crowdedness Board the home page shows, with its CSV "
                 "attached. A confirmation link comes first, and every email "
                 "carries an unsubscribe link.",
                 style={"color": vc.TEXT_COLOR, "fontSize": "0.9rem"}),

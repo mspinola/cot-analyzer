@@ -437,6 +437,49 @@ def render_breadth(palette_name, target_date):
     )
 
 
+def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_date=None):
+    """The board for one week, or None when the matrix has nothing for it.
+
+    Split out of the render callback on 2026-10-29 for the weekly email, which
+    prints the same rows. Everything that decides WHAT is on the board lives here
+    (the universe, the reads, the order, the tape-context block, what was dropped
+    and why); the callback keeps only HOW it is drawn.
+    """
+    # The matrix drives the universe and carries the verdict; the Custom lookback is
+    # the models' own window, the same one every other verdict surface gates on.
+    df = get_matrix_data(asset_classes, "Custom", target_date)
+    if df.empty:
+        return None
+
+    available = get_indexer().get_available_dates()
+    newest = available[0] if available else None
+
+    reads, unreadable = [], []
+    for record in df.to_dict("records"):
+        asset = record.get("Asset")
+        read = _read_for(asset, record, model.basis, model, newest, target_date)
+        if read is None:
+            unreadable.append(asset)
+        else:
+            reads.append(read)
+
+    rows, skipped = board_traces.build_rows(reads, order=order)
+    # The tape beside the positioning, under the markets whatever the order. A
+    # ratio the price store cannot serve yet is named in the caption, not drawn.
+    context_reads, awaiting = tape_context.context_reads(target_date)
+    context_rows, context_skipped = board_traces.build_context_rows(context_reads)
+    rows += context_rows
+    report_date = target_date or (reads[0].date if reads else None)
+    return board_traces.Board(
+        rows=rows,
+        report_date=report_date,
+        skipped=sorted(set(unreadable) | set(skipped)),
+        awaiting=sorted(set(awaiting) | set(context_skipped)),
+        stale=tape_context.stale_notes(context_reads, report_date),
+        reads=reads,
+    )
+
+
 def _newest_report_date():
     try:
         available = get_indexer().get_available_dates()
@@ -466,46 +509,22 @@ def render_board(asset_classes, model_key, order, palette_name, target_date):
 
     order = order if order in ORDER_LABELS else board_traces.ORDER_CLASS
 
-    # The matrix drives the universe and carries the verdict; the Custom lookback is
-    # the models' own window, the same one every other verdict surface gates on.
-    df = get_matrix_data(asset_classes, "Custom", target_date)
-    if df.empty:
+    board = build_board(asset_classes, model, order, target_date)
+    if board is None:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
                 "", help_text(model))
 
-    available = get_indexer().get_available_dates()
-    newest = available[0] if available else None
-
-    reads, unreadable = [], []
-    for record in df.to_dict("records"):
-        asset = record.get("Asset")
-        read = _read_for(asset, record, model.basis, model, newest, target_date)
-        if read is None:
-            unreadable.append(asset)
-        else:
-            reads.append(read)
-
-    rows, skipped = board_traces.build_rows(reads, order=order)
-    # The tape beside the positioning, under the markets whatever the order. A
-    # ratio the price store cannot serve yet is named in the caption, not drawn.
-    context_reads, awaiting = tape_context.context_reads(target_date)
-    context_rows, context_skipped = board_traces.build_context_rows(context_reads)
-    rows += context_rows
-    awaiting = sorted(set(awaiting) | set(context_skipped))
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
-    fig = board_traces.build_figure(rows, model, colors)
-
-    report_date = target_date or (reads[0].date if reads else None)
-    stale = tape_context.stale_notes(context_reads, report_date)
+    fig = board_traces.build_figure(board.rows, model, colors)
     return (
         dcc.Graph(id='crowd_board_graph', figure=fig,
                   config={"displayModeBar": False, "responsive": True},
                   style={"width": "100%", "maxWidth": "1100px",
                          "margin": "0 auto"}),
-        caption(report_date, model, sorted(set(unreadable) | set(skipped)),
-                awaiting=awaiting, stale=stale),
+        caption(board.report_date, model, board.skipped,
+                awaiting=board.awaiting, stale=board.stale),
         help_text(model),
     )
 

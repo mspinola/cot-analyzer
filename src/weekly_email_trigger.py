@@ -1,4 +1,9 @@
-"""Mail the weekly Signal Matrix once, when the store takes a new COT week.
+"""Mail the weekly email once, when the store takes a new COT week.
+
+What is mailed is the caller's `send` (in the app, subscribers.send_weekly_everywhere,
+which sends the Crowdedness Board; see crowd_email). The default below, cotmetrics'
+Signal Matrix sender, is what this module mailed before 2026-10-29 and is kept only
+so a caller that passes nothing still sends something rather than nothing.
 
 This puts back a trigger that existed until 2026-07-24. `cotmetrics` used to carry a
 `CotJobScheduler` that polled the CFTC, ran an ETL, and emailed the matrix on new data,

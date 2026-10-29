@@ -10,7 +10,6 @@ unsubscribe link, skipping a failed recipient rather than dying.
 Everything runs against a temp SQLite file via COT_SUBSCRIBERS_DB and a stub
 SMTP; no network, no real mailbox, no store.
 """
-import pandas as pd
 import pytest
 
 import subscribers
@@ -133,29 +132,44 @@ def test_the_confirmation_email_carries_the_deployments_link(env):
     assert f"https://example.test/confirm?token={token}" in message
 
 
-def _matrix_frame():
-    return pd.DataFrame([{"Asset": "Gold", "Date": "2026-08-25"}])
+def _edition():
+    """A one-market crowd_email.Edition, built the way the page builds a board
+    (board_traces.build_rows over MarketReads) so no store or page is needed."""
+    import cotmetrics.constants as const
 
+    import crowd_email
+    from components import board_traces
+    from components.plot_colors import GridColors
 
-def _fake_matrix_data(asset_classes, lookback, target_date=None):
-    """Stands in for cotmetrics.reports.get_matrix_data WITH its real signature.
+    read = board_traces.MarketRead(asset="Gold", asset_class="Metals",
+                                   windows=(90.0, 80.0, 70.0, 60.0), symbol="GC",
+                                   move=5.0, state=const.SETUP_NONE,
+                                   date="2026-08-25")
+    rows, skipped = board_traces.build_rows([read])
 
-    A `lambda **kw` stub accepted any call and hid a mismatch: the fan-out called
-    get_matrix_data(lookback="Custom") against a function whose asset_classes is
-    positional-required, so every real weekly fan-out failed (2026-09-12, after
-    the operator copy had already gone out) while this file stayed green.
-    """
-    return _matrix_frame()
+    class Model:
+        title = "Raw 3-leg 95/5"
+    return crowd_email.Edition(
+        board=board_traces.Board(rows=rows, report_date="2026-08-25",
+                                 skipped=skipped, awaiting=[], stale=[],
+                                 reads=[read]),
+        model=Model(),
+        colors=GridColors("#2ecc71", "#ff4d4d", "#2ecc71", "#ff4d4d"),
+        caption="Caption.")
 
 
 def test_the_fanout_sends_each_subscriber_their_own_unsubscribe_link(
         env, monkeypatch):
-    import cotmetrics.reports
-    import cotmetrics.weekly_email as we
-    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data", _fake_matrix_data)
-    monkeypatch.setattr(we, "generate_matrix_html",
-                        lambda df, report_date=None: "<table>matrix</table>",
-                        raising=False)
+    import crowd_email
+
+    def current_edition(model=None):
+        # The real signature, never `lambda **kw`. A permissive stub once accepted
+        # a call the real function refused: the fan-out called get_matrix_data
+        # without its positional-required asset_classes, so every real weekly
+        # fan-out failed (2026-09-12, after the operator copy had already gone
+        # out) while this file stayed green.
+        return _edition()
+    monkeypatch.setattr(crowd_email, "current_edition", current_edition)
 
     tokens = {}
     for addr in ("a@example.com", "b@example.com"):
@@ -173,20 +187,14 @@ def test_the_fanout_sends_each_subscriber_their_own_unsubscribe_link(
         assert other not in message
 
 
-def test_one_failed_recipient_does_not_stop_the_fanout(env, monkeypatch):
-    import cotmetrics.reports
-    import cotmetrics.weekly_email as we
-    monkeypatch.setattr(cotmetrics.reports, "get_matrix_data", _fake_matrix_data)
-    monkeypatch.setattr(we, "generate_matrix_html",
-                        lambda df, report_date=None: "<table>matrix</table>",
-                        raising=False)
-
+def test_one_failed_recipient_does_not_stop_the_fanout(env):
     for addr in ("a@example.com", "b@example.com", "c@example.com"):
         _, token = subscribers.subscribe(addr, env)
         subscribers.confirm(token, env)
 
     smtp = StubSMTP(fail_for={"b@example.com"})
-    sent = subscribers.send_weekly_to_subscribers(env, smtp_factory=lambda: smtp)
+    sent = subscribers.send_weekly_to_subscribers(
+        env, smtp_factory=lambda: smtp, edition=_edition())
     assert sent == 2
     assert {to for to, _ in smtp.sent} == {"a@example.com", "c@example.com"}
 
@@ -201,22 +209,45 @@ def test_an_empty_list_touches_no_smtp(env):
 def test_the_poller_send_survives_a_fanout_failure(env, monkeypatch):
     """Only the operator half may fail the ledger: a raised fan-out would re-send
     next tick to every subscriber who already got theirs."""
-    import cotmetrics.weekly_email as we
+    import crowd_email
+    edition = _edition()
+    monkeypatch.setattr(crowd_email, "current_edition", lambda model=None: edition)
     operator_sent = []
-    monkeypatch.setattr(we, "send_weekly_matrix_email",
-                        lambda env=None: operator_sent.append(True))
 
-    def boom(env=None, smtp_factory=None):
+    def send_operator_copy(env=None, smtp_factory=None, edition=None):
+        operator_sent.append(edition)
+    monkeypatch.setattr(crowd_email, "send_operator_copy", send_operator_copy)
+
+    fanout_got = []
+
+    def boom(env=None, smtp_factory=None, edition=None):
+        fanout_got.append(edition)
         raise RuntimeError("smtp fell over mid-fanout")
     monkeypatch.setattr(subscribers, "send_weekly_to_subscribers", boom)
 
     subscribers.send_weekly_everywhere(env)  # must not raise
-    assert operator_sent == [True]
+    # One edition, built once, and the SAME one went to both halves.
+    assert operator_sent == [edition] and fanout_got == [edition]
 
     # The operator half failing is a different story: it must propagate, so the
     # trigger's ledger records nothing and retries.
-    def operator_boom(env=None):
+    def operator_boom(env=None, smtp_factory=None, edition=None):
         raise RuntimeError("not configured")
-    monkeypatch.setattr(we, "send_weekly_matrix_email", operator_boom)
+    monkeypatch.setattr(crowd_email, "send_operator_copy", operator_boom)
     with pytest.raises(RuntimeError):
+        subscribers.send_weekly_everywhere(env)
+
+
+def test_an_empty_board_fails_the_operator_half_so_the_ledger_retries(
+        env, monkeypatch):
+    """Building the edition is the operator half's first step. A week whose board
+    has no markets raises there, before anyone is mailed an empty table."""
+    import crowd_email
+
+    def empty(model=None):
+        raise crowd_email.EmptyBoard("the board has no markets this week")
+    monkeypatch.setattr(crowd_email, "current_edition", empty)
+    monkeypatch.setattr(crowd_email, "send_operator_copy",
+                        lambda **kw: pytest.fail("mailed an empty board"))
+    with pytest.raises(crowd_email.EmptyBoard):
         subscribers.send_weekly_everywhere(env)

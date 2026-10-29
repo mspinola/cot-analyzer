@@ -215,6 +215,20 @@ class BoardRow:
     read: MarketRead = None
 
 
+@dataclass(frozen=True)
+class Board:
+    """One week of the board as data: what the page draws and what the weekly
+    email prints, so the two are one join (pages.analytics.crowd.build_board) and
+    cannot disagree. Here rather than beside build_board because the email and
+    its tests need the type without importing a page module."""
+    rows: list
+    report_date: str
+    skipped: list
+    awaiting: list
+    stale: list
+    reads: list
+
+
 def crowding_score(read):
     """The mean of the windows the market can fill, for ordering.
 

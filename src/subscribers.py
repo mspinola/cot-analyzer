@@ -1,7 +1,8 @@
 """Weekly-email subscribers: the store, the tokens, and the fan-out send.
 
-The weekly Signal Matrix email had exactly one recipient (RECEIVER_EMAIL_USER, the
-operator) and no way for a site visitor to ask for it. This module is the whole
+The weekly email (the Signal Matrix until 2026-10-29, the Crowdedness Board since;
+see crowd_email) had exactly one recipient (RECEIVER_EMAIL_USER, the operator) and
+no way for a site visitor to ask for it. This module is the whole
 subscription feature except its two request surfaces: the About page renders the
 form (components.subscribe) and app_cot serves the /confirm and /unsubscribe links.
 
@@ -18,11 +19,12 @@ Design decisions, each argued where it is implemented:
   so the token in the URL is the whole authentication. It is random (not derived
   from the email), never expires, and is stable across re-subscribes so the
   unsubscribe link in an old email keeps working.
-* **The weekly fan-out reuses cotmetrics' build_message verbatim** and appends one
-  extra HTML part carrying the per-recipient unsubscribe link. Appending a part
-  rather than teaching build_message about footers keeps this feature out of a
-  package three other callers share; clients render trailing inline-HTML parts of
-  a multipart/mixed below the body, which is where a footer belongs anyway.
+* **The weekly fan-out sends the operator's exact edition** (one crowd_email.Edition,
+  built once per send) with each subscriber's own unsubscribe link inside the body,
+  in the text part, and as a List-Unsubscribe header. It used to append the link as
+  a separate trailing HTML part, which kept the footer out of cotmetrics' shared
+  build_message; now that the message is built here, the link can sit where a text
+  reader and every client actually show it.
 """
 import os
 import re
@@ -261,10 +263,22 @@ def subscriber_rows(env=None):
             for email, subscribed, confirmed, unsub in rows]
 
 
+#: Seconds before a stuck SMTP connection gives up. smtplib's default is to wait
+#: forever, and two of the three callers run inside a web request (the subscribe
+#: form's confirmation and the admin page's Send button), where forever is a hung
+#: page and a worker thread that never comes back.
+SMTP_TIMEOUT_SECONDS = 60
+
+
 def _smtp(env=None, smtp_factory=None):
     from cotmetrics.weekly_email import SMTP_HOST, SMTP_PORT
-    factory = smtp_factory or (lambda: smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT))
+    factory = smtp_factory or (lambda: smtplib.SMTP_SSL(
+        SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS))
     return factory()
+
+
+def unsubscribe_url(token, env=None):
+    return f"{base_url(env)}/unsubscribe?token={token}"
 
 
 def send_confirmation(email, token, env=None, smtp_factory=None):
@@ -275,8 +289,8 @@ def send_confirmation(email, token, env=None, smtp_factory=None):
     link = f"{base_url(env)}/confirm?token={token}"
 
     msg = MIMEText(
-        f"<p>Someone (hopefully you) asked to receive the weekly COT Signal "
-        f"Matrix from COT Analyzer at this address.</p>"
+        f"<p>Someone (hopefully you) asked to receive the weekly COT "
+        f"Crowdedness Board from COT Analyzer at this address.</p>"
         f"<p><a href=\"{link}\">Confirm your subscription</a> to start getting "
         f"it each week when the new CFTC report lands.</p>"
         f"<p style=\"color:#888;font-size:12px\">If this wasn't you, ignore this "
@@ -294,32 +308,24 @@ def send_confirmation(email, token, env=None, smtp_factory=None):
     utils.cot_logger.info(f"subscribers: confirmation link sent to {email}.")
 
 
-def _footer(token, env=None):
-    return MIMEText(
-        f"<p style=\"color:#888;font-size:12px;margin-top:16px\">You are "
-        f"receiving this because you subscribed at {base_url(env)}. "
-        f"<a href=\"{base_url(env)}/unsubscribe?token={token}\">Unsubscribe</a>."
-        f"</p>", "html")
+def send_weekly_to_subscribers(env=None, smtp_factory=None, edition=None):
+    """The fan-out: the operator's edition, per subscriber, with their own link.
 
-
-def send_weekly_to_subscribers(env=None, smtp_factory=None):
-    """The fan-out: the operator's exact email, per subscriber, plus a footer.
-
-    The matrix is built once and the message rebuilt per recipient (cheap: the
-    frame dominates, and get_matrix_data is cached). One failed recipient is
-    logged and skipped, never fatal: this runs after the ledger's send has
-    succeeded, so raising here could not trigger a retry that helps anyone.
-    Returns how many were sent.
+    The edition is built once (or handed in by send_weekly_everywhere, which built
+    it for the operator copy) and only the message is rebuilt per recipient. One
+    failed recipient is logged and skipped, never fatal: this runs after the
+    ledger's send has succeeded, so raising here could not trigger a retry that
+    helps anyone. Returns how many were sent.
     """
     subs = confirmed_subscribers(env)
     if not subs:
         return 0
 
-    from cotmetrics.reports import get_matrix_data
-    from cotmetrics.weekly_email import build_message, email_config, report_date_for
+    from cotmetrics.weekly_email import email_config
+
+    import crowd_email
     sender, _receiver, password = email_config(env)
-    df = get_matrix_data(asset_classes=None, lookback="Custom")
-    report_date = report_date_for(df)
+    edition = edition or crowd_email.current_edition()
 
     sent = 0
     server = _smtp(env, smtp_factory)
@@ -327,8 +333,9 @@ def send_weekly_to_subscribers(env=None, smtp_factory=None):
         server.login(sender, password)
         for email, token in subs:
             try:
-                msg = build_message(df, report_date, sender, email)
-                msg.attach(_footer(token, env))
+                msg = crowd_email.build_message(
+                    edition, sender, email, base_url(env),
+                    unsubscribe_url=unsubscribe_url(token, env))
                 server.sendmail(sender, email, msg.as_string())
                 sent += 1
             except Exception as e:
@@ -337,7 +344,7 @@ def send_weekly_to_subscribers(env=None, smtp_factory=None):
     finally:
         server.quit()
     utils.cot_logger.info(
-        f"subscribers: weekly matrix sent to {sent}/{len(subs)} subscribers.")
+        f"subscribers: weekly board sent to {sent}/{len(subs)} subscribers.")
     return sent
 
 
@@ -348,11 +355,15 @@ def send_weekly_everywhere(env=None):
     the week as sent when this returns, so an exception from the fan-out would
     re-send next tick to every subscriber who already got theirs. Fan-out
     problems are per-recipient log lines instead.
+
+    Building the edition counts as the operator half: an empty board raises
+    before anyone is mailed, and the ledger retries next poll.
     """
-    from cotmetrics.weekly_email import send_weekly_matrix_email
-    send_weekly_matrix_email(env=env)
+    import crowd_email
+    edition = crowd_email.current_edition()
+    crowd_email.send_operator_copy(env=env, edition=edition)
     try:
-        send_weekly_to_subscribers(env=env)
+        send_weekly_to_subscribers(env=env, edition=edition)
     except Exception as e:
         utils.cot_logger.error(
             f"subscribers: weekly fan-out failed after the operator send: {e}")

@@ -143,6 +143,25 @@ def test_a_logged_in_session_still_gets_the_stats(logged_in):
     assert _post(logged_in, STATS).status_code == 200
 
 
+def test_the_send_button_mails_only_the_operator(logged_in, monkeypatch):
+    """In-process since the email became the board, and operator-only: a click is
+    "show me Friday's email", so it must not mail every subscriber."""
+    import crowd_email
+    calls = []
+
+    def send_operator_copy(env=None, smtp_factory=None, edition=None):
+        calls.append(edition)
+        return "2026-10-20"
+    monkeypatch.setattr(crowd_email, "send_operator_copy", send_operator_copy)
+    monkeypatch.setattr(subscribers, "send_weekly_to_subscribers",
+                        lambda **kw: pytest.fail("the button mailed subscribers"))
+
+    resp = _post(logged_in, SEND)
+    assert resp.status_code == 200
+    assert calls == [None]
+    assert "Sent the 2026-10-20 board" in resp.get_data(as_text=True)
+
+
 def test_only_the_right_password_sets_the_session(monkeypatch, app_cot, admin):
     monkeypatch.setenv("COT_ADMIN_PASSWORD", "correct horse")
     client = app_cot.app.server.test_client()
