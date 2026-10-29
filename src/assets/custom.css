@@ -72,6 +72,22 @@
     position: relative;
     z-index: 1100 !important;
 }
+/* Let the expanded navbar wrap to a second row rather than running off the right
+   edge. Bootstrap's .navbar-nav is nowrap, and at the md expand point the links had
+   been one item from full for a while: at 992px the row ended at 965 of 992, so the
+   Monitors menu pushed About past the edge and gave the document a horizontal
+   scrollbar. Wrapping is the graceful answer, because the alternative (raising
+   expand to xl) hands a hamburger to every laptop between 992 and 1200 to protect a
+   single row. Scoped to the expanded state: below md the collapse stacks the nav in
+   a column, where wrap does nothing and justify-content would push the items down. */
+@media (min-width: 768px) {
+    .navbar-custom .navbar-nav {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        row-gap: 0.1rem;
+    }
+}
+
 .theme-modern-web .navbar-custom {
     backdrop-filter: var(--card-backdrop-filter) !important;
     border-bottom: 1px solid var(--border-color) !important;

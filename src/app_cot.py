@@ -543,7 +543,6 @@ def external_page_beacon():
 # can never disagree about what is in the menus. OI Alignment and About are
 # absent on purpose: both were promoted to top-level links.
 _ANALYTICS_PAGES = (
-    ("Market Internals", "/internals"),
     ("Asset Analysis", "/analysis"),
     ("Divergence", "/divergence"),
     ("Aggregation", "/aggregation"),
@@ -557,6 +556,29 @@ _ANALYTICS_PAGES = (
 _ANALYTICS_STATIC_PAGES = (
     ("Weekly Reports", "/weekly"),
 )
+
+#: The Monitors menu: daily reads of what the market and other people's books
+#: are doing, as against the weekly CFTC positioning the rest of the app is
+#: built on. Market Internals moved here out of Analytics, which is where the
+#: fund dashboards would otherwise have had to go: Analytics is the COT data cut
+#: several ways, and a managed-futures ETF's holdings table is not that cut.
+_MONITOR_PAGES = (
+    ("Market Internals", "/internals"),
+)
+
+#: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites at
+#: dbmf.bluemagicai.com with no server of their own (the same pages the view
+#: beacon exists for; see routing.BEACON_PATH). Absolute urls, so
+#: external_link=True is load-bearing rather than the convenience it is for
+#: /weekly: without it dbc hands the click to the Dash router, which cannot
+#: leave the origin and answers with the SPA's own 404. They open in a new tab
+#: because they are a different site, and losing this app's state to reach a
+#: holdings table is a poor trade.
+_MONITOR_EXTERNAL_PAGES = (
+    ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
+    ("ORR Book", "https://dbmf.bluemagicai.com/orr"),
+)
+
 _SYSTEM_PAGES = (
     ("Options", "/options"),
     ("Admin", "/admin"),
@@ -564,20 +586,24 @@ _SYSTEM_PAGES = (
 )
 
 
-def _nav_dropdown_item(label, href, external=False):
+def _nav_dropdown_item(label, href, external=False, new_tab=False):
     """One menu entry, with the id its active-state callback keys on.
 
     dbc.NavLink highlights itself via active="exact"; DropdownMenuItem has only a
     boolean `active`, so without this the dropdown pages were the ones the navbar
     never admitted you were on. The href rides in the id so the clientside
     callback below can compare each item against the URL without a lookup table.
+    An off-origin href never equals a pathname, so those items simply never
+    highlight, which is the right answer for a page on another site.
 
-    `external` marks an entry served by Flask rather than the Dash router (the
-    weekly report pages): without it dbc client-routes the click and the SPA
-    answers with its own 404 for a URL the server serves perfectly well.
+    `external` marks an entry the Dash router must not claim: a Flask route (the
+    weekly report pages) or another origin entirely (the fund dashboards).
+    Without it dbc client-routes the click and the SPA answers with its own 404
+    for a URL it was never going to serve. `new_tab` is for the off-origin ones.
     """
     return dbc.DropdownMenuItem(
         label, href=href, external_link=external,
+        target="_blank" if new_tab else None,
         id={'type': 'nav_dropdown_item', 'href': href})
 
 
@@ -634,6 +660,17 @@ navbar = dbc.Navbar(
                         nav=True,
                         in_navbar=True,
                         label="Analytics"
+                    ),
+
+                    dbc.DropdownMenu(
+                        children=[_nav_dropdown_item(label, href)
+                                  for label, href in _MONITOR_PAGES]
+                                 + [_nav_dropdown_item(label, href,
+                                                       external=True, new_tab=True)
+                                    for label, href in _MONITOR_EXTERNAL_PAGES],
+                        nav=True,
+                        in_navbar=True,
+                        label="Monitors"
                     ),
 
                     dbc.DropdownMenu(
