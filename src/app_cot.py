@@ -333,7 +333,7 @@ def confirm_subscription():
     if email:
         return _link_page(
             "Subscription confirmed",
-            f"{email} will receive the weekly Signal Matrix when each new "
+            f"{email} will receive the weekly Crowdedness Board when each new "
             f"CFTC report lands. Every email carries an unsubscribe link.")
     return _link_page("Link not recognized",
                       "This confirmation link is not valid.", status=404)

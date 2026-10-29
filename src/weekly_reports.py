@@ -231,7 +231,7 @@ WILLCO, sentiment and open-interest readings, with each model's setup verdict.</
 <div class="table-wrap">{table}</div>
 <p class="sub" style="margin-top:14px"><a href="/">COT Analyzer</a> &middot;
 free weekly Commitments of Traders charts and signals &middot;
-<a href="/about">get this report by email</a></p>"""
+<a href="/about">get the weekly board by email</a></p>"""
 
     return _shell(
         f"COT Report Signal Matrix, {pretty} | COT Analyzer",
@@ -263,7 +263,7 @@ futures markets, one page per CFTC reporting week. The newest is
 {'<a href="/weekly/' + weeks[0] + '">' + _pretty(weeks[0]) + '</a>' if weeks
  else 'not yet available'}.</p>
 <p class="sub"><a href="/">Open the live COT Analyzer</a> &middot;
-<a href="/about">get the weekly report by email</a></p>
+<a href="/about">get the weekly board by email</a></p>
 {''.join(sections)}"""
 
     return _shell(

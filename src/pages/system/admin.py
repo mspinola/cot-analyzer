@@ -1,12 +1,9 @@
 import hmac
 import os
 import subprocess
-import sys
 from collections import deque
 from datetime import datetime
-from pathlib import Path
 
-import cotmetrics
 import cotmetrics.utils as utils
 import dash
 import dash_bootstrap_components as dbc
@@ -256,97 +253,39 @@ def trigger_manual_poll(n_clicks):
     return f"Manual poll executed at {current_time}. Check server logs for results."
 
 
-def _weekly_email_script():
-    """Locate cotmetrics' generate-weekly-report-email.py, or None if it is not there.
-
-    The report generator lives in cotmetrics, not here: it imports
-    cotmetrics.reports.get_matrix_data/generate_matrix_html, and it moved there with
-    the rest of the metrics layer when that repo was split out. What did not move was
-    this page, which went on invoking `bash scripts/generate-weekly-report-email.sh`
-    relative to cot-analyzer's own working directory. That path has pointed at nothing
-    ever since, and the button has been failing with a bare "No such file or directory"
-    on a path no one would think to look for in a sibling repo.
-
-    Resolved from the installed package rather than a relative path so it follows the
-    editable install instead of the caller's cwd. scripts/ sits beside src/, so the
-    repo root is two levels up from the package directory. A wheel install has no
-    scripts/ at all, hence the existence check and the None.
-
-    The .sh wrapper is deliberately skipped. Despite the comment that used to sit here
-    claiming it "contains the email credentials", it holds none: it is one line,
-    `.venv/bin/python scripts/generate-weekly-report-email.py "$@"`, whose only effect
-    is to require a cotmetrics-local venv that does not exist on this machine and to
-    re-break the cwd assumption. Credentials come from the environment, which a
-    subprocess inherits. Running the .py directly with our own interpreter drops both
-    problems, and our interpreter is the right one: cotmetrics is installed here.
-    """
-    root = Path(cotmetrics.__file__).resolve().parents[2]
-    script = root / "scripts" / "generate-weekly-report-email.py"
-    return script if script.is_file() else None
-
-
 @callback(
     Output("admin-send-email-output", "children"),
     Input("admin-send-email-btn", "n_clicks"),
     prevent_initial_call=True
 )
 def trigger_send_email(n_clicks):
+    """Mail this week's board to the operator address now, outside the ledger.
+
+    In-process since the email became the Crowdedness Board. It used to run
+    cotmetrics' generate-weekly-report-email.py as a subprocess, which could
+    build the Signal Matrix on its own; the board needs this app's indexer and
+    the crowd page's join, which a separate interpreter does not have. A side
+    benefit: the failure is the exception itself, so the line on screen is the
+    diagnosis (most often a missing EMAIL_* variable, named by email_config)
+    rather than a line fished out of a child process's stderr.
+
+    Operator only, and it does not touch the weekly ledger: this is "show me what
+    Friday's email looks like", and must not either mail every subscriber or make
+    the poller think the week is already sent.
+    """
     _require_admin()
     if not n_clicks:
         return ""
 
     current_time = datetime.now().strftime("%H:%M:%S")
-    script = _weekly_email_script()
-    if script is None:
-        msg = ("Cannot find generate-weekly-report-email.py in the cotmetrics checkout. "
-               "It ships in that repo's scripts/, which only exists in a source checkout, "
-               "so this needs cotmetrics installed editable from a sibling clone.")
-        utils.cot_logger.error(msg)
-        return f"{msg} ({current_time})"
-
+    utils.cot_logger.info("Admin initiated manual email send (operator copy).")
     try:
-        utils.cot_logger.info(f"Admin initiated manual email send -> {script}")
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True, text=True, timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        utils.cot_logger.error("Email script timed out after 120s (SMTP connect hanging?).")
-        return f"Email script timed out at {current_time}. Check logs."
-    except Exception as e:
-        utils.cot_logger.error(f"Email script failed to execute: {e}")
-        return f"Script execution failed: {e}"
-
-    if result.returncode == 0:
-        return f"Email sent successfully at {current_time}."
-
-    utils.cot_logger.error(f"Email script failed (exit {result.returncode}): "
-                           f"{result.stderr or result.stdout}")
-    return f"Error sending email at {current_time}: {_failure_line(result)}"
-
-
-def _failure_line(result):
-    """The one line of a failed run worth putting on screen.
-
-    "Check logs" was the old answer and it is a bad one: the most likely failure here
-    is a missing EMAIL_USER / RECEIVER_EMAIL_USER / EMAIL_PASSWORD, which the operator
-    standing at the button can fix in seconds if only they are told. The script names
-    the missing variables, so show that instead of hiding it in a file.
-
-    Prefer the first line mentioning an error, then fall back to the last line. Both
-    routes land on the diagnosis today: the script reports a bad configuration as a
-    single "[!] Not configured: missing EMAIL_USER, ..." line, which the fallback
-    returns intact. The first-line rule is what catches a traceback, whose final
-    "SomeError: ..." line is the only one worth showing.
-    """
-    text = (result.stderr or result.stdout or "").strip()
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if not lines:
-        return f"exit {result.returncode}"
-    for line in lines:
-        if "error" in line.lower():
-            return line
-    return lines[-1]
+        import crowd_email
+        report_date = crowd_email.send_operator_copy()
+    except Exception as e:  # noqa: BLE001 -- the message is the point
+        utils.cot_logger.error(f"Admin email send failed: {e}")
+        return f"Error sending email at {current_time}: {e}"
+    return f"Sent the {report_date} board to the operator address at {current_time}."
 
 
 def split_visit_rows(df, traffic):
