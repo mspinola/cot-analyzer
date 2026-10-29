@@ -42,8 +42,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             return window.dash_clientside.no_update;
         },
         /**
-         * The Crowd board as one PNG: caption, the how-to-read teaching and the
-         * whole four-window grid, via the same exportBoardImage as the Strip.
+         * The Crowd board as one PNG: caption and the whole four-window grid, via
+         * the same exportBoardImage as the Strip. The how-to-read fold is marked
+         * data-export="omit" in the layout, so it stays out whether open or shut.
          */
         export_crowd_image: function(n_clicks, model_key, target_date) {
             if (n_clicks) {
@@ -621,6 +622,14 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
  * the clone (a fold is about screen space and has no business deciding what a
  * shared image contains), and buttons are stripped, because a control in a
  * picture is the one thing on it that cannot be acted on.
+ *
+ * The exception is chrome a PAGE has decided its picture should not carry, which
+ * it marks data-export="omit": that is removed from the clone outright, open or
+ * shut. It is the page's call rather than a rule here because the answer differs:
+ * the Strip's key is part of reading its picture, while the home board's teaching
+ * paragraph was the user's to cut from the image they share (2026-10-29). A
+ * figure inside an omitted element is left out of the snapshots as well, so the
+ * live plots and the clone's plots stay in the same order one for one.
  */
 function exportBoardImage(containerId, prefix, model_key, target_date) {
     if (typeof html2canvas === 'undefined' || typeof Plotly === 'undefined') {
@@ -633,8 +642,11 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
         return;
     }
 
+    var OMIT = '[data-export="omit"]';
     var plots = Array.prototype.slice.call(
-        container.querySelectorAll('.js-plotly-plot'));
+        container.querySelectorAll('.js-plotly-plot')).filter(function(node) {
+            return !node.closest(OMIT);
+        });
     if (!plots.length) { return; }
 
     // scale 2 for a crisp raster; the <img> is sized back down to the on-screen
@@ -667,6 +679,10 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
         clone.style.backgroundColor = '#1a1a1a';
         clone.style.padding = '20px';
 
+        Array.prototype.forEach.call(
+            clone.querySelectorAll(OMIT), function(node) {
+                node.parentNode.removeChild(node);
+            });
         Array.prototype.forEach.call(
             clone.querySelectorAll('*'), function(node) {
                 if (node.style && (node.style.overflowY || node.style.overflow)) {

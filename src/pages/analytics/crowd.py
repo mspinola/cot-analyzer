@@ -353,10 +353,17 @@ def layout(**kwargs):
                         html.P(id='crowd_caption',
                                style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                       'fontStyle': 'italic', 'marginBottom': '4px'}),
-                        help_fold.wrap('crowd', html.P(
+                        # Out of the PNG, open or shut. exportBoardImage re-opens
+                        # every fold in its clone (the Strip's key belongs in its
+                        # picture), but this one is a paragraph of teaching above
+                        # the board people share, and the image is the board.
+                        # The caption stays: it carries the week and the basis,
+                        # which the picture cannot say on its own.
+                        html.Div(help_fold.wrap('crowd', html.P(
                             id='crowd_help',
                             style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                    'fontStyle': 'italic', 'marginBottom': '4px'})),
+                            **{'data-export': 'omit'}),
                     ], xs=True),
                     dbc.Col([
                         dbc.Button("📸 Export PNG",
@@ -364,8 +371,7 @@ def layout(**kwargs):
                                    style={"color": vc.TEXT_COLOR},
                                    size="sm"),
                         dbc.Tooltip(
-                            "The whole board as one image, with the caption and "
-                            "the how-to-read text.",
+                            "The whole board as one image, with its caption.",
                             target="crowd_download_img_btn",
                             placement="bottom"),
                     ], xs="auto"),
