@@ -226,6 +226,41 @@ def confirmed_subscribers(env=None):
         conn.close()
 
 
+#: A row's state, in the words the admin page uses. One rule for every reader,
+#: because the three timestamps admit a fourth combination (confirmed AND
+#: unsubscribed) that only reads unambiguously once it is named: that address
+#: gets nothing, whatever its confirmed_at says.
+STATUS_ACTIVE = "active"
+STATUS_UNCONFIRMED = "unconfirmed"
+STATUS_UNSUBSCRIBED = "unsubscribed"
+
+
+def status_of(confirmed_at, unsubscribed_at):
+    if unsubscribed_at:
+        return STATUS_UNSUBSCRIBED
+    return STATUS_ACTIVE if confirmed_at else STATUS_UNCONFIRMED
+
+
+def subscriber_rows(env=None):
+    """Every address ever entered, for the admin page, newest first.
+
+    [(email, status, subscribed_at, confirmed_at, unsubscribed_at)]. The token is
+    left out HERE, at the query, rather than dropped by the page: it is a
+    capability URL, so whoever reads it can unsubscribe that address with no other
+    credential, and a column that never leaves the database cannot be rendered,
+    logged or exported by a later change to the page.
+    """
+    conn = _connect(env)
+    try:
+        rows = conn.execute(
+            "SELECT email, subscribed_at, confirmed_at, unsubscribed_at "
+            "FROM subscribers ORDER BY subscribed_at DESC").fetchall()
+    finally:
+        conn.close()
+    return [(email, status_of(confirmed, unsub), subscribed, confirmed, unsub)
+            for email, subscribed, confirmed, unsub in rows]
+
+
 def _smtp(env=None, smtp_factory=None):
     from cotmetrics.weekly_email import SMTP_HOST, SMTP_PORT
     factory = smtp_factory or (lambda: smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT))

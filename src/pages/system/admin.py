@@ -1,3 +1,4 @@
+import hmac
 import os
 import subprocess
 import sys
@@ -14,10 +15,40 @@ import plotly.express as px
 from cotmetrics.database import cotDatabase
 from dash import ClientsideFunction, Input, Output, State, callback, clientside_callback, dcc, html
 from dash.exceptions import PreventUpdate
+from flask import session
 
+import subscribers
 import viz_constants as vc
 
 dash.register_page(__name__, path='/admin')
+
+#: The flag a correct password sets in Flask's session. Server-signed (see the
+#: secret_key note in app_cot), so a request cannot simply claim it the way it
+#: could claim the old store value.
+SESSION_FLAG = 'cot_admin'
+
+
+def is_admin():
+    """Did THIS request come from a browser that logged in?
+
+    Read from the signed session cookie, never from a callback Input. The browser's
+    `session_admin_auth` store still carries "AUTHORIZED" after a login, but only
+    to decide which half of the page to show: it is request data, and anything a
+    request says about itself is exactly what a forged request would say.
+    """
+    return session.get(SESSION_FLAG) is True
+
+
+def _require_admin():
+    """Stop an admin callback here unless the request is from a logged-in browser.
+
+    Called first in every callback this page owns that reads or does anything. A
+    callback that forgets it is open to anyone who can POST, which is what every
+    one of them was until 2026-10-29; test_admin_auth drives each by forged
+    request so a new one cannot quietly join them.
+    """
+    if not is_admin():
+        raise PreventUpdate
 
 def login_layout():
     return dbc.Container([
@@ -98,6 +129,16 @@ def admin_content():
         ], className="mb-4"),
 
         html.Hr(style=vc.hr_style),
+        dbc.Row([
+            dbc.Col(html.H4("Weekly Email Subscribers",
+                            style={'color': vc.TEXT_COLOR}), width="auto"),
+            dbc.Col(html.Div(id='admin-subscriber-summary',
+                             style={'color': vc.TEXT_COLOR, 'fontSize': '0.9rem'}),
+                    width="auto"),
+        ], justify="between", align="center", className="mb-2"),
+        html.Div(id='admin-subscriber-table', className="mb-4"),
+
+        html.Hr(style=vc.hr_style),
         html.H4("Server Logs", style={'color': vc.TEXT_COLOR}),
 
         # The Scrolling Log Viewer
@@ -176,7 +217,10 @@ def validate_login(n_clicks, password):
             "Admin login is not configured: COT_ADMIN_PASSWORD is not set in this "
             "process. Add it to cot-analyzer/.env (gitignored) and restart the app.",
             color="danger")
-    if password and password == SECRET:
+    # compare_digest so the time a wrong guess takes says nothing about how much of
+    # it was right.
+    if password and hmac.compare_digest(password.encode(), SECRET.encode()):
+        session[SESSION_FLAG] = True
         return "AUTHORIZED", ""
     return dash.no_update, dbc.Alert("Incorrect Password", color="danger")
 
@@ -187,6 +231,7 @@ def validate_login(n_clicks, password):
     prevent_initial_call=True
 )
 def trigger_manual_poll(n_clicks):
+    _require_admin()
     if not n_clicks:
         return ""
 
@@ -246,6 +291,7 @@ def _weekly_email_script():
     prevent_initial_call=True
 )
 def trigger_send_email(n_clicks):
+    _require_admin()
     if not n_clicks:
         return ""
 
@@ -338,8 +384,8 @@ def split_visit_rows(df, traffic):
     prevent_initial_call=True
 )
 def update_admin_stats(n, auth_data, traffic):
-    if auth_data != "AUTHORIZED":
-        raise PreventUpdate
+    # `auth_data` stays an Input only so a login re-runs this; it decides nothing.
+    _require_admin()
 
     df = cotDatabase.get_visitor_stats()
     if df.empty:
@@ -399,6 +445,49 @@ def update_admin_stats(n, auth_data, traffic):
 
     return time_fig, geo_fig, summary, table, log_content
 
+
+@callback(
+    Output('admin-subscriber-summary', 'children'),
+    Output('admin-subscriber-table', 'children'),
+    Input('admin-refresh', 'n_intervals'),
+    Input('session_admin_auth', 'data'),
+    prevent_initial_call=True
+)
+def update_subscriber_list(n, auth_data):
+    """Every address the subscribe form has taken, and what state it is in.
+
+    The only surface this list has. Before it, seeing who gets the weekly email
+    meant ssh and sqlite3 on the VPS. Its own callback rather than one more output
+    on update_admin_stats, so a visitor DB with no rows yet (which returns early
+    there) cannot blank it, and a subscriber DB that will not open cannot take the
+    traffic charts down.
+    """
+    _require_admin()
+    try:
+        rows = subscribers.subscriber_rows()
+    except Exception as e:  # noqa: BLE001 -- say why, rather than draw nothing
+        return "", dbc.Alert(f"Could not read the subscriber list: {e}",
+                             color="warning")
+    if not rows:
+        return "0 subscribers", html.P("Nobody has subscribed yet.",
+                                       style={'color': vc.TEXT_COLOR})
+
+    df = pd.DataFrame(rows, columns=['email', 'status', 'subscribed',
+                                     'confirmed', 'unsubscribed'])
+    counts = df['status'].value_counts()
+    # Active first and alone in the lead: it is the number the Friday send goes
+    # to, and the other two are the reasons the total is bigger than that.
+    summary = (f"{counts.get(subscribers.STATUS_ACTIVE, 0)} active | "
+               f"{counts.get(subscribers.STATUS_UNCONFIRMED, 0)} unconfirmed | "
+               f"{counts.get(subscribers.STATUS_UNSUBSCRIBED, 0)} unsubscribed")
+    table = dbc.Table.from_dataframe(
+        df.fillna(''),
+        striped=True, bordered=True, hover=True, responsive=True,
+        className="dense-table",
+        style={'fontSize': '0.85rem'}
+    )
+    return summary, table
+
 # Helper to efficiently read the end of a file
 def get_log_tail(filename, n=100):
     try:
@@ -423,6 +512,7 @@ clientside_callback(
     prevent_initial_call=True
 )
 def trigger_application_restart(n_clicks):
+    _require_admin()
     if n_clicks > 0:
         utils.cot_logger.warning("Admin initiated manual application restart from dashboard.")
 

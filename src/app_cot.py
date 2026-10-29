@@ -1,5 +1,6 @@
 import os
 import queue
+import secrets
 import threading
 
 import cotmetrics.models as models
@@ -44,6 +45,30 @@ app = Dash(
 )
 server = app.server
 Compress(server)
+
+# The admin session. The admin page used to "log in" by putting the string
+# "AUTHORIZED" in a browser-side dcc.Store and having its callbacks check that
+# value, but a callback's Inputs are whatever the request body says they are: one
+# POST to /_dash-update-component carrying that string, and no password, returned
+# the visitor log and the server log tail. The restart, poll and send buttons did
+# not check even that. Measured 2026-10-29 against a local run.
+#
+# Now a correct password sets a flag in Flask's session, a cookie the SERVER signs
+# with this key, and every admin callback checks it server-side (pages.system.admin
+# `_require_admin`). The browser store survives only to toggle which half of the page
+# is visible; it is never trusted.
+#
+# The key defaults to random per process, which is right for the deployment as it
+# stands: one process (`python3 src/main.py`), so a login lasts until the next
+# restart and nothing else needs configuring. Set COT_ADMIN_SESSION_KEY in .env if
+# that ever becomes more than one worker, or every worker but the one that signed
+# the cookie will refuse it.
+server.secret_key = os.environ.get('COT_ADMIN_SESSION_KEY') or secrets.token_hex(32)
+# HttpOnly: no page script can read the cookie. Lax: a cross-site POST does not
+# carry it, which is the CSRF half. Not Secure, because local runs are plain http
+# and a Secure cookie would make the admin login silently fail there; the deployed
+# site is https-only behind nginx, so in production it travels over TLS regardless.
+server.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
 
 
 # The one crawlable sentence-and-links block a Dash app can honestly serve. The
