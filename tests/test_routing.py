@@ -168,7 +168,8 @@ def test_the_beacon_logs_only_allowlisted_pages():
     """`p` is a query value anyone can write. The log records the path the
     allowlist names for it, never the value itself."""
     assert external_page_path('dbmf') == '/dbmf'
-    for key in ['', None, 'DBMF', '/dbmf', 'shell.php', '<script>']:
+    assert external_page_path('orr') == '/orr'
+    for key in ['', None, 'DBMF', '/dbmf', 'ORR', 'shell.php', '<script>']:
         assert external_page_path(key) is None, key
 
 

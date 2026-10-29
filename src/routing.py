@@ -54,7 +54,13 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: passthrough: the query string is anyone's to write, and the visitor log must
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
-EXTERNAL_PAGES = {'dbmf': '/dbmf'}
+#:
+#: Both are pages of the dbmf-tracker publisher (dbmf.bluemagicai.com and
+#: /orr). This side is the half that decides what gets logged, so a key must be
+#: listed here BEFORE the publisher starts sending it, or the views in between
+#: are answered and dropped. Nothing breaks either way, which is exactly why the
+#: ordering is easy to get wrong and worth saying.
+EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the
