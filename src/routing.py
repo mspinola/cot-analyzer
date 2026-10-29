@@ -38,10 +38,13 @@ BEACON_PATH = '/seen.gif'
 #: Real paths belonging to no page: the browser's automatic favicon request, Dash's
 #: own copy of it, the email-link and crawler endpoints (plain Flask routes in
 #: app_cot, which `app.routes` does not list because it only knows Dash's own),
-#: and the old /graphs address (an explicit 301 route to /analysis?view=grid,
-#: invisible to `app.routes` the same way).
+#: and the two old addresses that are explicit 301 routes, invisible to
+#: `app.routes` the same way: /graphs to /analysis?view=grid, and /crowd to /
+#: since the Crowdedness Board became the landing page. A redirect's own path
+#: has to be admitted HERE or this guard 404s it before the route ever runs,
+#: which turns a working redirect into a dead bookmark.
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
-                         '/confirm', '/unsubscribe', '/graphs',
+                         '/confirm', '/unsubscribe', '/graphs', '/crowd',
                          '/robots.txt', '/sitemap.xml',
                          '/manifest.webmanifest', '/sw.js',
                          BEACON_PATH})
@@ -51,7 +54,13 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: passthrough: the query string is anyone's to write, and the visitor log must
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
-EXTERNAL_PAGES = {'dbmf': '/dbmf'}
+#:
+#: Both are pages of the dbmf-tracker publisher (dbmf.bluemagicai.com and
+#: /orr). This side is the half that decides what gets logged, so a key must be
+#: listed here BEFORE the publisher starts sending it, or the views in between
+#: are answered and dropped. Nothing breaks either way, which is exactly why the
+#: ordering is easy to get wrong and worth saying.
+EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the

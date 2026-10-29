@@ -58,9 +58,10 @@ _NOSCRIPT_BLOCK = '''<noscript>
             futures markets: positioning indexes, a signal heatmap, crowding
             boards, dollar exposure and per-market charts, updated with every
             CFTC release. This application requires JavaScript.</p>
-            <p><a href="/heatmap">Signal Heatmap</a> ·
+            <p><a href="/">Crowdedness Board</a> ·
+            <a href="/setups">Setups &amp; Screener</a> ·
+            <a href="/heatmap">Signal Heatmap</a> ·
             <a href="/strip">Crowding Strip</a> ·
-            <a href="/crowd">Crowdedness Board</a> ·
             <a href="/scorecard">Asset Class Scorecard</a> ·
             <a href="/exposure">Dollar Exposure</a> ·
             <a href="/oi_alignment">Open Interest Charts</a> ·
@@ -284,6 +285,20 @@ def graphs_redirect():
     """
     from flask import redirect
     return redirect('/analysis?view=grid', code=301)
+
+
+@app.server.route('/crowd')
+def crowd_redirect():
+    """The Crowdedness Board's old address, from before it became the landing page.
+
+    The query string rides along, which is the whole reason this is a route
+    rather than a line in a redirect table: every weekly email ever sent links
+    `/crowd?date=<week>`, and dropping the date would land a reader on the
+    current week while telling them it is the one the email was about.
+    """
+    from flask import redirect
+    query = request.query_string.decode()
+    return redirect('/?' + query if query else '/', code=301)
 
 
 @app.server.route('/confirm')
@@ -540,11 +555,18 @@ def external_page_beacon():
 
 
 # The dropdown pages, as data, so the items and the active-state wiring below
-# can never disagree about what is in the menus. OI Alignment and About are
-# absent on purpose: both were promoted to top-level links.
+# can never disagree about what is in the menus. About is absent on purpose: it
+# is a top-level link, because a first-time visitor looks for it by name.
+#
+# Ordered per-market first (one market, several lenses), then cross-market, then
+# the raw table and the reports. OI Alignment used to be top-level on the
+# argument that it is the second page most visits reach; it comes back here
+# because of HOW they reach it, which is by clicking a market on a board or
+# following a deep link, never by hunting the navbar for it.
 _ANALYTICS_PAGES = (
-    ("Market Internals", "/internals"),
     ("Asset Analysis", "/analysis"),
+    ("OI Alignment", "/oi_alignment"),
+    ("Exposure", "/exposure"),
     ("Divergence", "/divergence"),
     ("Aggregation", "/aggregation"),
     ("Disagg / TFF", "/categories"),
@@ -557,6 +579,29 @@ _ANALYTICS_PAGES = (
 _ANALYTICS_STATIC_PAGES = (
     ("Weekly Reports", "/weekly"),
 )
+
+#: The Monitors menu: daily reads of what the market and other people's books
+#: are doing, as against the weekly CFTC positioning the rest of the app is
+#: built on. Market Internals moved here out of Analytics, which is where the
+#: fund dashboards would otherwise have had to go: Analytics is the COT data cut
+#: several ways, and a managed-futures ETF's holdings table is not that cut.
+_MONITOR_PAGES = (
+    ("Market Internals", "/internals"),
+)
+
+#: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites at
+#: dbmf.bluemagicai.com with no server of their own (the same pages the view
+#: beacon exists for; see routing.BEACON_PATH). Absolute urls, so
+#: external_link=True is load-bearing rather than the convenience it is for
+#: /weekly: without it dbc hands the click to the Dash router, which cannot
+#: leave the origin and answers with the SPA's own 404. They open in a new tab
+#: because they are a different site, and losing this app's state to reach a
+#: holdings table is a poor trade.
+_MONITOR_EXTERNAL_PAGES = (
+    ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
+    ("ORR Book", "https://dbmf.bluemagicai.com/orr"),
+)
+
 _SYSTEM_PAGES = (
     ("Options", "/options"),
     ("Admin", "/admin"),
@@ -564,20 +609,24 @@ _SYSTEM_PAGES = (
 )
 
 
-def _nav_dropdown_item(label, href, external=False):
+def _nav_dropdown_item(label, href, external=False, new_tab=False):
     """One menu entry, with the id its active-state callback keys on.
 
     dbc.NavLink highlights itself via active="exact"; DropdownMenuItem has only a
     boolean `active`, so without this the dropdown pages were the ones the navbar
     never admitted you were on. The href rides in the id so the clientside
     callback below can compare each item against the URL without a lookup table.
+    An off-origin href never equals a pathname, so those items simply never
+    highlight, which is the right answer for a page on another site.
 
-    `external` marks an entry served by Flask rather than the Dash router (the
-    weekly report pages): without it dbc client-routes the click and the SPA
-    answers with its own 404 for a URL the server serves perfectly well.
+    `external` marks an entry the Dash router must not claim: a Flask route (the
+    weekly report pages) or another origin entirely (the fund dashboards).
+    Without it dbc client-routes the click and the SPA answers with its own 404
+    for a URL it was never going to serve. `new_tab` is for the off-origin ones.
     """
     return dbc.DropdownMenuItem(
         label, href=href, external_link=external,
+        target="_blank" if new_tab else None,
         id={'type': 'nav_dropdown_item', 'href': href})
 
 
@@ -614,18 +663,20 @@ navbar = dbc.Navbar(
         dbc.Collapse(
             dbc.Nav(
                 [
+                    # Home IS the Crowdedness Board; there is no separate Crowd
+                    # link, and /crowd 301s here. The label stays "Home" because
+                    # that is the word a visitor looks for to get back to the
+                    # start, and the board is simply what the start shows.
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
+                    dbc.NavItem(dbc.NavLink("Setups", href="/setups", active="exact")),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="exact")),
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Crowd", href="/crowd", active="exact")),
                     dbc.NavItem(dbc.NavLink("Scorecard", href="/scorecard",
                                             active="exact")),
-                    dbc.NavItem(dbc.NavLink("Exposure", href="/exposure", active="exact")),
-                    # Top level rather than in the dropdown: this is the detail page
-                    # every board's market click and deep link lands on, so it is the
-                    # second page most visits reach and should not be two clicks away.
-                    dbc.NavItem(dbc.NavLink("OI Alignment", href="/oi_alignment",
-                                            active="exact")),
+                    # What stays top level is the boards: the one-screen sweeps
+                    # across every market, which is what a visit opens with.
+                    # Exposure and OI Alignment are per-market reads and moved
+                    # into Analytics with the rest of them.
                     dbc.DropdownMenu(
                         children=[_nav_dropdown_item(label, href)
                                   for label, href in _ANALYTICS_PAGES]
@@ -634,6 +685,17 @@ navbar = dbc.Navbar(
                         nav=True,
                         in_navbar=True,
                         label="Analytics"
+                    ),
+
+                    dbc.DropdownMenu(
+                        children=[_nav_dropdown_item(label, href)
+                                  for label, href in _MONITOR_PAGES]
+                                 + [_nav_dropdown_item(label, href,
+                                                       external=True, new_tab=True)
+                                    for label, href in _MONITOR_EXTERNAL_PAGES],
+                        nav=True,
+                        in_navbar=True,
+                        label="Monitors"
                     ),
 
                     dbc.DropdownMenu(

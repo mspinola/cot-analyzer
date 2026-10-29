@@ -27,8 +27,8 @@ from routing import (
 # the same list it hands this function, so it belongs here: an old bookmark must
 # reach the shell for the client router to forward it.
 PAGES = ['/', '/aggregation', '/analysis', '/categories', '/exposure', '/graphs',
-         '/heatmap', '/internals', '/oi_alignment', '/positioning', '/strip', '/citpy',
-         '/citpy/view', '/about', '/admin', '/options', '/raw_data']
+         '/heatmap', '/internals', '/oi_alignment', '/positioning', '/setups', '/strip',
+         '/citpy', '/citpy/view', '/about', '/admin', '/options', '/raw_data']
 
 # `app.routes` as Dash builds it: the index plus its own endpoints.
 DASH_ROUTES = ['/', '/_dash-layout', '/_dash-dependencies', '/_dash-update-component',
@@ -168,7 +168,8 @@ def test_the_beacon_logs_only_allowlisted_pages():
     """`p` is a query value anyone can write. The log records the path the
     allowlist names for it, never the value itself."""
     assert external_page_path('dbmf') == '/dbmf'
-    for key in ['', None, 'DBMF', '/dbmf', 'shell.php', '<script>']:
+    assert external_page_path('orr') == '/orr'
+    for key in ['', None, 'DBMF', '/dbmf', 'ORR', 'shell.php', '<script>']:
         assert external_page_path(key) is None, key
 
 

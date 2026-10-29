@@ -22,10 +22,10 @@ SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 #: Every page a search result should be able to land on. NOINDEX_PATHS is the
 #: complement; between them they cover the registry.
 PUBLIC_PAGES = {
-    '/': 'home.py',
+    '/': 'analytics/crowd.py',
+    '/setups': 'setups.py',
     '/heatmap': 'analytics/heatmap.py',
     '/strip': 'analytics/strip.py',
-    '/crowd': 'analytics/crowd.py',
     '/scorecard': 'analytics/scorecard.py',
     '/internals': 'analytics/internals.py',
     '/exposure': 'analytics/exposure.py',
