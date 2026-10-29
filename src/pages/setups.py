@@ -1,3 +1,14 @@
+"""Markets at a signal gate right now, and the live screener under them.
+
+This was the landing page until the Crowdedness Board took `/`: a board sweeps
+every market in one screen, which is the better thing to open on, while this
+page answers the narrower question of what is actionable this week. The file is
+named for the page; its element ids are still spelled `home_*`, deliberately,
+because they are internal wiring and renaming a callback id across a page this
+size buys a reader nothing and costs a silent dead callback for every one
+missed.
+"""
+
 from datetime import datetime
 from functools import lru_cache
 
@@ -35,11 +46,11 @@ skeleton_loader = html.Div([
 # Register this file as a page
 dash.register_page(
     __name__,
-    path='/',
-    title='COT Analyzer | Free Commitments of Traders Charts & Signals',
-    description='Free weekly Commitments of Traders analysis: positioning '
-                'indexes, signal heatmap, crowding boards and charts for 40+ '
-                'futures markets, updated with every CFTC release.',
+    path='/setups',
+    title='COT Setups & Live Screener | COT Analyzer',
+    description='Which futures markets are at a COT signal gate right now, and '
+                'which are within five points of one, with a live screener of '
+                'every tracked market by asset class.',
 )
 
 # Layout runs per request; the wiring must not.

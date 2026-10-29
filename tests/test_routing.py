@@ -27,8 +27,8 @@ from routing import (
 # the same list it hands this function, so it belongs here: an old bookmark must
 # reach the shell for the client router to forward it.
 PAGES = ['/', '/aggregation', '/analysis', '/categories', '/exposure', '/graphs',
-         '/heatmap', '/internals', '/oi_alignment', '/positioning', '/strip', '/citpy',
-         '/citpy/view', '/about', '/admin', '/options', '/raw_data']
+         '/heatmap', '/internals', '/oi_alignment', '/positioning', '/setups', '/strip',
+         '/citpy', '/citpy/view', '/about', '/admin', '/options', '/raw_data']
 
 # `app.routes` as Dash builds it: the index plus its own endpoints.
 DASH_ROUTES = ['/', '/_dash-layout', '/_dash-dependencies', '/_dash-update-component',

@@ -225,7 +225,7 @@ WILLCO, sentiment and open-interest readings, with each model's setup verdict.</
 <p class="nav">Explore this week interactively:
 <a href="/heatmap?date={week}">Signal Heatmap</a> &middot;
 <a href="/strip?date={week}">Crowding Strip</a> &middot;
-<a href="/crowd?date={week}">Crowdedness Board</a> &middot;
+<a href="/?date={week}">Crowdedness Board</a> &middot;
 <a href="/divergence?date={week}">Model Divergence</a></p>
 {style}
 <div class="table-wrap">{table}</div>

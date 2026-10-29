@@ -71,12 +71,21 @@ from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
 from components.strip_traces import SETUP_COLUMN
 
+# This board is the landing page: `/`, not `/crowd`. A visit should open on the
+# widest honest read of the whole universe, and four windows across every market
+# is that. The old address is a 301 to here in app_cot, query string and all, so
+# a `/crowd?date=...` link out of a weekly email still lands on its week.
+#
+# The title stays brand-level because this is the site root and the one result a
+# search for the app itself should return; the crowdedness keywords moved into
+# the description, which Dash serves per path either way.
 dash.register_page(
-    __name__, path='/crowd',
-    title='COT Crowdedness Board | COT Analyzer',
+    __name__, path='/',
+    title='COT Analyzer | Free Commitments of Traders Charts & Signals',
     description='How crowded is each futures market? Range index of Commercial '
                 'net positioning over 13, 26 and 52 weeks and full history, '
-                'from the weekly COT report.',
+                'from the weekly COT report, with signal heatmaps, dollar '
+                'exposure and charts for 40+ markets beside it.',
 )
 
 # Layout runs per request; the wiring must not.
