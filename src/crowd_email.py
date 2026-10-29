@@ -27,17 +27,23 @@ What IS decided here is only what an inbox forces:
 * **Dark, like the page and like the Signal Matrix email it replaces.** A client
   in dark mode leaves an already-dark design alone; a light one would get
   inverted into colours nobody chose.
-* **The 52-week path as block characters,** because no mainstream client renders
-  inline SVG. Thirteen points (every fourth week) at eight heights is coarse, and
-  it is labelled as a sketch, not a chart.
+* **The 52-week path as a small embedded PNG** (components.spark_png), because no
+  mainstream client renders inline SVG and Gmail blocks data: URIs. It was block
+  characters at first, thirteen points at eight heights, which read as a bar chart
+  beside the page's line; the PNG is the page's line, drawn from the page's
+  numbers. Each is a CID part of the message, so it shows without a "display
+  images" click in the clients that gate remote ones.
 """
+import base64
 import csv
 import dataclasses
+import functools
 import io
 import os
 import urllib.parse
 from datetime import datetime
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from html import escape
@@ -48,7 +54,7 @@ import cotmetrics.utils as utils
 
 import viz_config
 import viz_constants as vc
-from components import board_traces
+from components import board_traces, spark_png
 from components.plot_colors import blend_over, cell_text_colour, grid_colors
 
 BACKGROUND = vc.BACKGROUND_COLOR
@@ -60,9 +66,6 @@ BRIGHT = vc.BRIGHTER_TEXT_COLOR
 DIM = blend_over("#ffffff", 0.35, BACKGROUND)
 RULE = blend_over("#ffffff", 0.10, BACKGROUND)
 CLASS_BAND = blend_over("#ffffff", board_traces.HEADER_BAND_ALPHA, BACKGROUND)
-
-SPARK_LEVELS = "▁▂▃▄▅▆▇█"
-SPARK_STEP = 4          # every fourth week of the trailing 52: 13 points
 
 FONT = "Arial, Helvetica, sans-serif"
 MONO = "Menlo, Consolas, monospace"
@@ -79,16 +82,6 @@ def _rgba_over(rgba, background=BACKGROUND):
     r, g, b, a = (part.strip() for part in text[5:-1].split(","))
     return blend_over("#{:02x}{:02x}{:02x}".format(int(r), int(g), int(b)),
                       float(a), background)
-
-
-def sparkline(path):
-    """The trailing-year index as block characters, or '' with too little of it."""
-    points = [v for v in path[::-1][::SPARK_STEP][::-1] if v is not None]
-    if len(points) < 2:
-        return ""
-    top = len(SPARK_LEVELS) - 1
-    return "".join(SPARK_LEVELS[round(max(0.0, min(100.0, v)) / 100 * top)]
-                   for v in points)
 
 
 def _fmt(value):
@@ -122,7 +115,7 @@ _SHEET = f"""<style>
 .b .n{{color:{BRIGHT};white-space:nowrap;}}
 .b .v{{font-weight:bold;min-width:30px;}}
 .b .m{{white-space:nowrap;}}
-.b .p{{color:{DIM};font-size:11px;letter-spacing:-1px;white-space:nowrap;}}
+.b .p{{padding:0 6px;line-height:0;}}
 .b .k{{color:{TEXT};font-size:10px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;padding:6px 6px 4px;border-bottom:0;}}
 .b .g{{height:8px;line-height:8px;font-size:0;border-bottom:0;}}
 .b a{{color:{BRIGHT};text-decoration:none;}}
@@ -150,7 +143,14 @@ def _value_cell(value, colors):
             f'style="background:{fill};color:{ink};">{_fmt(value)}</td>')
 
 
-def _market_row(read, colors, base_url):
+def _spark_img(src):
+    if not src:
+        return ""
+    return (f'<img src="{escape(src, quote=True)}" width="{spark_png.WIDTH}" '
+            f'height="{spark_png.HEIGHT}" alt="" style="display:block;border:0;">')
+
+
+def _market_row(read, colors, base_url, spark_src=None):
     tag = board_traces.since_tag(read)
     name = escape(read.asset)
     if read.linked and base_url:
@@ -173,7 +173,7 @@ def _market_row(read, colors, base_url):
         f"{cells}"
         f'<td align="right" class="m" style="color:{move_ink};">'
         f"{_move_text(read.move)}</td>"
-        f'<td class="p">{sparkline(read.path)}</td>'
+        f'<td class="p">{_spark_img(spark_src)}</td>'
         "</tr>"
     )
 
@@ -226,18 +226,30 @@ class Edition:
     def report_date(self):
         return self.board.report_date
 
+    @functools.cached_property
+    def sparks(self):
+        """{row index: PNG bytes} for every market row, drawn once per edition
+        and shared by every recipient's message."""
+        return {i: spark_png.spark_png(row.read.path, self.colors, BACKGROUND)
+                for i, row in enumerate(self.board.rows) if row.kind == "market"}
 
-def render_html(edition, base_url, unsubscribe_url=None):
-    """The whole email body for one reader. Only the unsubscribe link differs."""
+
+def render_html(edition, base_url, unsubscribe_url=None, spark_srcs=None):
+    """The whole email body for one reader. Only the unsubscribe link differs.
+
+    `spark_srcs` maps a market row's index to its path image's src: "cid:..." in
+    a message, a data: URI in a preview. None draws the rows without paths.
+    """
     board, model, colors = edition.board, edition.model, edition.colors
+    spark_srcs = spark_srcs or {}
     body = []
-    for row in board.rows:
+    for i, row in enumerate(board.rows):
         if row.kind == "class":
             body.append(_class_row(row.label))
         elif row.kind == "spacer":
             body.append(_spacer_row())
         else:
-            body.append(_market_row(row.read, colors, base_url))
+            body.append(_market_row(row.read, colors, base_url, spark_srcs.get(i)))
 
     live = f"{base_url}/?date={board.report_date}" if base_url else None
     link = (f'<a href="{escape(live, quote=True)}" style="color:{BRIGHT};">'
@@ -250,8 +262,9 @@ def render_html(edition, base_url, unsubscribe_url=None):
         f"week sits in the RECENT range, not whether the market is net long. "
         f"SETUP and NEAR are {escape(model.title)}'s verdict. "
         f"The {const.MOMENTUM_PERIOD}W column is the change in the 12M index; the "
-        f"path is a sketch of that index over the trailing year, one mark per four "
-        f"weeks. The tape-context rows at the bottom are ETF ratios, not positioning."
+        f"path is that index over the trailing year around a dotted line at 50, its "
+        f"end dot coloured by the side it finished on. The tape-context rows at the "
+        f"bottom are ETF ratios, not positioning."
     )
     # Inside the body, on the board's own background, rather than the separate
     # trailing MIME part the Signal Matrix carried it in: some clients show a
@@ -387,8 +400,20 @@ def build_message(edition, sender, receiver, base_url, unsubscribe_url=None):
     alt = MIMEMultipart("alternative")
     alt.attach(MIMEText(render_text(edition, base_url, unsubscribe_url),
                         "plain", "utf-8"))
-    alt.attach(MIMEText(render_html(edition, base_url, unsubscribe_url),
-                        "html", "utf-8"))
+    # multipart/related: the HTML and the images it references by Content-ID,
+    # which is what lets a client show them inline without fetching anything.
+    cids = {i: f"spark{i}.{edition.report_date}@cot-analyzer" for i in edition.sparks}
+    related = MIMEMultipart("related")
+    related.attach(MIMEText(
+        render_html(edition, base_url, unsubscribe_url,
+                    {i: f"cid:{cid}" for i, cid in cids.items()}),
+        "html", "utf-8"))
+    for i, png in edition.sparks.items():
+        image = MIMEImage(png, "png")
+        image.add_header("Content-ID", f"<{cids[i]}>")
+        image.add_header("Content-Disposition", "inline", filename=f"spark{i}.png")
+        related.attach(image)
+    alt.attach(related)
     msg.attach(alt)
     name = f"cot_crowd_board_{edition.report_date}.csv"
     part = MIMEApplication(board_csv(edition.board), Name=name)
@@ -437,7 +462,12 @@ def preview_html(path=None):
     edition = current_edition()
     path = path or os.path.join(os.getcwd(),
                                 f"crowd_email_{edition.report_date}.html")
+    # data: URIs here, where the message uses CIDs: a browser opening the file
+    # shows them, and it is only the mail clients that refuse them.
+    srcs = {i: "data:image/png;base64," + base64.b64encode(png).decode()
+            for i, png in edition.sparks.items()}
     with open(path, "w", encoding="utf-8") as f:
         f.write(render_html(edition, subscribers.base_url(),
-                            unsubscribe_url=f"{subscribers.base_url()}/unsubscribe?token=PREVIEW"))
+                            unsubscribe_url=f"{subscribers.base_url()}/unsubscribe?token=PREVIEW",
+                            spark_srcs=srcs))
     return path

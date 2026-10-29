@@ -160,7 +160,15 @@ CELL_DEADBAND = 6.0
 CELL_BASE_LIFT = 0.05
 
 SPARK_LINE = "rgba(255, 255, 255, 0.30)"
-SPARK_MIDLINE_ALPHA = 0.10
+#: The 50 mark each path wiggles around, which is the line a reader measures the
+#: path FROM. It was 10% of the bright text, the level scorecard_rows calls a lane
+#: rule, and at that level it vanished. This is scorecard_rows.AXIS_RULE, the level
+#: that page settled on after signal_cards found a near-black midline "left every
+#: dot measured from nothing"; test_board_traces keeps the two equal. Dotted here
+#: where the scorecard's is solid, because this path is the same grey as the line
+#: under it: solid, the two are indistinguishable wherever the path hugs 50.
+SPARK_MIDLINE = "rgba(255, 255, 255, 0.22)"
+SPARK_MIDLINE_DASH = "dot"
 SPARK_END_SIZE = 5
 
 TEXT_SIZE = 10
@@ -521,8 +529,7 @@ def build_figure(rows, model, colors, background=vc.BACKGROUND_COLOR):
     shapes += [
         dict(type="line", xref="x", yref="y", x0=SPARK_X0, x1=SPARK_X1,
              y0=i, y1=i, layer="below",
-             line=dict(color=hex_to_rgba(vc.BRIGHTER_TEXT_COLOR,
-                                         SPARK_MIDLINE_ALPHA), width=1))
+             line=dict(color=SPARK_MIDLINE, width=1, dash=SPARK_MIDLINE_DASH))
         for i, _ in markets
     ]
     fig.update_layout(shapes=shapes)

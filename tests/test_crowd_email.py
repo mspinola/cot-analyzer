@@ -18,7 +18,6 @@ import email
 import email.header
 
 import cotmetrics.constants as const
-import pytest
 
 import crowd_email
 from components import board_traces
@@ -149,21 +148,39 @@ def test_the_text_part_is_a_real_alternative():
     assert f"{BASE}/?date=2026-10-20" in text
 
 
-@pytest.mark.parametrize("path,expected", [
-    ((0.0,) * 52, "▁" * 13),
-    ((100.0,) * 52, "█" * 13),
-    ((None,) * 51 + (50.0,), ""),          # one usable point is not a path
-    ((), ""),
-])
-def test_the_sparkline(path, expected):
-    assert crowd_email.sparkline(path) == expected
+def test_every_path_image_is_embedded_and_referenced_by_its_content_id():
+    """The paths ride as CID parts of a multipart/related, which is what lets a
+    client show them with no "display images" click and no fetch. Each market row
+    gets one, each is referenced from the HTML by the id it carries, and each is a
+    PNG."""
+    msg = crowd_email.build_message(EDITION, "from@x.test", "to@x.test", BASE)
+    parsed = email.message_from_string(msg.as_string())
+    related = next(p for p in parsed.walk()
+                   if p.get_content_type() == "multipart/related")
+    html = next(p for p in related.walk() if p.get_content_type() == "text/html")
+    html = html.get_payload(decode=True).decode()
+    images = [p for p in related.walk() if p.get_content_type() == "image/png"]
+
+    markets = [r for r in EDITION.board.rows if r.kind == "market"]
+    assert len(images) == len(markets)
+    for image in images:
+        cid = image["Content-ID"].strip("<>")
+        assert f'src="cid:{cid}"' in html
+        assert image.get_payload(decode=True)[:8] == b"\x89PNG\r\n\x1a\n"
+        assert image.get_content_disposition() == "inline"
 
 
-def test_the_sparkline_keeps_the_latest_week():
-    """It samples every fourth week counting back from the newest, so the last
-    mark is always this week rather than whichever week the stride lands on."""
-    path = (0.0,) * 51 + (100.0,)
-    assert crowd_email.sparkline(path).endswith("█")
+def test_a_path_is_drawn_once_per_edition_not_once_per_reader(monkeypatch):
+    """Every subscriber's message carries the same images; drawing them again
+    for each recipient would be N times the work for the same bytes."""
+    edition = _edition([_read("Gold", (95.0, 82.0, 82.0, 49.0))])
+    calls = []
+    real = crowd_email.spark_png.spark_png
+    monkeypatch.setattr(crowd_email.spark_png, "spark_png",
+                        lambda *a, **k: calls.append(1) or real(*a, **k))
+    for to in ("a@x.test", "b@x.test", "c@x.test"):
+        crowd_email.build_message(edition, "from@x.test", to, BASE)
+    assert len(calls) == 1
 
 
 def test_send_operator_copy_mails_the_edition_to_the_receiver():
