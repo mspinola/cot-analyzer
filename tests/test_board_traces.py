@@ -244,6 +244,25 @@ def test_spark_maps_high_values_above_the_midline():
     assert ys[-1] > row_y
 
 
+def test_the_spark_midline_is_drawn_at_the_scorecards_measured_level():
+    """The midline is what a path is read against. At 10% it vanished, which is
+    the failure scorecard_rows.AXIS_RULE was calibrated to fix; the two surfaces
+    answer the same question and must not drift apart."""
+    from components import scorecard_rows
+    assert bt.SPARK_MIDLINE == scorecard_rows.AXIS_RULE
+
+    rows, _ = bt.build_rows([read(path=(40, 55, 60))])
+    fig = bt.build_figure(rows, models.DEFAULT_MODEL, COLORS)
+    midlines = [sh for sh in fig.layout.shapes
+                if sh.type == "line" and sh.x0 == bt.SPARK_X0 and sh.x1 == bt.SPARK_X1]
+    assert midlines, "no midline drawn under the path"
+    for sh in midlines:
+        assert sh.line.color == bt.SPARK_MIDLINE
+        # Dotted, because the path over it is the same grey: solid, the two would
+        # be one line wherever the path hugs 50.
+        assert sh.line.dash == bt.SPARK_MIDLINE_DASH == "dot"
+
+
 def test_both_chip_tiers_draw_and_a_quiet_row_draws_neither():
     model = models.DEFAULT_MODEL
     chip_x = (bt.CHIP_X0 + bt.CHIP_X1) / 2
