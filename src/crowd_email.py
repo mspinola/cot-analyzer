@@ -263,7 +263,7 @@ def render_html(edition, base_url, unsubscribe_url=None, spark_srcs=None):
         f"SETUP and NEAR are {escape(model.title)}'s verdict. "
         f"The {const.MOMENTUM_PERIOD}W column is the change in the 12M index; the "
         f"path is that index over the trailing year around a dotted line at 50, its "
-        f"end dot coloured by the side it finished on. The tape-context rows at the "
+        f"end dot colored by the side it finished on. The tape-context rows at the "
         f"bottom are ETF ratios, not positioning."
     )
     # Inside the body, on the board's own background, rather than the separate

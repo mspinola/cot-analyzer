@@ -246,7 +246,7 @@ def caption(report_date, model, skipped, awaiting=(), stale=()):
         context += f" Tape context trailing the board: {'; '.join(stale)}."
     return (
         f"Commercial positioning as of Tuesday {pretty}, measured as {basis} "
-        f"({model.title}'s basis). Colour is the cell's own value, not the "
+        f"({model.title}'s basis). Color is the cell's own value, not the "
         f"model's verdict.{dropped}{context}"
     )
 
@@ -352,7 +352,10 @@ def layout(**kwargs):
                     dbc.Col([
                         html.P(id='crowd_caption',
                                style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                      'fontStyle': 'italic', 'marginBottom': '4px'}),
+                                      'fontStyle': 'italic', 'marginBottom': '4px'},
+                               # Centred in the PNG only (exportBoardImage), where
+                               # the button is gone and the clone is board-width.
+                               **{'data-export': 'center'}),
                         # Out of the PNG, open or shut. exportBoardImage re-opens
                         # every fold in its clone (the Strip's key belongs in its
                         # picture), but this one is a paragraph of teaching above

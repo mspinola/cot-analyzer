@@ -649,10 +649,23 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
         });
     if (!plots.length) { return; }
 
+    // How wide the boards ACTUALLY are, as the union of their boxes. This is the
+    // width the PNG should be, and it is measured once here so the snapshots and
+    // the clone cannot disagree about it.
+    //
+    // The union, not the widest single plot: the Strip draws its two boards SIDE
+    // BY SIDE, so its content really does span the container and must keep doing
+    // so, while Crowd's single capped board does not. Taking a max over widths
+    // would have been right for Crowd and would have stacked the Strip.
+    var rects = plots.map(function(node) { return node.getBoundingClientRect(); });
+    var contentWidth = Math.round(
+        Math.max.apply(null, rects.map(function(r) { return r.right; }))
+        - Math.min.apply(null, rects.map(function(r) { return r.left; })));
+
     // scale 2 for a crisp raster; the <img> is sized back down to the on-screen
     // width below, so the extra pixels land as resolution rather than as size.
-    var shots = plots.map(function(node) {
-        var box = node.getBoundingClientRect();
+    var shots = plots.map(function(node, i) {
+        var box = rects[i];
         return Plotly.toImage(node, {
             format: 'png',
             width: Math.round(box.width) || 900,
@@ -668,13 +681,22 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
         clone.style.position = 'absolute';
         clone.style.left = '-9999px';
         clone.style.top = '-9999px';
-        // The same degenerate-layout fallback the snapshot widths use above: a
-        // window that reports no viewport (a headless or suspended tab) measures
-        // every element at 0, and a 0px clone renders as a 40px strip of padding.
-        // The widest snapshot is the board itself, so it is the honest substitute.
-        var cloneWidth = container.clientWidth
-            || Math.max.apply(null, images.map(function(i) { return i.width; }))
-            || 900;
+        // The PNG is the BOARD, so it is the board's width, not the page's. Crowd
+        // caps its graph at 1100px and centres it (margin auto) inside a container
+        // that is as wide as the window, so sizing the clone to
+        // container.clientWidth gave the export a dead gutter down each side at any
+        // window wider than the cap, with the board marooned in the middle: 1837px
+        // of clone around 1100px of board, measured. contentWidth is that board.
+        //
+        // container.clientWidth survives only as the degenerate-layout fallback it
+        // always was: a window that reports no viewport (a headless or suspended
+        // tab) measures every element at 0, and a 0px clone renders as a 40px strip
+        // of padding.
+        var cloneWidth = contentWidth || container.clientWidth || 900;
+        // content-box so the padding frames the board rather than eating into it.
+        // Bootstrap sets border-box globally, under which a clone sized to the
+        // board would shrink every snapshot by the 40px of padding.
+        clone.style.boxSizing = 'content-box';
         clone.style.width = cloneWidth + 'px';
         clone.style.backgroundColor = '#1a1a1a';
         clone.style.padding = '20px';
@@ -701,6 +723,17 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
         Array.prototype.forEach.call(
             clone.querySelectorAll('button'), function(node) {
                 node.parentNode.removeChild(node);
+            });
+
+        // On the page the caption is left-aligned because it shares its row with
+        // the export button. In the PNG that button is gone and the clone is exactly
+        // the board's width, so the caption reads as a title and is centred over it.
+        // Opt-in by attribute rather than by tag: only the text the picture is meant
+        // to carry gets this, and each page says which that is.
+        Array.prototype.forEach.call(
+            clone.querySelectorAll('[data-export="center"]'), function(node) {
+                node.style.textAlign = 'center';
+                node.style.width = '100%';
             });
 
         // Swap each live plot for its snapshot, in the same order and in place,
