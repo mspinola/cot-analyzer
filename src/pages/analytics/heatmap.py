@@ -695,8 +695,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             "presetTags": (PRESET_POSITIONING,),
             "children": [
                 {"field": "Comm Index", "headerName": f"{COMM_SHORT} Index", "headerTooltip": f"Williams Commercial Index, on net contracts. The Commercial leg of the {models.RAW_PF.title} gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_styles}},
-                {"field": "Lrg Index", "headerName": f"{LRG_SHORT} Index", "headerTooltip": f"Non-Commercial positioning index, on net contracts. The Non-Commercial leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}},
-                {"field": "Sml Index", "headerName": f"{SML_SHORT} Index", "headerTooltip": f"Non-Reportable positioning index, on net contracts. The Non-Reportable leg of the {models.RAW_PF.title} gate, coloured only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                {"field": "Lrg Index", "headerName": f"{LRG_SHORT} Index", "headerTooltip": f"Non-Commercial positioning index, on net contracts. The Non-Commercial leg of the {models.RAW_PF.title} gate, colored only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}},
+                {"field": "Sml Index", "headerName": f"{SML_SHORT} Index", "headerTooltip": f"Non-Reportable positioning index, on net contracts. The Non-Reportable leg of the {models.RAW_PF.title} gate, colored only when opposed to Commercials, since that is the only configuration counted as a setup leg", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
             ]
         },
         {
@@ -706,7 +706,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             # least room to flex into and the header is the longest of the two blocks.
             "children": [
                 {"field": "Comm Index Norm", "headerName": f"{COMM_SHORT} Index", "minWidth": 115, "headerTooltip": "Williams Commercial Index built on net / open interest, so contract-size growth is out of the level. The Commercial leg of the NPF CS gate", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": index_norm_styles}},
-                {"field": "Sml Index Norm", "headerName": f"{SML_SHORT} Index", "minWidth": 115, "headerTooltip": "Non-Reportable positioning index built on net / open interest. The Non-Reportable leg of the NPF CS gate, coloured only when opposed to Commercials", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_norm_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
+                {"field": "Sml Index Norm", "headerName": f"{SML_SHORT} Index", "minWidth": 115, "headerTooltip": "Non-Reportable positioning index built on net / open interest. The Non-Reportable leg of the NPF CS gate, colored only when opposed to Commercials", "valueFormatter": {"function": "d3.format('.0f')(params.value)"}, "cellStyle": {"styleConditions": spec_norm_styles}, "headerClass": "group-border-right", "cellClass": "group-border-right"},
             ]
         },
         {
@@ -934,7 +934,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
     # what the colours mean at all. One muted line, under the grid so it costs the
     # table nothing above the fold.
     key_line = html.P(
-        "Reading the colours: a washed cell is a full setup on that model, every leg "
+        "Reading the colors: a washed cell is a full setup on that model, every leg "
         "it gates on through its band; bright text is a leg at its gate; faint tinted "
         "text is a leg approaching it, with the blocking leg left grey. Risk %ile and "
         "OI Z light at extremes of the market's own history and render no verdict. "

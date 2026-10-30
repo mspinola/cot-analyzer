@@ -657,7 +657,7 @@ def build_table(reads, model, colors):
             title="One lane per leg this model gates on, Commercials first. The dot "
                   "sits at that leg's range index on the model's own window, the "
                   "reading the gate checked; the faint rule is the midpoint. "
-                  "Colour is the leg's own verdict, so a high Commercial reading and "
+                  "Color is the leg's own verdict, so a high Commercial reading and "
                   "a low speculator reading both draw bullish.")] + cells))
 
     for row in SCORE_ROWS:
