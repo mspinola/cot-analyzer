@@ -55,12 +55,15 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
 #:
-#: Both are pages of the dbmf-tracker publisher (dbmf.bluemagicai.com and
-#: /orr). This side is the half that decides what gets logged, so a key must be
-#: listed here BEFORE the publisher starts sending it, or the views in between
-#: are answered and dropped. Nothing breaks either way, which is exactly why the
-#: ordering is easy to get wrong and worth saying.
-EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr'}
+#: All three are pages of the dbmf-tracker publisher (dbmf.bluemagicai.com, and
+#: /orr and /ahlt beside it). That publisher derives both the beacon key and the
+#: GoatCounter path from the published file name, so a page it publishes is
+#: already sending `p=<name>` the day it goes up; this side is the half that
+#: decides what gets logged, so a key must be listed here BEFORE the publisher
+#: starts sending it, or the views in between are answered and dropped. Nothing
+#: breaks either way, which is exactly why the ordering is easy to get wrong and
+#: worth saying: /ahlt was published and counted as nothing until it was listed.
+EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the

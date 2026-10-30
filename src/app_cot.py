@@ -622,8 +622,14 @@ _MONITOR_PAGES = (
 #: leave the origin and answers with the SPA's own 404. They open in a new tab
 #: because they are a different site, and losing this app's state to reach a
 #: holdings table is a poor trade.
+#:
+#: The two trend books sit together and the long/short equity book after them:
+#: DBMF and AHLT answer the same question off different funds (what is a
+#: managed-futures program positioned in), so reading one after the other is the
+#: comparison; ORR is a different question entirely.
 _MONITOR_EXTERNAL_PAGES = (
     ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
+    ("AHLT Trend Book", "https://dbmf.bluemagicai.com/ahlt"),
     ("ORR Book", "https://dbmf.bluemagicai.com/orr"),
 )
 
