@@ -563,31 +563,43 @@ _HEAD_STYLE = {
     "textAlign": "center", "fontSize": "0.7rem", "fontWeight": "600",
     "color": "#E2E8F0", "padding": "5px 2px", "border": "0",
 }
-_BLOCK_STYLE = {
-    "textAlign": "left", "fontSize": "0.62rem", "letterSpacing": "0.8px",
-    "textTransform": "uppercase", "color": "#E2E8F0",
-    "backgroundColor": "#262626", "padding": "4px 9px", "borderRadius": "2px",
-    "border": "0",
-}
 _NOTE_STYLE = {"fontSize": "0.58rem", "color": "#7d8da0", "textTransform": "none",
                "letterSpacing": "0"}
+
+#: What separates the card's three groups (the model's verdict, then positioning,
+#: then tape) now that each no longer costs a labelled band row of its own.
+#:
+#: The bands said MODEL VERDICT / POSITIONING / TAPE AND PARTICIPATION with a note
+#: under each, identically on all nine cards: 27 rows and 621px, a fifth of the
+#: page, to say the same three things nine times. The notes are already in the
+#: page's how-to-read fold, in more detail than the bands had room for, and the
+#: left-hand row labels name every row on their own, so the bands were spending
+#: height on teaching the reader had either already read or did not need again.
+#:
+#: Extra top padding on the first row of a group costs 5px where a row cost 23px
+#: and keeps the three blocks legible as blocks. It has to go on the cells rather
+#: than the row: borderCollapse is `separate` here, so a border on the <tr> does
+#: not paint and a border on each <td> would come out dashed at the 2px gaps.
+_GROUP_GAP_PX = 10
 
 
 def _label_px():
     return int(_LABEL_WIDTH.removesuffix("px"))
 
 
-def _label(row):
+def _gap(style, opens_group):
+    """`style` with the group's top padding when this row opens a group."""
+    if not opens_group:
+        return style
+    return {**style, "paddingTop": f"{_GROUP_GAP_PX}px"}
+
+
+def _label(row, opens_group=False):
     note = ([" ", html.Span(row.note, style=_NOTE_STYLE)]
             if getattr(row, "note", "") else [])
-    return html.Td([row.label] + note, style=with_ink(_LABEL_STYLE),
+    return html.Td([row.label] + note,
+                   style=_gap(with_ink(_LABEL_STYLE), opens_group),
                    title=row_tooltip(row.rho))
-
-
-def _block(title, note, span):
-    return html.Tr([html.Td(
-        [title, " ", html.Span(note, style=_NOTE_STYLE)] if note else [title],
-        colSpan=span, style=with_ink(_BLOCK_STYLE))])
 
 
 def card_min_px(market_count):
@@ -614,11 +626,10 @@ GRID_COLUMN_PX = 460
 
 def build_table(reads, model, colors):
     """The card. Pure over `reads` plus a colour set; no store, no palette file."""
-    span = len(reads) + 1
     head = html.Tr([html.Th("", style={**_HEAD_STYLE, "width": _LABEL_WIDTH})]
                    + [html.Th(r.symbol or r.asset, style=_HEAD_STYLE) for r in reads])
 
-    body = [_block("Model verdict", f"{model.title}, the only gated row", span)]
+    body = []
     setup_cells = []
     for read in reads:
         text, style = setup_cell(read.state, colors)
@@ -629,9 +640,9 @@ def build_table(reads, model, colors):
               "share that window; the numbered and path rows are a uniform 52 "
               "weeks, so the two windows differ.")] + setup_cells))
 
-    body.append(_block("Positioning",
-                       "lane is the leg, shaded ends are the gate",
-                       span))
+    # The positioning group opens here, on whichever of its rows is drawn first:
+    # the leg row normally, the first numbered row on a card with no lanes.
+    opens = True
 
     # The leg row: one mark per market, one lane per leg the model gates on. Lanes
     # are sized to the WIDEST market on this card so the row has one height and the
@@ -642,23 +653,25 @@ def build_table(reads, model, colors):
         for read in reads:
             svg, title = leg_marks(read.legs, colors, lanes, model.band)
             if svg is None:
-                cells.append(html.Td(_EMPTY, style=with_ink(
-                    {**_CELL_STYLE, "color": colors.dim})))
+                cells.append(html.Td(_EMPTY, style=_gap(with_ink(
+                    {**_CELL_STYLE, "color": colors.dim}), opens)))
             else:
                 cells.append(html.Td(
                     mark_img(svg),
-                    style={**_CELL_STYLE, "padding": "3px 2px", "lineHeight": "0",
-                           "cursor": "help"},
+                    style=_gap({**_CELL_STYLE, "padding": "3px 2px",
+                                "lineHeight": "0", "cursor": "help"}, opens),
                     title=title))
         # Named by the legs actually drawn, in lane order, so the mark needs no key.
         order = next((r.legs for r in reads if len(r.legs) == lanes), ())
         body.append(html.Tr([html.Td(
-            " / ".join(leg.short for leg in order), style=with_ink(_LABEL_STYLE),
+            " / ".join(leg.short for leg in order),
+            style=_gap(with_ink(_LABEL_STYLE), opens),
             title="One lane per leg this model gates on, Commercials first. The dot "
                   "sits at that leg's range index on the model's own window, the "
                   "reading the gate checked; the faint rule is the midpoint. "
                   "Color is the leg's own verdict, so a high Commercial reading and "
                   "a low speculator reading both draw bullish.")] + cells))
+        opens = False
 
     for row in SCORE_ROWS:
         cells = []
@@ -666,26 +679,29 @@ def build_table(reads, model, colors):
             value = score(read.scores.get(row.key))
             cells.append(html.Td(
                 cell_text(value),
-                style=with_ink({**_CELL_STYLE,
-                                **cell_style(value, row.direction, colors)})))
-        body.append(html.Tr([_label(row)] + cells))
+                style=_gap(with_ink({**_CELL_STYLE,
+                                     **cell_style(value, row.direction, colors)}),
+                           opens)))
+        body.append(html.Tr([_label(row, opens)] + cells))
+        opens = False
 
-    body.append(_block("Tape and participation",
-                       "no tested direction, so shape rather than a verdict", span))
+    # The tape group: no gated verdict in it, which the how-to-read fold explains.
+    opens = True
     for row in SPARK_ROWS:
         cells = []
         for read in reads:
             svg, pct = sparkline(read.paths.get(row.key, ()))
             if svg is None:
-                cells.append(html.Td(_EMPTY, style=with_ink(
-                    {**_CELL_STYLE, "color": colors.dim})))
+                cells.append(html.Td(_EMPTY, style=_gap(with_ink(
+                    {**_CELL_STYLE, "color": colors.dim}), opens)))
             else:
                 cells.append(html.Td(
                     spark_img(svg),
-                    style={**_CELL_STYLE, "padding": "2px", "lineHeight": "0",
-                           "cursor": "help"},
+                    style=_gap({**_CELL_STYLE, "padding": "2px",
+                                "lineHeight": "0", "cursor": "help"}, opens),
                     title=f"{row.window_note}, latest marked. {pct} of its range."))
-        body.append(html.Tr([_label(row)] + cells))
+        body.append(html.Tr([_label(row, opens)] + cells))
+        opens = False
 
     table = html.Table(
         [html.Thead(head), html.Tbody(body)],
