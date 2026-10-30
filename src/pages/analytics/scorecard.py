@@ -398,10 +398,18 @@ def layout(**kwargs):
                         html.P(id='scorecard_caption',
                                style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                       'fontStyle': 'italic', 'marginBottom': '4px'}),
-                        help_fold.wrap('scorecard', html.P(
+                        # Out of the PNG, open or shut, which is `/crowd`'s rule
+                        # and now this page's: exportBoardImage re-opens every
+                        # fold in its clone, and this one is several hundred
+                        # words of teaching above the cards people share. The
+                        # image is the cards. The caption stays, because it
+                        # carries the week, the basis and the model, which the
+                        # picture cannot say on its own.
+                        html.Div(help_fold.wrap('scorecard', html.P(
                             id='scorecard_help',
                             style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
                                    'fontStyle': 'italic', 'marginBottom': '4px'})),
+                            **{'data-export': 'omit'}),
                     ], xs=True),
                     dbc.Col([
                         dbc.Button("📸 Export PNG",
@@ -409,9 +417,8 @@ def layout(**kwargs):
                                    style={"color": vc.TEXT_COLOR},
                                    size="sm"),
                         dbc.Tooltip(
-                            "Every card as one image, with the caption and the "
-                            "how-to-read text. Cards that pan sideways on screen "
-                            "are exported whole.",
+                            "Every card as one image, with its caption. Cards "
+                            "that pan sideways on screen are exported whole.",
                             target="scorecard_download_img_btn",
                             placement="bottom"),
                     ], xs="auto"),

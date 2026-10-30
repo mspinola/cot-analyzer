@@ -70,7 +70,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          * that cannot be acted on.
          */
         /**
-         * The Scorecard as one PNG: caption, teaching and every card.
+         * The Scorecard as one PNG: its caption and every card. The how-to-read
+         * fold is NOT in it, open or shut: the page marks it `data-export="omit"`
+         * and the omit pass below drops it, `/crowd`'s rule.
          *
          * The Divergence export's shape, because this page is the same kind of
          * thing: HTML tables whose marks are data-URI images, so the clone IS the
@@ -103,9 +105,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 return window.dash_clientside.no_update;
             }
 
+            var OMIT = '[data-export="omit"]';
             var width = container.clientWidth;
             Array.prototype.forEach.call(
                 container.querySelectorAll('*'), function(node) {
+                    // Measured without the parts the picture will not carry, so
+                    // something about to be dropped cannot pad the PNG.
+                    if (node.closest(OMIT)) { return; }
                     if (node.scrollWidth > width) { width = node.scrollWidth; }
                 });
 
@@ -125,9 +131,19 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                         node.style.maxHeight = 'none';
                     }
                 });
-            // The teaching rides along whether or not the reader opened it: it is
-            // the only thing saying that a number and its colour may disagree, and
-            // which legs this model gates on.
+            // Whatever the page marked as not belonging in the picture goes first,
+            // BEFORE the fold pass below, which would otherwise re-open the very
+            // thing being dropped. This is `/crowd`'s rule arriving here: the
+            // how-to-read fold is several hundred words of teaching above the
+            // cards people share, and the image is the cards. The caption is not
+            // marked and stays, because it carries the week, the basis and the
+            // model, which the picture cannot say on its own.
+            Array.prototype.forEach.call(
+                clone.querySelectorAll(OMIT), function(node) {
+                    node.parentNode.removeChild(node);
+                });
+            // Any fold the page did NOT mark still rides along, open or shut: a
+            // key belongs in the picture it explains.
             Array.prototype.forEach.call(
                 clone.querySelectorAll('.collapse'), function(node) {
                     node.classList.add('show');
