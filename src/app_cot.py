@@ -614,8 +614,8 @@ _MONITOR_PAGES = (
     ("Market Internals", "/internals"),
 )
 
-#: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites at
-#: dbmf.bluemagicai.com with no server of their own (the same pages the view
+#: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites, one
+#: subdomain each, with no server of their own (the same pages the view
 #: beacon exists for; see routing.BEACON_PATH). Absolute urls, so
 #: external_link=True is load-bearing rather than the convenience it is for
 #: /weekly: without it dbc hands the click to the Dash router, which cannot
@@ -629,8 +629,8 @@ _MONITOR_PAGES = (
 #: comparison; ORR is a different question entirely.
 _MONITOR_EXTERNAL_PAGES = (
     ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
-    ("AHLT Trend Book", "https://dbmf.bluemagicai.com/ahlt"),
-    ("ORR Book", "https://dbmf.bluemagicai.com/orr"),
+    ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
+    ("ORR Book", "https://orr.bluemagicai.com/"),
 )
 
 _SYSTEM_PAGES = (

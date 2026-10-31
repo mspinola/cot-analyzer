@@ -55,9 +55,10 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
 #:
-#: All three are pages of the dbmf-tracker publisher (dbmf.bluemagicai.com, and
-#: /orr and /ahlt beside it). That publisher derives both the beacon key and the
-#: GoatCounter path from the published file name, so a page it publishes is
+#: All three are pages of the dbmf-tracker publisher (dbmf., orr. and
+#: ahlt.bluemagicai.com, with /orr and /ahlt also still beside the first). That
+#: publisher derives both the beacon key and the GoatCounter path from one name
+#: (the file name of an extra, `--key` for a page at its own domain), so a page is
 #: already sending `p=<name>` the day it goes up; this side is the half that
 #: decides what gets logged, so a key must be listed here BEFORE the publisher
 #: starts sending it, or the views in between are answered and dropped. Nothing
