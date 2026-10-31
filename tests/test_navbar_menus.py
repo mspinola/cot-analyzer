@@ -22,8 +22,8 @@ def test_the_monitors_menu_carries_the_tape_read_and_every_fund_book():
     assert [(i.children, i.href) for i in _items("Monitors")] == [
         ("Market Internals", "/internals"),
         ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
-        ("AHLT Trend Book", "https://dbmf.bluemagicai.com/ahlt"),
-        ("ORR Book", "https://dbmf.bluemagicai.com/orr"),
+        ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
+        ("ORR Book", "https://orr.bluemagicai.com/"),
     ]
 
 
