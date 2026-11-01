@@ -164,6 +164,28 @@ def _clean(value):
     return None if value is None or value != value else float(value)
 
 
+@functools.lru_cache(maxsize=512)
+def _setup_age(asset, model_key, newest_date, target_date):
+    """How many consecutive weeks the chip's story has held, or 0.
+
+    The SAME call the Setups badge makes, on the same frame (the model's basis, its
+    own Custom window), so the two surfaces cannot disagree about a market's age.
+    `newest_date` is the cache-buster, as on `_market_frame`; the target date is a
+    key because the walk starts at the week the card shows.
+    """
+    model = models.resolve(model_key)
+    try:
+        df = get_indexer().get_symbols_data(asset, "Custom", basis=model.basis)
+    except Exception as e:  # noqa: BLE001 -- one market must not break the card
+        utils.cot_logger.warning(f"scorecard: no age for {asset}: {e}")
+        return 0
+    if df is None or df.empty:
+        return 0
+    if target_date:
+        df = df.loc[df.index <= pd.Timestamp(target_date)]
+    return int(model.setup_age_from(df, "Custom", get_indexer().is_equity(asset)))
+
+
 def _read_for(asset, record, basis, model, newest_date, target_date, palette):
     """A MarketRead at the week the card is showing, or None.
 
@@ -193,12 +215,17 @@ def _read_for(asset, record, basis, model, newest_date, target_date, palette):
         for leg, key in zip(_NET_LEGS, _NET_KEYS) if key in frame)
 
     instrument = get_indexer().get_instrument_from_name(asset)
+    state = record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE
     return scorecard_rows.MarketRead(
         legs=_legs_for(record, model, palette),
         net=net,
         symbol=getattr(instrument, "symbol", "") or "",
         asset=asset,
-        state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
+        state=state,
+        # Only read for a chip that will draw: the walk is the one per-market cost
+        # here that the matrix does not already carry.
+        setup_weeks=(_setup_age(asset, model.key, newest_date, target_date)
+                     if state != const.SETUP_NONE else 0),
         scores=scores,
         paths=paths,
         date=frame.index[-1].strftime('%Y-%m-%d'),
@@ -270,6 +297,9 @@ def warm_caches():
             for asset in indexer.get_assets_for_asset_class(asset_class):
                 for basis in dict.fromkeys(m.basis for m in models.MODELS):
                     _market_frame(asset, basis, newest)
+                # The age is per model (its own gate), for the week with no target.
+                for model in models.MODELS:
+                    _setup_age(asset, model.key, newest, None)
                 count += 1
         utils.cot_logger.info(
             f"scorecard: warmed {count} markets ({newest}).")
@@ -351,7 +381,11 @@ def help_text(model):
             style={"marginBottom": "6px"}),
         html.Ul([
             item("Setup.", f"{model.title}'s verdict, the only row that has been "
-                 f"through the gate and the only cell that fills. Everything "
+                 f"through the gate and the only cell that fills. The number "
+                 f"beside it is the chip's age: consecutive weeks at or "
+                 f"approaching this gate in this direction, so SETUP · 1w fired "
+                 f"this week and near · 9w has told the same story for nine. "
+                 f"The Setups page's badge shows the same count. Everything "
                  f"under it is description, which is why there is no summary "
                  f"score."),
             item("Leg marks.", f"One lane per leg {model.title} gates on, which is "

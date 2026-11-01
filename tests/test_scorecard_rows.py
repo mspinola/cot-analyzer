@@ -890,3 +890,46 @@ def test_a_market_with_no_symbol_still_gets_a_header_and_a_link():
     header = sr.market_link(sr.MarketRead(symbol="", asset="Bitcoin"))
     assert header.children == "Bitcoin"
     assert header.href.endswith("asset=Bitcoin")
+
+
+# ── the chip's age ───────────────────────────────────────────────────────────
+
+def test_the_chip_carries_its_age_quieter_than_the_tier():
+    content, style = sr.setup_cell(const.SETUP_BULL, COLORS, weeks=7)
+    assert content[0] == "SETUP ↑"
+    age = content[1]
+    assert age.children == " · 7w"
+    assert age.style["fontWeight"] == "normal" and age.style["opacity"] < 1
+    assert style["whiteSpace"] == "nowrap"  # one line, never a taller row
+
+
+def test_the_age_is_hidden_on_a_phone_and_on_hover_everywhere():
+    content, _ = sr.setup_cell(const.SETUP_NEAR_BEAR, COLORS, weeks=3)
+    assert "d-none d-md-inline" in content[1].className
+    assert sr.setup_age_title(3).startswith("At or approaching this gate for 3 "
+                                            "consecutive weeks")
+    assert "1 consecutive week," in sr.setup_age_title(1)
+
+
+def test_a_capped_age_reads_as_at_least():
+    content, _ = sr.setup_cell(const.SETUP_BEAR, COLORS, weeks=const.SETUP_AGE_CAP)
+    assert content[1].children == f" · {const.SETUP_AGE_CAP}w+"
+    assert "+ consecutive" in sr.setup_age_title(const.SETUP_AGE_CAP)
+
+
+def test_no_age_leaves_the_chip_as_it_was():
+    assert sr.setup_cell(const.SETUP_BULL, COLORS) == sr.setup_cell(
+        const.SETUP_BULL, COLORS, weeks=0)
+    assert sr.setup_cell(const.SETUP_NONE, COLORS, weeks=5)[0] == "·"
+    assert sr.setup_age_title(0) is None
+
+
+def test_the_card_puts_the_age_on_the_chip_and_its_hover():
+    reads = [sr.MarketRead(symbol="6A", asset="6A", state=const.SETUP_BULL,
+                           setup_weeks=12),
+             sr.MarketRead(symbol="6B", asset="6B", state=const.SETUP_NONE)]
+    setup_row = _rows(sr.build_table(reads, models.RAW_PF, COLORS))[0]
+    fired, quiet = setup_row.children[1], setup_row.children[2]
+    assert fired.children[1].children == " · 12w"
+    assert "12 consecutive weeks" in fired.title
+    assert quiet.children == "·" and quiet.title is None
