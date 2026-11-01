@@ -296,9 +296,13 @@ class MarketRead:
     symbol: str
     asset: str
     #: The model's verdict, from the matrix frame. Its window is the model's own
-    #: tuned lookback, NOT the uniform one the score and path rows use; the caption
+    #: tuned lookback, NOT the uniform one the score and path rows use; the fold
     #: says so. `legs` share this window, because they are there to explain it.
     state: str = const.SETUP_NONE
+    #: How many consecutive weeks `state` has held, in its direction, at its tier or
+    #: stronger: `PositioningModel.setup_age_from`, the Setups badge's number, so the
+    #: two surfaces cannot disagree about a market's age. 0 outside a gate.
+    setup_weeks: int = 0
     scores: dict = field(default_factory=dict)
     paths: dict = field(default_factory=dict)
     #: LegMark per gated leg, Commercials first. Empty draws nothing rather than
@@ -653,8 +657,17 @@ def row_tooltip(rho):
             f"which way it runs against the anchor.")
 
 
-def setup_cell(state, colors):
-    """The gate's answer for one market, or an empty mark."""
+def setup_cell(state, colors, weeks=0):
+    """The gate's answer for one market, or an empty mark.
+
+    With `weeks`, the chip also carries its age, the Setups badge's way: inside the
+    chip, quieter than the tier, because the tier is still the headline and the age
+    answers the second question ("is this new"), not the first. It is the one
+    reading positioning cannot imply (docs/analysis/2026-08-25-what-a-setup-card-
+    already-implies.md), and one number, so it earns no row of its own. Hidden
+    below Bootstrap's md: on a phone the chip cell is at its 44px floor and the age
+    would wrap the whole row; the hover carries it everywhere (see setup_age_title).
+    """
     if state not in _SETUP_TEXT:
         return _EMPTY, {"color": colors.dim}
     text, lean = _SETUP_TEXT[state]
@@ -665,12 +678,29 @@ def setup_cell(state, colors):
     strong = state in (const.SETUP_BULL, const.SETUP_BEAR)
     fill = blend_over(hue, cap if strong
                       else _floor_alpha(FILL_MIN_ALPHA + 0.35 * cap))
+    content = f"{text} {'↑' if lean > 0 else '↓'}"
+    if weeks:
+        content = [content, html.Span(
+            f" · {weeks}w{'+' if weeks >= const.SETUP_AGE_CAP else ''}",
+            className="d-none d-md-inline",
+            style={"opacity": 0.72, "fontWeight": "normal"})]
     return (
-        f"{text} {'↑' if lean > 0 else '↓'}",
+        content,
         {"backgroundColor": fill, "color": INK_BRIGHT,
          "fontWeight": 700 if strong else 600,
-         "fontSize": "0.65rem", "letterSpacing": "0.3px"},
+         "fontSize": "0.65rem", "letterSpacing": "0.3px",
+         "whiteSpace": "nowrap"},
     )
+
+
+def setup_age_title(weeks):
+    """The chip's hover, the Setups badge's words, or None outside a gate."""
+    if not weeks:
+        return None
+    capped = weeks >= const.SETUP_AGE_CAP
+    return (f"At or approaching this gate for {weeks}{'+' if capped else ''} "
+            f"consecutive week{'' if weeks == 1 else 's'}, in this direction. "
+            f"A run ends on a neutral week or a change of direction.")
 
 
 #: Under `table-layout: fixed` the HEADER row sets every column's width, so this has
@@ -799,11 +829,13 @@ def build_table(reads, model, colors):
     body = []
     setup_cells = []
     for read in reads:
-        text, style = setup_cell(read.state, colors)
-        setup_cells.append(html.Td(text, style=with_ink({**_CELL_STYLE, **style})))
+        text, style = setup_cell(read.state, colors, read.setup_weeks)
+        setup_cells.append(html.Td(text, style=with_ink({**_CELL_STYLE, **style}),
+                                   title=setup_age_title(read.setup_weeks)))
     body.append(html.Tr([html.Td(
         "Setup", style=_LABEL_STYLE,
-        title="The model's own verdict, on its own tuned window. The leg marks "
+        title="The model's own verdict, on its own tuned window, and how many "
+              "consecutive weeks it has held in this direction. The leg marks "
               "share that window; the numbered and path rows are a uniform 52 "
               "weeks, so the two windows differ.")] + setup_cells))
 
