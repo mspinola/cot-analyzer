@@ -12,7 +12,13 @@ Two composition rules follow from that, and both are visible in the output:
 **One card per asset class, never one card for the selection.** The column axis is a
 complex. Stacking classes into one table would put corn beside the yen under a header
 row that means nothing, so each selected class gets its own card with its own columns.
-Selecting all nine renders nine cards rather than one 42-column table.
+Selecting all nine renders nine cards rather than one 42-column table. The cards
+come widest first (by market count, then name), so the one class too wide for a
+half column leads as a full-width band and the two-column grid below it pairs cards
+of like width; alphabetical order put the two-market Crypto card beside a four-market
+one at the top, inflated to the column, with the nine-market Currencies card under
+them. Order by size also lets the grid flow in source order, where the dense packing
+it used to need had Energies jumping above Currencies.
 
 **Two windows, split by what each row is for.** `cotmetrics-config` tunes
 `CustomLookbackWeeks` per market (the pound at 30 weeks, the euro at 90), which is
@@ -24,22 +30,27 @@ the app shows, and that one is computed on the model's own window. Neither do th
 marks, because their job is to EXPLAIN that verdict: drawn on 52 weeks they showed
 6A's Non-Reportables at 27, comfortably on the bull side, under a blank chip whose
 real blocker was the same leg at 55 on the 80-week window the gate read. A mark that
-contradicts the verdict above it is worse than no mark. The caption names both
-windows, and the split is a real cost of the format rather than a detail to
+contradicts the verdict above it is worse than no mark. The how-to-read fold names
+both windows, and the split is a real cost of the format rather than a detail to
 reconcile.
 
 Where the arithmetic lives, since this repo computes no metrics of its own: the level
 rows are `get_symbols_data`'s own alias columns for the model's basis, the Commercial
 move is `cotmetrics.indicators.calculate_range_index` over the index momentum column,
-and the paths are the weekly closes and open interest the same frame carries. The
+and the paths are the weekly closes and open interest the same frame carries, plus
+the three legs' net positions on the model's basis for the net-positions row. The
 drawing, the colour rule and the row set live in `components.scorecard_rows`, which is
 pure over a read plus a colour set; this module is the data join, the controls and the
 caption.
 
 The trap this page inherits from every other index surface and must keep saying: a
 TRAILING window renormalises every week, so a market that has been heavily short all
-year reads near the top on its least-short week. The caption carries it, because a
-card built for a fast sweep is exactly where that misread is cheapest to make.
+year reads near the top on its least-short week. It leads the how-to-read fold, one
+click away, because a card built for a fast sweep is exactly where that misread is
+cheapest to make. It used to sit in the caption with the two-windows note and the
+colour rule, three lines of italic above the cards on every visit; the caption now
+carries only this render's facts (the week, the basis, the model, what was not
+readable), which is what the exported PNG needs and what changes week to week.
 """
 
 import functools
@@ -62,6 +73,17 @@ import viz_constants as vc
 from components import class_filter, config_fold, controls, help_fold
 from components.plot_colors import grid_colors
 from components.strip_traces import LEG_COLUMNS, LEG_PALETTE_SLOT, SETUP_COLUMN
+
+#: The net-positions row's legs, Commercials first because that is the one the row
+#: draws, and the frame keys they are read into. All three are read, whatever the
+#: model gates on, because the hover names them all.
+_NET_LEGS = (vc.LEG_COMM, models.LEG_LARGE, models.LEG_SMALL)
+_NET_KEYS = ("net_comm", "net_lrg", "net_sml")
+_NET_COLUMNS = {
+    const.BASIS_RAW: (const.COMM_NET, const.LARGE_NET, const.SMALL_NET),
+    const.BASIS_OI_NORM: (const.COMM_NET_NORM, const.LARGE_NET_NORM,
+                          const.SMALL_NET_NORM),
+}
 
 dash.register_page(
     __name__, path='/scorecard',
@@ -91,7 +113,10 @@ clientside_callback(
 
 #: How many cards sit side by side above the 992px breakpoint. A MAXIMUM rather than
 #: a fixed count: below the breakpoint the stylesheet collapses to one whatever is
-#: chosen, because two cards on a phone is nine markets in 180px.
+#: chosen, because two cards on a phone is nine markets in 180px. The control is
+#: hidden below the same breakpoint (Bootstrap's lg), since a choice that silently
+#: does nothing is worse than no choice; the stored value survives for the next
+#: wide screen.
 COLUMN_CHOICES = (1, 2)
 DEFAULT_COLUMNS = 2
 
@@ -127,6 +152,11 @@ def _market_frame(asset, basis, newest_date):
                                                  window=scorecard_rows.WINDOW)
     out["price"] = df.get(const.CLOSING_PRICE)
     out["oi"] = df.get(const.OPEN_INTEREST)
+    # The frame carries BOTH bases' net columns whichever basis was asked for, so
+    # the row's basis is chosen by name here rather than trusted to an alias.
+    for key, column in zip(_NET_KEYS, _NET_COLUMNS.get(basis, ())):
+        if column in df:
+            out[key] = df[column]
     return out
 
 
@@ -156,9 +186,16 @@ def _read_for(asset, record, basis, model, newest_date, target_date, palette):
                             for v in frame[row.key].tail(scorecard_rows.WINDOW))
              for row in scorecard_rows.SPARK_ROWS if row.key in frame}
 
+    net = tuple(
+        scorecard_rows.NetSeries(
+            vc.LEG_SHORT[leg],
+            tuple(_clean(v) for v in frame[key].tail(scorecard_rows.WINDOW)))
+        for leg, key in zip(_NET_LEGS, _NET_KEYS) if key in frame)
+
     instrument = get_indexer().get_instrument_from_name(asset)
     return scorecard_rows.MarketRead(
         legs=_legs_for(record, model, palette),
+        net=net,
         symbol=getattr(instrument, "symbol", "") or "",
         asset=asset,
         state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
@@ -241,6 +278,15 @@ def warm_caches():
             f"scorecard: cache warm failed, first render pays: {e}")
 
 
+def card_order(by_class):
+    """(class, reads) pairs, widest card first, ties by name.
+
+    See the module docstring: the wide class leads as a band and the grid pairs
+    like with like below it. Ties alphabetical so the order is stable week to week.
+    """
+    return sorted(by_class.items(), key=lambda item: (-len(item[1]), item[0]))
+
+
 def _columns(value):
     """The chosen column count as a CSS value, defaulting rather than raising.
 
@@ -254,9 +300,10 @@ def _columns(value):
 def caption(report_date, model, skipped):
     """The line under the cards: the FACTS of this render and nothing more.
 
-    The two windows get named explicitly rather than left to the fold, because a
-    reader comparing a Setup chip here against the Heatmap's needs to know which
-    rows share the chip's lookback and which do not.
+    The week, the basis, the model and what could not be read. The two windows,
+    the colour rule and the trailing-window trap are teaching and live in the fold;
+    they used to be here, which made the caption three lines of italic that every
+    visit scrolled past before the first card.
     """
     try:
         pretty = datetime.strptime(report_date, '%Y-%m-%d').strftime('%B %d, %Y')
@@ -268,59 +315,79 @@ def caption(report_date, model, skipped):
     if skipped:
         dropped = (f" {len(skipped)} market(s) have no reading this week and are "
                    f"not shown: {', '.join(sorted(skipped))}.")
-    return (
-        f"Positioning as of Tuesday {pretty}, measured as {basis} "
-        f"({model.title}'s basis). The Setup row and the leg marks under it are on "
-        f"{model.title}'s own tuned window, so the marks show what the verdict "
-        f"read; the rows below them are a uniform 52 weeks, so that the columns can "
-        f"be compared. Color is the model's verdict, not the cell's own "
-        f"value.{dropped}"
-    )
+    return (f"Positioning as of Tuesday {pretty}, measured as {basis} "
+            f"({model.title}'s basis).{dropped}")
 
 
 def help_text(model):
-    """The teaching: the scale, the colour rule, and the trailing-window trap.
+    """The teaching, one line per row, then the three rules that span rows.
 
     Model-aware, so it is rendered per callback rather than baked into the layout.
-    The colour sentence is the one that earns its length: this page and `/crowd`
-    use opposite conventions, and a reader moving between them in one session will
-    otherwise read one of the two backwards.
+    A list rather than a paragraph because the reader's question is almost always
+    "what is THIS row", and a 400-word paragraph made them read the other five to
+    find it. The trap leads, since it is the misread a fast sweep makes cheapest.
+    The colour sentence stays long: this page and `/crowd` use opposite
+    conventions, and a reader moving between them in one session will otherwise
+    read one of the two backwards.
     """
     # Prose, not a list: setup_leg_phrase names the SPECULATOR legs the gate
     # requires and returns None where it requires none (equities). Commercials are
     # named separately because every gate reads them.
     spec = vc.setup_leg_phrase(model)
     legs = f"Commercials and {spec}" if spec else "Commercials"
-    return (
-        f"Every reading is a range index, 0 at the window's low and 100 at its "
-        f"high. The positioning row draws the legs as marks, on {model.title}'s own "
-        f"tuned window (it differs by market), because those are the readings its "
-        f"gate checked; every row below the marks uses the same 52 weekly reports "
-        f"across all markets, so those can be compared side by side. The marks: "
-        f"one lane per leg {model.title} gates on, which is {legs}, Commercials "
-        f"always on top, each dot sitting at that leg's index with a faint rule at "
-        f"the midpoint. An equity index contract gates on Commercials alone, so its "
-        f"mark has one lane. Hover a mark for the figures. The lane says WHICH leg; "
-        f"the color says what that leg's reading means under {model.title}, so a "
-        f"Commercial dot high in its range and a speculator dot low in its range "
-        f"both draw bullish, because crowded speculators are the side this book "
-        f"fades. A mark whose dots disagree is a market whose legs disagree, which "
-        f"is usually why a crowded row carries no chip. Numbered rows use the same "
-        f"color rule on a -{scorecard_rows.SCALE} to +{scorecard_rows.SCALE} "
-        f"scale, nothing sign-flipped, which is what the Crowding Strip does and "
-        f"the OPPOSITE of the Crowdedness Board, where color is the cell's own "
-        f"value. Only the Setup chip is filled, because it is the only row that has "
-        f"been through the gate. The gates read positioning indices and no price "
-        f"term, so price and open interest have no verdict to carry and are drawn "
-        f"as paths instead, each over the "
-        f"same 52 weeks with a faint rule at the midpoint of its own range and a "
-        f"dot on the latest week. Hover any row label for how much that row adds "
-        f"over the Commercial Index, and any path for its figure. A trailing window "
-        f"renormalises every week, so a market short all year still reads near the "
-        f"top on its least-short week. Only the Setup row has been through the "
-        f"gauntlet; everything under it is description, which is why there is no "
-        f"summary score."
-    )
+
+    def item(name, text):
+        return html.Li([html.B(name), " ", text], style={"marginBottom": "3px"})
+
+    return [
+        html.P(
+            f"Two windows. The Setup chip and the marks under it read "
+            f"{model.title}'s own tuned window, which differs by market, because "
+            f"those are the readings its gate checked; every row below the marks "
+            f"reads the same 52 weekly reports across all markets, so those can be "
+            f"compared side by side. A trailing window renormalises every week, "
+            f"so a market short all year still reads near the top on its "
+            f"least-short week.",
+            style={"marginBottom": "6px"}),
+        html.Ul([
+            item("Setup.", f"{model.title}'s verdict, the only row that has been "
+                 f"through the gate and the only cell that fills. Everything "
+                 f"under it is description, which is why there is no summary "
+                 f"score."),
+            item("Leg marks.", f"One lane per leg {model.title} gates on, which is "
+                 f"{legs}, Commercials always on top. Each dot sits at that leg's "
+                 f"range index (0 at the window low, 100 at its high) with a faint "
+                 f"rule at the midpoint; an equity index contract gates on "
+                 f"Commercials alone, so its mark has one lane. A mark whose dots "
+                 f"disagree is a market whose legs disagree, which is usually why "
+                 f"a crowded row carries no chip. Hover for the figures."),
+            item("Commercial 6wk move.", f"The change in the Commercial index over "
+                 f"six weeks, range-indexed over the 52 weeks and printed on a "
+                 f"-{scorecard_rows.SCALE} to +{scorecard_rows.SCALE} scale, "
+                 f"nothing sign-flipped."),
+            item("Commercial net.", "The Commercial leg's weekly net position as "
+                 "bars from a zero line, with the Non-Commercial net as a faint "
+                 "line over them, scaled to the window's largest reading of "
+                 "either: the shape the Commercial mark is computed from, with "
+                 "no open interest line and no range band. The line is mostly "
+                 "the bars mirrored, since the three legs sum to zero. Hover for "
+                 "all three legs' latest figures."),
+            item("Price, Open interest.", "Paths over the same 52 weeks, each "
+                 "with a faint rule at the midpoint of its own range and a dot on "
+                 "the latest week. No verdict: the gates read positioning and no "
+                 "price term. Hover for the figure."),
+        ], style={"paddingLeft": "1.2rem", "marginBottom": "6px"}),
+        html.P(
+            "Color is the verdict, not the value. A Commercial dot high in its "
+            "range and a speculator dot low in its range both draw bullish, "
+            "because crowded speculators are the side this book fades; the 6wk "
+            "move uses the same rule. That is what the Crowding Strip does and "
+            "the OPPOSITE of the Crowdedness Board, where color is the cell's own "
+            "value. The Commercial net row is the one exception: its ink names "
+            "nothing, it is the paths' neutral. Hover any row label for how much "
+            "that row adds over the Commercial Index.",
+            style={"marginBottom": "0"}),
+    ]
 
 
 def layout(**kwargs):
@@ -365,7 +432,8 @@ def layout(**kwargs):
                                         style={"color": vc.BRIGHTER_TEXT_COLOR,
                                                "fontSize": "0.85rem"},
                                     ),
-                                ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
+                                ], xs=6, md=2,
+                                    className="mb-3 mb-md-0 px-md-2 d-none d-lg-block"),
 
                                 dbc.Col([
                                     html.Label("Asset Classes",
@@ -405,10 +473,10 @@ def layout(**kwargs):
                         # image is the cards. The caption stays, because it
                         # carries the week, the basis and the model, which the
                         # picture cannot say on its own.
-                        html.Div(help_fold.wrap('scorecard', html.P(
+                        html.Div(help_fold.wrap('scorecard', html.Div(
                             id='scorecard_help',
                             style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                   'fontStyle': 'italic', 'marginBottom': '4px'})),
+                                   'marginBottom': '4px'})),
                             **{'data-export': 'omit'}),
                     ], xs=True),
                     dbc.Col([
@@ -471,7 +539,7 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
 
-    cards, unreadable, report_date = [], [], None
+    by_class, unreadable = {}, []
     for asset_class, group in df.groupby("Asset Class", sort=True):
         reads = []
         for record in group.to_dict("records"):
@@ -482,8 +550,11 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
                 unreadable.append(asset)
             else:
                 reads.append(read)
-        if not reads:
-            continue
+        if reads:
+            by_class[asset_class] = reads
+
+    cards, report_date = [], None
+    for asset_class, reads in card_order(by_class):
         report_date = report_date or reads[0].date
         # A class too wide for a half column takes the whole row rather than
         # scrolling sideways inside one. How many markets a class holds is this
@@ -495,7 +566,7 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
             html.H2(asset_class,
                     style={"fontSize": "1rem", "fontWeight": "600",
                            "color": vc.BRIGHTER_TEXT_COLOR, "textAlign": "center",
-                           "maxWidth": f"{scorecard_rows.CARD_MAX_PX}px",
+                           "maxWidth": f"{scorecard_rows.card_max_px(len(reads))}px",
                            "margin": "0 auto 6px"}),
             scorecard_rows.build_table(reads, model, colors),
         ], className="mb-2" + (" scorecard-wide" if wide else "")))

@@ -1384,13 +1384,14 @@ table.scorecard-card tbody td {
    into one. That is the Currencies card today (nine markets, 576px against a
    ~476px column at the breakpoint); every other class fits. The page decides
    which cards those are, because how many markets a class holds is Python's fact,
-   the same split .setup-grid draws. grid-auto-flow: dense lets a later narrow
-   card fill the gap a full-width card would otherwise leave beside it. */
+   the same split .setup-grid draws. The page also sends the cards widest first,
+   so a full-width card never leaves a gap beside it and the grid can flow in
+   source order; this used to be grid-auto-flow: dense, which filled such gaps by
+   pulling a later card up and so broke the alphabetical scan it was serving. */
 .scorecard-grid {
     display: grid;
     gap: 10px 18px;
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-flow: dense;
     align-items: start;
 }
 @media (min-width: 992px) {
@@ -1403,4 +1404,36 @@ table.scorecard-card tbody td {
         grid-template-columns: repeat(var(--scorecard-cols, 2), minmax(0, 1fr));
     }
     .scorecard-grid > .scorecard-wide { grid-column: 1 / -1; }
+}
+
+/* The Analysis stack's asset-class radio is the control that decides whether
+   the page's configuration fits on one line: nine inline options, each with
+   Bootstrap's 1rem form-check-inline trailing margin on top of the label's own
+   spacing. Halving that margin here buys about 70px, which is the slack that
+   keeps the whole set on one row at 1920px with a classic scrollbar taking its
+   17px; without it the row fit with 3px to spare and wrapped on any Windows
+   display. Scoped to this one control: OI Alignment's twin radio shares a row
+   with only the Asset Selector and has room. */
+#analysis_asset_class_selector .form-check-inline { margin-right: 0.5rem; }
+
+/* The cue that a Scorecard card has columns past its right edge. In a single
+   column the nine-market card pans sideways, and the only sign of it was a thin
+   scrollbar under the card that a trackpad hides entirely; readers took the
+   ninth currency for the last one. This is the scroll-shadow idiom: a shadow
+   pinned to the wrapper's right edge (background-attachment: scroll) under a
+   page-coloured cover that moves WITH the content (background-attachment:
+   local), so the cover hides the shadow exactly when the content's end has
+   scrolled into view and the shadow shows whenever it has not. No script, no
+   resize listener, and nothing to do when the card fits. The left edge needs
+   none: the label column is sticky with its own opaque background, so the
+   first market never scrolls out of view. The shadow sits BEHIND the table,
+   so it reads through the cells, which have no background of their own; the
+   Setup chip is the one filled cell and it is in the first row. */
+.scorecard-scroll {
+    background:
+        linear-gradient(90deg, rgba(26, 26, 26, 0), var(--bg-color, #1a1a1a) 70%) right,
+        radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.22), transparent) right;
+    background-repeat: no-repeat;
+    background-size: 36px 100%, 14px 100%;
+    background-attachment: local, scroll;
 }
