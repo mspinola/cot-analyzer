@@ -121,6 +121,20 @@ def layout(**kwargs):
                     # exist twice, once per page; a reader flipping views keeps
                     # their window and their grid width because there is only one
                     # of each control to keep.
+                    #
+                    # One Row for everything, shared controls first and then the
+                    # showing view's own, so they all sit on one line whenever
+                    # the viewport is wide enough and the view's set wraps below
+                    # otherwise. As two Rows the break was pinned at the Row
+                    # boundary on every screen, a second line on a display that
+                    # had room for one. Each view's set is a column of its own
+                    # (hidden as a unit by the view callback) holding a nested
+                    # Row, so once it is the thing that no longer fits it wraps
+                    # internally rather than overflowing. The g-1 gutters, the
+                    # 6px radio spacing and the 180px selectors are what let the
+                    # stack's set (its nine-class radio is the wide one) land
+                    # beside the shared controls on a 1920px display; at the
+                    # previous g-2 / 10px / 200px it missed by about 60px.
                     dbc.Row([
                         dbc.Col([
                             controls.label("View", marginBottom="0.5rem"),
@@ -169,11 +183,11 @@ def layout(**kwargs):
                                 style={'width': '70px'}
                             )
                         ], xs=12, md="auto"),
-                    ], className="g-2 align-items-start"),
 
                     # The stack's own controls: one market, chosen precisely, and
                     # a multi-select of panels (with per-panel basis variants).
-                    html.Div(id='analysis_stack_controls', children=dbc.Row([
+                    html.Div(id='analysis_stack_controls',
+                             className="col-12 col-md-auto", children=dbc.Row([
                         dbc.Col([
                             controls.label("Asset Class", marginBottom="0.5rem"),
                             dbc.RadioItems(
@@ -184,7 +198,7 @@ def layout(**kwargs):
                                 inline=True,
                                 className="p-1 rounded text-white",
                                 style={'backgroundColor': 'black', 'border': '1px solid #6c757d'},
-                                labelStyle={'color': 'white', 'marginRight': '10px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
+                                labelStyle={'color': 'white', 'marginRight': '6px', 'marginLeft': '0px', 'fontSize': '0.85rem'},
                                 inputStyle={'opacity': '0.6'}
                             )
                         ], xs=12, md="auto"),
@@ -196,7 +210,7 @@ def layout(**kwargs):
                                 id='analysis_single_asset_filter_input',
                                 options=[{'label': m, 'value': m} for m in default_assets],
                                 className="bg-dark text-white border-secondary control-mobile-full",
-                                style={'width': '200px'}
+                                style={'width': '180px'}
                             ),
                         ], xs=12, md="auto"),
 
@@ -212,15 +226,15 @@ def layout(**kwargs):
                                        if p not in registry.DEFAULT_OFF_PLOTS],
                                 multi=True,
                                 className="dash-dropdown bg-dark text-white control-mobile-full",
-                                style={'width': '200px'}
+                                style={'width': '180px'}
                             ),
                         ], xs=12, md="auto"),
-                    ], className="g-2 align-items-start mt-1")),
+                    ], className="g-1 align-items-start")),
 
                     # The grid's controls: many markets, one metric, and the model
                     # view (Raw / NPF / Both) that decides the metric's basis.
                     html.Div(id='analysis_grid_controls', hidden=True,
-                             children=dbc.Row([
+                             className="col-12 col-md-auto", children=dbc.Row([
                         dbc.Col([
                             controls.label("Asset Classes", marginBottom="0.5rem"),
                             class_filter.control(
@@ -267,7 +281,8 @@ def layout(**kwargs):
                                      className="text-muted",
                                      style={'fontSize': '0.7rem', 'marginTop': '2px'}),
                         ], xs=12, md="auto"),
-                    ], className="g-2 align-items-start mt-1")),
+                    ], className="g-1 align-items-start")),
+                    ], className="g-1 align-items-start"),
                     ]),
                 ])
             ], style={'backgroundColor': 'var(--card-color)', 'borderColor': vc.GRID_COLOR}, className="mb-4 mt-2"),

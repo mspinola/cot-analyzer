@@ -1404,3 +1404,13 @@ table.scorecard-card tbody td {
     }
     .scorecard-grid > .scorecard-wide { grid-column: 1 / -1; }
 }
+
+/* The Analysis stack's asset-class radio is the control that decides whether
+   the page's configuration fits on one line: nine inline options, each with
+   Bootstrap's 1rem form-check-inline trailing margin on top of the label's own
+   spacing. Halving that margin here buys about 70px, which is the slack that
+   keeps the whole set on one row at 1920px with a classic scrollbar taking its
+   17px; without it the row fit with 3px to spare and wrapped on any Windows
+   display. Scoped to this one control: OI Alignment's twin radio shares a row
+   with only the Asset Selector and has room. */
+#analysis_asset_class_selector .form-check-inline { margin-right: 0.5rem; }
