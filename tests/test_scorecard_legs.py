@@ -165,3 +165,16 @@ def test_the_leg_colours_follow_the_palette():
     other = viz_config.get_palette("Solarized")
     legs = legs_for(record(), models.RAW_PF, palette=other)
     assert legs[1].hue == other[1] and legs[1].hue != PALETTE[1]
+
+
+# ── the order of the cards ───────────────────────────────────────────────────
+
+def test_cards_come_widest_first_then_by_name():
+    """The wide class leads as a band and the grid pairs like widths below it;
+    alphabetical put the two-market card at the top, inflated to its column."""
+    from pages.analytics.scorecard import card_order
+    by_class = {"Crypto": [1, 2], "Currencies": list(range(9)),
+                "Energies": [1, 2, 3, 4], "Equities": [1, 2, 3, 4],
+                "Live Stock": [1, 2, 3]}
+    assert [name for name, _ in card_order(by_class)] == [
+        "Currencies", "Energies", "Equities", "Live Stock", "Crypto"]

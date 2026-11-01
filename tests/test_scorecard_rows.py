@@ -43,8 +43,9 @@ COLORS = GridColors(bull=BULL_HEX, bear=BEAR_HEX,
 def read(symbol="6A", state=const.SETUP_NONE, **scores):
     paths = scores.pop("paths", {})
     legs = scores.pop("legs", (sr.LegMark("Comm", 50, sr.BULL_HIGH),))
+    net = scores.pop("net", ())
     return sr.MarketRead(symbol=symbol, asset=symbol, state=state, scores=scores,
-                         paths=paths, legs=legs, date="2026-10-20")
+                         paths=paths, legs=legs, net=net, date="2026-10-20")
 
 
 def _rgb(hex_color):
@@ -644,7 +645,9 @@ def test_the_header_corner_reserves_the_label_column():
 
 def test_the_header_names_the_markets():
     header_row = _table([read("6A"), read("GC")]).children[0].children
-    assert [th.children for th in header_row.children] == ["", "6A", "GC"]
+    # The empty corner, then one link per market: the symbol is the link's text.
+    assert [getattr(th.children, "children", th.children)
+            for th in header_row.children] == ["", "6A", "GC"]
 
 
 # ── a card wider than the screen scrolls rather than compressing ─────────────
@@ -674,3 +677,216 @@ def test_the_row_labels_stay_put_while_the_markets_scroll():
     assert label.style["position"] == "sticky"
     assert label.style["left"] == "0"
     assert label.style["backgroundColor"] == vc.BACKGROUND_COLOR
+
+
+# ── the net-positions row ────────────────────────────────────────────────────
+
+def _net(comm, lrg=(), sml=()):
+    return (sr.NetSeries("Comm", tuple(comm)),
+            sr.NetSeries("NonComm", tuple(lrg)),
+            sr.NetSeries("NonRept", tuple(sml)))
+
+
+def _paths(svg):
+    """[(stroke, width, [(x, y_from, y_to), ...]), ...] in draw order."""
+    out = []
+    for d, stroke, width in re.findall(
+            r'<path d="([^"]+)" stroke="([^"]+)" stroke-width="([^"]+)"', svg):
+        bars = [tuple(float(n) for n in m)
+                for m in re.findall(r"M([\d.]+) ([\d.]+)V([\d.]+)", d)]
+        out.append((stroke, float(width), bars))
+    return out
+
+
+def test_the_zero_line_is_the_centre_and_the_largest_bar_reaches_the_pad():
+    """The Analysis panel's symmetric axis at thumbnail size: zero stays in the
+    middle whatever the range, and the window's largest reading sets the scale."""
+    svg, _ = sr.net_bars(_net([-10] * 7 + [-40] + [20]))
+    mid = sr.NET_H / 2
+    assert f'y1="{mid:.1f}" x2=' in svg
+    bars = [bar for _, _, path in _paths(svg) for bar in path]
+    assert all(y_from == mid for _, y_from, _ in bars)
+    assert min(bar[2] for bar in bars) == pytest.approx(mid - (mid - sr.NET_PAD) / 2)
+    assert max(bar[2] for bar in bars) == pytest.approx(sr.NET_H - sr.NET_PAD)
+
+
+def test_only_commercials_are_drawn_and_only_they_set_the_scale():
+    """The other legs ride along for the hover and nothing else: a huge
+    Non-Commercial reading must not flatten the Commercial bars."""
+    alone = sr.net_bars(_net([5] * 8))[0]
+    with_specs = sr.net_bars(_net([5] * 8, [-500] * 8, [1] * 8))[0]
+    assert _paths(alone) == _paths(with_specs)
+    assert len(_paths(alone)) == 2  # the window, then the latest week
+
+
+def test_the_row_draws_in_the_neutral_ink_and_never_a_palette_colour():
+    svg, _ = sr.net_bars(_net([5, -5] * 4))
+    strokes = {stroke for stroke, _, _ in _paths(svg)}
+    r, g, b = _rgb(sr.NEUTRAL_INK)
+    assert strokes == {f"rgba({r}, {g}, {b}, 0.85)", f"rgba({r}, {g}, {b}, 1)"}
+
+
+def test_the_latest_week_is_the_last_bar_at_full_ink_and_wider():
+    svg, _ = sr.net_bars(_net([5] * 7 + [-3]))
+    window, latest = _paths(svg)
+    assert latest[1] == sr.NET_END_W > window[1]
+    assert latest[2][0][0] > window[2][-1][0]
+    assert latest[2][0][2] > sr.NET_H / 2  # the -3 points down
+
+
+def test_a_flat_or_short_net_history_draws_nothing():
+    assert sr.net_bars(_net([0] * 8, [50] * 8, [50] * 8)) == (None, None)
+    assert sr.net_bars(_net([1, 2], [3, 4], [5, 6])) == (None, None)
+    assert sr.net_bars(()) == (None, None)
+
+
+def test_the_net_row_carries_no_unescaped_hash():
+    """The data-URI trap the sparkline and the mark both guard against."""
+    svg, _ = sr.net_bars(_net([5] * 8, [-5] * 8, [1] * 8))
+    assert "#" not in svg
+    assert "#" not in sr.net_img(svg).src
+
+
+def test_the_row_has_one_height_on_every_card():
+    """Fixed, like the sparklines, not scaled to the cell like the marks: a
+    two-market card and a nine-market card keep the same row rhythm."""
+    svg, _ = sr.net_bars(_net([5] * 8))
+    assert sr.net_img(svg).style["height"] == f"{sr.NET_H}px"
+    assert sr.NET_H > sr.SPARK_H
+
+
+def test_all_three_legs_latest_figures_are_on_hover_in_the_rows_own_unit():
+    _, latest = sr.net_bars(_net([-61852.4] * 8, [46552.6] * 8, [15299.9] * 8))
+    assert latest == "Comm -61,852, NonComm +46,553, NonRept +15,300"
+    _, latest = sr.net_bars(_net([-0.22] * 8, [0.165] * 8, [0.054] * 8),
+                            as_share=True)
+    assert latest == "Comm -22.0%, NonComm +16.5%, NonRept +5.4%"
+
+
+def _rows(table):
+    return table.children.children[1].children
+
+
+def _label_text(row):
+    label = row.children[0].children
+    return label[0] if isinstance(label, list) else label
+
+
+def _is_net(row):
+    return str(_label_text(row)).startswith(sr.NET_ROW.label)
+
+
+def test_the_card_draws_the_net_row_after_the_positioning_rows():
+    reads = [read("6A", net=_net([5] * 8, [-5] * 8, [1] * 8)),
+             read("6B", net=())]
+    rows = _rows(sr.build_table(reads, models.RAW_PF, COLORS))
+    index = next(i for i, row in enumerate(rows) if _is_net(row))
+    assert _label_text(rows[index - 1]) == sr.SCORE_ROWS[-1].label
+    net_row = rows[index]
+    assert isinstance(net_row.children[1].children, html.Img)
+    assert "Commercials as bars" in net_row.children[1].title
+    assert net_row.children[2].children == "·"  # a market with no history
+
+
+def test_a_card_with_no_net_history_draws_no_net_row():
+    rows = _rows(sr.build_table([read("6A")], models.RAW_PF, COLORS))
+    assert not any(_is_net(row) for row in rows)
+
+
+def test_the_net_row_names_its_quantity_in_the_models_basis():
+    """"Commercial net contracts" under Raw PF, "% of OI" under NPF: the label
+    carries the unit rather than a note beside it, so the row says what it is."""
+    reads = [read("6A", net=_net([0.2] * 8, [-0.2] * 8, [0.0] * 8))]
+    for model, unit in ((models.RAW_PF, "contracts"), (models.NPF, "% of OI")):
+        rows = _rows(sr.build_table(reads, model, COLORS))
+        row = next(r for r in rows if _is_net(r))
+        assert _label_text(row) == f"Commercial net {unit}"
+        assert f"in {unit}" in row.children[1].title
+
+
+# ── the faint Non-Commercial line ────────────────────────────────────────────
+
+def _line(svg):
+    """[(x, y), ...] of the speculator polyline, and its stroke, or (None, None)."""
+    m = re.search(r'<polyline points="([^"]+)" fill="none" stroke="([^"]+)" '
+                  r'stroke-width="([^"]+)"', svg)
+    if not m:
+        return None, None, None
+    points = [tuple(float(n) for n in pair.split(","))
+              for pair in m.group(1).split(" ")]
+    return points, m.group(2), float(m.group(3))
+
+
+def test_the_line_is_the_second_series_on_the_bars_scale():
+    comm, specs = [10] * 8, [-5] * 7 + [-20]
+    svg, _ = sr.net_bars(_net(comm, specs, [1] * 8), spec_line=True)
+    points, _, _ = _line(svg)
+    mid, reach = sr.NET_H / 2, sr.NET_H / 2 - sr.NET_PAD
+    assert len(points) == 8
+    assert points[-1][1] == pytest.approx(mid + reach)  # -20 is the window's largest
+    assert points[0][1] == pytest.approx(mid + reach * 5 / 20)
+    # The bars share that scale: +10 is half the reach.
+    window, _ = _paths(svg)
+    assert window[2][0][2] == pytest.approx(mid - reach / 2)
+
+
+def test_the_line_is_off_unless_asked_for_and_the_card_asks():
+    net = _net([5] * 8, [-5] * 8, [1] * 8)
+    assert _line(sr.net_bars(net)[0]) == (None, None, None)
+    assert _line(sr.net_bars(net, spec_line=True)[0])[0] is not None
+    assert sr.SPEC_LINE is True
+
+
+def test_the_line_is_fainter_and_thinner_than_the_bars():
+    svg, _ = sr.net_bars(_net([5] * 8, [-5] * 8, [1] * 8), spec_line=True)
+    _, stroke, width = _line(svg)
+    r, g, b = _rgb(sr.NEUTRAL_INK)
+    assert stroke == f"rgba({r}, {g}, {b}, {sr.SPEC_LINE_ALPHA})"
+    assert sr.SPEC_LINE_ALPHA < 0.85
+    assert width < sr.NET_BAR_W
+
+
+def test_the_lines_last_point_is_the_latest_bar_whatever_its_length():
+    svg, _ = sr.net_bars(_net([5] * 10, [-5] * 8), spec_line=True)
+    points, _, _ = _line(svg)
+    window, latest = _paths(svg)
+    assert len(points) == 8
+    assert points[-1][0] == latest[2][0][0]
+
+
+def test_a_missing_second_series_draws_bars_alone():
+    svg, _ = sr.net_bars((sr.NetSeries("Comm", (5,) * 8),), spec_line=True)
+    assert svg is not None
+    assert _line(svg) == (None, None, None)
+
+
+# ── the card's width and its headers ─────────────────────────────────────────
+
+def test_a_small_card_is_capped_rather_than_stretched_to_its_column():
+    """Two markets drew 150px cells beside a four-market card's 70px ones."""
+    assert sr.card_max_px(2) < sr.card_max_px(4) < sr.card_max_px(9)
+    assert sr.card_max_px(12) == sr.CARD_MAX_PX  # the page-wide ceiling still holds
+    assert sr.card_max_px(2) - sr._label_px() == 2 * sr._MAX_COL_WIDTH
+    assert sr._MAX_COL_WIDTH >= sr.MARK_W  # a mark still gets its full width
+    table = sr.build_table([read("6A"), read("6B")], models.RAW_PF, COLORS).children
+    assert table.style["maxWidth"] == f"{sr.card_max_px(2)}px"
+
+
+def test_each_header_links_to_the_markets_oi_alignment_page():
+    """The Setups cards' convention: the symbol shows, the name is on hover, and
+    the link opens the market's page in a new tab."""
+    table = sr.build_table(
+        [sr.MarketRead(symbol="6A", asset="Australian Dollar", date="2026-10-20")],
+        models.RAW_PF, COLORS).children
+    header = table.children[0].children.children[1].children
+    assert isinstance(header, html.A)
+    assert header.children == "6A"
+    assert header.href == "/oi_alignment?asset=Australian%20Dollar"
+    assert header.target == "_blank"
+    assert "Australian Dollar" in header.title
+
+
+def test_a_market_with_no_symbol_still_gets_a_header_and_a_link():
+    header = sr.market_link(sr.MarketRead(symbol="", asset="Bitcoin"))
+    assert header.children == "Bitcoin"
+    assert header.href.endswith("asset=Bitcoin")

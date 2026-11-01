@@ -211,6 +211,68 @@ SPARK_ROWS = (
     SparkRow("oi", "Open interest", "52 weeks", rho=-0.07),
 )
 
+
+@dataclass(frozen=True)
+class NetSeries:
+    """One leg's weekly net positions, for the net-positions row.
+
+    Commercials first in the read's tuple: that is the leg the row DRAWS. The
+    others ride along for the hover figures only.
+    """
+
+    short: str
+    values: tuple
+
+
+@dataclass(frozen=True)
+class NetRow:
+    """The row drawn as bars. No direction, no correlation."""
+
+    key: str
+    label: str
+    window_note: str
+    tooltip: str
+
+
+#: The Analysis page's Net Positions panel at thumbnail size, reduced to the one
+#: leg every gate reads: the Commercial net position, week by week, as bars from a
+#: zero line, with the Non-Commercial net as a faint line over them. The open
+#: interest line and the Commercial range band have no room at this scale and say
+#: nothing a sweep needs. Nothing here takes a leg's colour, for a reason visible
+#: on the card rather than argued here: drawing legs by colour put palette red
+#: (the Commercial slot, also the card's BEAR hue) under a bullish verdict, on a
+#: surface whose one colour rule is that colour means the verdict. In the neutral
+#: ink the row asserts nothing, the same way the paths below it assert nothing,
+#: and the legs are told apart by weight (bars against a thin line) rather than
+#: hue. The speculator line is there to make the two sides of one position
+#: legible; it is mostly the bars mirrored, since the Legacy legs sum to zero.
+#: All three legs' latest figures stay on hover. Not in SPARK_ROWS, because it is
+#: bars from zero rather than a path through its own range; not a measured row
+#: either. The label on the card is this label plus the basis unit, "contracts"
+#: or "% of OI", so the row names its own quantity.
+NET_ROW = NetRow(
+    "net", "Commercial net", "52 weeks",
+    "The Commercial leg's weekly net position as bars from a zero line, with the "
+    "Non-Commercial net as the faint line, scaled to the window's largest reading "
+    "of either, so the shape reads within a market and not across columns. The "
+    "Analysis page's Net Positions panel without the open interest line or the "
+    "range band. Hover for all three legs' latest figures. Description, not a "
+    "verdict.")
+
+#: The net row's drawing box. One unit of width per week, so the 53-week window
+#: draws at the sparkline's width and the bars touch: at this scale the row is the
+#: silhouette of the series, which is what a thumbnail can honestly show. Taller
+#: than a sparkline because it has two halves, and FIXED at that height in the cell
+#: rather than scaled to the cell's width, so every card's rows keep one rhythm.
+NET_H, NET_PITCH, NET_BAR_W, NET_PAD = 22, 1.0, 1.0, 1.0
+#: The latest week, drawn at full ink and a touch wider: the sparkline's end dot.
+NET_END_W = 1.6
+#: Whether the card draws the Non-Commercial net as a faint line over the bars.
+#: The speculator side made visible without a second colour: the same ink, thin
+#: and knocked back, so the bars stay the thing the eye lands on.
+SPEC_LINE = True
+SPEC_LINE_W, SPEC_LINE_ALPHA = 0.8, 0.45
+
 #: What the gate row prints, and which way it leans.
 _SETUP_TEXT = {
     const.SETUP_BULL: ("SETUP", 1),
@@ -242,6 +304,11 @@ class MarketRead:
     #: LegMark per gated leg, Commercials first. Empty draws nothing rather than
     #: an empty axis, the sparkline rule.
     legs: tuple = ()
+    #: NetSeries per leg for the net-positions row, Commercials FIRST: that is the
+    #: leg it draws, the rest are hover figures. All three legs whatever the model
+    #: gates on, since the row is description rather than the verdict's
+    #: explanation. Empty on every read drops the row from the card.
+    net: tuple = ()
     date: str = ""
 
 
@@ -465,6 +532,78 @@ def leg_marks(legs, colors, lanes, band):
     return svg, f"{title} (0 at the window low, 100 at its high)"
 
 
+def _net_text(value, as_share):
+    return f"{value:+.1%}" if as_share else f"{value:+,.0f}"
+
+
+def net_bars(series, as_share=False, spec_line=False):
+    """(svg source, the latest figures) for the net-positions row, or (None, None).
+
+    Draws the FIRST series as bars, which the page makes Commercials, from a zero
+    line at the centre, scaled so the window's largest absolute reading touches the
+    pad: the Analysis panel's symmetric axis at thumbnail size, which keeps zero
+    where the eye expects it rather than wherever the range happens to put it. One
+    <path> for the window and one for the latest week, in the paths' neutral ink.
+    With `spec_line`, the SECOND series (Non-Commercials) is a thin faint line over
+    the bars in the same ink, and the scale covers both. The hover text names every
+    leg passed, so the figures the row does not draw are still one hover away.
+    """
+    if not series:
+        return None, None
+    legs = [(leg, [float(v) if v is not None and v == v else None
+                   for v in leg.values]) for leg in series]
+    _, values = legs[0]
+    if len(values) < SPARK_MIN_POINTS:
+        return None, None
+    specs = legs[1][1] if spec_line and len(legs) > 1 else []
+    half = max((abs(v) for v in values + specs if v is not None), default=0.0)
+    if half <= 0:
+        return None, None
+
+    width = 2 * NET_PAD + NET_PITCH * len(values)
+    mid = NET_H / 2
+    reach = mid - NET_PAD
+    segments = []
+    for week, value in enumerate(values):
+        if not value:
+            continue
+        x = NET_PAD + NET_PITCH * (week + 0.5)
+        segments.append(f"M{x:.1f} {mid:.1f}V{mid - reach * value / half:.1f}")
+
+    parts = [f'<line x1="0" y1="{mid:.1f}" x2="{width:.1f}" y2="{mid:.1f}" '
+             f'stroke="{AXIS_RULE}" stroke-width="1"/>']
+    if segments:
+        # rgba(), never the hex: the data-URI trap spark_img describes.
+        parts.append(f'<path d="{"".join(segments[:-1])}" '
+                     f'stroke="{hex_to_rgba(NEUTRAL_INK, 0.85)}" '
+                     f'stroke-width="{NET_BAR_W}" fill="none"/>')
+        parts.append(f'<path d="{segments[-1]}" '
+                     f'stroke="{hex_to_rgba(NEUTRAL_INK, 1)}" '
+                     f'stroke-width="{NET_END_W}" fill="none"/>')
+    # Right-aligned on the bars, so the latest week is the line's last point
+    # whatever the series' length.
+    offset = len(values) - len(specs)
+    points = [f"{NET_PAD + NET_PITCH * (offset + i + 0.5):.1f},"
+              f"{mid - reach * v / half:.1f}"
+              for i, v in enumerate(specs) if v is not None and i + offset >= 0]
+    if len(points) > 1:
+        parts.append(f'<polyline points="{" ".join(points)}" fill="none" '
+                     f'stroke="{hex_to_rgba(NEUTRAL_INK, SPEC_LINE_ALPHA)}" '
+                     f'stroke-width="{SPEC_LINE_W}" stroke-linejoin="round"/>')
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" '
+           f'height="{NET_H}" viewBox="0 0 {width:.0f} {NET_H}">'
+           + "".join(parts) + "</svg>")
+    latest = ", ".join(f"{leg.short} {_net_text(leg_values[-1], as_share)}"
+                       for leg, leg_values in legs
+                       if leg_values and leg_values[-1] is not None)
+    return svg, latest
+
+
+def net_img(svg):
+    """The net row at its fixed height, the sparkline's rule: see spark_img."""
+    return svg_img(svg, NET_H)
+
+
 def spark_img(svg):
     """The path as an <img>, so a cell costs no Graph and no extra dependency.
 
@@ -618,16 +757,44 @@ def card_min_px(market_count):
 #: hundreds of pixels from the data it names.
 CARD_MAX_PX = 980
 
+#: Ceiling for a market column. A table is `width: 100%` of its grid cell, so
+#: without this a two-market card beside a four-market one drew 150px cells next to
+#: 70px ones, and the small classes looked inflated rather than small. The cap is
+#: generous enough that a mark still gets its full MARK_W, and the card is centred
+#: in whatever is left.
+_MAX_COL_WIDTH = 80
+
 #: A card wider than this is given a whole row rather than squeezed into a column.
 #: It is the usable half-column at the 992px breakpoint, less the grid gap and the
 #: container's padding. Only the nine-market Currencies card exceeds it today.
 GRID_COLUMN_PX = 460
 
 
+def card_max_px(market_count):
+    """The widest this card draws: the column cap times its markets, under the
+    page-wide ceiling. Public for the same reason as card_min_px: the page centres
+    the class heading over the table and has to agree with it about the width."""
+    return min(CARD_MAX_PX, _label_px() + _MAX_COL_WIDTH * market_count)
+
+
+def market_link(read):
+    """The column header: the symbol, linking to the market's OI Alignment page.
+
+    The Setups cards' convention (same target, same new tab), so a sweep that
+    stops on a column has somewhere to go. The full name rides on hover, since the
+    header has room for the symbol only.
+    """
+    return html.A(read.symbol or read.asset,
+                  href=f"/oi_alignment?asset={quote(read.asset)}",
+                  target="_blank", rel="noopener noreferrer",
+                  title=f"{read.asset}: open its OI Alignment page",
+                  style={"color": "inherit", "textDecoration": "none"})
+
+
 def build_table(reads, model, colors):
     """The card. Pure over `reads` plus a colour set; no store, no palette file."""
     head = html.Tr([html.Th("", style={**_HEAD_STYLE, "width": _LABEL_WIDTH})]
-                   + [html.Th(r.symbol or r.asset, style=_HEAD_STYLE) for r in reads])
+                   + [html.Th(market_link(r), style=_HEAD_STYLE) for r in reads])
 
     body = []
     setup_cells = []
@@ -685,6 +852,34 @@ def build_table(reads, model, colors):
         body.append(html.Tr([_label(row, opens)] + cells))
         opens = False
 
+    # The net-positions row closes the positioning group: the Commercial series
+    # the marks and the move above it are computed from, on the uniform window, in
+    # the model's basis (the caption names it). Dropped from the card entirely when
+    # no read carries it, rather than drawn as a row of empty marks.
+    if any(read.net for read in reads):
+        as_share = model.basis == const.BASIS_OI_NORM
+        unit = "% of OI" if as_share else "contracts"
+        cells = []
+        for read in reads:
+            svg, latest = net_bars(read.net, as_share, spec_line=SPEC_LINE)
+            if svg is None:
+                cells.append(html.Td(_EMPTY, style=_gap(with_ink(
+                    {**_CELL_STYLE, "color": colors.dim}), opens)))
+            else:
+                cells.append(html.Td(
+                    net_img(svg),
+                    style=_gap({**_CELL_STYLE, "padding": "2px",
+                                "lineHeight": "0", "cursor": "help"}, opens),
+                    title=f"{latest}. Commercials as bars"
+                          f"{', Non-Commercials as the line' if SPEC_LINE else ''}, "
+                          f"{NET_ROW.window_note} in {unit}; zero at the centre, "
+                          f"scaled to the window's largest reading."))
+        body.append(html.Tr([html.Td(
+            f"{NET_ROW.label} {unit}",
+            style=_gap(with_ink(_LABEL_STYLE), opens),
+            title=NET_ROW.tooltip)] + cells))
+        opens = False
+
     # The tape group: no gated verdict in it, which the how-to-read fold explains.
     opens = True
     for row in SPARK_ROWS:
@@ -710,8 +905,10 @@ def build_table(reads, model, colors):
         style={"borderCollapse": "separate", "borderSpacing": "2px",
                "width": "100%", "tableLayout": "fixed",
                "minWidth": f"{card_min_px(len(reads))}px",
-               "maxWidth": f"{CARD_MAX_PX}px", "margin": "0 auto"})
+               "maxWidth": f"{card_max_px(len(reads))}px", "margin": "0 auto"})
     # The scroll lives on THIS wrapper, never on the body: a page-level overflow-x
     # is what the mobile work had to undo elsewhere in this app, and it breaks
-    # position: sticky for everything inside it.
-    return html.Div(table, style={"overflowX": "auto", "maxWidth": "100%"})
+    # position: sticky for everything inside it. The class draws the scroll
+    # shadow (custom.css), the cue that there are columns past the right edge.
+    return html.Div(table, className="scorecard-scroll",
+                    style={"overflowX": "auto", "maxWidth": "100%"})
