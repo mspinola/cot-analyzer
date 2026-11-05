@@ -14,6 +14,7 @@ from dash import Dash, Input, Output, State, dcc, html, no_update
 from flask import request
 from flask_compress import Compress
 
+import local_pages
 import routing
 import visitors
 import viz_constants as vc
@@ -612,7 +613,7 @@ _ANALYTICS_STATIC_PAGES = (
 #: several ways, and a managed-futures ETF's holdings table is not that cut.
 _MONITOR_PAGES = (
     ("Market Internals", "/internals"),
-)
+) + local_pages.monitor_entries()
 
 #: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites, one
 #: subdomain each, with no server of their own (the same pages the view

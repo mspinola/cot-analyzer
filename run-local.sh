@@ -136,4 +136,10 @@ if [ ! -x "$_PY" ]; then
     exit 1
 fi
 
+# Local-only pages (src/local_pages.py): views that draw licensed data, such as NAAIM's
+# paid history file and AAII's member download, which must never reach the public
+# site. The server's launcher does not set this, and verify-deploy.sh checks the page
+# 404s there. Export COT_ANALYZER_LOCAL_PAGES=0 first to see the site as deployed.
+export COT_ANALYZER_LOCAL_PAGES="${COT_ANALYZER_LOCAL_PAGES:-1}"
+
 exec "$_PY" src/main.py "$@"
