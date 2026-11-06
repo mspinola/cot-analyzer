@@ -633,6 +633,8 @@ def test_each_card_exports_itself_as_a_png(monkeypatch):
         assert set(page.EXPORTS) == {"price", "columns"}
         js = (Path(__file__).parents[1] / "src/assets/clientside.js").read_text()
         assert "export_sentiment_image: function(n_clicks, container_id, lookback)" in js
+        # 1x: at 2x the PNG opened at twice the card's size and read as zoomed in.
+        assert "view + '_' + (lookback || 3) + 'y', null, 1);" in js
         for view, (container, button) in page.EXPORTS.items():
             card = page._card("t", None, {}, export=view)
             assert card.children.id == container
