@@ -46,6 +46,20 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          * the same exportBoardImage as the Strip. The how-to-read fold is marked
          * data-export="omit" in the layout, so it stays out whether open or shut.
          */
+        /**
+         * One Sentiment card as a PNG: its title, notes and chart, via the same
+         * exportBoardImage as the Strip and the Crowd board. The card body is the
+         * container; its id (sentiment_<view>_export) names the view in the file,
+         * with the index lookback, e.g. cot_sentiment_price_3y_2026-11-06.png.
+         */
+        export_sentiment_image: function(n_clicks, container_id, lookback) {
+            if (n_clicks && container_id) {
+                var view = container_id.replace(/^sentiment_/, '').replace(/_export$/, '');
+                exportBoardImage(container_id, 'cot_sentiment',
+                                 view + '_' + (lookback || 3) + 'y', null);
+            }
+            return window.dash_clientside.no_update;
+        },
         export_crowd_image: function(n_clicks, model_key, target_date) {
             if (n_clicks) {
                 exportBoardImage('crowd_export_container', 'cot_crowd',

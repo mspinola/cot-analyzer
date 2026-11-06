@@ -9,6 +9,7 @@ COT pairing (measured not to move together, 2026-11-05).
 Store-free: `get_bars` is injected.
 """
 import importlib
+from pathlib import Path
 
 import cotmetrics.indicators as indicators
 import dash
@@ -620,3 +621,29 @@ def test_without_provisional_weeks_nothing_is_flagged():
     assert read.provisional == () and "provisional" not in s.summary(read)
     fig = s.price_sentiment_figure(read, COLORS, PALETTE)
     assert not any("provisional" in (t.name or "") for t in fig.data)
+
+
+def test_each_card_exports_itself_as_a_png(monkeypatch):
+    """Both cards carry an export button in their header, the card body is the
+    picture's container, and each button has a clientside export with no load call."""
+    registered = list(dash._callback.GLOBAL_CALLBACK_LIST)
+    monkeypatch.setenv(local_pages.ENV, "1")
+    page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
+    try:
+        assert set(page.EXPORTS) == {"price", "columns"}
+        js = (Path(__file__).parents[1] / "src/assets/clientside.js").read_text()
+        assert "export_sentiment_image: function(n_clicks, container_id, lookback)" in js
+        for view, (container, button) in page.EXPORTS.items():
+            card = page._card("t", None, {}, export=view)
+            assert card.children.id == container
+            ids = {getattr(c, "id", None) for c in card.children.children[0].children[1].children}
+            assert button in ids
+            ours = [c for c in dash._callback.GLOBAL_CALLBACK_LIST[len(registered):]
+                    if any(i["id"] == button for i in c["inputs"])]
+            assert len(ours) == 1 and ours[0]["prevent_initial_call"]
+    finally:
+        dash._callback.GLOBAL_CALLBACK_LIST[:] = registered
+        monkeypatch.delenv(local_pages.ENV)
+        importlib.reload(page)
+        for key in [k for k, v in dash.page_registry.items() if v.get("path") == "/sentiment"]:
+            del dash.page_registry[key]

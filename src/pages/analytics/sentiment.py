@@ -26,6 +26,10 @@ LOOKBACK = "sentiment_lookback"
 SUMMARY = "sentiment_summary"
 CAPTION = "sentiment_caption"
 ZOOM_SINK = "sentiment_zoom_sink"
+#: Each card's PNG export: the card body is the picture, the button sits in its
+#: header. Keyed by the view's short name, which also names the file.
+EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
+           "columns": ("sentiment_columns_export", "sentiment_columns_export_btn")}
 COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
 
 if local_pages.enabled():
@@ -47,15 +51,33 @@ NOTE_STYLE = {"color": vc.TEXT_COLOR, "fontSize": "0.8rem"}
 GRAPH_CONFIG = {"displayModeBar": False, "responsive": True}
 
 
-def _card(title, subtitle, figure, graph_id=None, controls=None):
+def export_button(view):
+    """The card's PNG export, the Crowd board's button. exportBoardImage drops every
+    button from its clone, so this one never appears in its own picture."""
+    _, button_id = EXPORTS[view]
+    return html.Div([
+        dbc.Button("📸 Export PNG", id=button_id, size="sm",
+                   style={"color": vc.TEXT_COLOR}),
+        dbc.Tooltip("This card as one image: title, notes and chart.",
+                    target=button_id, placement="bottom"),
+    ])
+
+
+def _card(title, subtitle, figure, graph_id=None, controls=None, export=None):
     graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
              else dcc.Graph(figure=figure, config=GRAPH_CONFIG))
-    body = [html.Div(title, style=TITLE_STYLE)]
+    head = html.Div(title, style=TITLE_STYLE)
+    if export is not None:
+        head = html.Div([head, export_button(export)],
+                        className="d-flex justify-content-between align-items-start")
+    body = [head]
     if subtitle:
         body.append(html.Div(subtitle, style=SUB_STYLE))
     if controls is not None:
         body.append(controls)
-    return dbc.Card(dbc.CardBody([*body, graph], className="p-3"),
+    # The body is what an export captures, so it carries the export's container id.
+    kw = {"id": EXPORTS[export][0]} if export is not None else {}
+    return dbc.Card(dbc.CardBody([*body, graph], className="p-3", **kw),
                     style=CARD_STYLE, className="mb-3")
 
 
@@ -125,10 +147,12 @@ def layout(**_):
                   "crowd leans long, below 20 it is washed out. Shaded weeks: SPY below "
                   "its high so far, amber 5-10%, orange 10-20%, red 20% or more. "
                   f"Opens on {sentiment.OPEN_YEARS} years; the buttons change the window.",
-                  sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART),
+                  sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
+                  export="price"),
             # No subtitle: each row's header carries the sentence that reads it.
             _card("Weekly columns", None,
-                  sentiment.columns_figure(read, colors, palette), COLUMNS_CHART),
+                  sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
+                  export="columns"),
         ]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
                           dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK)],
@@ -155,6 +179,19 @@ if local_pages.enabled():
         State(COLUMNS_CHART, "id"),
         prevent_initial_call=True,
     )
+
+    # The PNG exports, clientside like the Strip's and the Crowd board's: everything
+    # in the picture is already in the browser. The container id says which card, and
+    # the lookback rides along only to name the file.
+    for _container, _button in EXPORTS.values():
+        clientside_callback(
+            "window.dash_clientside.clientside.export_sentiment_image",
+            Output(_button, "n_clicks"),
+            Input(_button, "n_clicks"),
+            State(_container, "id"),
+            State(LOOKBACK, "value"),
+            prevent_initial_call=True,
+        )
 
     # Not on load: layout() has already drawn every view at the defaults. Firing here
     # too drew each chart twice per page load, the second Plotly.react landing while the
