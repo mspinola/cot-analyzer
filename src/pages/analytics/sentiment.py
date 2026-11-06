@@ -1,13 +1,13 @@
-"""Sentiment: NAAIM and AAII against SPY and S&P 500 speculator positioning. LOCAL ONLY.
+"""Sentiment: NAAIM and AAII against SPY. LOCAL ONLY.
 
 Registered only when `local_pages.enabled()`: the histories it draws are licensed to the
 operator and must not reach the public site. Unregistered, the path 404s and the navbar
 omits it; see `local_pages` for why that needs no other code.
 
 Rendered per request in `layout()`, like Market Internals, at the default 3-year index;
-the lookback toggle (1Y/3Y) redraws every index view, the summary and the caption, and
-the quadrant's year buttons window its scatter. Reads are cached per lookback on the
-stores' own dates. Every number, label and cutoff comes from `components.sentiment`;
+the lookback toggle (1Y/3Y) redraws both views, the summary and the caption. Reads are
+cached per lookback on the stores' own dates. There is no COT pairing view: the
+component's docstring says why. Every number, label and cutoff comes from `components.sentiment`;
 this file only lays the views out.
 """
 import dash
@@ -21,22 +21,20 @@ import viz_constants as vc
 from components import plot_colors
 
 PRICE_CHART = "sentiment_price_chart"
-WORDS_CHART = "sentiment_words_chart"
-QUADRANT_CHART = "sentiment_quadrant_chart"
-QUADRANT_YEARS = "sentiment_quadrant_years"
+COLUMNS_CHART = "sentiment_columns_chart"
 LOOKBACK = "sentiment_lookback"
 SUMMARY = "sentiment_summary"
 CAPTION = "sentiment_caption"
-MAX = "max"
 ZOOM_SINK = "sentiment_zoom_sink"
+COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
 
 if local_pages.enabled():
     dash.register_page(
         __name__,
         path='/sentiment',
         title='Sentiment (local) | COT Analyzer',
-        description='NAAIM exposure and AAII bulls minus bears against SPY and S&P 500 '
-                    'speculator positioning, weekly. Local runs only.',
+        description='NAAIM exposure and AAII bulls minus bears against SPY, weekly. '
+                    'Local runs only.',
     )
 
 CARD_STYLE = {
@@ -52,16 +50,17 @@ GRAPH_CONFIG = {"displayModeBar": False, "responsive": True}
 def _card(title, subtitle, figure, graph_id=None, controls=None):
     graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
              else dcc.Graph(figure=figure, config=GRAPH_CONFIG))
-    body = [html.Div(title, style=TITLE_STYLE), html.Div(subtitle, style=SUB_STYLE)]
+    body = [html.Div(title, style=TITLE_STYLE)]
+    if subtitle:
+        body.append(html.Div(subtitle, style=SUB_STYLE))
     if controls is not None:
         body.append(controls)
     return dbc.Card(dbc.CardBody([*body, graph], className="p-3"),
                     style=CARD_STYLE, className="mb-3")
 
 
-#: The scatter has no date axis for Plotly's own range buttons to sit on, so the same
-#: ladder is a radio row drawn to look like them: the rangeselector's background, its
-#: font and size, the selected one lit.
+#: The lookback toggle is a radio row drawn to look like Plotly's range buttons: the
+#: rangeselector's background, its font and size, the selected one lit.
 _YEAR_LABEL = {"backgroundColor": vc.BLUE_BACKGROUND, "color": vc.BRIGHTER_TEXT_COLOR,
                "fontSize": "0.75rem", "padding": "2px 8px", "marginRight": "4px",
                "borderRadius": "3px", "cursor": "pointer", "border": "1px solid transparent"}
@@ -69,17 +68,12 @@ _YEAR_CHECKED = {"border": f"1px solid {vc.BRIGHTER_TEXT_COLOR}"}
 
 
 def _button_radio(radio_id, options, value, justify):
+    # No persistence: layout() draws every chart at the defaults, and the callbacks do
+    # not fire on load (see below), so a restored value would disagree with the charts.
     return dbc.RadioItems(id=radio_id, options=options, value=value, inline=True,
-                          persistence="session", inputClassName="btn-check",
+                          inputClassName="btn-check",
                           labelStyle=_YEAR_LABEL, labelCheckedStyle=_YEAR_CHECKED,
                           className=f"year-buttons d-flex flex-wrap {justify} mb-1")
-
-
-def year_buttons():
-    options = ([{"label": f"{n}Y", "value": n} for n in sentiment.QUADRANT_YEARS]
-               + [{"label": "Max", "value": MAX}])
-    return _button_radio(QUADRANT_YEARS, options, sentiment.QUADRANT_DEFAULT_YEARS,
-                         "justify-content-end")
 
 
 def lookback_buttons():
@@ -104,17 +98,12 @@ def _notes(read):
     return [html.P(p, style=NOTE_STYLE) for p in sentiment.caption(read)]
 
 
-def years_value(value):
-    """The radio value as the figure's `years`: an int, or None for Max."""
-    return None if value in (None, MAX) else int(value)
-
-
 def layout(**_):
     read = sentiment.read()
     palette = viz_config.get_palette()
     colors = plot_colors.grid_colors(palette)
     head = [
-        html.H4("Sentiment, words against money", style={"color": vc.BRIGHTER_TEXT_COLOR}),
+        html.H4("Sentiment, NAAIM and AAII", style={"color": vc.BRIGHTER_TEXT_COLOR}),
         dbc.Badge("local only", color="warning", className="mb-2"),
     ]
     if read.awaiting:
@@ -133,26 +122,16 @@ def layout(**_):
                   f"NAAIM and AAII on one panel as range indexes: each "
                   f"{sentiment.AVERAGE_WEEKS}-week average placed between its own lowest "
                   "(0) and highest (100) reading of the lookback. Above 80 the "
-                  "crowd leans long, below 20 it "
-                  f"is washed out. Opens on {sentiment.OPEN_YEARS} years; the buttons "
-                  "change the window.",
+                  "crowd leans long, below 20 it is washed out. Shaded weeks: SPY below "
+                  "its high so far, amber 5-10%, orange 10-20%, red 20% or more. "
+                  f"Opens on {sentiment.OPEN_YEARS} years; the buttons change the window.",
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART),
-            _card("Words against money",
-                  "Two pairs on the same range index, each sentiment series beside "
-                  "the S&P 500 futures group closest to it: NAAIM (managers) with large "
-                  "specs, AAII (individuals) with non-reportables. Under each, words minus "
-                  "money: above zero the crowd says more than the futures hold.",
-                  sentiment.words_money_figure(read, colors, palette), WORDS_CHART),
-            _card("Where the latest week sits",
-                  "NAAIM's index against the speculators' over the chosen window, "
-                  "older weeks dimmer, the last "
-                  f"{sentiment.TRAIL_WEEKS} as a path. Position, not forecast. The "
-                  "window counts back from the latest week both are stored.",
-                  sentiment.quadrant_figure(read, colors), QUADRANT_CHART,
-                  controls=year_buttons()),
+            # No subtitle: each row's header carries the sentence that reads it.
+            _card("Weekly columns", None,
+                  sentiment.columns_figure(read, colors, palette), COLUMNS_CHART),
         ]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
-                          dcc.Store(id=ZOOM_SINK)],
+                          dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK)],
                          fluid=True, className="py-3")
 
 
@@ -168,23 +147,26 @@ if local_pages.enabled():
         State(PRICE_CHART, "id"),
         prevent_initial_call=True,
     )
+    # The columns re-fit too, every panel with zero kept in view (the figure's refit).
+    clientside_callback(
+        "window.dash_clientside.clientside.autoscale_y_axes",
+        Output(COLUMNS_ZOOM_SINK, "data"),
+        Input(COLUMNS_CHART, "relayoutData"),
+        State(COLUMNS_CHART, "id"),
+        prevent_initial_call=True,
+    )
 
-    # Fires on load too, so a lookback kept from earlier in the session (persistence)
-    # redraws what layout() drew at the default.
-    @callback(Output(PRICE_CHART, "figure"), Output(WORDS_CHART, "figure"),
+    # Not on load: layout() has already drawn every view at the defaults. Firing here
+    # too drew each chart twice per page load, the second Plotly.react landing while the
+    # first draw was still in flight, which left the page garbled after a refresh until
+    # a click redrew it once.
+    @callback(Output(PRICE_CHART, "figure"), Output(COLUMNS_CHART, "figure"),
               Output(SUMMARY, "children"), Output(CAPTION, "children"),
-              Input(LOOKBACK, "value"))
+              Input(LOOKBACK, "value"), prevent_initial_call=True)
     def _lookback(value):
         read = sentiment.read(lookback_value(value))
         palette = viz_config.get_palette()
         colors = plot_colors.grid_colors(palette)
         return (sentiment.price_sentiment_figure(read, colors, palette),
-                sentiment.words_money_figure(read, colors, palette),
+                sentiment.columns_figure(read, colors, palette),
                 sentiment.summary(read), _notes(read))
-
-    @callback(Output(QUADRANT_CHART, "figure"), Input(QUADRANT_YEARS, "value"),
-              Input(LOOKBACK, "value"))
-    def _quadrant_window(value, lookback):
-        colors = plot_colors.grid_colors(viz_config.get_palette())
-        return sentiment.quadrant_figure(sentiment.read(lookback_value(lookback)), colors,
-                                         years_value(value))
