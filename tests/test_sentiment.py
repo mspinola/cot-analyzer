@@ -647,3 +647,17 @@ def test_each_card_exports_itself_as_a_png(monkeypatch):
         importlib.reload(page)
         for key in [k for k, v in dash.page_registry.items() if v.get("path") == "/sentiment"]:
             del dash.page_registry[key]
+
+
+def test_the_figures_are_compact():
+    """Each card fits a laptop screen: the heights are the named constants, and the
+    column rows keep room for their two-line headers."""
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    assert s.price_sentiment_figure(read, COLORS, PALETTE).layout.height == s.PRICE_HEIGHT
+    cols = s.columns_figure(read, COLORS, PALETTE)
+    assert cols.layout.height == s.COLUMNS_HEIGHT
+    assert s.PRICE_HEIGHT <= 500 and s.COLUMNS_HEIGHT <= 700
+    # The gap between rows, in px, holds a two-line header (about 40 px).
+    gap = (cols.layout.yaxis3.domain[0] - cols.layout.yaxis4.domain[1])
+    assert gap * (s.COLUMNS_HEIGHT - 62 - 32) >= 40
