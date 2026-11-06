@@ -1437,3 +1437,17 @@ table.scorecard-card tbody td {
     background-size: 36px 100%, 14px 100%;
     background-attachment: local, scroll;
 }
+
+/* ============================================================
+   YEAR BUTTONS (radio row drawn as Plotly's range buttons)
+   The sentiment quadrant has no date axis for Plotly's own
+   rangeselector, so its 1Y..Max ladder is a dbc.RadioItems with
+   btn-check inputs. Bootstrap's form-check-inline adds 1.5em of
+   left padding and 1rem of right margin per item, which spread
+   seven buttons past a phone-width card. Compact them here.
+   ============================================================ */
+.year-buttons .form-check {
+    padding-left: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+}

@@ -593,6 +593,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
                 for (var axisKey in ranges) {
                     var r = ranges[axisKey];
+                    // Column panels list their axes in spec.zero: a column stands on
+                    // zero, so a window whose values sit all on one side still shows
+                    // the baseline rather than bars cut off at the axis.
+                    if (spec && spec.zero && spec.zero.indexOf(axisKey) !== -1) {
+                        r = [Math.min(r[0], 0), Math.max(r[1], 0)];
+                    }
                     if (spec && axisKey === spec.price_axis) {
                         priceAxis(update, axisKey, r[0], r[1], spec);
                         continue;
