@@ -51,12 +51,14 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
          * exportBoardImage as the Strip and the Crowd board. The card body is the
          * container; its id (sentiment_<view>_export) names the view in the file,
          * with the index lookback, e.g. cot_sentiment_price_3y_2026-11-06.png.
+         * At 1x, so the PNG opens at the size the card has on the page: at 2x it
+         * opened twice as large in Preview and read as zoomed in (2026-11-06).
          */
         export_sentiment_image: function(n_clicks, container_id, lookback) {
             if (n_clicks && container_id) {
                 var view = container_id.replace(/^sentiment_/, '').replace(/_export$/, '');
                 exportBoardImage(container_id, 'cot_sentiment',
-                                 view + '_' + (lookback || 3) + 'y', null);
+                                 view + '_' + (lookback || 3) + 'y', null, 1);
             }
             return window.dash_clientside.no_update;
         },
@@ -667,7 +669,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
  * figure inside an omitted element is left out of the snapshots as well, so the
  * live plots and the clone's plots stay in the same order one for one.
  */
-function exportBoardImage(containerId, prefix, model_key, target_date) {
+function exportBoardImage(containerId, prefix, model_key, target_date, scale) {
+    // Pixels per CSS pixel. 2 (the default, the Strip's and Crowd's) is crisp on a
+    // Retina screen but opens at twice the page's size in a viewer that shows pixels
+    // 1:1, such as Preview: the picture reads as zoomed in. A page whose picture is
+    // meant to look like the page passes 1.
+    scale = scale || 2;
     if (typeof html2canvas === 'undefined' || typeof Plotly === 'undefined') {
         console.error("html2canvas or Plotly is not loaded.");
         return;
@@ -706,7 +713,7 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
             format: 'png',
             width: Math.round(box.width) || 900,
             height: Math.round(box.height) || 800,
-            scale: 2
+            scale: scale
         }).then(function(dataUrl) {
             return {url: dataUrl, width: Math.round(box.width) || 900};
         });
@@ -802,7 +809,7 @@ function exportBoardImage(containerId, prefix, model_key, target_date) {
             setTimeout(function() {
                 html2canvas(clone, {
                     backgroundColor: "#1a1a1a",
-                    scale: 2,
+                    scale: scale,
                     useCORS: true,
                     logging: false
                 }).then(function(canvas) {
