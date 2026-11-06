@@ -211,6 +211,10 @@ DRAWDOWN_LEVELS = (
 #: The COT net-positioning columns' look (plot_traces.add_trace_to_all, is_bar).
 COLUMN_OPACITY = 0.8
 COLUMN_BARGAP = 0.2
+#: Figure heights in px. Compacted 2026-11-06 (from 620 and 940) so each card fits a
+#: laptop screen: about 190 px a panel on the price card, 120 px a column row.
+PRICE_HEIGHT = 470
+COLUMNS_HEIGHT = 680
 #: The columns view's SPY panel: its total return over the trailing weeks to each Friday,
 #: up weeks in the page's grey ink rather than the board's bull green, which is AAII's.
 SPY_RETURN_WEEKS = 13
@@ -615,7 +619,7 @@ def price_sentiment_figure(read, colors, palette):
         fig.update_xaxes(range=open_range(read))
     range_buttons(fig)
     _left_titles(fig)
-    _base(fig, 620)
+    _base(fig, PRICE_HEIGHT)
     fig.update_layout(uirevision=UIREVISION)
     # Only the price axis is re-fitted on a zoom: the index panel is pinned to 0-100,
     # which is the point of an index, and fitting it to a window would undo it.
@@ -665,7 +669,8 @@ def columns_figure(read, colors, palette):
     f = read.frame
     sent = sentiment_colors(palette)
     n = read.lookback_years
-    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.09,
+    # Spacing leaves room for each row's two-line header (_row_title), about 40 px.
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.075,
                         subplot_titles=(
                             _row_title(f"SPY {SPY_RETURN_WEEKS}-week return, %",
                                        f"Total return over the {SPY_RETURN_WEEKS} weeks to "
@@ -710,7 +715,7 @@ def columns_figure(read, colors, palette):
         fig.update_xaxes(range=open_range(read))
     range_buttons(fig)
     _left_titles(fig)
-    _base(fig, 940)
+    _base(fig, COLUMNS_HEIGHT)
     fig.update_layout(bargap=COLUMN_BARGAP, margin=dict(t=62), uirevision=UIREVISION,
                       showlegend=False,
                       meta={exposure_traces.REFIT_META: {"axes": list(COLUMN_AXES),
