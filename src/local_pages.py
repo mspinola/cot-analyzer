@@ -3,8 +3,13 @@
 Some views draw data this app may read but must not republish. The first is the
 sentiment page: NAAIM's Exposure Index history is a paid subscription file and AAII's
 sentiment history is a member download, both licensed to the operator, and a page on
-the public site would hand them to every visitor. Until the providers' terms say
-otherwise, such a page is local-only.
+the public site would hand them to every visitor, so in THIS app the page is local-only.
+
+The operator has since cleared publishing them (2026-11-09), and they are published,
+but not from here: `components.sentiment_static` renders the page as one static file
+that goes to surveys.bluemagicai.com through the dbmf-tracker publisher
+(`scripts/publish_surveys.sh`). The gate stays because the deployed app is still not
+where that happens, and verify-deploy still pins the 404.
 
 **The gate is an environment flag the local launcher sets and the server never does.**
 `run-local.sh` exports `COT_ANALYZER_LOCAL_PAGES=1`; `server-side/launch-cot-analyzer.sh`

@@ -140,17 +140,11 @@ def layout(**_):
         # targets a chart the page did not render.
         head.append(lookback_buttons())
         cards = [
-            _card("Sentiment against price",
-                  f"NAAIM and AAII on one panel as range indexes: each "
-                  f"{sentiment.AVERAGE_WEEKS}-week average placed between its own lowest "
-                  "(0) and highest (100) reading of the lookback. Above 80 the "
-                  "crowd leans long, below 20 it is washed out. Shaded weeks: SPY below "
-                  "its high so far, amber 5-10%, orange 10-20%, red 20% or more. "
-                  f"Opens on {sentiment.OPEN_YEARS} years; the buttons change the window.",
+            _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
                   export="price"),
             # No subtitle: each row's header carries the sentence that reads it.
-            _card("Weekly columns", None,
+            _card(sentiment.COLUMNS_TITLE, None,
                   sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
                   export="columns"),
         ]
