@@ -630,13 +630,13 @@ def test_without_provisional_weeks_nothing_is_flagged():
 
 
 def test_each_card_exports_itself_as_a_png(monkeypatch):
-    """Both cards carry an export button in their header, the card body is the
+    """Every card carries an export button in its header, the card body is the
     picture's container, and each button has a clientside export with no load call."""
     registered = list(dash._callback.GLOBAL_CALLBACK_LIST)
     monkeypatch.setenv(local_pages.ENV, "1")
     page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
     try:
-        assert set(page.EXPORTS) == {"price", "columns"}
+        assert set(page.EXPORTS) == {"price", "votes", "columns"}
         js = (Path(__file__).parents[1] / "src/assets/clientside.js").read_text()
         assert "export_sentiment_image: function(n_clicks, container_id, lookback)" in js
         # 1x: at 2x the PNG opened at twice the card's size and read as zoomed in.
