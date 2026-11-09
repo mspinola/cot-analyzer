@@ -31,22 +31,29 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     import viz_config
-    from components import plot_colors, sentiment, sentiment_static
+    from components import aaii_votes, plot_colors, sentiment, sentiment_static
 
     reads = {y: sentiment.build_read(lookback_years=y) for y in sentiment.LOOKBACK_YEARS}
     for years, read in reads.items():
         if read.awaiting:
             print(f"export-sentiment: {years}y read awaiting {', '.join(read.awaiting)}",
                   file=sys.stderr)
+    votes = aaii_votes.read()
+    if votes is None:
+        # The page still goes up: the votes card is left out, and the read above names
+        # AAII as awaiting if the whole series is missing.
+        print("export-sentiment: no AAII vote split, card left out", file=sys.stderr)
     palette = viz_config.get_palette()
     try:
-        sentiment_static.write(args.out, reads, plot_colors.grid_colors(palette), palette)
+        sentiment_static.write(args.out, reads, plot_colors.grid_colors(palette), palette,
+                               votes=votes)
     except ValueError as e:
         print(f"export-sentiment: not written: {e}", file=sys.stderr)
         return 1
     last = reads[sentiment.DEFAULT_LOOKBACK].last
     print(f"export-sentiment: wrote {args.out} ("
-          + ", ".join(f"{k} {v:%Y-%m-%d}" for k, v in last.items()) + ")")
+          + ", ".join(f"{k} {v:%Y-%m-%d}" for k, v in last.items())
+          + (f", aaii votes {votes.last:%Y-%m-%d}" if votes is not None else "") + ")")
     return 0
 
 

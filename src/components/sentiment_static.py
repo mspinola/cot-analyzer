@@ -40,7 +40,7 @@ from pathlib import Path
 import plotly.offline
 
 import viz_constants as vc
-from components import sentiment
+from components import aaii_votes, sentiment
 
 
 def plotly_js_url():
@@ -71,6 +71,10 @@ PHONE_QUERY = "(max-width: 600px)"
 
 PRICE_ID = "price"
 COLUMNS_ID = "columns"
+VOTES_ID = "votes"
+#: The payload key for the AAII votes figure, beside the lookback keys: the card does not
+#: depend on the lookback, so it is embedded once and drawn once.
+VOTES_KEY = "votes"
 
 
 def lookback_payload(read, colors, palette):
@@ -98,8 +102,9 @@ def _nav():
             + f'<a class="home" href="{HOME}">COT Analyzer &rarr;</a></nav>')
 
 
-def render(reads, colors, palette, generated_at=None, clientside_js=None):
-    """The page for `reads`, a {lookback years: SentimentRead} with the default included.
+def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None):
+    """The page for `reads`, a {lookback years: SentimentRead} with the default included,
+    and `votes` (`aaii_votes.read()`), whose card is left out when it is None.
 
     Raises ValueError when the default lookback is missing or any read is empty, so a
     failed store read stops the publish rather than putting an empty page up.
@@ -110,6 +115,8 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None):
         if read.frame.empty:
             raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
     payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
+    if votes is not None:
+        payload[VOTES_KEY] = json.loads(aaii_votes.figure(votes, colors).to_json())
     default = payload[str(sentiment.DEFAULT_LOOKBACK)]
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
@@ -163,7 +170,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 <div class="sub">{esc(sentiment.PRICE_SUBTITLE)}</div>
 <div id="{PRICE_ID}"><div class="plot"></div></div></section>
-<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
+{_votes_card() if votes is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 <div class="notes" id="notes">{notes}</div>
 <footer>{esc(SOURCES)} Not investment advice.</footer>
@@ -209,6 +216,10 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
     }});
   }}
   draw({sentiment.DEFAULT_LOOKBACK}, true);
+  if (DATA['{VOTES_KEY}']) {{
+    Plotly.newPlot(plotOf('{VOTES_ID}'), DATA['{VOTES_KEY}'].data, DATA['{VOTES_KEY}'].layout,
+                   CONFIG);
+  }}
   IDS.forEach(function (id) {{
     plotOf(id).on('plotly_relayout', function (ev) {{
       try {{ refit(ev, id); }} catch (e) {{ console.error(e); }}
@@ -222,6 +233,13 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 </body>
 </html>
 """
+
+
+def _votes_card():
+    esc = html.escape
+    return (f'<section class="card"><h2>{esc(aaii_votes.TITLE)}</h2>\n'
+            f'<div class="sub">{esc(aaii_votes.SUBTITLE)}</div>\n'
+            f'<div id="{VOTES_ID}"><div class="plot"></div></div></section>\n')
 
 
 def write(path, reads, colors, palette, **kw):

@@ -18,7 +18,7 @@ import components.sentiment as sentiment
 import local_pages
 import viz_config
 import viz_constants as vc
-from components import plot_colors
+from components import aaii_votes, plot_colors
 
 PRICE_CHART = "sentiment_price_chart"
 COLUMNS_CHART = "sentiment_columns_chart"
@@ -29,6 +29,7 @@ ZOOM_SINK = "sentiment_zoom_sink"
 #: Each card's PNG export: the card body is the picture, the button sits in its
 #: header. Keyed by the view's short name, which also names the file.
 EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
+           "votes": ("sentiment_votes_export", "sentiment_votes_export_btn"),
            "columns": ("sentiment_columns_export", "sentiment_columns_export_btn")}
 COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
 
@@ -143,6 +144,13 @@ def layout(**_):
             _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
                   export="price"),
+        ]
+        votes = aaii_votes.read()
+        if votes is not None:
+            # Not redrawn by the lookback: nothing in it is indexed.
+            cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
+                               aaii_votes.figure(votes, colors), export="votes"))
+        cards += [
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,
                   sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
