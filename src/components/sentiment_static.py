@@ -20,9 +20,11 @@ What the static page keeps from the app, and how:
 - **Not the PNG export.** It leans on html2canvas and the app's theme container; a
   reader of a static page has the browser's own screenshot.
 
-The figures are serialized by plotly.py and drawn by the plotly.js release it bundles
-(`PLOTLY_JS`), loaded from Plotly's CDN rather than inlined (about 4.6 MB). A plotly.py
-upgrade that moves the bundled version fails `test_the_cdn_build_matches_plotly_py`.
+The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
+loaded from Plotly's CDN rather than inlined (about 4.6 MB). The version is read from the
+installed plotly.py at render time (`plotly_js_url`), never pinned here: the JSON a
+plotly.py writes is the format its own bundled plotly.js reads, and the CI resolver and
+the publishing venv do not install the same plotly.py.
 
 `generated_at` is written as `"generated_at":"..."` on purpose: publish_pages masks that
 exact spelling when deciding whether anything changed, so a rebuild with no new data
@@ -35,11 +37,17 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import plotly.offline
+
 import viz_constants as vc
 from components import sentiment
 
-PLOTLY_VERSION = "3.7.0"
-PLOTLY_JS = f"https://cdn.plot.ly/plotly-{PLOTLY_VERSION}.min.js"
+
+def plotly_js_url():
+    """The CDN build of the plotly.js the installed plotly.py bundles."""
+    return f"https://cdn.plot.ly/plotly-{plotly.offline.get_plotlyjs_version()}.min.js"
+
+
 CLIENTSIDE_JS = Path(__file__).resolve().parent.parent / "assets" / "clientside.js"
 
 TITLE = "Surveys, NAAIM and AAII"
@@ -138,7 +146,7 @@ h1 {{ color: var(--ink); font-size: 1.4rem; font-weight: 500; margin: 6px 0 8px;
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 </style>
-<script src="{PLOTLY_JS}" charset="utf-8"></script>
+<script src="{plotly_js_url()}" charset="utf-8"></script>
 </head>
 <body>
 <main>

@@ -4,7 +4,7 @@ What is pinned: every lookback the toggle offers is embedded and parses back, th
 local-only line is gone from the published notes and still on the app's, an empty read
 refuses to render rather than publishing an empty page, the JSON cannot close its
 script element early, `generated_at` carries the spelling publish_pages masks, and the
-CDN build is the plotly.js plotly.py serializes for. Store-free, as test_sentiment.
+CDN build is the plotly.js the installed plotly.py bundles. Store-free, as test_sentiment.
 """
 import json
 import re
@@ -75,5 +75,7 @@ def test_the_page_inlines_the_apps_refit_handler():
     assert "autoscale_y_axes: function" in full
 
 
-def test_the_cdn_build_matches_plotly_py():
-    assert plotly.offline.get_plotlyjs_version() == st.PLOTLY_VERSION
+def test_the_page_loads_the_plotly_js_its_plotly_py_bundles():
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    version = plotly.offline.get_plotlyjs_version()
+    assert f'src="https://cdn.plot.ly/plotly-{version}.min.js"' in page
