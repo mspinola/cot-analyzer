@@ -170,6 +170,7 @@ def test_the_beacon_logs_only_allowlisted_pages():
     assert external_page_path('dbmf') == '/dbmf'
     assert external_page_path('orr') == '/orr'
     assert external_page_path('ahlt') == '/ahlt'
+    assert external_page_path('surveys') == '/surveys'
     for key in ['', None, 'DBMF', '/dbmf', 'ORR', 'AHLT', 'shell.php', '<script>']:
         assert external_page_path(key) is None, key
 

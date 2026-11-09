@@ -55,8 +55,10 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
 #:
-#: All three are pages of the dbmf-tracker publisher (dbmf., orr. and
-#: ahlt.bluemagicai.com, with /orr and /ahlt also still beside the first). That
+#: All four are pages of the dbmf-tracker publisher (dbmf., orr. and
+#: ahlt.bluemagicai.com, with /orr and /ahlt also still beside the first, and
+#: surveys.bluemagicai.com, this app's sentiment page rendered static by
+#: scripts/export_sentiment_page.py and pushed by the same publisher). That
 #: publisher derives both the beacon key and the GoatCounter path from one name
 #: (the file name of an extra, `--key` for a page at its own domain), so a page is
 #: already sending `p=<name>` the day it goes up; this side is the half that
@@ -64,7 +66,7 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: starts sending it, or the views in between are answered and dropped. Nothing
 #: breaks either way, which is exactly why the ordering is easy to get wrong and
 #: worth saying: /ahlt was published and counted as nothing until it was listed.
-EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt'}
+EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the

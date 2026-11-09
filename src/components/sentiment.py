@@ -1,4 +1,5 @@
-"""Stated sentiment against price: NAAIM and AAII, weekly. LOCAL ONLY.
+"""Stated sentiment against price: NAAIM and AAII, weekly. LOCAL ONLY in the app;
+published as a static copy at surveys.bluemagicai.com (`sentiment_static`).
 
 Two views of one weekly frame, and a caption:
 
@@ -253,6 +254,17 @@ STUDY_NOTE = (
     "bottom fifth were followed by about 2.5 points more than top-fifth weeks, a "
     "marginal lean that did not clear its line, and NAAIM added nothing measurable once "
     "S&P speculator positioning was known. Context, not signal.")
+
+
+#: The two cards' headings, shared by the page and its published copy (sentiment_static).
+PRICE_TITLE = "Sentiment against price"
+PRICE_SUBTITLE = (
+    f"NAAIM and AAII on one panel as range indexes: each {AVERAGE_WEEKS}-week average "
+    "placed between its own lowest (0) and highest (100) reading of the lookback. Above "
+    "80 the crowd leans long, below 20 it is washed out. Shaded weeks: SPY below its high "
+    "so far, amber 5-10%, orange 10-20%, red 20% or more. "
+    f"Opens on {OPEN_YEARS} years; the buttons change the window.")
+COLUMNS_TITLE = "Weekly columns"
 
 
 @dataclass(frozen=True)
@@ -762,8 +774,10 @@ def summary(read):
     return (f"On the {read.lookback_years}-year range index: {', '.join(parts)}." + bound)
 
 
-def caption(read):
-    """Data dates, the lag, the index's one caveat, the price note and the study note."""
+def caption(read, local=True):
+    """Data dates, the lag, the index's one caveat, the price note and the study note.
+    `local=False` is the published copy (sentiment_static), which drops the local-only
+    line: that copy IS the publication."""
     names = {"spy": "SPY", "naaim": "NAAIM", "aaii": "AAII", "comm": "ES COT"}
     flag = {"naaim": " (provisional)"} if read.provisional else {}
     dated = ", ".join(f"{names[k]} {read.last[k]:%Y-%m-%d}{flag.get(k, '')}"
@@ -798,8 +812,9 @@ def caption(read):
             f"The study ranked on three years; on this {read.lookback_years}-year index "
             "the lines are not the window it measured, and more weeks sit in a zone "
             "(34-43% of them, against 21-36% at three years).")
-    parts.append("Local only: NAAIM and AAII history is licensed data and is not "
-                 "published on the site.")
+    if local:
+        parts.append("Local only: NAAIM and AAII history is licensed data and is not "
+                     "published on the site.")
     return parts
 
 
