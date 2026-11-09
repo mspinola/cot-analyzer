@@ -51,6 +51,11 @@ def plotly_js_url():
 CLIENTSIDE_JS = Path(__file__).resolve().parent.parent / "assets" / "clientside.js"
 
 TITLE = "Surveys, NAAIM and AAII"
+#: The fund pages' header, in their words: an uppercase eyebrow naming the source
+#: the way theirs name the fund, then the page's ticker in the accent and what it
+#: shows. "Surveys" plays the ticker, since it is what the Monitors row calls this.
+EYEBROW = "NAAIM Exposure Index · AAII Sentiment Survey · weekly, against SPY"
+H1_TICKER, H1_REST = "Surveys", "NAAIM and AAII"
 DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, "
                "as range indexes with SPY's drawdowns behind them.")
 HOME = "https://bluemagicai.com/"
@@ -64,6 +69,10 @@ SITES = (("DBMF", "https://dbmf.bluemagicai.com/"),
          ("Surveys", "https://surveys.bluemagicai.com/"),
          ("Market", HOME + "internals"))
 CURRENT = "Surveys"
+#: The placeholder the fund pages carry for the monitor not yet published, drawn
+#: after this site in the row, as theirs is. (name, hover text); None once KISS ships.
+SOON = ("KISS", "KISS ETF monitor, coming soon")
+SOON_AFTER = "ORR"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
 
@@ -102,9 +111,36 @@ def _nav():
     for name, url in SITES:
         current = ' aria-current="page"' if name == CURRENT else ""
         links.append(f'<a href="{url}"{current}>{name}</a>')
+        if SOON and name == SOON_AFTER:
+            links.append(f'<span class="soon" title="{html.escape(SOON[1])}">'
+                         f'{html.escape(SOON[0])} <small>soon</small></span>')
     return ('<nav class="sites" aria-label="Monitors"><span class="sep">Monitors</span>'
             + "".join(links)
             + f'<a class="home" href="{HOME}">COT Analyzer &rarr;</a></nav>')
+
+
+def _date(d):
+    """Nov 6, 2026: the fund pages' date spelling, without a platform-specific %-d."""
+    return f"{d:%b} {d.day}, {d:%Y}"
+
+
+def _header(read):
+    """The fund pages' header block: eyebrow, accent ticker in the title, and the as-of
+    on the right. The as-of names the newest week each survey has, and only that:
+    the build stamp stays out of the visible page because the publisher compares
+    rebuilds with only the JSON stamp masked, so a visible one would force a push
+    every run whether or not a reader could see a change.
+    """
+    parts = [f"{label} <b>{_date(read.last[key])}</b>"
+             for key, label in (("naaim", "NAAIM"), ("aaii", "AAII")) if key in read.last]
+    asof = ("Through " + " · ".join(parts) + "<br>"
+            if parts else "")
+    asof += ('<a href="https://naaim.org/" rel="noopener">naaim.org</a> · '
+             '<a href="https://www.aaii.com/" rel="noopener">aaii.com</a>')
+    return ('<header class="top"><div>'
+            f'<div class="eyebrow">{html.escape(EYEBROW)}</div>'
+            f'<h1><span class="tk">{html.escape(H1_TICKER)}</span> {html.escape(H1_REST)}</h1>'
+            f'</div><div class="asof">{asof}</div></header>')
 
 
 def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None):
@@ -139,21 +175,38 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{esc(TITLE)}</title>
 <meta name="description" content="{esc(DESCRIPTION)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 :root {{ --page: {vc.BACKGROUND_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
   --muted: #7d8794; --line: rgba(255,255,255,0.10); --surface: rgba(28,28,28,0.55);
   --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND};
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }}
+  --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }}
 html, body {{ background: var(--page); color: var(--ink-2); margin: 0; font-family: var(--sans); }}
 main {{ max-width: 1400px; margin: 0 auto; padding: 16px; }}
-nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; margin-bottom: 10px; }}
+/* The header is the fund pages' (dbmf-tracker's templates), rule for rule, so the
+   four monitors read as one set: the Monitors row, then eyebrow, accent ticker and
+   title on the left and the as-of on the right. Only the theme differs, this page
+   being dark on the app's own colours. */
+nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; margin-bottom: 14px; }}
 nav.sites a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; }}
 nav.sites a:hover {{ background: var(--wash); color: var(--ink); }}
 nav.sites a[aria-current="page"] {{ color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }}
+nav.sites a:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
 nav.sites .home {{ margin-left: auto; }}
 nav.sites .sep {{ color: var(--muted); }}
-@media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .card {{ padding: 10px 6px; }} }}
-h1 {{ color: var(--ink); font-size: 1.4rem; font-weight: 500; margin: 6px 0 8px; }}
+nav.sites .soon {{ color: var(--muted); padding: 3px 9px; border: 1px dashed var(--line); border-radius: 6px; cursor: default; }}
+nav.sites .soon small {{ font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-left: 3px; }}
+header.top {{ display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }}
+.eyebrow {{ font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }}
+h1 {{ color: var(--ink); margin: 2px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }}
+h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--accent); }}
+.asof {{ color: var(--ink-2); font-size: 13px; text-align: right; }}
+.asof b {{ color: var(--ink); font-weight: 600; }}
+.asof a {{ color: var(--ink-2); }}
+@media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
 .summary {{ color: var(--ink); font-size: 0.9rem; margin: 0 0 10px; }}
 .lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
@@ -172,7 +225,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <body>
 <main>
 {_nav()}
-<h1>{esc(TITLE)}</h1>
+{_header(reads[sentiment.DEFAULT_LOOKBACK])}
 <p class="summary" id="summary">{esc(default["summary"])}</p>
 <div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>

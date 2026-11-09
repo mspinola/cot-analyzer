@@ -101,3 +101,23 @@ def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
                      ("https://bluemagicai.com/internals", "Market"),
                      ("https://bluemagicai.com/", "COT Analyzer &rarr;")]
     assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', st._nav()) == ["Surveys"]
+    # The fund pages' placeholder for the monitor not yet published, in their slot.
+    soon = re.search(r'<span class="soon"[^>]*>KISS <small>soon</small></span>', st._nav())
+    assert soon and st._nav().index("ORR</a>") < soon.start() < st._nav().index("Surveys")
+
+
+def test_the_header_is_the_fund_pages_header_with_the_surveys_dates():
+    """Eyebrow, accent ticker in the title, and an as-of on the right naming each
+    survey's newest week. No build stamp in it: publish_pages masks only the JSON
+    one, so a visible stamp would force a push on every rebuild."""
+    reads = _reads()
+    page = st.render(reads, COLORS, PALETTE, generated_at="2026-11-09T12:00Z",
+                     clientside_js="")
+    head = re.search(r'<header class="top">.*?</header>', page, re.S).group(0)
+    assert f'<div class="eyebrow">{st.EYEBROW}</div>' in head
+    assert '<h1><span class="tk">Surveys</span> NAAIM and AAII</h1>' in head
+    last = reads[s.DEFAULT_LOOKBACK].last
+    for key, label in (("naaim", "NAAIM"), ("aaii", "AAII")):
+        assert f"{label} <b>{st._date(last[key])}</b>" in head
+    assert "2026-11-09T12:00Z" not in head
+    assert page.count("<h1") == 1
