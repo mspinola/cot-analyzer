@@ -1,0 +1,10 @@
+# Root's crontab line for surveys.bluemagicai.com (docs/surveys-publishing.md).
+#
+# 19:15 New York time, daily: after the Windows box's 17:30 equities task has written
+# SPY and NAAIM and pushed both stores here, and after Friday's 15:30 COT release. The
+# 20:55 futures run moves nothing this page draws. An unchanged page pushes nothing, so
+# weekends cost one render each. flock keeps a slow render from overlapping the next.
+#
+# Install (root has no other crontab entries as of 2026-11-09; merge by hand if it does):
+#     crontab -l 2>/dev/null | cat - /root/trading_workspace/cot-analyzer/server-side/publish-surveys.cron | crontab -
+15 19 * * * /usr/bin/flock -n /tmp/publish_surveys.lock /root/trading_workspace/cot-analyzer/scripts/publish_surveys.sh >> /var/log/publish_surveys.log 2>&1

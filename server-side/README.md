@@ -593,6 +593,15 @@ entry pages and nothing else, the same blind spot the server-side pageview rows 
 With the variable unset the served page is byte-identical to stock, which is why dev
 machines need no opt-out.
 
+## 10. Publish surveys.bluemagicai.com (cron)
+
+The static copy of the local-only sentiment page is rendered and published from this
+box: root's crontab runs `scripts/publish_surveys.sh` daily at 19:15, which needs the
+`dbmf-tracker` clone beside the others (for its `publish_pages.py`) and a
+`/root/surveys-dashboard` clone. Setup, the reasons, and what the log says on failure:
+[docs/surveys-publishing.md](../docs/surveys-publishing.md). The crontab line is
+`server-side/publish-surveys.cron`.
+
 ## Upgrading
 
 Code moves by git; data moves by rsync.
