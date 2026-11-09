@@ -79,3 +79,11 @@ def test_the_page_loads_the_plotly_js_its_plotly_py_bundles():
     page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
     version = plotly.offline.get_plotlyjs_version()
     assert f'src="https://cdn.plot.ly/plotly-{version}.min.js"' in page
+
+
+def test_a_phone_drops_two_zoom_buttons_and_keeps_the_short_ones():
+    """Nine buttons overrun a phone-width plot; the page drops 2Y and 15Y there only."""
+    html = st.render(_reads(), COLORS, PALETTE)
+    assert f"window.matchMedia('{st.PHONE_QUERY}')" in html
+    assert '["2Y","15Y"]' in html and "fitted(fig.layout)" in html
+    assert not {"3M", "6M"} & set(st.PHONE_HIDDEN_RANGES)

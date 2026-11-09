@@ -19,6 +19,7 @@ import pytest
 
 import components.sentiment as s
 import local_pages
+import viz_constants as vc
 from components import exposure_traces
 from components.plot_colors import GridColors, hex_to_rgba
 
@@ -257,7 +258,10 @@ def test_the_time_views_carry_the_apps_year_buttons():
     for fig in (s.price_sentiment_figure(read, COLORS, PALETTE),
                 s.columns_figure(read, COLORS, PALETTE)):
         labels = [b.label for b in fig.layout.xaxis.rangeselector.buttons]
-        assert labels == [f"{n}Y" for n in exposure_traces.RANGE_YEARS] + ["Max"]
+        assert labels == (["3M", "6M"] + [f"{n}Y" for n in exposure_traces.RANGE_YEARS]
+                          + ["Max"])
+        steps = [b.step for b in fig.layout.xaxis.rangeselector.buttons]
+        assert steps[:2] == ["month", "month"]
 
 
 def test_only_the_price_axis_is_refitted_on_a_zoom():
@@ -280,7 +284,9 @@ def test_naaim_and_aaii_share_one_index_panel_between_fixed_zones():
     assert all(sh.line.dash == "dot" for sh in fig.layout.shapes if sh.type == "line")
     assert not [sh for sh in fig.layout.shapes if sh.type == "rect" and sh.yref != "y domain"
                 and sh.yref != "y2 domain"]
-    assert not any(t.mode == "markers" and len(t.x) > 1 for t in fig.data)
+    # The raw weekly dots are the only multi-point marker traces (no scatter quadrant).
+    assert not any(t.mode == "markers" and len(t.x) > 1 and not t.name.endswith("as read")
+                   for t in fig.data)
 
 
 def test_the_time_views_open_on_the_last_five_years():
@@ -418,7 +424,7 @@ def test_the_columns_view_draws_naaim_against_its_average_and_aaii_as_read():
     assert naaim.opacity == s.COLUMN_OPACITY and fig.layout.bargap == s.COLUMN_BARGAP
     assert "1Y avg" in fig.layout.annotations[1].text
     labels = [b.label for b in fig.layout.xaxis.rangeselector.buttons]
-    assert labels == [f"{n}Y" for n in exposure_traces.RANGE_YEARS] + ["Max"]
+    assert labels == ["3M", "6M"] + [f"{n}Y" for n in exposure_traces.RANGE_YEARS] + ["Max"]
 
 
 def test_spy_columns_are_the_trailing_return_coloured_by_sign():
@@ -526,7 +532,7 @@ def test_the_depth_keys_are_traces_and_no_band_enters_the_legend():
     # An empty key trace first on an axis typed it as numbers; both are pinned to dates.
     assert fig.layout.xaxis.type == fig.layout.xaxis2.type == "date"
     first_on_x2 = next(t for t in fig.data if t.xaxis == "x2")
-    assert first_on_x2.name == "NAAIM exposure"
+    assert first_on_x2.name.startswith("NAAIM exposure") and len(first_on_x2.x) > 1
     assert not any(sh.showlegend for sh in fig.layout.shapes)
     keys = [t for t in fig.data if (t.legendgroup or "").startswith("drawdown")]
     assert [k.name for k in keys] == [label for *_, label in s.DRAWDOWN_LEVELS]
@@ -663,3 +669,72 @@ def test_the_figures_are_compact():
     # The gap between rows, in px, holds a two-line header (about 40 px).
     gap = (cols.layout.yaxis3.domain[0] - cols.layout.yaxis4.domain[1])
     assert gap * (s.COLUMNS_HEIGHT - 62 - 32) >= 40
+
+
+# ── the real-time reading ─────────────────────────────────────────────────────
+
+def test_raw_dots_sit_on_the_lines_own_scale():
+    """The dots use the AVERAGE's trailing low and high, so the average itself lands
+    exactly on the line, and a week beyond the window's extremes is pinned to the edge."""
+    _, get_bars = _fixtures()
+    for years in s.LOOKBACK_YEARS:
+        read = s.build_read(get_bars, lookback_years=years)
+        for key in ("naaim", "aaii"):
+            raw = read.frame[key].dropna()
+            avg = raw.rolling(s.AVERAGE_WEEKS, min_periods=s.AVERAGE_WEEKS).mean()
+            pd.testing.assert_series_equal(s.on_index_scale(avg, avg, years),
+                                           s.range_index(avg, years), check_names=False)
+            dots = read.frame[f"{key}_raw_idx"].dropna()
+            assert dots.between(0, 100).all() and len(dots) > 0
+            pd.testing.assert_series_equal(
+                dots, s.on_index_scale(raw, avg, years).dropna().reindex(dots.index),
+                check_names=False, check_freq=False)
+
+
+def test_a_week_beyond_the_window_is_pinned_to_the_edge():
+    idx = pd.date_range("2020-01-03", periods=60, freq="W-FRI")
+    avg = pd.Series(np.linspace(10, 20, 60), idx)
+    raw = avg.copy()
+    raw.iloc[-1], raw.iloc[-2] = 99.0, -5.0
+    got = s.on_index_scale(raw, avg, years=1)
+    assert got.iloc[-1] == 100.0 and got.iloc[-2] == 0.0
+
+
+def test_dots_sit_under_the_line_and_the_marker_on_the_newest_dot():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE)
+    names = [t.name for t in fig.data]
+    for key, label in s.SERIES:
+        dots_at = names.index(f"{label}, week as read")
+        assert dots_at < names.index(label)                    # drawn first, so under
+        dots = fig.data[dots_at]
+        assert dots.mode == "markers" and dots.hoverinfo == "skip"
+        assert dots.opacity == s.RAW_DOT_OPACITY and dots.showlegend is False
+        marker = fig.data[names.index(f"{label}, latest")]
+        newest = read.frame[f"{key}_raw_idx"].dropna()
+        assert pd.Timestamp(marker.x[0]) == newest.index[-1]
+        assert marker.y[0] == newest.iloc[-1]
+
+
+def test_the_title_reads_out_the_latest_survey_as_published():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    title = s.price_sentiment_figure(read, COLORS, PALETTE).layout.annotations[1].text
+    naaim, aaii = s.latest_reading(read, "naaim"), s.latest_reading(read, "aaii")
+    assert title == (f"NAAIM {naaim:.1f} ({read.last['naaim']:%Y-%m-%d})<br>"
+                     f"AAII {aaii:.1f} ({read.last['aaii']:%Y-%m-%d})")
+    assert naaim == read.frame["naaim"].dropna().iloc[-1]
+
+
+def test_a_provisional_latest_week_draws_a_hollow_marker_and_hollow_dots():
+    _, get_bars, _ = _with_provisional()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE)
+    marker = next(t for t in fig.data if t.name == "NAAIM exposure, latest")
+    assert marker.marker.color == vc.BACKGROUND_COLOR
+    dots = next(t for t in fig.data if t.name == "NAAIM exposure, week as read")
+    hollow = pd.DatetimeIndex(dots.x).isin(read.provisional)
+    assert hollow.sum() == 6
+    assert set(np.asarray(dots.marker.color)[hollow]) == {vc.BACKGROUND_COLOR}
+    assert vc.BACKGROUND_COLOR not in set(np.asarray(dots.marker.color)[~hollow])

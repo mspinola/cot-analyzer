@@ -63,6 +63,12 @@ CURRENT = "Surveys"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
 
+#: Zoom buttons left off below 600px, where the full ladder (3M to Max, nine buttons) runs
+#: past the plot's left edge and over the panel title. Seven fit, as the page had before
+#: 3M and 6M were added; 2Y and 15Y sit between neighbours a phone reader can still pick.
+PHONE_HIDDEN_RANGES = ("2Y", "15Y")
+PHONE_QUERY = "(max-width: 600px)"
+
 PRICE_ID = "price"
 COLUMNS_ID = "columns"
 
@@ -175,13 +181,22 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
   var IDS = ['{PRICE_ID}', '{COLUMNS_ID}'];
   var KEYS = {{'{PRICE_ID}': 'price', '{COLUMNS_ID}': 'columns'}};
   var refit = window.dash_clientside.clientside.autoscale_y_axes;
+  var HIDDEN = window.matchMedia('{PHONE_QUERY}').matches ? {_script_json(list(PHONE_HIDDEN_RANGES))} : [];
   function plotOf(id) {{ return document.querySelector('#' + id + ' .plot'); }}
+  function fitted(layout) {{
+    var rs = layout.xaxis && layout.xaxis.rangeselector;
+    if (!HIDDEN.length || !rs) {{ return layout; }}
+    var buttons = rs.buttons.filter(function (b) {{ return HIDDEN.indexOf(b.label) < 0; }});
+    var xaxis = Object.assign({{}}, layout.xaxis,
+                              {{rangeselector: Object.assign({{}}, rs, {{buttons: buttons}})}});
+    return Object.assign({{}}, layout, {{xaxis: xaxis}});
+  }}
   function draw(years, first) {{
     var d = DATA[String(years)];
     IDS.forEach(function (id) {{
       var fig = d[KEYS[id]];
       var fn = first ? Plotly.newPlot : Plotly.react;
-      fn(plotOf(id), fig.data, fig.layout, CONFIG);
+      fn(plotOf(id), fig.data, fitted(fig.layout), CONFIG);
     }});
     document.getElementById('summary').textContent = d.summary;
     var notes = document.getElementById('notes');
