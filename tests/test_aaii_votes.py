@@ -141,3 +141,75 @@ def test_the_published_page_carries_the_card_once_when_votes_are_in():
 def test_without_votes_the_page_leaves_the_card_out():
     html = st.render(_reads(), COLORS, PALETTE)
     assert f'<div id="{st.VOTES_ID}">' not in html and st.VOTES_KEY not in _payload(html)
+
+
+# ── provisional weeks ─────────────────────────────────────────────────────────
+
+def _with_provisional(n_official=118, legs=("bullish", "neutral", "bearish"), stale=True):
+    """The official legs cut to `n_official` weeks; the weeks after them served as the
+    provisional legs named in `legs`, plus (when `stale`) one the official legs cover."""
+    frames, _ = _legs_bars()
+    full = dict(frames)
+    for (key, sym, _), prov in zip(av.LEGS, av.PROVISIONAL.values()):
+        frames[sym] = full[sym].iloc[:n_official]
+        p = full[sym].iloc[n_official:]
+        if stale:
+            p = pd.concat([full[sym].iloc[[n_official - 1]] * 0.5, p])
+        if key in legs:
+            frames[prov] = p
+
+    def get_bars(symbol, tier=None):
+        if symbol not in frames:
+            raise FileNotFoundError(symbol)
+        return frames[symbol]
+    return frames, get_bars, full
+
+
+def test_provisional_weeks_join_the_recent_rows_only_and_are_flagged():
+    _, get_bars, full = _with_provisional()
+    votes = av.read(get_bars)
+    official = av.legs(get_bars)
+    assert len(official) == 118
+    want = list(WEEKS[::-1][:av.RECENT_WEEKS])
+    assert list(votes.recent.index) == want                 # 2 provisional + 2 official
+    assert votes.provisional == tuple(WEEKS[118:])
+    assert votes.last == WEEKS[-1].date()
+    # The stale provisional week is ignored: the official reading stands.
+    assert votes.recent.loc[WEEKS[117], "bullish"] == pytest.approx(
+        full[av.LEGS[0][1]]["Close"].iloc[117] * 100)
+    # Average and highs are the official weeks' alone.
+    pd.testing.assert_series_equal(votes.average, official.mean())
+    assert votes.highs == av.summarize(official).highs
+
+
+@pytest.mark.parametrize("legs", [("bullish", "bearish"), ("neutral",)])
+def test_a_provisional_week_missing_a_leg_is_not_shown(legs):
+    _, get_bars, _ = _with_provisional(legs=legs)
+    votes = av.read(get_bars)
+    assert votes.provisional == () and votes.last == WEEKS[117].date()
+
+
+def test_provisional_weeks_never_stand_in_for_missing_official_legs():
+    frames, get_bars, _ = _with_provisional()
+    del frames[av.AAII_NEUTRAL]
+    assert av.read(get_bars) is None
+
+
+def test_provisional_rows_draw_faint_with_the_tag_beside_the_date():
+    _, get_bars, _ = _with_provisional()
+    votes = av.read(get_bars)
+    fig = av.figure(votes, COLORS)
+    bull = next(t for t in fig.data if t.name == "Bullish" and t.xaxis == "x")
+    assert list(bull.y[:2]) == [f"{d:%Y-%m-%d} {av.PROVISIONAL_TAG}" for d in WEEKS[[119, 118]]]
+    assert list(bull.y[2:]) == [f"{d:%Y-%m-%d}" for d in WEEKS[[117, 116]]]
+    from components import sentiment as s
+    np.testing.assert_allclose(bull.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
+    assert "provisional" in fig.layout.annotations[0].text
+
+
+def test_without_provisional_weeks_the_card_is_unchanged():
+    _, get_bars = _legs_bars()
+    votes = av.read(get_bars)
+    fig = av.figure(votes, COLORS)
+    assert votes.provisional == () and fig.layout.annotations[0].text == "Recent weeks"
+    assert all(t.marker.opacity is None for t in fig.data)
