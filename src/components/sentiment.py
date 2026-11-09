@@ -18,6 +18,10 @@ Two views of one weekly frame, and a caption:
    had done; nothing here is shaded by what followed. The depths took separate hues on
    2026-11-06: one hue at three opacities left the faint and the dark bands easy to read
    the wrong way round on a dark page, and nothing on the chart said which was which.
+   Behind each line, faint dots: the week's raw reading placed on the line's own scale
+   (`on_index_scale`), so the newest survey shows unlagged; the latest one is the large marker,
+   and the panel title reads it out as the survey published it (see "The real-time
+   reading", below).
 
 2. **Weekly columns.** Columns, drawn the way the COT net-positioning chart draws its
    groups (own palette colour, 0.8 opacity, a hairline outline in the same colour, a 0.2
@@ -37,7 +41,8 @@ Two views of one weekly frame, and a caption:
    before it, on the same window as the indexes. AAII already sits around zero and is
    drawn as read.
 
-Both open on the last five years and carry the app's year buttons (1Y to 15Y and Max).
+Both open on the last five years and carry the app's year buttons (1Y to 15Y and Max),
+led by 3M and 6M for the recent weeks.
 They re-fit their axes to each window through the shared clientside handler: the SPY
 price panel, and all three column panels with zero kept in view (`refit.zero`); the
 index panel stays pinned to 0-100. The column axes open fitted to the opening window,
@@ -144,6 +149,27 @@ half-week of lag; four took out about half for a week and a half. NAAIM's correl
 with SPY's trailing 13-week return is 0.62-0.63 under all three, so the choice changes
 how the line reads, not what it carries. AAII stays the busier line.
 
+**The real-time reading: a short zoom and the raw week, not a short window.** Added
+2026-11-09. A recent view could have been a third, shorter index window, gently
+smoothed. Measured instead (`scripts/measure_short_lookback.py`, live stores, 2008 on,
+the index of the 2-week average as drawn; "pinned" is at or below 5 or at or above 95):
+
+| window | NAAIM pinned | NAAIM mean weekly move | AAII pinned | AAII mean weekly move |
+|---|---|---|---|---|
+| 13 weeks | 35% | 14.3 | 29% | 17.1 |
+| 26 weeks | 23% | 11.4 | 18% | 13.7 |
+| 1 year | 14% | 9.1 | 12% | 11.1 |
+| 3 years | 6% | 7.0 | 4% | 8.5 |
+
+A short window loses its anchor: on the day this was measured NAAIM read 78.6, which
+the 13- and 26-week indexes both called 0 (managers had sat above 80 all quarter) and
+the 3-year index called 64. And it is twice as jumpy, so smoothing it calm enough to
+read would add back the lag a recent view exists to remove. So the window stays 1 or 3
+years and recency comes from two other places: 3M and 6M zoom buttons (a zoom changes
+what is shown, not what 0 and 100 mean), and the raw dots with the latest one read
+out in the title, which show a new survey the week it lands rather than half a week
+later through the average.
+
 **Dating.** Every observation is keyed to the Friday of the week it falls in, because
 each is public by that Friday's close: NAAIM surveys on Wednesday and publishes that
 week, AAII reports on Thursday, SPY closes on Friday.
@@ -199,6 +225,16 @@ _YEARS_WORD = {1: "year", 3: "three years"}
 AVERAGE_WEEKS = 2
 LO, HI = 20.0, 80.0               # fixed zones on the 0-100 index
 OPEN_YEARS = 5                    # the time views open on this many trailing years
+#: Zoom buttons ahead of the app's year ladder, for the recent weeks. A zoom, not a
+#: window: the index keeps its 1- or 3-year scale ("The real-time reading").
+RANGE_MONTHS = (3, 6)
+#: Room after the last week. Small, because the zoom buttons count back from the axis's
+#: right edge, not from the data: 30 days left a third of the 3M view empty. The latest
+#: marker draws past the plot edge (cliponaxis=False), so it needs no more than this.
+OPEN_PAD_DAYS = 7
+#: The raw weekly dots behind each index line: present, but under the line.
+RAW_DOT_SIZE = 4
+RAW_DOT_OPACITY = 0.45
 #: SPY drawdown bands, as (depth below the prior high, colour, opacity, legend label),
 #: shallowest first. Each week takes the deepest level it reaches; the bands run behind
 #: both panels. Hue says the depth (amber pullback, orange correction, red bear market)
@@ -261,9 +297,12 @@ PRICE_TITLE = "Sentiment against price"
 PRICE_SUBTITLE = (
     f"NAAIM and AAII on one panel as range indexes: each {AVERAGE_WEEKS}-week average "
     "placed between its own lowest (0) and highest (100) reading of the lookback. Above "
-    "80 the crowd leans long, below 20 it is washed out. Shaded weeks: SPY below its high "
-    "so far, amber 5-10%, orange 10-20%, red 20% or more. "
-    f"Opens on {OPEN_YEARS} years; the buttons change the window.")
+    "80 the crowd leans long, below 20 it is washed out. Faint dots: each week as read, "
+    "on the same scale; the large one is the latest week, read out above the panel. "
+    "Shaded weeks: SPY below its high so far, amber 5-10%, orange 10-20%, red 20% or "
+    "more. "
+    f"Opens on {OPEN_YEARS} years; the buttons zoom down to {RANGE_MONTHS[0]} months "
+    "without changing the index.")
 COLUMNS_TITLE = "Weekly columns"
 
 
@@ -275,7 +314,8 @@ class SentimentRead:
     `naaim`, `aaii` as read; `naaim_avg` and `aaii_avg`, their 2-week averages;
     `naaim_trail`, NAAIM's average over the prior 52 x lookback weeks (this week
     excluded), and `naaim_dev`, the week's reading minus it; and `naaim_idx` and
-    `aaii_idx`, the 0-100 range indexes of the averages; and `comm`, S&P 500
+    `aaii_idx`, the 0-100 range indexes of the averages; `naaim_raw_idx` and
+    `aaii_raw_idx`, each week as read placed on that index (`on_index_scale`); and `comm`, S&P 500
     commercials' net as a percent of open interest, on its report's Friday. `last` maps each
     series key to the date of its newest stored observation. `awaiting` names what the
     store lacks.
@@ -309,6 +349,24 @@ def index_window(years=DEFAULT_LOOKBACK):
 def range_index(series, years=DEFAULT_LOOKBACK):
     """cotmetrics' range index over the trailing `years` of THIS series' weeks."""
     return indicators.calculate_range_index(series, window=index_window(years))
+
+
+def on_index_scale(raw, avg, years=DEFAULT_LOOKBACK):
+    """Each week as read, placed on its average's index: the same trailing lowest (0) and
+    highest (100) of the AVERAGE that `range_index(avg, years)` uses, so a dot under the
+    line means the week read below its 2-week average and the line is the dots' average.
+    A week beyond everything the average reached in the window is pinned to the edge
+    (3% of weeks at three years, 10% at one, 2008 on). Display arithmetic, like the
+    average itself: the index is cotmetrics', this only places the raw reading on it.
+
+    Not `range_index(raw)`: the raw series' own extremes are wider than the average's, so
+    on its own window a week sits nearer the middle than the line, and dots drifted below
+    the line through weeks that read above it (autumn 2026)."""
+    window = index_window(years)
+    lo = avg.rolling(window, min_periods=window).min()
+    hi = avg.rolling(window, min_periods=window).max()
+    span = (hi - lo).where(hi > lo)
+    return (100.0 * (raw.reindex(avg.index) - lo) / span).clip(0.0, 100.0)
 
 
 def trailing_average(series, years=DEFAULT_LOOKBACK):
@@ -404,6 +462,8 @@ def build_read(get_bars=None, lookback_years=DEFAULT_LOOKBACK, get_positioning=N
             avg = cols[key].rolling(AVERAGE_WEEKS, min_periods=AVERAGE_WEEKS).mean()
             frame[f"{key}_avg"] = avg.reindex(frame.index)
             frame[f"{key}_idx"] = range_index(avg, lookback_years).reindex(frame.index)
+            frame[f"{key}_raw_idx"] = on_index_scale(cols[key], avg, lookback_years
+                                                     ).reindex(frame.index)
     if "naaim" in cols:
         trail = trailing_average(cols["naaim"], lookback_years)
         frame["naaim_trail"] = trail.reindex(frame.index)
@@ -451,11 +511,15 @@ UIREVISION = "sentiment"
 
 
 def range_buttons(fig):
-    """The year buttons every chart in the app offers, on the top panel's axis where they
-    render above the figure. The ladder is Exposure's, so it cannot drift from it."""
+    """The year buttons every chart in the app offers, led by 3M and 6M, on the top
+    panel's axis where they render above the figure. The year ladder is Exposure's, so it
+    cannot drift from it."""
+    months = [dict(count=n, label=f"{n}M", step="month", stepmode="backward")
+              for n in RANGE_MONTHS]
+    years = [dict(count=n, label=f"{n}Y", step="year", stepmode="backward")
+             for n in exposure_traces.RANGE_YEARS]
     fig.update_xaxes(rangeselector=dict(
-        buttons=[dict(count=n, label=f"{n}Y", step="year", stepmode="backward")
-                 for n in exposure_traces.RANGE_YEARS] + [dict(step="all", label="Max")],
+        buttons=months + years + [dict(step="all", label="Max")],
         bgcolor=vc.BLUE_BACKGROUND, activecolor=vc.BLUE_BACKGROUND,
         font=dict(color=vc.BRIGHTER_TEXT_COLOR, size=10),
         y=1.0, yanchor="bottom", x=1.0, xanchor="right"), row=1, col=1)
@@ -464,7 +528,7 @@ def range_buttons(fig):
 def open_range(read):
     """The x range the time views open on: the last OPEN_YEARS, plus a little room."""
     end = read.frame.index[-1]
-    return [end - pd.DateOffset(years=OPEN_YEARS), end + pd.Timedelta(days=30)]
+    return [end - pd.DateOffset(years=OPEN_YEARS), end + pd.Timedelta(days=OPEN_PAD_DAYS)]
 
 
 def _zones(fig, row):
@@ -545,17 +609,29 @@ def _drawdown_keys(fig):
 
 
 def _index_line(fig, read, key, label, color, row):
-    """One sentiment index line and its latest-week marker, in its own colour."""
+    """One sentiment index line, its raw weekly dots behind it, and the latest week's
+    marker on the newest dot, in its own colour."""
     f = read.frame
     col = f"{key}_idx"
     if col not in f or f[col].dropna().empty:
         return
     idx = f[col].dropna()
-    raw = f[[f"{key}_avg", key]].reindex(idx.index).to_numpy()
-    hover = ("%{y:.0f}  (" + f"{AVERAGE_WEEKS}-wk avg " + "%{customdata[0]:.1f}, "
-             "week %{customdata[1]:.1f})")
+    raw = f[[f"{key}_avg", key, f"{key}_raw_idx"]].reindex(idx.index).to_numpy()
+    hover = ("%{y:.0f}  (" + f"{AVERAGE_WEEKS}-wk avg " + "%{customdata[0]:.1f}; "
+             "week %{customdata[1]:.1f}, index %{customdata[2]:.0f})")
     prov = idx.index.isin(read.provisional) if key == "naaim" else np.zeros(len(idx), bool)
     solid = ~prov
+    dots = f[f"{key}_raw_idx"].dropna()
+    if not dots.empty:
+        # Under the line, faint, hollow where provisional. The line's hover already
+        # carries the week's reading, so the dots add none.
+        dprov = dots.index.isin(read.provisional) if key == "naaim" else np.zeros(len(dots), bool)
+        fig.add_trace(go.Scatter(
+            x=dots.index, y=dots, mode="markers", name=f"{label}, week as read",
+            legendgroup=key, showlegend=False, hoverinfo="skip", opacity=RAW_DOT_OPACITY,
+            marker=dict(size=RAW_DOT_SIZE, color=np.where(dprov, vc.BACKGROUND_COLOR, color),
+                        line=dict(color=color, width=np.where(dprov, 1, 0)))),
+            row=row, col=1)
     fig.add_trace(go.Scatter(
         x=idx.index[solid], y=idx[solid], mode="lines", line=dict(color=color, width=1.8),
         name=label, legendgroup=key, customdata=raw[solid],
@@ -570,24 +646,40 @@ def _index_line(fig, read, key, label, color, row):
             legendgroup=key, showlegend=False, customdata=raw[seg],
             hovertemplate=hover + "<extra>" + label + ", provisional</extra>"),
             row=row, col=1)
-    # The latest week's marker, hollow when that reading is provisional.
-    fill = vc.BACKGROUND_COLOR if prov[-1] else color
-    edge = color if prov[-1] else vc.BACKGROUND_COLOR
-    fig.add_trace(go.Scatter(x=[idx.index[-1]], y=[idx.iloc[-1]], mode="markers",
+    # The latest week's marker, on the newest raw dot (the reading the title names, not
+    # the half-week-late average), hollow when that reading is provisional.
+    at, y = (dots.index[-1], dots.iloc[-1]) if not dots.empty else (idx.index[-1], idx.iloc[-1])
+    late = key == "naaim" and at in read.provisional
+    fill = vc.BACKGROUND_COLOR if late else color
+    edge = color if late else vc.BACKGROUND_COLOR
+    fig.add_trace(go.Scatter(x=[at], y=[y], mode="markers", name=f"{label}, latest",
                              marker=dict(size=8, color=fill, line=dict(color=edge, width=1.5)),
-                             hoverinfo="skip", showlegend=False), row=row, col=1)
+                             cliponaxis=False, hoverinfo="skip", showlegend=False),
+                  row=row, col=1)
+
+
+def latest_reading(read, key):
+    """The newest week as the survey published it: NAAIM's exposure, AAII's bulls minus
+    bears in points. None when the series is not in."""
+    if key not in read.frame or key not in read.last or read.frame[key].dropna().empty:
+        return None
+    return float(read.frame[key].dropna().iloc[-1])
 
 
 def _index_title(read):
-    """The combined panel's title: each series' latest index and the date it was read."""
-    f, parts = read.frame, []
+    """The combined panel's title: each survey's newest reading, as published, and the
+    date it was read, one survey a line. The real-time readout; the index values are in
+    the summary line and the hover."""
+    parts = []
     for key, label in (("naaim", "NAAIM"), ("aaii", "AAII")):
-        col = f"{key}_idx"
-        if col in f and key in read.last and f[col].notna().any():
-            parts.append(f"{label} {f[col].dropna().iloc[-1]:.0f} ({_dated(read, key)})")
-    # Short on purpose: at phone width a longer title runs off the panel, and the card's
-    # subtitle already says what the index is.
-    return f"Index: {', '.join(parts)}" if parts else "Sentiment range index"
+        value = latest_reading(read, key)
+        if value is not None and f"{key}_idx" in read.frame:
+            parts.append(f"{label} {value:.1f} ({_dated(read, key)})")
+    # One survey a line, no "Latest:" lead: on one line the pair ran past a phone-width
+    # panel (395 pixels where 253 fit; the index-valued title before it took 373),
+    # cutting AAII off, and with the lead the NAAIM line alone still ran 5 over. The
+    # dates say these are the newest readings; the card subtitle says it in words.
+    return "<br>".join(parts) if parts else "Sentiment range index"
 
 
 def price_sentiment_figure(read, colors, palette):
