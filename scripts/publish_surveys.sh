@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Rebuild the static sentiment page and publish it to surveys.bluemagicai.com.
+# Rebuild the static sentiment page and publish it to surveys.bluemagicai.com, by hand.
+# The SCHEDULED publish runs on the Windows box (scripts\publish_surveys.cmd, called from
+# dbmf-tracker's publish_all.cmd); do not also schedule this one, since each publish
+# force-pushes a single-commit branch. docs/surveys-publishing.md has the whole picture.
 #
 # Two steps, each owned elsewhere:
 #   1. scripts/export_sentiment_page.py renders the page from the local stores

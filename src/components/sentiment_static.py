@@ -3,7 +3,7 @@
 The app's `/sentiment` page stays local-only (`local_pages`): the published copy is this
 file, rendered from the same read and the same two figures, and pushed to its own GitHub
 Pages repo by dbmf-tracker's `deploy/publish_pages.py --key surveys`, the way the DBMF,
-AHLT and ORR monitors are. Publishing NAAIM's and AAII's history was cleared against
+AHLT and ORR monitors are (docs/surveys-publishing.md). Publishing NAAIM's and AAII's history was cleared against
 their terms by the operator on 2026-11-09; the app's gate is unchanged, because the
 deployed app is not where the publication happens.
 

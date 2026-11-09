@@ -8,7 +8,7 @@ the public site would hand them to every visitor, so in THIS app the page is loc
 The operator has since cleared publishing them (2026-11-09), and they are published,
 but not from here: `components.sentiment_static` renders the page as one static file
 that goes to surveys.bluemagicai.com through the dbmf-tracker publisher
-(`scripts/publish_surveys.sh`). The gate stays because the deployed app is still not
+(docs/surveys-publishing.md: scheduled on the Windows box). The gate stays because the deployed app is still not
 where that happens, and verify-deploy still pins the 404.
 
 **The gate is an environment flag the local launcher sets and the server never does.**

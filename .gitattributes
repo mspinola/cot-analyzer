@@ -1,1 +1,5 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
+
+# cmd.exe needs CRLF: with LF, labels and multi-line ( ) blocks can misparse. Stored
+# LF, checked out CRLF on every machine whatever core.autocrlf says (dbmf-tracker rule).
+*.cmd text eol=crlf
