@@ -65,8 +65,14 @@ def export_button(view):
 
 
 def _card(title, subtitle, figure, graph_id=None, controls=None, export=None):
-    graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
-             else dcc.Graph(figure=figure, config=GRAPH_CONFIG))
+    """A card around one figure, or around several laid out side by side from Bootstrap's
+    md width (768px) and stacked below it."""
+    if isinstance(figure, (list, tuple)):
+        graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=12 // len(figure))
+                         for f in figure], className="gx-4")
+    else:
+        graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
+                 else dcc.Graph(figure=figure, config=GRAPH_CONFIG))
     head = html.Div(title, style=TITLE_STYLE)
     if export is not None:
         head = html.Div([head, export_button(export)],
@@ -149,7 +155,7 @@ def layout(**_):
         if votes is not None:
             # Not redrawn by the lookback: nothing in it is indexed.
             cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
-                               aaii_votes.figure(votes, colors), export="votes"))
+                               aaii_votes.figures(votes, colors), export="votes"))
         cards += [
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,

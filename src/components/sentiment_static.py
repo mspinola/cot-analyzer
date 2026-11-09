@@ -72,9 +72,10 @@ PHONE_QUERY = "(max-width: 600px)"
 PRICE_ID = "price"
 COLUMNS_ID = "columns"
 VOTES_ID = "votes"
-#: The payload key for the AAII votes figure, beside the lookback keys: the card does not
-#: depend on the lookback, so it is embedded once and drawn once.
+#: The payload key for the AAII votes figures, beside the lookback keys: the card does
+#: not depend on the lookback, so it is embedded once and drawn once. Two halves.
 VOTES_KEY = "votes"
+VOTES_HALVES = ("recent", "history")
 
 
 def lookback_payload(read, colors, palette):
@@ -116,7 +117,8 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
             raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
     payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
     if votes is not None:
-        payload[VOTES_KEY] = json.loads(aaii_votes.figure(votes, colors).to_json())
+        payload[VOTES_KEY] = {half: json.loads(fig.to_json()) for half, fig
+                              in zip(VOTES_HALVES, aaii_votes.figures(votes, colors))}
     default = payload[str(sentiment.DEFAULT_LOOKBACK)]
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
@@ -156,6 +158,8 @@ h1 {{ color: var(--ink); font-size: 1.4rem; font-weight: 500; margin: 6px 0 8px;
 .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
 .card .sub {{ font-size: 0.8rem; margin-bottom: 6px; }}
+.votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
+@media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 </style>
@@ -217,8 +221,11 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
   }}
   draw({sentiment.DEFAULT_LOOKBACK}, true);
   if (DATA['{VOTES_KEY}']) {{
-    Plotly.newPlot(plotOf('{VOTES_ID}'), DATA['{VOTES_KEY}'].data, DATA['{VOTES_KEY}'].layout,
-                   CONFIG);
+    Object.keys(DATA['{VOTES_KEY}']).forEach(function (half) {{
+      var fig = DATA['{VOTES_KEY}'][half];
+      Plotly.newPlot(document.querySelector('#{VOTES_ID} [data-half="' + half + '"]'),
+                     fig.data, fig.layout, CONFIG);
+    }});
   }}
   IDS.forEach(function (id) {{
     plotOf(id).on('plotly_relayout', function (ev) {{
@@ -239,7 +246,9 @@ def _votes_card():
     esc = html.escape
     return (f'<section class="card"><h2>{esc(aaii_votes.TITLE)}</h2>\n'
             f'<div class="sub">{esc(aaii_votes.SUBTITLE)}</div>\n'
-            f'<div id="{VOTES_ID}"><div class="plot"></div></div></section>\n')
+            f'<div id="{VOTES_ID}" class="votes-grid">'
+            + "".join(f'<div class="plot" data-half="{h}"></div>' for h in VOTES_HALVES)
+            + '</div></section>\n')
 
 
 def write(path, reads, colors, palette, **kw):

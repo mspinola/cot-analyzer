@@ -5,7 +5,9 @@ page (local `/sentiment`) and its published copy (surveys.bluemagicai.com).
 The index chart above it turns AAII into one number (bulls minus bears, placed on a
 trailing range). This card keeps the three shares apart, because a bearish week with
 few neutrals and one with many read differently, and the spread alone cannot say
-which. Two parts, one figure:
+which. Two halves, side by side on a wide page and stacked on a narrow one (two
+figures in a wrapping grid: one figure with two columns cannot reflow, and stacked
+on a desktop the bars ran the page's full width, all colour):
 
 1. **Recent weeks.** The last four surveys, newest on top, each a bar split into the
    three shares (they sum to 100, within 0.2 for rounding in AAII's file).
@@ -43,7 +45,6 @@ from datetime import date
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 import viz_constants as vc
 from components import sentiment
@@ -65,9 +66,9 @@ HIGH_DAYS = 365
 
 TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
-            "on stocks over the next six months. Top: the last four surveys, newest "
-            "first. Bottom: the average since 1987, and each vote's highest week in the "
-            "last year.")
+            "on stocks over the next six months: the last four surveys, newest first, "
+            "beside the average since 1987 and each vote's highest week in the last "
+            "year.")
 
 ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
@@ -76,6 +77,12 @@ BAR_OPACITY = 0.85
 INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116"}
 #: Text inside a provisional (faint) segment, whatever its leg.
 PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
+#: Pixels each half adds to its rows: the title above, the margins.
+FIGURE_CHROME = 44
+#: Side by side above this page width, stacked below it. Each half needs about 360px to
+#: keep the date labels and every segment's text: at 375 one column of the stacked card
+#: showed all 18; split in two at that width each half would get about 170.
+VOTES_SIDE_BY_SIDE_MIN_PX = 768
 #: Past 100 by a little: rounded shares sum to as much as 100.2 in AAII's file, and a
 #: segment that overruns the axis loses its label (2026-10-08 did, at 100.1).
 X_RANGE = [0, 100.5]
@@ -157,61 +164,21 @@ def leg_colors(colors):
     return {"bullish": colors.bull, "neutral": NEUTRAL_COLOR, "bearish": colors.bear}
 
 
-def figure(votes, colors):
-    """Both blocks as one figure: stacked horizontal bars, 0 to 100, no zoom."""
-    fills = leg_colors(colors)
-    recent = votes.recent
-    spread = (recent["bullish"] - recent["bearish"]).to_numpy()
-    late = recent.index.isin(votes.provisional)
-    recent_rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
-                   for d, p in zip(recent.index, late)]
-    # Short labels: a long one widens the label column and squeezes the bars until
-    # Plotly hides the narrow segments' text at phone width. The detail is in the title.
-    high_rows = [f"{label} high" for _, _, label in LEGS]
-    history_rows = ["Average"] + high_rows
+def _bar(key, label, colors):
+    """The look every segment shares: its leg's colour, its share inside, no clipping."""
+    fill = leg_colors(colors)[key]
+    return dict(orientation="h", name=label, legendgroup=key, showlegend=False,
+                marker=dict(color=hex_to_rgba(fill, BAR_OPACITY) if fill.startswith("#")
+                            else fill),
+                textposition="inside", insidetextanchor="middle",
+                insidetextfont=dict(color=INSIDE_TEXT[key], size=11), cliponaxis=False)
 
-    fig = make_subplots(rows=2, cols=1, vertical_spacing=0.16,
-                        row_heights=[len(recent_rows), len(history_rows)],
-                        subplot_titles=("Recent weeks (faint: provisional)" if late.any()
-                                        else "Recent weeks",
-                                        f"Since {votes.since:%Y}; highs of the last year"))
-    for i, (key, _, label) in enumerate(LEGS):
-        bar = dict(orientation="h", name=label, legendgroup=key,
-                   marker=dict(color=hex_to_rgba(fills[key], BAR_OPACITY)
-                               if fills[key].startswith("#") else fills[key]),
-                   textposition="inside", insidetextanchor="middle",
-                   insidetextfont=dict(color=INSIDE_TEXT[key], size=11),
-                   cliponaxis=False)
-        vals = recent[key].round(1).to_numpy()
-        recent_bar = dict(bar)
-        if late.any():
-            recent_bar["marker"] = dict(bar["marker"], opacity=np.where(
-                late, sentiment.PROVISIONAL_OPACITY, 1.0))
-            # Light text on a faint segment: the dark text the bright bars carry sat on a
-            # dimmed fill over the dark page and could not be read.
-            recent_bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
-                late, PROVISIONAL_TEXT, INSIDE_TEXT[key]).tolist())
-        fig.add_trace(go.Bar(
-            x=vals, y=recent_rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
-            hovertemplate=(f"{label} " + "%{x:.1f}%  (bulls minus bears %{customdata:+.1f})"
-                           "<extra>%{y}</extra>"),
-            **recent_bar), row=1, col=1)
-        # History: the average row stacks all three; each high row carries one leg.
-        high, _ = votes.highs[key]
-        x = [round(float(votes.average[key]), 1)] + [None] * len(high_rows)
-        x[1 + i] = round(high, 1)
-        fig.add_trace(go.Bar(
-            x=x, y=history_rows, text=[f"{v:.1f}%" if v is not None else "" for v in x],
-            hovertemplate=f"{label} " + "%{x:.1f}%<extra>%{y}</extra>",
-            showlegend=False, **bar), row=2, col=1)
-        fig.add_annotation(x=high, y=high_rows[i], xref="x2", yref="y2", xanchor="left",
-                           text=f"  {votes.highs[key][1]:%Y-%m-%d}", showarrow=False,
-                           font=dict(size=10, color=vc.TEXT_COLOR))
 
+def _finish(fig, title, rows):
+    """Layout for one half: fixed 0 to 100, no zoom, rows read top down, a left title."""
     fig.update_layout(
-        barmode="stack", bargap=0.25,
-        height=ROW_HEIGHT * (len(recent_rows) + len(history_rows)) + 120,
-        margin=dict(l=8, r=8, t=30, b=8),
+        barmode="stack", bargap=0.25, height=ROW_HEIGHT * rows + FIGURE_CHROME,
+        margin=dict(l=8, r=8, t=26, b=4),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=vc.TEXT_COLOR, size=11), hovermode="closest",
         hoverlabel=dict(bgcolor="#0e1116", bordercolor=vc.GRID_COLOR,
@@ -228,7 +195,61 @@ def figure(votes, colors):
     fig.update_yaxes(type="category", autorange="reversed", automargin=True,
                      showgrid=False, fixedrange=True,
                      tickfont=dict(size=10, color=vc.TEXT_COLOR), ticksuffix="  ")
-    for ann in fig.layout.annotations[:2]:
-        ann.font = dict(size=11, color=vc.TEXT_COLOR)
-        ann.x, ann.xanchor, ann.align = 0, "left", "left"
+    fig.add_annotation(text=title, x=0, y=1, xref="paper", yref="paper", xanchor="left",
+                       yanchor="bottom", align="left", showarrow=False,
+                       font=dict(size=11, color=vc.TEXT_COLOR))
     return fig
+
+
+def recent_figure(votes, colors):
+    """The last RECENT_WEEKS surveys, newest on top, provisional ones faint."""
+    recent = votes.recent
+    spread = (recent["bullish"] - recent["bearish"]).to_numpy()
+    late = recent.index.isin(votes.provisional)
+    rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
+            for d, p in zip(recent.index, late)]
+    fig = go.Figure()
+    for key, _, label in LEGS:
+        bar = _bar(key, label, colors)
+        if late.any():
+            bar["marker"] = dict(bar["marker"], opacity=np.where(
+                late, sentiment.PROVISIONAL_OPACITY, 1.0))
+            # Light text on a faint segment: the dark text the bright bars carry sat on a
+            # dimmed fill over the dark page and could not be read.
+            bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
+                late, PROVISIONAL_TEXT, INSIDE_TEXT[key]).tolist())
+        vals = recent[key].round(1).to_numpy()
+        fig.add_trace(go.Bar(
+            x=vals, y=rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
+            hovertemplate=(f"{label} " + "%{x:.1f}%  (bulls minus bears %{customdata:+.1f})"
+                           "<extra>%{y}</extra>"), **bar))
+    title = "Recent weeks (faint: provisional)" if late.any() else "Recent weeks"
+    return _finish(fig, title, len(rows))
+
+
+def history_figure(votes, colors):
+    """The average split since the series began, and each vote's high of the last year
+    with its date beside the bar. Official weeks only (`summarize`)."""
+    # Short labels: a long one widens the label column and squeezes the bars until
+    # Plotly hides the narrow segments' text at phone width. The detail is in the title.
+    high_rows = [f"{label} high" for _, _, label in LEGS]
+    rows = ["Average"] + high_rows
+    fig = go.Figure()
+    for i, (key, _, label) in enumerate(LEGS):
+        # The average row stacks all three; each high row carries one leg.
+        high, when = votes.highs[key]
+        x = [round(float(votes.average[key]), 1)] + [None] * len(high_rows)
+        x[1 + i] = round(high, 1)
+        fig.add_trace(go.Bar(
+            x=x, y=rows, text=[f"{v:.1f}%" if v is not None else "" for v in x],
+            hovertemplate=f"{label} " + "%{x:.1f}%<extra>%{y}</extra>",
+            **_bar(key, label, colors)))
+        fig.add_annotation(x=high, y=high_rows[i], xanchor="left", showarrow=False,
+                           text=f"  {when:%Y-%m-%d}", font=dict(size=10, color=vc.TEXT_COLOR))
+    return _finish(fig, f"Since {votes.since:%Y}; highs of the last year", len(rows))
+
+
+def figures(votes, colors):
+    """The card's two halves, (recent, history): side by side where the page is wide,
+    stacked where it is not (each page lays them out at VOTES_SIDE_BY_SIDE_MIN_PX)."""
+    return recent_figure(votes, colors), history_figure(votes, colors)
