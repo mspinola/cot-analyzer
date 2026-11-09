@@ -204,6 +204,8 @@ def test_provisional_rows_draw_faint_with_the_tag_beside_the_date():
     assert list(bull.y[2:]) == [f"{d:%Y-%m-%d}" for d in WEEKS[[117, 116]]]
     from components import sentiment as s
     np.testing.assert_allclose(bull.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
+    # Light text on the faint rows, the leg's usual text on the others.
+    assert list(bull.insidetextfont.color) == [av.PROVISIONAL_TEXT] * 2 + [av.INSIDE_TEXT["bullish"]] * 2
     assert "provisional" in fig.layout.annotations[0].text
 
 

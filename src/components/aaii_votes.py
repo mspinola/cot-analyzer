@@ -74,6 +74,8 @@ NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
 BAR_OPACITY = 0.85
 #: Text inside each segment: dark on the bright green and red, white on the grey.
 INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116"}
+#: Text inside a provisional (faint) segment, whatever its leg.
+PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Past 100 by a little: rounded shares sum to as much as 100.2 in AAII's file, and a
 #: segment that overruns the axis loses its label (2026-10-08 did, at 100.1).
 X_RANGE = [0, 100.5]
@@ -185,6 +187,10 @@ def figure(votes, colors):
         if late.any():
             recent_bar["marker"] = dict(bar["marker"], opacity=np.where(
                 late, sentiment.PROVISIONAL_OPACITY, 1.0))
+            # Light text on a faint segment: the dark text the bright bars carry sat on a
+            # dimmed fill over the dark page and could not be read.
+            recent_bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
+                late, PROVISIONAL_TEXT, INSIDE_TEXT[key]).tolist())
         fig.add_trace(go.Bar(
             x=vals, y=recent_rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
             hovertemplate=(f"{label} " + "%{x:.1f}%  (bulls minus bears %{customdata:+.1f})"
