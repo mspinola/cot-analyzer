@@ -87,3 +87,17 @@ def test_a_phone_drops_two_zoom_buttons_and_keeps_the_short_ones():
     assert f"window.matchMedia('{st.PHONE_QUERY}')" in html
     assert '["2Y","15Y"]' in html and "fitted(fig.layout)" in html
     assert not {"3M", "6M"} & set(st.PHONE_HIDDEN_RANGES)
+
+
+def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
+    """The same row dbmf-tracker's three templates carry (its tests/test_site_nav.py
+    pins the same list), with Surveys current and the app's own Market Internals page
+    linked as "Market"."""
+    links = re.findall(r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>', st._nav())
+    assert links == [("https://dbmf.bluemagicai.com/", "DBMF"),
+                     ("https://ahlt.bluemagicai.com/", "AHLT"),
+                     ("https://orr.bluemagicai.com/", "ORR"),
+                     ("https://surveys.bluemagicai.com/", "Surveys"),
+                     ("https://bluemagicai.com/internals", "Market"),
+                     ("https://bluemagicai.com/", "COT Analyzer &rarr;")]
+    assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', st._nav()) == ["Surveys"]

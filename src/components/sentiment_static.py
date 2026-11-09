@@ -55,10 +55,14 @@ DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, "
                "as range indexes with SPY's drawdowns behind them.")
 HOME = "https://bluemagicai.com/"
 #: The monitor row the DBMF, AHLT and ORR pages carry, with this page marked current.
+#: Hand-kept in step with dbmf-tracker's templates (its tests/test_site_nav.py names
+#: this file). Market is the app's own /internals page, the one Monitors entry that
+#: is not a site of its own.
 SITES = (("DBMF", "https://dbmf.bluemagicai.com/"),
          ("AHLT", "https://ahlt.bluemagicai.com/"),
          ("ORR", "https://orr.bluemagicai.com/"),
-         ("Surveys", "https://surveys.bluemagicai.com/"))
+         ("Surveys", "https://surveys.bluemagicai.com/"),
+         ("Market", HOME + "internals"))
 CURRENT = "Surveys"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
