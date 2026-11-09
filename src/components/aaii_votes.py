@@ -24,6 +24,14 @@ file dates a survey on Thursday, the page names the Wednesday it closed): the st
 2026-10-29 is AAII's "week ending 10/28". The rest of the sentiment page dates AAII the
 same way, so the card agrees with the chart beside it.
 
+**Provisional weeks.** The store's AAII legs end where the member spreadsheet last
+downloaded ends; marketdata's AAII_*_PROVISIONAL carry the weeks since, typed from AAII's
+public results page (rounded to a tenth of a point). They reach the recent rows only,
+after the official end and only when all three legs are present, drawn faint with
+"prov" beside the date, as the chart above draws them hollow and faint. The average
+and the one-year highs stay on official weeks, so a rounded hand-typed week never sets
+a long-run number; the highs' year ends on the newest official week.
+
 **Arithmetic.** Shares are the stored fractions times 100. The average is a plain mean
 of every stored week; the high is the largest share in the 365 days ending on the
 newest week (53 surveys). Nothing is smoothed or indexed. This repo computes no metrics
@@ -32,6 +40,7 @@ of its own, and none of this is one: it is the survey's own numbers, rearranged.
 from dataclasses import dataclass
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -41,6 +50,12 @@ from components import sentiment
 from components.plot_colors import hex_to_rgba
 
 AAII_NEUTRAL = "AAII_NEUTRAL"
+#: Each leg's provisional series (NOT official; see the module docstring).
+PROVISIONAL = {"bullish": sentiment.AAII_BULL_PROVISIONAL,
+               "neutral": "AAII_NEUTRAL_PROVISIONAL",
+               "bearish": sentiment.AAII_BEAR_PROVISIONAL}
+#: Beside a provisional week's date, in the row label (short: labels set the bars' width).
+PROVISIONAL_TAG = "prov"
 #: (key, store symbol, label), in the order the bar stacks them, left to right.
 LEGS = (("bullish", sentiment.AAII_BULL, "Bullish"),
         ("neutral", AAII_NEUTRAL, "Neutral"),
@@ -59,6 +74,8 @@ NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
 BAR_OPACITY = 0.85
 #: Text inside each segment: dark on the bright green and red, white on the grey.
 INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116"}
+#: Text inside a provisional (faint) segment, whatever its leg.
+PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Past 100 by a little: rounded shares sum to as much as 100.2 in AAII's file, and a
 #: segment that overruns the axis loses its label (2026-10-08 did, at 100.1).
 X_RANGE = [0, 100.5]
@@ -69,12 +86,14 @@ class Votes:
     """`recent`: the last RECENT_WEEKS surveys, newest first, a percent column per leg,
     indexed by stored date. `average`: each leg's mean over every stored week, percent.
     `since`: the first stored week. `highs`: leg -> (percent, date) over the last
-    HIGH_DAYS. `last`: the newest stored week."""
+    HIGH_DAYS. `last`: the newest week shown. `provisional`: the dates in `recent` that
+    are provisional, oldest first."""
     recent: pd.DataFrame
     average: pd.Series
     since: date
     highs: dict
     last: date
+    provisional: tuple = ()
 
 
 def legs(get_bars=None):
@@ -91,20 +110,46 @@ def legs(get_bars=None):
     return frame if not frame.empty else None
 
 
-def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS):
-    """The card's numbers from `legs()`, or None for an empty frame."""
+def provisional_legs(official, get_bars=None):
+    """The provisional weeks after `official`'s last week, percent, one row per week, or
+    None. Never stands in for missing official legs, and a week missing any of its three
+    provisional legs is dropped, as an official one is."""
+    if official is None or official.empty:
+        return None
+    get_bars = get_bars or sentiment._get_bars
+    cols = {}
+    for key, symbol in PROVISIONAL.items():
+        s = sentiment._close(get_bars, symbol)
+        if s is None:
+            return None
+        cols[key] = s * 100.0
+    frame = pd.DataFrame(cols).dropna().sort_index()
+    frame = frame[frame.index > official.index[-1]]
+    return frame if not frame.empty else None
+
+
+def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None):
+    """The card's numbers from `legs()`, or None for an empty frame. `provisional`
+    (`provisional_legs()`) joins the recent rows only."""
     if frame is None or frame.empty:
         return None
-    last = frame.index[-1]
-    year = frame[frame.index > last - pd.Timedelta(days=high_days)]
+    end = frame.index[-1]
+    year = frame[frame.index > end - pd.Timedelta(days=high_days)]
     highs = {key: (float(year[key].max()), year[key].idxmax().date()) for key, *_ in LEGS}
-    return Votes(recent=frame.iloc[::-1].head(recent), average=frame.mean(),
-                 since=frame.index[0].date(), highs=highs, last=last.date())
+    shown, late = frame, ()
+    if provisional is not None and not provisional.empty:
+        late = provisional[provisional.index > end]
+        shown = pd.concat([frame, late])
+        late = tuple(late.index)
+    return Votes(recent=shown.iloc[::-1].head(recent), average=frame.mean(),
+                 since=frame.index[0].date(), highs=highs, last=shown.index[-1].date(),
+                 provisional=late)
 
 
 def read(get_bars=None):
     """The card's numbers from the store, or None when AAII is not in it."""
-    return summarize(legs(get_bars))
+    official = legs(get_bars)
+    return summarize(official, provisional=provisional_legs(official, get_bars))
 
 
 def leg_colors(colors):
@@ -117,7 +162,9 @@ def figure(votes, colors):
     fills = leg_colors(colors)
     recent = votes.recent
     spread = (recent["bullish"] - recent["bearish"]).to_numpy()
-    recent_rows = [f"{d:%Y-%m-%d}" for d in recent.index]
+    late = recent.index.isin(votes.provisional)
+    recent_rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
+                   for d, p in zip(recent.index, late)]
     # Short labels: a long one widens the label column and squeezes the bars until
     # Plotly hides the narrow segments' text at phone width. The detail is in the title.
     high_rows = [f"{label} high" for _, _, label in LEGS]
@@ -125,7 +172,8 @@ def figure(votes, colors):
 
     fig = make_subplots(rows=2, cols=1, vertical_spacing=0.16,
                         row_heights=[len(recent_rows), len(history_rows)],
-                        subplot_titles=("Recent weeks",
+                        subplot_titles=("Recent weeks (faint: provisional)" if late.any()
+                                        else "Recent weeks",
                                         f"Since {votes.since:%Y}; highs of the last year"))
     for i, (key, _, label) in enumerate(LEGS):
         bar = dict(orientation="h", name=label, legendgroup=key,
@@ -135,11 +183,19 @@ def figure(votes, colors):
                    insidetextfont=dict(color=INSIDE_TEXT[key], size=11),
                    cliponaxis=False)
         vals = recent[key].round(1).to_numpy()
+        recent_bar = dict(bar)
+        if late.any():
+            recent_bar["marker"] = dict(bar["marker"], opacity=np.where(
+                late, sentiment.PROVISIONAL_OPACITY, 1.0))
+            # Light text on a faint segment: the dark text the bright bars carry sat on a
+            # dimmed fill over the dark page and could not be read.
+            recent_bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
+                late, PROVISIONAL_TEXT, INSIDE_TEXT[key]).tolist())
         fig.add_trace(go.Bar(
             x=vals, y=recent_rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
             hovertemplate=(f"{label} " + "%{x:.1f}%  (bulls minus bears %{customdata:+.1f})"
                            "<extra>%{y}</extra>"),
-            **bar), row=1, col=1)
+            **recent_bar), row=1, col=1)
         # History: the average row stacks all three; each high row carries one leg.
         high, _ = votes.highs[key]
         x = [round(float(votes.average[key]), 1)] + [None] * len(high_rows)
