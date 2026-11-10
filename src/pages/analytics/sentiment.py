@@ -65,11 +65,12 @@ def export_button(view):
 
 
 def _card(title, subtitle, figure, graph_id=None, controls=None, export=None):
-    """A card around one figure, or around several laid out side by side from Bootstrap's
-    md width (768px) and stacked below it."""
+    """A card around one figure, or around several: stacked on a phone, two across from
+    Bootstrap's md width (768px), all across from xl (1200px)."""
     if isinstance(figure, (list, tuple)):
-        graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=12 // len(figure))
-                         for f in figure], className="gx-4")
+        # md=6: two across from 768px; xl: all across from 1200px (12 // n each).
+        graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=6,
+                                 xl=12 // len(figure)) for f in figure], className="gx-4")
     else:
         graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
                  else dcc.Graph(figure=figure, config=GRAPH_CONFIG))

@@ -88,7 +88,7 @@ VOTES_ID = "votes"
 #: The payload key for the AAII votes figures, beside the lookback keys: the card does
 #: not depend on the lookback, so it is embedded once and drawn once. Two halves.
 VOTES_KEY = "votes"
-VOTES_HALVES = ("recent", "history")
+VOTES_HALVES = ("recent", "history", "spread")
 
 
 def lookback_payload(read, colors, palette):
@@ -216,7 +216,8 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--accent); }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
 .card .sub {{ font-size: 0.8rem; margin-bottom: 6px; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
-@media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }} }}
+@media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+@media (min-width: {aaii_votes.VOTES_THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 </style>

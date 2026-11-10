@@ -5,14 +5,18 @@ page (local `/sentiment`) and its published copy (surveys.bluemagicai.com).
 The index chart above it turns AAII into one number (bulls minus bears, placed on a
 trailing range). This card keeps the three shares apart, because a bearish week with
 few neutrals and one with many read differently, and the spread alone cannot say
-which. Two halves, side by side on a wide page and stacked on a narrow one (two
-figures in a wrapping grid: one figure with two columns cannot reflow, and stacked
-on a desktop the bars ran the page's full width, all colour):
+which. Three blocks, each its own figure in a wrapping grid (one figure with several
+columns cannot reflow, and stacked on a desktop the bars ran the page's full width,
+all colour): all three across on a wide page, two on a medium one, stacked on a phone.
 
 1. **Recent weeks.** The last four surveys, newest on top, each a bar split into the
    three shares (they sum to 100, within 0.2 for rounding in AAII's file).
 2. **History.** The average split since the series begins (1987), and each share's
    highest week over the last year with that week's date.
+3. **Bulls minus bears.** The recent weeks' spread, the number the chart above indexes,
+   as bars on a fixed +-50 scale (red below zero, green above), against a dashed line
+   at its official average since 1987. Added 2026-11-09 at the user's request; the
+   weekly columns lower on the page chart the same spread week by week.
 
 Added 2026-11-09 at the user's request, after AAII's own results page, which shows the
 same two blocks. The store reproduces that page: the four recent weeks match row for
@@ -68,7 +72,8 @@ TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
             "on stocks over the next six months: the last four surveys, newest first, "
             "beside the average since 1987 and each vote's highest week in the last "
-            "year.")
+            "year, and each recent week's bulls minus bears against its average since "
+            "1987 (dashed).")
 
 ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
@@ -79,10 +84,18 @@ INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116"}
 PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Pixels each half adds to its rows: the title above, the margins.
 FIGURE_CHROME = 44
-#: Side by side above this page width, stacked below it. Each half needs about 360px to
-#: keep the date labels and every segment's text: at 375 one column of the stacked card
-#: showed all 18; split in two at that width each half would get about 170.
+#: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all three from
+#: VOTES_THREE_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
+#: date labels and every segment's text (all 18 showed at 309 on a phone, and at 332 a
+#: block at 768); three across at 768 would give each about 220. Both are Bootstrap's
+#: md and xl breakpoints, so the app page's columns break at the same widths.
 VOTES_SIDE_BY_SIDE_MIN_PX = 768
+VOTES_THREE_ACROSS_MIN_PX = 1200
+#: The spread block's fixed scale, points either side of zero: the same length means the
+#: same spread every week. AAII's spread has run -54.0 (1990-10-19) to +62.9 (2003-06-26);
+#: 0.68% of weeks fall outside +-50 and draw pinned to the edge with their true value
+#: beside them (`scripts/measure_aaii_spread_range.py`, 2,047 official weeks, 2026-11-09).
+SPREAD_LIMIT = 50.0
 #: Past 100 by a little: rounded shares sum to as much as 100.2 in AAII's file, and a
 #: segment that overruns the axis loses its label (2026-10-08 did, at 100.1).
 X_RANGE = [0, 100.5]
@@ -249,7 +262,41 @@ def history_figure(votes, colors):
     return _finish(fig, f"Since {votes.since:%Y}; highs of the last year", len(rows))
 
 
+def spread_figure(votes, colors):
+    """Bulls minus bears for the recent weeks, on a fixed +-SPREAD_LIMIT scale, red below
+    zero and green above, provisional weeks faint; the official average since the series
+    began is a dashed line across them (the rows stay four, so the blocks line up)."""
+    recent = votes.recent
+    spread = (recent["bullish"] - recent["bearish"]).round(1)
+    late = recent.index.isin(votes.provisional)
+    rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
+            for d, p in zip(recent.index, late)]
+    fills = leg_colors(colors)
+    color = [hex_to_rgba(fills["bullish" if v >= 0 else "bearish"], BAR_OPACITY)
+             for v in spread]
+    shown = spread.clip(-SPREAD_LIMIT, SPREAD_LIMIT)
+    fig = go.Figure(go.Bar(
+        x=shown.to_numpy(), y=rows, orientation="h", showlegend=False,
+        marker=dict(color=color, opacity=np.where(late, sentiment.PROVISIONAL_OPACITY, 1.0)
+                    if late.any() else None),
+        text=[f"{v:+.1f}" for v in spread], textposition="outside", cliponaxis=False,
+        textfont=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR),
+        customdata=np.column_stack([recent["bullish"].round(1), recent["bearish"].round(1)]),
+        hovertemplate=("Bulls minus bears %{text}  (bullish %{customdata[0]:.1f}, "
+                       "bearish %{customdata[1]:.1f})<extra>%{y}</extra>")))
+    avg = round(float(votes.average["bullish"] - votes.average["bearish"]), 1)
+    fig.add_vline(x=0, line=dict(color=vc.TEXT_COLOR, width=1))
+    fig.add_vline(x=avg, line=dict(color=vc.TEXT_COLOR, width=1, dash="dash"))
+    # The average named in the title, not by its line: a note at the line's top ran into
+    # the title wherever the block is narrow. Short: a longer title ran 34px past a
+    # phone-width block. The subtitle says the average runs since 1987.
+    _finish(fig, f"Bulls minus bears (avg {avg:+.1f} dashed)", len(rows))
+    fig.update_xaxes(range=[-SPREAD_LIMIT, SPREAD_LIMIT])
+    return fig
+
+
 def figures(votes, colors):
-    """The card's two halves, (recent, history): side by side where the page is wide,
-    stacked where it is not (each page lays them out at VOTES_SIDE_BY_SIDE_MIN_PX)."""
-    return recent_figure(votes, colors), history_figure(votes, colors)
+    """The card's three blocks, (recent, history, spread), laid out by each page at
+    VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_THREE_ACROSS_MIN_PX."""
+    return (recent_figure(votes, colors), history_figure(votes, colors),
+            spread_figure(votes, colors))
