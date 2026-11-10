@@ -18,7 +18,7 @@ import components.sentiment as sentiment
 import local_pages
 import viz_config
 import viz_constants as vc
-from components import aaii_votes, plot_colors
+from components import aaii_allocation, aaii_votes, plot_colors
 
 PRICE_CHART = "sentiment_price_chart"
 COLUMNS_CHART = "sentiment_columns_chart"
@@ -30,6 +30,7 @@ ZOOM_SINK = "sentiment_zoom_sink"
 #: header. Keyed by the view's short name, which also names the file.
 EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
            "votes": ("sentiment_votes_export", "sentiment_votes_export_btn"),
+           "allocation": ("sentiment_allocation_export", "sentiment_allocation_export_btn"),
            "columns": ("sentiment_columns_export", "sentiment_columns_export_btn")}
 COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
 
@@ -157,6 +158,12 @@ def layout(**_):
             # Not redrawn by the lookback: nothing in it is indexed.
             cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
                                aaii_votes.figures(votes, colors), export="votes"))
+        allocation = aaii_allocation.read()
+        if allocation is not None:
+            # Monthly and not indexed: the lookback does not redraw it either.
+            cards.append(_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE,
+                               aaii_allocation.figures(allocation, colors),
+                               export="allocation"))
         cards += [
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,

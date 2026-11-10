@@ -40,7 +40,7 @@ from pathlib import Path
 import plotly.offline
 
 import viz_constants as vc
-from components import aaii_votes, sentiment
+from components import aaii_allocation, aaii_votes, sentiment
 
 
 def plotly_js_url():
@@ -89,6 +89,12 @@ VOTES_ID = "votes"
 #: not depend on the lookback, so it is embedded once and drawn once. Two halves.
 VOTES_KEY = "votes"
 VOTES_HALVES = ("recent", "history", "spread")
+#: The AAII allocation card: the same block grid, its own payload key.
+ALLOCATION_ID = "allocation"
+ALLOCATION_KEY = "allocation"
+ALLOCATION_BLOCKS = ("recent", "history", "gap")
+#: (element id, payload key) of every block-grid card, drawn once each by the same JS.
+GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
 
 
 def lookback_payload(read, colors, palette):
@@ -143,9 +149,11 @@ def _header(read):
             f'</div><div class="asof">{asof}</div></header>')
 
 
-def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None):
+def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None,
+           allocation=None):
     """The page for `reads`, a {lookback years: SentimentRead} with the default included,
-    and `votes` (`aaii_votes.read()`), whose card is left out when it is None.
+    `votes` (`aaii_votes.read()`) and `allocation` (`aaii_allocation.read()`), each of
+    whose cards is left out when it is None.
 
     Raises ValueError when the default lookback is missing or any read is empty, so a
     failed store read stops the publish rather than putting an empty page up.
@@ -159,6 +167,10 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
     if votes is not None:
         payload[VOTES_KEY] = {half: json.loads(fig.to_json()) for half, fig
                               in zip(VOTES_HALVES, aaii_votes.figures(votes, colors))}
+    if allocation is not None:
+        payload[ALLOCATION_KEY] = {
+            block: json.loads(fig.to_json()) for block, fig
+            in zip(ALLOCATION_BLOCKS, aaii_allocation.figures(allocation, colors))}
     default = payload[str(sentiment.DEFAULT_LOOKBACK)]
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
@@ -232,7 +244,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 <div class="sub">{esc(sentiment.PRICE_SUBTITLE)}</div>
 <div id="{PRICE_ID}"><div class="plot"></div></div></section>
-{_votes_card() if votes is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
+{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 <div class="notes" id="notes">{notes}</div>
 <footer>{esc(SOURCES)} Not investment advice.</footer>
@@ -278,13 +290,14 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
     }});
   }}
   draw({sentiment.DEFAULT_LOOKBACK}, true);
-  if (DATA['{VOTES_KEY}']) {{
-    Object.keys(DATA['{VOTES_KEY}']).forEach(function (half) {{
-      var fig = DATA['{VOTES_KEY}'][half];
-      Plotly.newPlot(document.querySelector('#{VOTES_ID} [data-half="' + half + '"]'),
-                     fig.data, fig.layout, CONFIG);
+  {_script_json([list(c) for c in GRID_CARDS])}.forEach(function (card) {{
+    var id = card[0], blocks = DATA[card[1]];
+    if (!blocks) {{ return; }}
+    Object.keys(blocks).forEach(function (half) {{
+      Plotly.newPlot(document.querySelector('#' + id + ' [data-half="' + half + '"]'),
+                     blocks[half].data, blocks[half].layout, CONFIG);
     }});
-  }}
+  }});
   IDS.forEach(function (id) {{
     plotOf(id).on('plotly_relayout', function (ev) {{
       try {{ refit(ev, id); }} catch (e) {{ console.error(e); }}
@@ -300,13 +313,24 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 """
 
 
-def _votes_card():
+def _grid_card(title, subtitle, element_id, blocks):
+    """A card of figure blocks in the wrapping grid (`.votes-grid`, named for the first
+    card that used it): one across on a phone, two from 768px, three from 1200px."""
     esc = html.escape
-    return (f'<section class="card"><h2>{esc(aaii_votes.TITLE)}</h2>\n'
-            f'<div class="sub">{esc(aaii_votes.SUBTITLE)}</div>\n'
-            f'<div id="{VOTES_ID}" class="votes-grid">'
-            + "".join(f'<div class="plot" data-half="{h}"></div>' for h in VOTES_HALVES)
+    return (f'<section class="card"><h2>{esc(title)}</h2>\n'
+            f'<div class="sub">{esc(subtitle)}</div>\n'
+            f'<div id="{element_id}" class="votes-grid">'
+            + "".join(f'<div class="plot" data-half="{h}"></div>' for h in blocks)
             + '</div></section>\n')
+
+
+def _votes_card():
+    return _grid_card(aaii_votes.TITLE, aaii_votes.SUBTITLE, VOTES_ID, VOTES_HALVES)
+
+
+def _allocation_card():
+    return _grid_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE, ALLOCATION_ID,
+                      ALLOCATION_BLOCKS)
 
 
 def write(path, reads, colors, palette, **kw):
