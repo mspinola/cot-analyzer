@@ -571,6 +571,28 @@ def open_range(read):
     return [end - pd.DateOffset(years=OPEN_YEARS), end + pd.Timedelta(days=OPEN_PAD_DAYS)]
 
 
+def autorange_clip(read):
+    """Keep an autorange (the Max button, a double-click) to the data's own span.
+
+    Plotly pads an autorange by about 5% of the span on each side for any trace drawn
+    with markers, which the raw weekly dots and the latest markers are: at Max that
+    put the right edge in January 2029, over two years past the data. The year and
+    month buttons count back from the axis's right edge, not the data's, so 1Y after
+    Max showed 2028 to 2029, an empty window the price axis could not refit to
+    (reported 2026-11-10). Clipping the autorange to the first week anything is drawn
+    (SPY, or an index once its window fills; the frame itself starts earlier, with
+    AAII's raw weeks) and to `open_range`'s right edge keeps Max on the data and every
+    button after it too.
+
+    `clipmin` / `clipmax`, not `minallowed` / `maxallowed`: with date strings the
+    latter left Plotly 3.7's autorange at its empty placeholder (2000 to 2001)."""
+    f = read.frame
+    drawn = [c for c in ("spy", "naaim_idx", "aaii_idx", "naaim_raw_idx", "aaii_raw_idx")
+             if c in f and f[c].notna().any()]
+    first = min(f[c].first_valid_index() for c in drawn) if drawn else f.index[0]
+    return dict(clipmin=f"{first:%Y-%m-%d}", clipmax=f"{open_range(read)[1]:%Y-%m-%d}")
+
+
 def _zones(fig, row):
     """The fixed extreme zones as dotted lines at 20 and 80. Lines rather than fills: the
     drawdown bands own the background, and a red top zone over a red band reads as
@@ -761,7 +783,7 @@ def price_sentiment_figure(read, colors, palette):
         _drawdown_keys(fig)
     fig.update_xaxes(type="date")
     if not f.empty:
-        fig.update_xaxes(range=open_range(read))
+        fig.update_xaxes(range=open_range(read), autorangeoptions=autorange_clip(read))
     range_buttons(fig)
     _left_titles(fig)
     _base(fig, PRICE_HEIGHT)
