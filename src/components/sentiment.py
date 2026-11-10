@@ -745,6 +745,40 @@ def _index_title(read):
     return "<br>".join(parts) if parts else "Sentiment range index"
 
 
+#: The refit rules for a figure whose top panel is `spy_panel`: only the price axis is
+#: re-fitted on a zoom, deciding log against linear for the window on screen; the panel
+#: under it keeps its fixed scale.
+PRICE_REFIT = {exposure_traces.REFIT_META: {
+    "axes": ["yaxis"], "price_axis": "yaxis",
+    "log_ratio_min": exposure_traces.LOG_RATIO_MIN, "pad": exposure_traces.REFIT_PAD}}
+
+
+def spy_panel(fig, spy, start):
+    """SPY's line on the top panel, its axis fitted to the window opening at `start`.
+
+    Scale, ticks and range by Exposure's rules: log only where the window spans 3x or
+    more, ticks spelled out on a log axis. The browser re-decides all three on every
+    zoom (PRICE_REFIT in the figure's meta). Shared by every chart drawn over SPY here."""
+    s = spy.dropna()
+    fig.add_trace(go.Scatter(x=s.index, y=s, mode="lines",
+                             line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1),
+                             name="SPY", showlegend=False,
+                             hovertemplate="%{y:.2f}<extra>SPY</extra>"), row=1, col=1)
+    shown = s[s.index >= start]
+    shown = shown if not shown.empty else s
+    axis_type = exposure_traces.price_axis_type(shown)
+    pad = exposure_traces.REFIT_PAD
+    if axis_type == "log":
+        lo, hi = np.log10(shown.min()), np.log10(shown.max())
+        ticks = exposure_traces.log_ticks(shown)
+        fig.update_yaxes(type="log", range=[lo - (hi - lo) * pad, hi + (hi - lo) * pad],
+                         tickvals=ticks, tickformat=",.0f", row=1, col=1)
+    else:
+        lo, hi = float(shown.min()), float(shown.max())
+        fig.update_yaxes(type="linear", range=[lo - (hi - lo) * pad, hi + (hi - lo) * pad],
+                         row=1, col=1)
+
+
 def price_sentiment_figure(read, colors, palette):
     """View 1: SPY above NAAIM and AAII's range indexes on one panel, opening on five
     years. `palette` is the viz palette, for the two sentiment colours."""
@@ -753,27 +787,7 @@ def price_sentiment_figure(read, colors, palette):
                         subplot_titles=("SPY, total return", _index_title(read)))
     f = read.frame
     if "spy" in f:
-        s = f["spy"].dropna()
-        fig.add_trace(go.Scatter(x=s.index, y=s, mode="lines",
-                                 line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1),
-                                 name="SPY", showlegend=False,
-                                 hovertemplate="%{y:.2f}<extra>SPY</extra>"), row=1, col=1)
-        # Scale, ticks and range for the window the chart opens on, by Exposure's rules:
-        # log only where the window spans 3x or more, ticks spelled out on a log axis.
-        # The browser re-decides all three on every zoom (layout.meta.refit, below).
-        shown = s[s.index >= open_range(read)[0]]
-        shown = shown if not shown.empty else s
-        axis_type = exposure_traces.price_axis_type(shown)
-        pad = exposure_traces.REFIT_PAD
-        if axis_type == "log":
-            lo, hi = np.log10(shown.min()), np.log10(shown.max())
-            ticks = exposure_traces.log_ticks(shown)
-            fig.update_yaxes(type="log", range=[lo - (hi - lo) * pad, hi + (hi - lo) * pad],
-                             tickvals=ticks, tickformat=",.0f", row=1, col=1)
-        else:
-            lo, hi = float(shown.min()), float(shown.max())
-            fig.update_yaxes(type="linear", range=[lo - (hi - lo) * pad, hi + (hi - lo) * pad],
-                             row=1, col=1)
+        spy_panel(fig, f["spy"], open_range(read)[0])
     _drawdown_bands(fig, read)
     _zones(fig, 2)
     line_colors = sentiment_colors(palette)
@@ -790,10 +804,7 @@ def price_sentiment_figure(read, colors, palette):
     fig.update_layout(uirevision=UIREVISION)
     # Only the price axis is re-fitted on a zoom: the index panel is pinned to 0-100,
     # which is the point of an index, and fitting it to a window would undo it.
-    fig.update_layout(margin=dict(t=44), meta={
-        exposure_traces.REFIT_META: {
-            "axes": ["yaxis"], "price_axis": "yaxis",
-            "log_ratio_min": exposure_traces.LOG_RATIO_MIN, "pad": exposure_traces.REFIT_PAD}})
+    fig.update_layout(margin=dict(t=44), meta=PRICE_REFIT)
     return fig
 
 

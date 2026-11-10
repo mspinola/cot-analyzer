@@ -19,6 +19,14 @@ VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_THREE_ACROSS_MIN_PX):
 
 Added 2026-11-09 at the user's request, "just like the AAII sentiment numbers".
 
+**The history chart** (`price_figure`, its own card under this one, added 2026-11-10):
+every month since 1987 as a stacked area under SPY, laid out like the sentiment
+chart (`sentiment.spy_panel`, its range buttons and refit) so the two cards behave
+alike. Stocks stack on the floor so their band's top edge reads as the share itself.
+Its own card rather than a fourth block, which has no room for a time axis, and
+rather than a line on the sentiment chart, whose panel holds weekly opinion on a
+range index, not a monthly holding in percent.
+
 **Dating.** marketdata indexes a survey on its month's last day, and the card labels
 it by that month (2026-10). AAII publishes each month's results in the first days of
 the next, so the newest row is about a month old by design, not a lag in the store.
@@ -28,11 +36,14 @@ mean of every stored month; the high is the largest share in the 365 days ending
 the newest month (12 surveys). Nothing is smoothed or indexed. The store is
 marketdata's AAII_ALLOC_* series, built by hand from AAII's member spreadsheet.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 import viz_constants as vc
 from components import aaii_votes, sentiment
@@ -70,6 +81,8 @@ class Allocation:
     since: date
     highs: dict
     last: date
+    #: Every stored month, oldest first, a percent column per share: the history chart's.
+    months: pd.DataFrame | None = None
 
 
 def legs(get_bars=None):
@@ -87,14 +100,15 @@ def legs(get_bars=None):
 
 
 def summarize(frame, recent=RECENT_MONTHS, high_days=HIGH_DAYS):
-    """The card's numbers from `legs()`, or None for an empty frame."""
+    """The cards' numbers from `legs()`, or None for an empty frame."""
     if frame is None or frame.empty:
         return None
     end = frame.index[-1]
     year = frame[frame.index > end - pd.Timedelta(days=high_days)]
     highs = {key: (float(year[key].max()), year[key].idxmax().date()) for key, *_ in LEGS}
     return Allocation(recent=frame.iloc[::-1].head(recent), average=frame.mean(),
-                      since=frame.index[0].date(), highs=highs, last=end.date())
+                      since=frame.index[0].date(), highs=highs, last=end.date(),
+                      months=frame)
 
 
 def read(get_bars=None):
@@ -189,3 +203,74 @@ def figures(alloc, colors):
     return (recent_figure(alloc, colors), history_figure(alloc, colors),
             stock_gap_figure(alloc, colors))
 
+
+
+# ── the history chart, its own card ────────────────────────────────────────────
+
+PRICE_TITLE = "AAII allocation against price"
+PRICE_SUBTITLE = ("SPY above, and below it AAII members' split between stocks (green), "
+                  "bonds (blue) and cash (grey) each month since 1987, stacked to 100% "
+                  "of portfolio. Stocks sit on the floor, so their band's top edge is the "
+                  "stocks share; the dashed line is its average since 1987. Opens on the "
+                  "whole history (SPY's starts in 1993); the buttons zoom in. Each month "
+                  "is drawn on its last day, about a month before AAII publishes it.")
+#: The sentiment chart's height, so the two price cards read as a pair.
+PRICE_HEIGHT = sentiment.PRICE_HEIGHT
+#: The stacked panel's scale. A month's rounded shares can sum to 100.1, so a hair of
+#: room above 100 keeps the top edge from clipping.
+STACK_RANGE = [0, 100.5]
+UIREVISION = "aaii-allocation"
+
+
+def _stack_title(alloc):
+    """The stacked panel's title: the newest month, then its three shares, one line
+    each so it fits a phone-width panel (the sentiment chart's measured limit)."""
+    row = alloc.months.iloc[-1]
+    shares = ", ".join(f"{label if i == 0 else label.lower()} {row[key]:.1f}"
+                       for i, (key, _, label) in enumerate(LEGS))
+    return f"AAII allocation, {alloc.last:%Y-%m}<br>{shares}"
+
+
+def open_range(alloc, spy):
+    """The whole history, from the first month to a little past the newest point
+    drawn (SPY's last week, or the newest month when SPY is not in)."""
+    months = alloc.months.index
+    end = months[-1]
+    if spy is not None and not spy.dropna().empty:
+        end = max(end, spy.dropna().index[-1])
+    return [months[0], end + pd.Timedelta(days=sentiment.OPEN_PAD_DAYS)]
+
+
+def price_figure(alloc, spy, colors):
+    """SPY above the monthly split, stacked, sharing one time axis.
+
+    `spy` is the sentiment read's weekly SPY (`read.frame["spy"]`), or None, which
+    leaves the top panel empty. The same layout, buttons, refit and autorange clip as
+    `sentiment.price_sentiment_figure`, so the two cards behave alike."""
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                        row_heights=[0.5, 0.5],
+                        subplot_titles=("SPY, total return", _stack_title(alloc)))
+    window = open_range(alloc, spy)
+    if spy is not None and not spy.dropna().empty:
+        sentiment.spy_panel(fig, spy, window[0])
+    months = alloc.months
+    fills = leg_colors(colors)
+    for key, _, label in LEGS:
+        fig.add_trace(go.Scatter(
+            x=months.index, y=months[key].round(1), mode="lines", name=label,
+            stackgroup="allocation", showlegend=False,
+            line=dict(color=fills[key], width=1),
+            fillcolor=hex_to_rgba(fills[key], aaii_votes.BAR_OPACITY),
+            hovertemplate=f"{label} " + "%{y:.1f}%<extra></extra>"), row=2, col=1)
+    avg = float(alloc.average["stocks"])
+    fig.add_hline(y=avg, line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1, dash="dash"),
+                  opacity=0.8, row=2, col=1)
+    fig.update_yaxes(range=STACK_RANGE, tickvals=[0, 25, 50, 75, 100], row=2, col=1)
+    fig.update_xaxes(type="date", range=window,
+                     autorangeoptions=dict(clipmin=f"{window[0]:%Y-%m-%d}",
+                                           clipmax=f"{window[1]:%Y-%m-%d}"))
+    sentiment.range_buttons(fig)
+    sentiment._left_titles(fig)
+    sentiment._base(fig, PRICE_HEIGHT)
+    fig.update_layout(uirevision=UIREVISION, margin=dict(t=44), meta=sentiment.PRICE_REFIT)
+    return fig

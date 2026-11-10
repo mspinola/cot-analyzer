@@ -81,6 +81,11 @@ SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aa
 #: 3M and 6M were added; 2Y and 15Y sit between neighbours a phone reader can still pick.
 PHONE_HIDDEN_RANGES = ("2Y", "15Y")
 PHONE_QUERY = "(max-width: 600px)"
+#: How far the zoom buttons rise on a phone, in px, so they sit above the top panel's
+#: title rather than over it: the seven left span the plot's width (from 81 of 309 px,
+#: where the title ends at 181; measured 2026-11-10 on all three range-button charts).
+#: 22 cleared the one-line titles; the columns chart's two-line row header needs 32.
+PHONE_BUTTON_LIFT_PX = 32
 
 PRICE_ID = "price"
 COLUMNS_ID = "columns"
@@ -95,6 +100,10 @@ ALLOCATION_KEY = "allocation"
 ALLOCATION_BLOCKS = ("recent", "history", "gap")
 #: (element id, payload key) of every block-grid card, drawn once each by the same JS.
 GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
+#: The AAII allocation against SPY: one figure, not indexed, so embedded once like the
+#: grid cards, but drawn and re-fitted on zoom like the price chart.
+ALLOCATION_PRICE_ID = "allocation-price"
+ALLOCATION_PRICE_KEY = "allocation_price"
 
 
 def lookback_payload(read, colors, palette):
@@ -171,6 +180,9 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
         payload[ALLOCATION_KEY] = {
             block: json.loads(fig.to_json()) for block, fig
             in zip(ALLOCATION_BLOCKS, aaii_allocation.figures(allocation, colors))}
+        spy = reads[sentiment.DEFAULT_LOOKBACK].frame.get("spy")
+        payload[ALLOCATION_PRICE_KEY] = json.loads(
+            aaii_allocation.price_figure(allocation, spy, colors).to_json())
     default = payload[str(sentiment.DEFAULT_LOOKBACK)]
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
@@ -244,7 +256,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 <div class="sub">{esc(sentiment.PRICE_SUBTITLE)}</div>
 <div id="{PRICE_ID}"><div class="plot"></div></div></section>
-{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
+{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 <div class="notes" id="notes">{notes}</div>
 <footer>{esc(SOURCES)} Not investment advice.</footer>
@@ -260,6 +272,8 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
   var DATA = JSON.parse(document.getElementById('surveys-data').textContent);
   var CONFIG = {{displayModeBar: false, responsive: true}};
   var IDS = ['{PRICE_ID}', '{COLUMNS_ID}'];
+  // Drawn once (no lookback), re-fitted on zoom like the two above.
+  var ONCE = {{'{ALLOCATION_PRICE_ID}': '{ALLOCATION_PRICE_KEY}'}};
   var KEYS = {{'{PRICE_ID}': 'price', '{COLUMNS_ID}': 'columns'}};
   var refit = window.dash_clientside.clientside.autoscale_y_axes;
   var HIDDEN = window.matchMedia('{PHONE_QUERY}').matches ? {_script_json(list(PHONE_HIDDEN_RANGES))} : [];
@@ -268,9 +282,15 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
     var rs = layout.xaxis && layout.xaxis.rangeselector;
     if (!HIDDEN.length || !rs) {{ return layout; }}
     var buttons = rs.buttons.filter(function (b) {{ return HIDDEN.indexOf(b.label) < 0; }});
-    var xaxis = Object.assign({{}}, layout.xaxis,
-                              {{rangeselector: Object.assign({{}}, rs, {{buttons: buttons}})}});
-    return Object.assign({{}}, layout, {{xaxis: xaxis}});
+    // Lifted above the top panel's title: on a phone the seven buttons span the plot,
+    // and level with the title they drew over it.
+    var margin = Object.assign({{}}, layout.margin);
+    margin.t = (margin.t || 0) + {PHONE_BUTTON_LIFT_PX};
+    var plotH = (layout.height || 450) - margin.t - (margin.b || 0);
+    var lifted = Object.assign({{}}, rs, {{buttons: buttons, yanchor: 'bottom',
+                                          y: 1 + {PHONE_BUTTON_LIFT_PX} / plotH}});
+    var xaxis = Object.assign({{}}, layout.xaxis, {{rangeselector: lifted}});
+    return Object.assign({{}}, layout, {{xaxis: xaxis, margin: margin}});
   }}
   function draw(years, first) {{
     var d = DATA[String(years)];
@@ -298,7 +318,11 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
                      blocks[half].data, blocks[half].layout, CONFIG);
     }});
   }});
-  IDS.forEach(function (id) {{
+  Object.keys(ONCE).forEach(function (id) {{
+    var fig = DATA[ONCE[id]];
+    if (fig) {{ Plotly.newPlot(plotOf(id), fig.data, fitted(fig.layout), CONFIG); }}
+  }});
+  IDS.concat(Object.keys(ONCE).filter(function (id) {{ return DATA[ONCE[id]]; }})).forEach(function (id) {{
     plotOf(id).on('plotly_relayout', function (ev) {{
       try {{ refit(ev, id); }} catch (e) {{ console.error(e); }}
     }});
@@ -331,6 +355,13 @@ def _votes_card():
 def _allocation_card():
     return _grid_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE, ALLOCATION_ID,
                       ALLOCATION_BLOCKS)
+
+
+def _allocation_price_card():
+    esc = html.escape
+    return (f'<section class="card"><h2>{esc(aaii_allocation.PRICE_TITLE)}</h2>\n'
+            f'<div class="sub">{esc(aaii_allocation.PRICE_SUBTITLE)}</div>\n'
+            f'<div id="{ALLOCATION_PRICE_ID}"><div class="plot"></div></div></section>\n')
 
 
 def write(path, reads, colors, palette, **kw):

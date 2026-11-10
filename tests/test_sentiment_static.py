@@ -89,6 +89,13 @@ def test_a_phone_drops_two_zoom_buttons_and_keeps_the_short_ones():
     assert not {"3M", "6M"} & set(st.PHONE_HIDDEN_RANGES)
 
 
+def test_a_phone_lifts_the_zoom_buttons_above_the_top_panel_title():
+    """Level with the title, the seven buttons left on a phone drew over it."""
+    html = st.render(_reads(), COLORS, PALETTE)
+    assert f"margin.t = (margin.t || 0) + {st.PHONE_BUTTON_LIFT_PX};" in html
+    assert f"y: 1 + {st.PHONE_BUTTON_LIFT_PX} / plotH" in html
+
+
 def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
     """The same row dbmf-tracker's three templates carry (its tests/test_site_nav.py
     pins the same list), with Surveys current and the app's own Market Internals page
