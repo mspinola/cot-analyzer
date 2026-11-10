@@ -636,7 +636,7 @@ def test_each_card_exports_itself_as_a_png(monkeypatch):
     monkeypatch.setenv(local_pages.ENV, "1")
     page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
     try:
-        assert set(page.EXPORTS) == {"price", "votes", "columns"}
+        assert set(page.EXPORTS) == {"price", "votes", "allocation", "columns"}
         js = (Path(__file__).parents[1] / "src/assets/clientside.js").read_text()
         assert "export_sentiment_image: function(n_clicks, container_id, lookback)" in js
         # 1x: at 2x the PNG opened at twice the card's size and read as zoomed in.
