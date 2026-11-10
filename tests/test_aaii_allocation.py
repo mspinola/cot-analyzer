@@ -197,6 +197,10 @@ def test_the_app_page_refits_the_price_chart_without_a_load_time_call(monkeypatc
     import dash
 
     import local_pages
+    # Imported before the snapshot: run alone, a first import inside it registered the
+    # callbacks once and the reload below again, so each was counted twice.
+    monkeypatch.delenv(local_pages.ENV, raising=False)
+    importlib.import_module("pages.analytics.sentiment")
     registered = list(dash._callback.GLOBAL_CALLBACK_LIST)
     monkeypatch.setenv(local_pages.ENV, "1")
     page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
