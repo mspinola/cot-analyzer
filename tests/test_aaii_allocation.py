@@ -126,3 +126,92 @@ def test_share_labels_carry_no_percent_sign_so_narrow_segments_keep_them():
     labels = [t for f in (recent, history) for tr in f.data for t in tr.text if t]
     assert labels and not any("%" in t for t in labels)
     assert "percent of portfolio" in aa.SUBTITLE
+
+
+# ── allocation against price ──────────────────────────────────────────────────
+
+def _price_fig(spy=True):
+    from components import sentiment as s
+    _, get_bars = _alloc_bars()
+    alloc = aa.read(get_bars)
+    read = _reads()[s.DEFAULT_LOOKBACK]
+    series = read.frame["spy"] if spy else None
+    return alloc, series, aa.price_figure(alloc, series, COLORS)
+
+
+def test_the_price_chart_stacks_every_month_under_spy():
+    from components import sentiment as s
+    alloc, spy, fig = _price_fig()
+    assert [t.name for t in fig.data] == ["SPY", "Stocks", "Bonds", "Cash"]
+    assert fig.data[0].yaxis == "y"
+    stacked = fig.data[1:]
+    assert all(t.yaxis == "y2" and t.stackgroup == "allocation" for t in stacked)
+    for t, (key, _, _) in zip(stacked, aa.LEGS):
+        assert list(pd.DatetimeIndex(t.x)) == list(alloc.months.index)
+        np.testing.assert_allclose(t.y, alloc.months[key].round(1))
+    # Stocks first, so they stack on the floor and their top edge is the stocks share.
+    assert stacked[0].name == "Stocks"
+    avg = [sh for sh in fig.layout.shapes if sh.yref == "y2"]
+    assert len(avg) == 1 and avg[0].y0 == pytest.approx(alloc.average["stocks"])
+    assert list(fig.layout.yaxis2.range) == aa.STACK_RANGE
+    # The whole history, to a little past whichever is drawn later.
+    end = max(alloc.months.index[-1], spy.dropna().index[-1])
+    assert list(fig.layout.xaxis.range) == [
+        alloc.months.index[0], end + pd.Timedelta(days=s.OPEN_PAD_DAYS)]
+    assert fig.layout.xaxis.autorangeoptions.clipmin == f"{alloc.months.index[0]:%Y-%m-%d}"
+    # Behaves like the sentiment chart: its buttons, and only the price axis refits.
+    assert fig.layout.xaxis.rangeselector.buttons[0].label == "3M"
+    assert fig.layout.meta == s.PRICE_REFIT
+    last = alloc.months.iloc[-1]
+    assert fig.layout.annotations[1].text == (
+        f"AAII allocation, {alloc.last:%Y-%m}<br>Stocks {last['stocks']:.1f}, "
+        f"bonds {last['bonds']:.1f}, cash {last['cash']:.1f}")
+
+
+def test_without_spy_the_chart_still_draws_the_months():
+    from components import sentiment as s
+    alloc, _, fig = _price_fig(spy=False)
+    assert [t.name for t in fig.data] == ["Stocks", "Bonds", "Cash"]
+    assert fig.layout.xaxis.range[1] == alloc.months.index[-1] + pd.Timedelta(
+        days=s.OPEN_PAD_DAYS)
+
+
+def test_the_published_page_draws_the_price_chart_once_and_refits_it():
+    _, alloc_bars = _alloc_bars()
+    html = st.render(_reads(), COLORS, PALETTE, allocation=aa.read(alloc_bars))
+    assert html.count(f'<div id="{st.ALLOCATION_PRICE_ID}">') == 1 and aa.PRICE_TITLE in html
+    assert st.ALLOCATION_PRICE_KEY in _payload(html)
+    assert html.index(f'id="{st.ALLOCATION_ID}"') < html.index(f'id="{st.ALLOCATION_PRICE_ID}"') \
+        < html.index(f'id="{st.COLUMNS_ID}"')
+    # Drawn outside the lookback loop, but hooked to the same refit as the price chart.
+    assert f"'{st.ALLOCATION_PRICE_ID}': '{st.ALLOCATION_PRICE_KEY}'" in html
+    assert "IDS.concat(Object.keys(ONCE)" in html
+    bare = st.render(_reads(), COLORS, PALETTE)
+    assert f'id="{st.ALLOCATION_PRICE_ID}"' not in bare
+    assert st.ALLOCATION_PRICE_KEY not in _payload(bare)
+
+
+def test_the_app_page_refits_the_price_chart_without_a_load_time_call(monkeypatch):
+    import importlib
+
+    import dash
+
+    import local_pages
+    # Imported before the snapshot: run alone, a first import inside it registered the
+    # callbacks once and the reload below again, so each was counted twice.
+    monkeypatch.delenv(local_pages.ENV, raising=False)
+    importlib.import_module("pages.analytics.sentiment")
+    registered = list(dash._callback.GLOBAL_CALLBACK_LIST)
+    monkeypatch.setenv(local_pages.ENV, "1")
+    page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
+    try:
+        ours = [c for c in dash._callback.GLOBAL_CALLBACK_LIST[len(registered):]
+                if any(i["id"] == page.ALLOCATION_PRICE_CHART for i in c["inputs"])]
+        assert len(ours) == 1 and ours[0]["prevent_initial_call"]
+        assert "allocation_price" in page.EXPORTS
+    finally:
+        dash._callback.GLOBAL_CALLBACK_LIST[:] = registered
+        monkeypatch.delenv(local_pages.ENV)
+        importlib.reload(page)
+        for key in [k for k, v in dash.page_registry.items() if v.get("path") == "/sentiment"]:
+            del dash.page_registry[key]

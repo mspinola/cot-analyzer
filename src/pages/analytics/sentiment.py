@@ -31,8 +31,12 @@ ZOOM_SINK = "sentiment_zoom_sink"
 EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
            "votes": ("sentiment_votes_export", "sentiment_votes_export_btn"),
            "allocation": ("sentiment_allocation_export", "sentiment_allocation_export_btn"),
+           "allocation_price": ("sentiment_allocation_price_export",
+                                "sentiment_allocation_price_export_btn"),
            "columns": ("sentiment_columns_export", "sentiment_columns_export_btn")}
 COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
+ALLOCATION_PRICE_CHART = "sentiment_allocation_price_chart"
+ALLOCATION_ZOOM_SINK = "sentiment_allocation_zoom_sink"
 
 if local_pages.enabled():
     dash.register_page(
@@ -164,6 +168,10 @@ def layout(**_):
             cards.append(_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE,
                                aaii_allocation.figures(allocation, colors),
                                export="allocation"))
+            cards.append(_card(aaii_allocation.PRICE_TITLE, aaii_allocation.PRICE_SUBTITLE,
+                               aaii_allocation.price_figure(
+                                   allocation, read.frame.get("spy"), colors),
+                               ALLOCATION_PRICE_CHART, export="allocation_price"))
         cards += [
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,
@@ -171,7 +179,8 @@ def layout(**_):
                   export="columns"),
         ]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
-                          dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK)],
+                          dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK),
+                          dcc.Store(id=ALLOCATION_ZOOM_SINK)],
                          fluid=True, className="py-3")
 
 
@@ -193,6 +202,16 @@ if local_pages.enabled():
         Output(COLUMNS_ZOOM_SINK, "data"),
         Input(COLUMNS_CHART, "relayoutData"),
         State(COLUMNS_CHART, "id"),
+        prevent_initial_call=True,
+    )
+
+    # The allocation chart's SPY panel re-fits the same way. Not redrawn by the lookback,
+    # so a page without the survey never renders the chart and this never fires.
+    clientside_callback(
+        "window.dash_clientside.clientside.autoscale_y_axes",
+        Output(ALLOCATION_ZOOM_SINK, "data"),
+        Input(ALLOCATION_PRICE_CHART, "relayoutData"),
+        State(ALLOCATION_PRICE_CHART, "id"),
         prevent_initial_call=True,
     )
 
