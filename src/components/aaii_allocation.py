@@ -243,8 +243,12 @@ PRICE_SUBTITLE = ("SPY on top. Under it, AAII members' split between stocks (gre
                   "buttons zoom in. Each month is drawn on its last day, about a month "
                   "before AAII publishes it.")
 #: Taller than the sentiment chart's 470 by about the gap panel, so the two panels it
-#: shared keep roughly the room they had.
-PRICE_HEIGHT = 600
+#: shared keep roughly the room they had, and the gap panel gets the most: its three
+#: lines cross within a few points of zero and need the height to read apart. At 600
+#: with a quarter of it, they ran together (2026-11-10). Rows top to bottom: SPY, the
+#: stack, the gaps, about 175, 175 and 200 px.
+PRICE_HEIGHT = 720
+PRICE_ROWS = (0.32, 0.32, 0.36)
 #: The stacked panel's scale. A month's rounded shares can sum to 100.1, so a hair of
 #: room above 100 keeps the top edge from clipping.
 STACK_RANGE = [0, 100.5]
@@ -325,7 +329,7 @@ def price_figure(alloc, spy, colors):
     gap = trailing_gap(alloc.months).round(1)
     trail = (alloc.months - gap).round(1)     # the prior-36-month mean, for the hover
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
-                        row_heights=[0.38, 0.38, 0.24],
+                        row_heights=list(PRICE_ROWS),
                         subplot_titles=("SPY, total return", _stack_title(alloc),
                                         _gap_title(gap)))
     window = open_range(alloc, spy)

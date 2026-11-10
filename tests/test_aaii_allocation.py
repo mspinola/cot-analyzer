@@ -222,6 +222,16 @@ def test_the_gap_panel_draws_each_share_against_its_three_year_average():
     assert fig.layout.yaxis3.zeroline
 
 
+def test_the_gap_panel_is_the_tallest_so_its_lines_read_apart():
+    _, _, fig = _price_fig(months=LONG_MONTHS)
+    span = [fig.layout[a].domain[1] - fig.layout[a].domain[0]
+            for a in ("yaxis", "yaxis2", "yaxis3")]
+    assert span[2] > span[0] and span[2] > span[1]
+    plot = aa.PRICE_HEIGHT - fig.layout.margin.t - fig.layout.margin.b
+    assert span[2] * plot >= 190      # px; it had about 110 and the lines ran together
+    assert fig.layout.height == aa.PRICE_HEIGHT
+
+
 def test_a_short_history_draws_no_gap_lines_and_a_plain_title():
     _, _, fig = _price_fig()
     assert not [t for t in fig.data if t.yaxis == "y3"]
