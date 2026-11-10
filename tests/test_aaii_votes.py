@@ -268,7 +268,8 @@ def test_the_spread_block_is_bulls_minus_bears_for_the_recent_weeks():
     want = (votes.recent["bullish"] - votes.recent["bearish"]).round(1)
     assert list(bar.y) == [f"{d:%Y-%m-%d}" for d in votes.recent.index]
     np.testing.assert_allclose(bar.x, want.clip(-av.SPREAD_LIMIT, av.SPREAD_LIMIT))
-    assert list(bar.text) == [f"{v:+.1f}" for v in want]
+    labels = [a.text.strip() for a in fig.layout.annotations[1:]]
+    assert [t.split(" (")[0] for t in labels] == [f"{v:+.1f}" for v in want]
     # Green at or above zero, red below: the page's bull and bear.
     for v, c in zip(want, bar.marker.color):
         assert c == hex_to_rgba(COLORS.bull if v >= 0 else COLORS.bear, av.BAR_OPACITY)
@@ -291,7 +292,9 @@ def test_a_spread_beyond_the_scale_is_pinned_but_labelled_true():
     frames[av.LEGS[1][1]].iloc[-1, 0] = 0.15
     frames[av.LEGS[2][1]].iloc[-1, 0] = 0.05      # bearish 5: spread +75
     bar = _spread(av.read(get_bars)).data[0]
-    assert bar.x[0] == av.SPREAD_LIMIT and bar.text[0] == "+75.0"
+    fig = _spread(av.read(get_bars))
+    assert bar.x[0] == av.SPREAD_LIMIT
+    assert fig.layout.annotations[1].text.strip().startswith("+75.0 (")
 
 
 def test_provisional_weeks_draw_faint_in_the_spread_block_too():
@@ -300,3 +303,72 @@ def test_provisional_weeks_draw_faint_in_the_spread_block_too():
     from components import sentiment as s
     np.testing.assert_allclose(bar.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
     assert bar.y[0].endswith(av.PROVISIONAL_TAG)
+
+
+
+# ── percentile beside the spread ──────────────────────────────────────────────
+
+@pytest.mark.parametrize("n, want", [(1, "1st"), (2, "2nd"), (3, "3rd"), (4, "4th"),
+                                     (11, "11th"), (12, "12th"), (13, "13th"),
+                                     (21, "21st"), (22, "22nd"), (23, "23rd"),
+                                     (100, "100th"), (101, "101st"), (111, "111th")])
+def test_ordinal(n, want):
+    assert av.ordinal(n) == want
+
+
+def test_each_recent_week_carries_its_spread_percentile_among_official_weeks():
+    _, get_bars = _legs_bars()
+    votes = av.read(get_bars)
+    legs = av.legs(get_bars)
+    history = (legs["bullish"] - legs["bearish"]).to_numpy()
+    want = [max(1, round(float((history <= v).mean()) * 100))
+            for v in (votes.recent["bullish"] - votes.recent["bearish"])]
+    assert list(votes.spread_pct) == want and all(1 <= p <= 100 for p in want)
+
+
+def test_a_provisional_week_is_ranked_against_official_weeks_only():
+    _, get_bars, _ = _with_provisional()
+    votes = av.read(get_bars)
+    official = av.legs(get_bars)
+    history = (official["bullish"] - official["bearish"]).to_numpy()
+    newest = votes.recent.iloc[0]
+    assert votes.recent.index[0] in votes.provisional
+    assert votes.spread_pct[0] == max(1, round(
+        float((history <= newest["bullish"] - newest["bearish"]).mean()) * 100))
+
+
+def test_the_spread_label_reads_value_then_bracketed_percentile():
+    _, get_bars = _legs_bars()
+    votes = av.read(get_bars)
+    fig = av.figures(votes, COLORS)[2]
+    bar = fig.data[0]
+    spread = (votes.recent["bullish"] - votes.recent["bearish"]).round(1)
+    labels = [a.text.strip() for a in fig.layout.annotations[1:]]
+    assert labels == [f"{v:+.1f} ({av.ordinal(p)})" for v, p in zip(spread, votes.spread_pct)]
+    assert "percentile" in bar.hovertemplate
+
+
+def test_spread_labels_sit_on_the_empty_side_of_zero_beyond_the_average():
+    """Bearish weeks' labels start right of the dashed average, bullish weeks' end left
+    of zero, so no label runs into the date labels however long the bar."""
+    frames, get_bars = _legs_bars()
+    frames[av.LEGS[0][1]].iloc[-1, 0], frames[av.LEGS[2][1]].iloc[-1, 0] = 0.2, 0.6   # -40
+    frames[av.LEGS[0][1]].iloc[-2, 0], frames[av.LEGS[2][1]].iloc[-2, 0] = 0.6, 0.2   # +40
+    votes = av.read(get_bars)
+    fig = av.figures(votes, COLORS)[2]
+    avg = round(float(votes.average["bullish"] - votes.average["bearish"]), 1)
+    spread = (votes.recent["bullish"] - votes.recent["bearish"]).round(1)
+    for v, a in zip(spread, fig.layout.annotations[1:]):
+        if v < 0:
+            assert a.xanchor == "left" and a.x == max(0.0, avg)
+        else:
+            assert a.xanchor == "right" and a.x == min(0.0, avg)
+    assert "percentile since 1987 in brackets" in av.SUBTITLE
+
+
+def test_the_weakest_week_on_record_reads_1st_not_0th():
+    frames, get_bars = _legs_bars()
+    for sym, v in zip((av.LEGS[0][1], av.LEGS[1][1], av.LEGS[2][1]), (0.01, 0.01, 0.98)):
+        frames[sym].iloc[-1, 0] = v
+    votes = av.read(get_bars)
+    assert votes.spread_pct[0] == 1
