@@ -27,13 +27,38 @@ Its own card rather than a fourth block, which has no room for a time axis, and
 rather than a line on the sentiment chart, whose panel holds weekly opinion on a
 range index, not a monthly holding in percent.
 
+**Against a trailing average** (the chart's third panel, added 2026-11-10): each share
+minus the mean of its prior 36 months, in points, the current month excluded, as the
+sentiment page's columns view sets NAAIM against its trailing average. Asked for as
+"indexed like NAAIM"; drawn in points instead because the range index does not carry
+over to these series. Measured on the store's 468 months, 2026-11-10
+(`scripts/measure_allocation_index.py`), 2008 on:
+
+| range index window | months at 0 or 100 | months in a zone (20/80) |
+|---|---|---|
+| 1 year (13 months) | 24-31% | 52-58% |
+| 3 years (37 months) | 10-12% | 41-43% |
+| 5 years (61 months) | 6-8% | 38-49% |
+
+against 2% and 21-36% for NAAIM's 3-year index on the weekly page. Monthly readings
+give the window few observations, and some shares barely move: bonds ran 13.8 to 16.6
+over the last 37 months, so October's 1.4-point rise put the bond index at 100 and the
+cash index at 0, two "extremes" from moves about the size of an ordinary month. In
+points the same month reads stocks +1.4, bonds +1.4, cash -2.9, against a typical gap
+(standard deviation over the whole history) of 5.4, 2.7 and 4.4. The three are also
+not three readings: they sum to 100, and the stocks and cash indexes correlate -0.83
+at three years. Like the other surveys the stocks share follows price (its 3-year
+index correlates 0.67 with SPY's trailing 12-month return; NAAIM's level, 0.62 with
+the 13-week return). Context to read, not a tested signal.
+
 **Dating.** marketdata indexes a survey on its month's last day, and the card labels
 it by that month (2026-10). AAII publishes each month's results in the first days of
 the next, so the newest row is about a month old by design, not a lag in the store.
 
 **Arithmetic.** Shares are the stored fractions times 100; the average is a plain
 mean of every stored month; the high is the largest share in the 365 days ending on
-the newest month (12 surveys). Nothing is smoothed or indexed. The store is
+the newest month (12 surveys); the chart's gap is a share minus the plain mean of its
+prior 36 months. Nothing is smoothed or indexed. The store is
 marketdata's AAII_ALLOC_* series, built by hand from AAII's member spreadsheet.
 """
 from __future__ import annotations
@@ -41,12 +66,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import viz_constants as vc
-from components import aaii_votes, sentiment
+from components import aaii_votes, exposure_traces, sentiment
 from components.plot_colors import hex_to_rgba
 
 #: (key, store symbol, label), in the order the bar stacks them, left to right.
@@ -208,18 +234,42 @@ def figures(alloc, colors):
 # ── the history chart, its own card ────────────────────────────────────────────
 
 PRICE_TITLE = "AAII allocation against price"
-PRICE_SUBTITLE = ("SPY above, and below it AAII members' split between stocks (green), "
+PRICE_SUBTITLE = ("SPY on top. Under it, AAII members' split between stocks (green), "
                   "bonds (blue) and cash (grey) each month since 1987, stacked to 100% "
-                  "of portfolio. Stocks sit on the floor, so their band's top edge is the "
-                  "stocks share; the dashed line is its average since 1987. Opens on the "
-                  "whole history (SPY's starts in 1993); the buttons zoom in. Each month "
-                  "is drawn on its last day, about a month before AAII publishes it.")
-#: The sentiment chart's height, so the two price cards read as a pair.
-PRICE_HEIGHT = sentiment.PRICE_HEIGHT
+                  "of portfolio: stocks sit on the floor, so their band's top edge is the "
+                  "stocks share, and the dashed line is its average since 1987. At the "
+                  "bottom, each share minus its own average over the prior three years, "
+                  "in points. Opens on the whole history (SPY's starts in 1993); the "
+                  "buttons zoom in. Each month is drawn on its last day, about a month "
+                  "before AAII publishes it.")
+#: Taller than the sentiment chart's 470 by about the gap panel, so the two panels it
+#: shared keep roughly the room they had.
+PRICE_HEIGHT = 600
 #: The stacked panel's scale. A month's rounded shares can sum to 100.1, so a hair of
 #: room above 100 keeps the top edge from clipping.
 STACK_RANGE = [0, 100.5]
 UIREVISION = "aaii-allocation"
+#: The gap panel's trailing window, months: three years, the sentiment page's default
+#: lookback. See "Against a trailing average" in the module docstring for why points
+#: and not the range index NAAIM is drawn on.
+GAP_MONTHS = 36
+GAP_YEARS = GAP_MONTHS // 12
+#: Row 1 SPY, row 2 the stack, row 3 the gaps. Only SPY and the gaps refit on zoom: the
+#: stack is a share of 100 and stays on its fixed scale. The gap panel keeps zero in
+#: view, as the sentiment page's column panels do.
+GAP_AXIS = "yaxis3"
+#: The gap panel's zero line: visible, and quieter than the lines that cross it.
+ZERO_ALPHA = 0.45
+PRICE_REFIT = {exposure_traces.REFIT_META: {
+    **sentiment.PRICE_REFIT[exposure_traces.REFIT_META],
+    "axes": ["yaxis", GAP_AXIS], "zero": [GAP_AXIS]}}
+
+
+def trailing_gap(months, n=GAP_MONTHS):
+    """Each share minus the mean of its prior `n` months, the current month excluded
+    (as `sentiment.trailing_average` does for NAAIM), in points. NaN until `n` months
+    precede it. Display arithmetic: a difference of two stored shares, nothing fitted."""
+    return months - months.shift(1).rolling(n, min_periods=n).mean()
 
 
 def _stack_title(alloc):
@@ -229,6 +279,17 @@ def _stack_title(alloc):
     shares = ", ".join(f"{label if i == 0 else label.lower()} {row[key]:.1f}"
                        for i, (key, _, label) in enumerate(LEGS))
     return f"AAII allocation, {alloc.last:%Y-%m}<br>{shares}"
+
+
+def _gap_title(gap):
+    """The gap panel's title: what it is, then the newest month's three gaps."""
+    row = gap.dropna().iloc[-1] if not gap.dropna().empty else None
+    head = f"Each share vs its prior {GAP_YEARS}Y average, points"
+    if row is None:
+        return head
+    shares = ", ".join(f"{label if i == 0 else label.lower()} {row[key]:+.1f}"
+                       for i, (key, _, label) in enumerate(LEGS))
+    return f"{head}<br>{shares}"
 
 
 def open_range(alloc, spy):
@@ -241,15 +302,32 @@ def open_range(alloc, spy):
     return [months[0], end + pd.Timedelta(days=sentiment.OPEN_PAD_DAYS)]
 
 
+def _fit_gap(fig, gap, window):
+    """The gap axis fitted to the months in `window`, zero included, padded 5% as the
+    browser's refit pads it, so the chart opens as a button press would leave it."""
+    t0, t1 = window
+    vals = gap[(gap.index >= t0) & (gap.index <= t1)].to_numpy().ravel()
+    vals = vals[~np.isnan(vals)]
+    if not len(vals):
+        return
+    lo, hi = min(vals.min(), 0.0), max(vals.max(), 0.0)
+    pad = (hi - lo) * 0.05 or 1.0
+    fig.layout[GAP_AXIS].range = [lo - pad, hi + pad]
+
+
 def price_figure(alloc, spy, colors):
-    """SPY above the monthly split, stacked, sharing one time axis.
+    """SPY, the monthly split stacked, and each share against its trailing average,
+    sharing one time axis.
 
     `spy` is the sentiment read's weekly SPY (`read.frame["spy"]`), or None, which
     leaves the top panel empty. The same layout, buttons, refit and autorange clip as
     `sentiment.price_sentiment_figure`, so the two cards behave alike."""
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-                        row_heights=[0.5, 0.5],
-                        subplot_titles=("SPY, total return", _stack_title(alloc)))
+    gap = trailing_gap(alloc.months).round(1)
+    trail = (alloc.months - gap).round(1)     # the prior-36-month mean, for the hover
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
+                        row_heights=[0.38, 0.38, 0.24],
+                        subplot_titles=("SPY, total return", _stack_title(alloc),
+                                        _gap_title(gap)))
     window = open_range(alloc, spy)
     if spy is not None and not spy.dropna().empty:
         sentiment.spy_panel(fig, spy, window[0])
@@ -265,6 +343,16 @@ def price_figure(alloc, spy, colors):
     avg = float(alloc.average["stocks"])
     fig.add_hline(y=avg, line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1, dash="dash"),
                   opacity=0.8, row=2, col=1)
+    for key, _, label in LEGS:
+        g = gap[key].dropna()
+        if g.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=g.index, y=g, mode="lines", name=f"{label} vs {GAP_YEARS}Y avg",
+            showlegend=False, line=dict(color=fills[key], width=1.5),
+            customdata=trail[key].reindex(g.index),
+            hovertemplate=f"{label} vs {GAP_YEARS}Y avg " + "%{y:+.1f} pts "
+                          "(avg %{customdata:.1f})<extra></extra>"), row=3, col=1)
     fig.update_yaxes(range=STACK_RANGE, tickvals=[0, 25, 50, 75, 100], row=2, col=1)
     fig.update_xaxes(type="date", range=window,
                      autorangeoptions=dict(clipmin=f"{window[0]:%Y-%m-%d}",
@@ -272,5 +360,10 @@ def price_figure(alloc, spy, colors):
     sentiment.range_buttons(fig)
     sentiment._left_titles(fig)
     sentiment._base(fig, PRICE_HEIGHT)
-    fig.update_layout(uirevision=UIREVISION, margin=dict(t=44), meta=sentiment.PRICE_REFIT)
+    # After _base, which turns every zero line off. The grid colour is the page's own
+    # background in the dark theme, so the line takes the text colour, faded.
+    fig.update_yaxes(zeroline=True, zerolinecolor=hex_to_rgba(vc.TEXT_COLOR, ZERO_ALPHA),
+                     zerolinewidth=1, row=3, col=1)
+    fig.update_layout(uirevision=UIREVISION, margin=dict(t=44), meta=PRICE_REFIT)
+    _fit_gap(fig, gap, window)
     return fig
