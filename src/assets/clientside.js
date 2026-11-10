@@ -625,9 +625,30 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                     update[axisKey + '.range'] = [r[0] - pad, r[1] + pad];
                     update[axisKey + '.autorange'] = false;
                 }
-                // Only y-axis keys go in, so the relayoutData this fires carries no
-                // x-range and the next pass falls out at the parse step. That is what
-                // stops it chasing its own tail.
+                // On a window fit, an x axis still flagged autorange is stale: a
+                // range button after Max sets the range on the top axis, but the axis
+                // it `matches` keeps autorange true. Any later full recalculation
+                // (the price panel switching log/linear below does one) then
+                // re-autoranges the whole matched group and the window is lost:
+                // Max then 1Y on the sentiment page showed 1988 to 2029 with SPY
+                // fitted to one year (2026-11-10). Turning the flag off keeps the
+                // range on screen. Numbered axes only (xaxis2 and up): the event
+                // this fires carries the key, and 'xaxis.autorange' is the one key
+                // the parse above takes for a reset, which would undo the window. An
+                // autorange flag carries no x range, so it is not parsed as one.
+                // The flag is read from gd.layout, the input a recalculation starts
+                // from: by now Plotly's computed _fullLayout already shows the matched
+                // axis as not autoranging, and only the input still says true.
+                if (Object.keys(update).length && isFinite(t0) && isFinite(t1)) {
+                    Object.keys(gd.layout || {}).forEach(function(k) {
+                        if (/^xaxis\d+$/.test(k) && gd.layout[k] && gd.layout[k].autorange === true) {
+                            update[k + '.autorange'] = false;
+                        }
+                    });
+                }
+                // Only y-axis keys (and the autorange flags above) go in, so the
+                // relayoutData this fires carries no x-range and the next pass falls
+                // out at the parse step. That is what stops it chasing its own tail.
                 if (Object.keys(update).length) {
                     try { Plotly.relayout(gd, update); } catch (e) { return; }
                 }

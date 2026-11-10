@@ -849,3 +849,34 @@ def test_without_provisional_aaii_weeks_the_columns_carry_no_flag():
     cols = s.columns_figure(read, COLORS, PALETTE)
     bars_ = next(t for t in cols.data if t.name == "AAII bulls minus bears")
     assert bars_.marker.opacity is None and set(np.asarray(bars_.customdata)) == {""}
+
+
+def test_an_autorange_is_clipped_to_the_data_so_max_then_1y_lands_on_it():
+    """Marker traces make Plotly pad an autorange by about 5% a side; the clip keeps Max
+    on the data, so the buttons, which count back from the axis edge, do too."""
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE)
+    f = read.frame
+    first = min(f[c].first_valid_index() for c in ("spy", "naaim_idx", "aaii_idx",
+                                                   "naaim_raw_idx", "aaii_raw_idx"))
+    want = {"clipmin": f"{first:%Y-%m-%d}", "clipmax": f"{s.open_range(read)[1]:%Y-%m-%d}"}
+    for axis in ("xaxis", "xaxis2"):
+        opts = fig.layout[axis].autorangeoptions
+        assert {"clipmin": opts.clipmin, "clipmax": opts.clipmax} == want
+        # Not min/maxallowed: with date strings Plotly 3.7 fails the autorange.
+        assert opts.minallowed is None and opts.maxallowed is None
+
+
+def test_the_refit_handler_clears_a_matched_axis_stale_autorange_on_a_window_fit():
+    """Max then 1Y: the button ranges the top axis, the matched axis keeps autorange,
+    and the price panel's log/linear switch then re-autoranged the whole group. The
+    handler turns the stale flag off on numbered x axes only ('xaxis.autorange' is the
+    key it reads as a reset). Behaviour checked in the browser; this pins the code."""
+    js = (Path(__file__).parents[1] / "src/assets/clientside.js").read_text()
+    fit = js[js.index("function fitAxes"):]
+    # gd.layout, not _fullLayout: by the time the handler runs only the input layout
+    # still carries the stale flag (the first version read _fullLayout and did nothing).
+    assert "/^xaxis\\d+$/.test(k) && gd.layout[k] && gd.layout[k].autorange === true" in fit
+    assert "update[k + '.autorange'] = false;" in fit
+    assert "isFinite(t0) && isFinite(t1)" in fit      # a reset (infinite bounds) is left alone
