@@ -8,6 +8,7 @@ import pytest
 
 from components import aaii_allocation as aa
 from components import aaii_votes as av
+from components import exposure_traces
 from components import sentiment_static as st
 from components.plot_colors import hex_to_rgba
 from tests.test_aaii_votes import _legs_bars, _payload, _reads
@@ -130,9 +131,13 @@ def test_share_labels_carry_no_percent_sign_so_narrow_segments_keep_them():
 
 # ── allocation against price ──────────────────────────────────────────────────
 
-def _price_fig(spy=True):
+#: Long enough for the gap panel's 36-month window to fill (the default fixture is not).
+LONG_MONTHS = pd.date_range("2021-01-31", periods=48, freq="ME")
+
+
+def _price_fig(spy=True, months=MONTHS):
     from components import sentiment as s
-    _, get_bars = _alloc_bars()
+    _, get_bars = _alloc_bars(months)
     alloc = aa.read(get_bars)
     read = _reads()[s.DEFAULT_LOOKBACK]
     series = read.frame["spy"] if spy else None
@@ -142,9 +147,9 @@ def _price_fig(spy=True):
 def test_the_price_chart_stacks_every_month_under_spy():
     from components import sentiment as s
     alloc, spy, fig = _price_fig()
-    assert [t.name for t in fig.data] == ["SPY", "Stocks", "Bonds", "Cash"]
+    assert [t.name for t in fig.data][:4] == ["SPY", "Stocks", "Bonds", "Cash"]
     assert fig.data[0].yaxis == "y"
-    stacked = fig.data[1:]
+    stacked = fig.data[1:4]
     assert all(t.yaxis == "y2" and t.stackgroup == "allocation" for t in stacked)
     for t, (key, _, _) in zip(stacked, aa.LEGS):
         assert list(pd.DatetimeIndex(t.x)) == list(alloc.months.index)
@@ -159,9 +164,14 @@ def test_the_price_chart_stacks_every_month_under_spy():
     assert list(fig.layout.xaxis.range) == [
         alloc.months.index[0], end + pd.Timedelta(days=s.OPEN_PAD_DAYS)]
     assert fig.layout.xaxis.autorangeoptions.clipmin == f"{alloc.months.index[0]:%Y-%m-%d}"
-    # Behaves like the sentiment chart: its buttons, and only the price axis refits.
+    # Behaves like the sentiment chart: its buttons, and the price axis refits. The
+    # stack keeps its fixed 0-100 scale; the gap panel refits with zero kept in view.
     assert fig.layout.xaxis.rangeselector.buttons[0].label == "3M"
-    assert fig.layout.meta == s.PRICE_REFIT
+    refit = fig.layout.meta[exposure_traces.REFIT_META]
+    assert refit["axes"] == ["yaxis", "yaxis3"] and refit["zero"] == ["yaxis3"]
+    assert refit["price_axis"] == "yaxis"
+    assert {k: v for k, v in refit.items() if k not in ("axes", "zero")} == {
+        k: v for k, v in s.PRICE_REFIT[exposure_traces.REFIT_META].items() if k != "axes"}
     last = alloc.months.iloc[-1]
     assert fig.layout.annotations[1].text == (
         f"AAII allocation, {alloc.last:%Y-%m}<br>Stocks {last['stocks']:.1f}, "
@@ -171,9 +181,51 @@ def test_the_price_chart_stacks_every_month_under_spy():
 def test_without_spy_the_chart_still_draws_the_months():
     from components import sentiment as s
     alloc, _, fig = _price_fig(spy=False)
-    assert [t.name for t in fig.data] == ["Stocks", "Bonds", "Cash"]
+    assert [t.name for t in fig.data][:3] == ["Stocks", "Bonds", "Cash"]
     assert fig.layout.xaxis.range[1] == alloc.months.index[-1] + pd.Timedelta(
         days=s.OPEN_PAD_DAYS)
+
+
+def test_the_gap_is_each_share_minus_its_prior_months_mean():
+    idx = pd.date_range("2020-01-31", periods=5, freq="ME")
+    months = pd.DataFrame({"stocks": [60.0, 62.0, 64.0, 70.0, 50.0],
+                           "bonds": [20.0] * 5, "cash": [20.0, 18.0, 16.0, 10.0, 30.0]},
+                          index=idx)
+    gap = aa.trailing_gap(months, n=3)
+    # NaN until three months precede it; the current month is not in its own average.
+    assert gap.iloc[:3].isna().all().all()
+    assert gap["stocks"].iloc[3] == pytest.approx(70.0 - 62.0)
+    assert gap["stocks"].iloc[4] == pytest.approx(50.0 - (62.0 + 64.0 + 70.0) / 3)
+    assert gap["bonds"].iloc[3:].tolist() == [0.0, 0.0]
+
+
+def test_the_gap_panel_draws_each_share_against_its_three_year_average():
+    alloc, spy, fig = _price_fig(months=LONG_MONTHS)
+    gap = aa.trailing_gap(alloc.months).round(1)
+    lines = [t for t in fig.data if t.yaxis == "y3"]
+    assert [t.name for t in lines] == ["Stocks vs 3Y avg", "Bonds vs 3Y avg", "Cash vs 3Y avg"]
+    for t, (key, _, _) in zip(lines, aa.LEGS):
+        g = gap[key].dropna()
+        # The first 36 months have no full window behind them and are not drawn.
+        assert len(g) == len(LONG_MONTHS) - aa.GAP_MONTHS
+        assert list(pd.DatetimeIndex(t.x)) == list(g.index)
+        np.testing.assert_allclose(t.y, g)
+        assert t.stackgroup is None
+    last = gap.iloc[-1]
+    assert fig.layout.annotations[2].text == (
+        "Each share vs its prior 3Y average, points<br>"
+        f"Stocks {last['stocks']:+.1f}, bonds {last['bonds']:+.1f}, cash {last['cash']:+.1f}")
+    # Opens fitted to the whole history, zero in view, padded as the browser pads it.
+    lo, hi = min(gap.min().min(), 0.0), max(gap.max().max(), 0.0)
+    pad = (hi - lo) * 0.05
+    assert list(fig.layout.yaxis3.range) == pytest.approx([lo - pad, hi + pad])
+    assert fig.layout.yaxis3.zeroline
+
+
+def test_a_short_history_draws_no_gap_lines_and_a_plain_title():
+    _, _, fig = _price_fig()
+    assert not [t for t in fig.data if t.yaxis == "y3"]
+    assert fig.layout.annotations[2].text == "Each share vs its prior 3Y average, points"
 
 
 def test_the_published_page_draws_the_price_chart_once_and_refits_it():
