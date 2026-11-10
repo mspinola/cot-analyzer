@@ -73,7 +73,7 @@ SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and beari
             "on stocks over the next six months: the last four surveys, newest first, "
             "beside the average since 1987 and each vote's highest week in the last "
             "year, and each recent week's bulls minus bears against its average since "
-            "1987 (dashed).")
+            "1987 (dashed), with its percentile since 1987 in brackets.")
 
 ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
@@ -107,13 +107,15 @@ class Votes:
     indexed by stored date. `average`: each leg's mean over every stored week, percent.
     `since`: the first stored week. `highs`: leg -> (percent, date) over the last
     HIGH_DAYS. `last`: the newest week shown. `provisional`: the dates in `recent` that
-    are provisional, oldest first."""
+    are provisional, oldest first. `spread_pct`: each `recent` row's bulls minus bears
+    as a percentile (1-100) of every official week's, in `recent`'s order."""
     recent: pd.DataFrame
     average: pd.Series
     since: date
     highs: dict
     last: date
     provisional: tuple = ()
+    spread_pct: tuple = ()
 
 
 def legs(get_bars=None):
@@ -161,9 +163,27 @@ def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None)
         late = provisional[provisional.index > end]
         shown = pd.concat([frame, late])
         late = tuple(late.index)
-    return Votes(recent=shown.iloc[::-1].head(recent), average=frame.mean(),
+    rows = shown.iloc[::-1].head(recent)
+    return Votes(recent=rows, average=frame.mean(),
                  since=frame.index[0].date(), highs=highs, last=shown.index[-1].date(),
-                 provisional=late)
+                 provisional=late, spread_pct=spread_percentiles(frame, rows))
+
+
+def spread_percentiles(official, rows):
+    """Each row's bulls minus bears as a percentile of every OFFICIAL week's: the share
+    of official weeks at or below it, 1 to 100. A provisional row is ranked against the
+    official weeks but never joins them, as for the average and the highs."""
+    history = (official["bullish"] - official["bearish"]).to_numpy()
+    values = (rows["bullish"] - rows["bearish"]).to_numpy()
+    return tuple(max(1, int(round(float((history <= v).mean()) * 100))) for v in values)
+
+
+def ordinal(n):
+    """1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st, 22nd ... 100th."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def read(get_bars=None):
@@ -279,11 +299,12 @@ def spread_figure(votes, colors):
         x=shown.to_numpy(), y=rows, orientation="h", showlegend=False,
         marker=dict(color=color, opacity=np.where(late, sentiment.PROVISIONAL_OPACITY, 1.0)
                     if late.any() else None),
-        text=[f"{v:+.1f}" for v in spread], textposition="outside", cliponaxis=False,
-        textfont=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR),
-        customdata=np.column_stack([recent["bullish"].round(1), recent["bearish"].round(1)]),
-        hovertemplate=("Bulls minus bears %{text}  (bullish %{customdata[0]:.1f}, "
-                       "bearish %{customdata[1]:.1f})<extra>%{y}</extra>")))
+        customdata=[[b, r, f"{v:+.1f}", ordinal(p) if p else "?"] for b, r, v, p in zip(
+            recent["bullish"].round(1), recent["bearish"].round(1), spread,
+            votes.spread_pct or (None,) * len(spread))],
+        hovertemplate=("Bulls minus bears %{customdata[2]}, %{customdata[3]} percentile "
+                       "since 1987  (bullish %{customdata[0]:.1f}, bearish "
+                       "%{customdata[1]:.1f})<extra>%{y}</extra>")))
     avg = round(float(votes.average["bullish"] - votes.average["bearish"]), 1)
     fig.add_vline(x=0, line=dict(color=vc.TEXT_COLOR, width=1))
     fig.add_vline(x=avg, line=dict(color=vc.TEXT_COLOR, width=1, dash="dash"))
@@ -292,7 +313,25 @@ def spread_figure(votes, colors):
     # phone-width block. The subtitle says the average runs since 1987.
     _finish(fig, f"Bulls minus bears (avg {avg:+.1f} dashed)", len(rows))
     fig.update_xaxes(range=[-SPREAD_LIMIT, SPREAD_LIMIT])
+    # Each label on the EMPTY side of zero, beyond the dashed average: a bearish week's
+    # right of it, a bullish week's left of zero. At the bar's own end, as first drawn,
+    # "-14.3 (13th)" met the date labels at phone width (1px apart) and a -40 week
+    # would have run into them; the empty half always has about half the plot.
+    for row, v, label in zip(rows, spread, _spread_labels(spread, votes.spread_pct)):
+        bearish = v < 0
+        fig.add_annotation(x=max(0.0, avg) if bearish else min(0.0, avg), y=row,
+                           xref="x", yref="y", xanchor="left" if bearish else "right",
+                           text=f"  {label}" if bearish else f"{label}  ", showarrow=False,
+                           font=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR))
     return fig
+
+
+def _spread_labels(spread, pct):
+    """'-14.3 (13th)': the spread, and its percentile since 1987 in brackets (the
+    subtitle says so; the block title has no room). Without percentiles, the spread."""
+    if not pct:
+        return [f"{v:+.1f}" for v in spread]
+    return [f"{v:+.1f} ({ordinal(p)})" for v, p in zip(spread, pct)]
 
 
 def figures(votes, colors):
