@@ -20,6 +20,13 @@ What the static page keeps from the app, and how:
 - **Not the PNG export.** It leans on html2canvas and the app's theme container; a
   reader of a static page has the browser's own screenshot.
 
+**Card order.** The two cards the lookback toggle redraws (sentiment against price,
+weekly columns) come first, directly under the toggle; the AAII votes and allocation
+cards, which it never changes, follow. Until 2026-11-10 the columns sat last, three
+cards below the toggle that drives them. The allocation survey has its own lead line
+and notes (`aaii_allocation.summary`, `caption`), outside `#summary` and `#notes`,
+which the toggle rewrites.
+
 The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
 loaded from Plotly's CDN rather than inlined (about 4.6 MB). The version is read from the
 installed plotly.py at render time (`plotly_js_url`), never pinned here: the JSON a
@@ -55,9 +62,19 @@ TITLE = "Surveys, NAAIM and AAII"
 #: the way theirs name the fund, then the page's ticker in the accent and what it
 #: shows. "Surveys" plays the ticker, since it is what the Monitors row calls this.
 EYEBROW = "NAAIM Exposure Index · AAII Sentiment Survey · weekly, against SPY"
+#: The eyebrow once the allocation cards are on the page: two of AAII's surveys, one of
+#: them monthly, so "weekly" no longer describes the page.
+EYEBROW_ALLOCATION = ("NAAIM Exposure Index · AAII Sentiment and Asset Allocation "
+                      "Surveys · against SPY")
 H1_TICKER, H1_REST = "Surveys", "NAAIM and AAII"
-DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, "
-               "as range indexes with SPY's drawdowns behind them.")
+#: The title's ticker word. Not `--accent`: that is the app's button blue, which on
+#: this theme is #002b36, and on the #1a1a1a page drew "Surveys" at a contrast of
+#: about 1.2 to 1, an invisible word (2026-11-10 page review). The theme's blue reads
+#: at 4.8 to 1; tests hold it above 4.5.
+TICKER_COLOR = vc.SOLARIZED_DARK_BLUE
+DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, as range "
+               "indexes with SPY's drawdowns behind them, and AAII members' monthly "
+               "split between stocks, bonds and cash since 1987.")
 HOME = "https://bluemagicai.com/"
 #: The monitor row the DBMF, AHLT and ORR pages carry, with this page marked current.
 #: Hand-kept in step with dbmf-tracker's templates (its tests/test_site_nav.py names
@@ -75,6 +92,10 @@ SOON = ("KISS", "KISS ETF monitor, coming soon")
 SOON_AFTER = "ORR"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
+#: The same line with the allocation survey named, for a page that carries its cards.
+SOURCES_ALLOCATION = SOURCES.replace(
+    "AAII Sentiment Survey (aaii.com)",
+    "AAII Sentiment Survey and Asset Allocation Survey (aaii.com)")
 
 #: Zoom buttons left off below 600px, where the full ladder (3M to Max, nine buttons) runs
 #: past the plot's left edge and over the panel title. Seven fit, as the page had before
@@ -103,6 +124,9 @@ GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
 #: The AAII allocation against SPY: one figure, not indexed, so embedded once like the
 #: grid cards, but drawn and re-fitted on zoom like the price chart.
 ALLOCATION_PRICE_ID = "allocation-price"
+#: The allocation survey's lead line and its notes, static beside the sentiment ones.
+ALLOCATION_SUMMARY_ID = "allocation-summary"
+ALLOCATION_NOTES_ID = "allocation-notes"
 ALLOCATION_PRICE_KEY = "allocation_price"
 
 
@@ -139,21 +163,25 @@ def _date(d):
     return f"{d:%b} {d.day}, {d:%Y}"
 
 
-def _header(read):
+def _header(read, allocation=None):
     """The fund pages' header block: eyebrow, accent ticker in the title, and the as-of
-    on the right. The as-of names the newest week each survey has, and only that:
+    on the right. The as-of names the newest week each survey has (and the allocation
+    survey's newest month, when its cards are on the page), and only that:
     the build stamp stays out of the visible page because the publisher compares
     rebuilds with only the JSON stamp masked, so a visible one would force a push
     every run whether or not a reader could see a change.
     """
     parts = [f"{label} <b>{_date(read.last[key])}</b>"
              for key, label in (("naaim", "NAAIM"), ("aaii", "AAII")) if key in read.last]
+    if allocation is not None:
+        parts.append(f"AAII allocation <b>{allocation.last:%b %Y}</b>")
     asof = ("Through " + " · ".join(parts) + "<br>"
             if parts else "")
     asof += ('<a href="https://naaim.org/" rel="noopener">naaim.org</a> · '
              '<a href="https://www.aaii.com/" rel="noopener">aaii.com</a>')
+    eyebrow = EYEBROW if allocation is None else EYEBROW_ALLOCATION
     return ('<header class="top"><div>'
-            f'<div class="eyebrow">{html.escape(EYEBROW)}</div>'
+            f'<div class="eyebrow">{html.escape(eyebrow)}</div>'
             f'<h1><span class="tk">{html.escape(H1_TICKER)}</span> {html.escape(H1_REST)}</h1>'
             f'</div><div class="asof">{asof}</div></header>')
 
@@ -192,6 +220,16 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
     buttons = "".join(f'<button type="button" data-years="{y}" aria-pressed="{pressed[y]}">'
                       f'{y}Y</button>' for y in sorted(reads))
     notes = "".join(f"<p>{esc(p)}</p>" for p in default["caption"])
+    # The allocation survey's lead line and notes sit outside the elements the lookback
+    # toggle rewrites (#summary, #notes): nothing in them depends on the lookback.
+    allocation_summary = allocation_notes = ""
+    if allocation is not None:
+        allocation_summary = (f'<p class="summary" id="{ALLOCATION_SUMMARY_ID}">'
+                              f'{esc(aaii_allocation.summary(allocation))}</p>\n')
+        allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}">'
+                            + "".join(f"<p>{esc(p)}</p>"
+                                      for p in aaii_allocation.caption(allocation))
+                            + '</div>\n')
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -205,7 +243,7 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
 <style>
 :root {{ --page: {vc.BACKGROUND_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
   --muted: #7d8794; --line: rgba(255,255,255,0.10); --surface: rgba(28,28,28,0.55);
-  --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND};
+  --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND}; --ticker: {TICKER_COLOR};
   --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }}
 html, body {{ background: var(--page); color: var(--ink-2); margin: 0; font-family: var(--sans); }}
@@ -218,7 +256,7 @@ nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; 
 nav.sites a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; }}
 nav.sites a:hover {{ background: var(--wash); color: var(--ink); }}
 nav.sites a[aria-current="page"] {{ color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }}
-nav.sites a:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
+nav.sites a:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 1px; }}
 nav.sites .home {{ margin-left: auto; }}
 nav.sites .sep {{ color: var(--muted); }}
 nav.sites .soon {{ color: var(--muted); padding: 3px 9px; border: 1px dashed var(--line); border-radius: 6px; cursor: default; }}
@@ -226,12 +264,13 @@ nav.sites .soon small {{ font-size: 10px; letter-spacing: .06em; text-transform:
 header.top {{ display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }}
 .eyebrow {{ font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }}
 h1 {{ color: var(--ink); margin: 2px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }}
-h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--accent); }}
+h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .asof {{ color: var(--ink-2); font-size: 13px; text-align: right; }}
 .asof b {{ color: var(--ink); font-weight: 600; }}
 .asof a {{ color: var(--ink-2); }}
 @media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
 .summary {{ color: var(--ink); font-size: 0.9rem; margin: 0 0 10px; }}
+#summary:has(+ #{ALLOCATION_SUMMARY_ID}) {{ margin-bottom: 4px; }}
 .lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
   font-size: 10px; padding: 2px 8px; cursor: pointer; }}
@@ -250,16 +289,16 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <body>
 <main>
 {_nav()}
-{_header(reads[sentiment.DEFAULT_LOOKBACK])}
+{_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
 <p class="summary" id="summary">{esc(default["summary"])}</p>
-<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{allocation_summary}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 <div class="sub">{esc(sentiment.PRICE_SUBTITLE)}</div>
 <div id="{PRICE_ID}"><div class="plot"></div></div></section>
-{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
+<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
-<div class="notes" id="notes">{notes}</div>
-<footer>{esc(SOURCES)} Not investment advice.</footer>
+{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
+{allocation_notes}<footer>{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>
 <script type="application/json" id="surveys-data">{_script_json(payload)}</script>

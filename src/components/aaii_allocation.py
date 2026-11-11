@@ -142,6 +142,42 @@ def read(get_bars=None):
     return summarize(legs(get_bars))
 
 
+def summary(alloc):
+    """One sentence on the newest month, for the page's lead beside the sentiment
+    surveys' line: the three shares, and how far stocks sit from their average."""
+    row = alloc.recent.iloc[0]      # newest first
+    gap = row["stocks"] - alloc.average["stocks"]
+    side = "above" if gap >= 0 else "below"
+    return (f"AAII asset allocation, {alloc.last:%Y-%m}: stocks {row['stocks']:.1f}%, "
+            f"bonds {row['bonds']:.1f}%, cash {row['cash']:.1f}%. Stocks are "
+            f"{abs(gap):.1f} points {side} their average since {alloc.since.year} "
+            f"({alloc.average['stocks']:.1f}%).")
+
+
+#: The page's note on what the allocation survey follows. The 0.67 is the stocks
+#: share's three-year range index against SPY's trailing 12-month return, and the
+#: reason for points is in "Against a trailing average" in the module docstring; both
+#: measured by scripts/measure_allocation_index.py (2026-11-10, 468 months).
+FOLLOWS_NOTE = (
+    "Like the sentiment surveys, the stocks share mostly follows price: placed in its "
+    "own three-year range it tracks SPY's trailing 12-month return at 0.67, so a high "
+    "share usually follows a rally. The chart's bottom panel sets each share against "
+    "its own prior three years in points, not as a 0-100 index: on these slow monthly "
+    "series an index reads moves of a point or two as extremes. Context, not signal.")
+
+
+def caption(alloc):
+    """The page's notes on the allocation survey: what it is and how it is dated, then
+    what it follows. Paragraphs, like `sentiment.caption`."""
+    return [
+        f"AAII's Asset Allocation Survey is monthly, from {alloc.since:%Y-%m}: members' "
+        "average split between stocks, bonds and cash. Each month is dated on its last "
+        "day and AAII publishes it in the first days of the next, so the newest month "
+        f"here ({alloc.last:%Y-%m}) is about a month old by design.",
+        FOLLOWS_NOTE,
+    ]
+
+
 def leg_colors(colors):
     """Stocks in the page's bull green, bonds blue, cash the votes card's grey."""
     return {"stocks": colors.bull, "bonds": BONDS_COLOR, "cash": aaii_votes.NEUTRAL_COLOR}

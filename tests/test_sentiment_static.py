@@ -128,3 +128,25 @@ def test_the_header_is_the_fund_pages_header_with_the_surveys_dates():
         assert f"{label} <b>{st._date(last[key])}</b>" in head
     assert "2026-11-09T12:00Z" not in head
     assert page.count("<h1") == 1
+
+
+def _luminance(hex_color):
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def test_the_title_ticker_is_readable_on_the_page():
+    """"Surveys" was drawn in the button blue, #002b36 on #1a1a1a: about 1.2 to 1,
+    an invisible word (2026-11-10). WCAG's 4.5 to 1 for text, held here."""
+    import viz_constants as vc
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    assert f"--ticker: {st.TICKER_COLOR};" in page
+    assert "h1 .tk { font-family: var(--mono); font-weight: 600; color: var(--ticker); }" in page
+    hi, lo = sorted((_luminance(st.TICKER_COLOR), _luminance(vc.BACKGROUND_COLOR)),
+                    reverse=True)
+    assert (hi + 0.05) / (lo + 0.05) >= 4.5
+    # The focus ring on the Monitors links used the same invisible colour.
+    assert "a:focus-visible { outline: 2px solid var(--ticker);" in page

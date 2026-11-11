@@ -218,7 +218,11 @@ def test_the_summary_reads_each_surveys_latest_index():
     for key, name in (("naaim", "NAAIM"), ("aaii", "AAII")):
         idx = read.frame[f"{key}_idx"].dropna()
         # Dated like the chart title: the stored observation, not the week's Friday.
-        assert f"{name} at {idx.iloc[-1]:.0f} ({read.last[key]:%Y-%m-%d})" in line
+        # The survey's own number sits beside its index, named, so "at 64" is never
+        # read as the exposure.
+        raw = s.latest_reading(read, key)
+        assert (f"{name} at {idx.iloc[-1]:.0f} ({s.RAW_NAME[key]} {raw:.1f}, "
+                f"{read.last[key]:%Y-%m-%d})") in line
     assert "quarter behind" in line
 
 
@@ -612,7 +616,7 @@ def test_provisional_weeks_draw_dotted_hollow_and_faint():
     assert dotted.line.dash == "dot" and dotted.showlegend is False
     assert pd.Timestamp(dotted.x[0]) == pd.Timestamp(solid.x[-1])   # the segments join
     assert pd.Timestamp(solid.x[-1]) < read.provisional[0]
-    assert "provisional" in fig.layout.annotations[1].text
+    assert fig.layout.annotations[1].text.split("<br>")[0].endswith(" prov)")
     cols = s.columns_figure(read, COLORS, PALETTE)
     naaim = next(t for t in cols.data if t.name == "NAAIM against its average")
     faint = pd.DatetimeIndex(naaim.x).isin(read.provisional)
@@ -727,8 +731,12 @@ def test_the_title_reads_out_the_latest_survey_as_published():
     read = s.build_read(get_bars)
     title = s.price_sentiment_figure(read, COLORS, PALETTE).layout.annotations[1].text
     naaim, aaii = s.latest_reading(read, "naaim"), s.latest_reading(read, "aaii")
-    assert title == (f"NAAIM {naaim:.1f} ({read.last['naaim']:%Y-%m-%d})<br>"
-                     f"AAII {aaii:.1f} ({read.last['aaii']:%Y-%m-%d})")
+    # As published AND on the panel's own scale, each named: the axis is the index.
+    n_idx, a_idx = s.latest_index(read, "naaim"), s.latest_index(read, "aaii")
+    assert title == (
+        f"NAAIM {naaim:.1f}, index {n_idx:.0f} ({read.last['naaim']:%Y-%m-%d})<br>"
+        f"AAII {aaii:.1f}, index {a_idx:.0f} ({read.last['aaii']:%Y-%m-%d})")
+    assert n_idx == read.frame["naaim_idx"].dropna().iloc[-1]
     assert naaim == read.frame["naaim"].dropna().iloc[-1]
 
 
@@ -784,7 +792,7 @@ def test_provisional_aaii_weeks_extend_the_official_legs_and_are_flagged():
         (bull.iloc[181] - bear.iloc[181]) * 100)
     assert read.last["aaii"] == bull.index[181].date()
     summ = s.summary(read)
-    assert "AAII at" in summ and f"({read.last['aaii']:%Y-%m-%d}, provisional)" in summ
+    assert "AAII at" in summ and f"{read.last['aaii']:%Y-%m-%d}, provisional)" in summ
     assert "AAII's last 2 weeks are provisional" in summ
     text = " ".join(s.caption(read))
     assert f"AAII {read.last['aaii']:%Y-%m-%d} (provisional)" in text
@@ -834,9 +842,10 @@ def test_provisional_aaii_weeks_draw_dotted_hollow_and_faint():
     assert hollow.sum() == 2
     assert set(np.asarray(dots.marker.color)[hollow]) == {vc.BACKGROUND_COLOR}
     title = fig.layout.annotations[1].text
-    assert f"AAII {s.latest_reading(read, 'aaii'):.1f} (" in title
-    assert title.endswith(", provisional)") and "NAAIM" in title.split("<br>")[0]
-    assert "provisional" not in title.split("<br>")[0]
+    assert f"AAII {s.latest_reading(read, 'aaii'):.1f}, index " in title
+    # The title's short spelling, as the votes card labels its provisional week.
+    assert title.endswith(" prov)") and "NAAIM" in title.split("<br>")[0]
+    assert "prov" not in title.split("<br>")[0]
     # NAAIM's line has no dotted stretch of its own.
     assert not any(t.name == "NAAIM exposure (provisional)" for t in fig.data)
     cols = s.columns_figure(read, COLORS, PALETTE)

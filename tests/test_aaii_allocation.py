@@ -109,8 +109,9 @@ def test_the_published_page_carries_the_card_after_the_votes_card():
     assert aa.TITLE in html
     payload = _payload(html)
     assert set(payload[st.ALLOCATION_KEY]) == set(st.ALLOCATION_BLOCKS)
-    assert html.index(f'id="{st.VOTES_ID}"') < html.index(f'id="{st.ALLOCATION_ID}"') \
-        < html.index(f'id="{st.COLUMNS_ID}"')
+    # After the two cards the lookback redraws, and after the votes.
+    assert html.index(f'id="{st.COLUMNS_ID}"') < html.index(f'id="{st.VOTES_ID}"') \
+        < html.index(f'id="{st.ALLOCATION_ID}"')
     # One JS loop draws every block-grid card.
     assert json.dumps([list(c) for c in st.GRID_CARDS], separators=(",", ":")) in html
 
@@ -238,13 +239,54 @@ def test_a_short_history_draws_no_gap_lines_and_a_plain_title():
     assert fig.layout.annotations[2].text == "Each share vs its prior 3Y average, points"
 
 
+def test_the_summary_names_the_newest_month_and_the_gap_from_average():
+    _, get_bars = _alloc_bars()
+    alloc = aa.read(get_bars)
+    row = alloc.months.iloc[-1]
+    gap = row["stocks"] - alloc.average["stocks"]
+    line = aa.summary(alloc)
+    assert line.startswith(f"AAII asset allocation, {alloc.last:%Y-%m}: "
+                           f"stocks {row['stocks']:.1f}%, bonds {row['bonds']:.1f}%, "
+                           f"cash {row['cash']:.1f}%.")
+    assert (f"{abs(gap):.1f} points {'above' if gap >= 0 else 'below'} their average "
+            f"since {alloc.since.year} ({alloc.average['stocks']:.1f}%)") in line
+    notes = aa.caption(alloc)
+    assert f"({alloc.last:%Y-%m})" in notes[0] and "about a month old" in notes[0]
+    assert notes[-1] == aa.FOLLOWS_NOTE and "Context, not signal" in notes[-1]
+
+
+def test_the_published_page_names_the_allocation_survey_outside_its_cards():
+    """Header, lead, notes and sources: until 2026-11-10 they described a weekly
+    NAAIM and AAII sentiment page on which two of five cards were this survey."""
+    import re
+    _, alloc_bars = _alloc_bars()
+    alloc = aa.read(alloc_bars)
+    html = st.render(_reads(), COLORS, PALETTE, allocation=alloc)
+    head = re.search(r'<header class="top">.*?</header>', html, re.S).group(0)
+    assert f'<div class="eyebrow">{st.EYEBROW_ALLOCATION}</div>' in head
+    assert "weekly" not in st.EYEBROW_ALLOCATION.lower()
+    assert f"AAII allocation <b>{alloc.last:%b %Y}</b>" in head
+    lead = f'<p class="summary" id="{st.ALLOCATION_SUMMARY_ID}">'
+    assert html.index('id="summary"') < html.index(lead) < html.index('class="lookback"')
+    assert "AAII asset allocation, " in html.split(lead)[1].split("</p>")[0]
+    notes = html.split(f'<div class="notes" id="{st.ALLOCATION_NOTES_ID}">')[1].split("</div>")[0]
+    assert notes.count("<p>") == len(aa.caption(alloc)) and "Context, not signal" in notes
+    # Outside the two elements the lookback toggle rewrites.
+    assert html.index('id="notes"') < html.index(f'id="{st.ALLOCATION_NOTES_ID}"')
+    assert "Asset Allocation Survey (aaii.com)" in html.split("<footer>")[1]
+    bare = st.render(_reads(), COLORS, PALETTE)
+    for gone in (st.ALLOCATION_SUMMARY_ID, st.ALLOCATION_NOTES_ID, "Asset Allocation"):
+        assert gone not in bare.split("<body>")[1].split("<script")[0]
+    assert f'<div class="eyebrow">{st.EYEBROW}</div>' in bare
+
+
 def test_the_published_page_draws_the_price_chart_once_and_refits_it():
     _, alloc_bars = _alloc_bars()
     html = st.render(_reads(), COLORS, PALETTE, allocation=aa.read(alloc_bars))
     assert html.count(f'<div id="{st.ALLOCATION_PRICE_ID}">') == 1 and aa.PRICE_TITLE in html
     assert st.ALLOCATION_PRICE_KEY in _payload(html)
-    assert html.index(f'id="{st.ALLOCATION_ID}"') < html.index(f'id="{st.ALLOCATION_PRICE_ID}"') \
-        < html.index(f'id="{st.COLUMNS_ID}"')
+    assert html.index(f'id="{st.COLUMNS_ID}"') < html.index(f'id="{st.ALLOCATION_ID}"') \
+        < html.index(f'id="{st.ALLOCATION_PRICE_ID}"') < html.index('id="notes"')
     # Drawn outside the lookback loop, but hooked to the same refit as the price chart.
     assert f"'{st.ALLOCATION_PRICE_ID}': '{st.ALLOCATION_PRICE_KEY}'" in html
     assert "IDS.concat(Object.keys(ONCE)" in html

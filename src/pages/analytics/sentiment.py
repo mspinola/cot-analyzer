@@ -147,15 +147,21 @@ def layout(**_):
     head.append(html.Div(sentiment.summary(read), id=SUMMARY,
                          style={**NOTE_STYLE, "color": vc.BRIGHTER_TEXT_COLOR,
                                 "fontSize": "0.9rem"}, className="mb-2"))
-    cards = []
+    cards, extra_notes = [], []
     if not read.frame.empty:
         # The toggle exists only with the charts it redraws, so its callback never
         # targets a chart the page did not render.
         head.append(lookback_buttons())
+        # The two cards the lookback redraws come first, together under its toggle;
+        # the AAII cards after them are not indexed and never change with it.
         cards = [
             _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
                   export="price"),
+            # No subtitle: each row's header carries the sentence that reads it.
+            _card(sentiment.COLUMNS_TITLE, None,
+                  sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
+                  export="columns"),
         ]
         votes = aaii_votes.read()
         if votes is not None:
@@ -172,13 +178,15 @@ def layout(**_):
                                aaii_allocation.price_figure(
                                    allocation, read.frame.get("spy"), colors),
                                ALLOCATION_PRICE_CHART, export="allocation_price"))
-        cards += [
-            # No subtitle: each row's header carries the sentence that reads it.
-            _card(sentiment.COLUMNS_TITLE, None,
-                  sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
-                  export="columns"),
-        ]
+            # Its lead line under the sentiment one and its notes after theirs, both
+            # outside the elements the lookback callback rewrites.
+            head.insert(-1, html.Div(aaii_allocation.summary(allocation),
+                                     style={**NOTE_STYLE, "color": vc.BRIGHTER_TEXT_COLOR,
+                                            "fontSize": "0.9rem"}, className="mb-2"))
+            extra_notes = [html.P(p, style=NOTE_STYLE)
+                           for p in aaii_allocation.caption(allocation)]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
+                          html.Div(extra_notes),
                           dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK),
                           dcc.Store(id=ALLOCATION_ZOOM_SINK)],
                          fluid=True, className="py-3")
