@@ -171,6 +171,8 @@ def test_the_beacon_logs_only_allowlisted_pages():
     assert external_page_path('orr') == '/orr'
     assert external_page_path('ahlt') == '/ahlt'
     assert external_page_path('surveys') == '/surveys'
+    # The static copy of /internals, counted under the app page's own path.
+    assert external_page_path('internals') == '/internals'
     for key in ['', None, 'DBMF', '/dbmf', 'ORR', 'AHLT', 'shell.php', '<script>']:
         assert external_page_path(key) is None, key
 

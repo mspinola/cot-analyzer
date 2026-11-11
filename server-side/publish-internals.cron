@@ -1,0 +1,13 @@
+# Root's crontab line for internals.bluemagicai.com (docs/internals-publishing.md).
+#
+# 20:15 New York time, daily. The page draws two halves of the marketdata store that
+# arrive at different times: the ETF bars (the Windows box's 17:30 equities task) and
+# the TradingView breadth series (the box's two routines, about 18:30 and 19:45), each
+# pushed here when it lands. 20:15 is after the later routine; publish-surveys.cron's
+# 19:15 would publish yesterday's breadth beside today's prices. An unchanged page
+# pushes nothing, so weekends cost one render each. flock keeps a slow render from
+# overlapping the next.
+#
+# Install (merge by hand; root's crontab already carries the surveys line):
+#     crontab -l 2>/dev/null | cat - /root/trading_workspace/cot-analyzer/server-side/publish-internals.cron | crontab -
+15 20 * * * /usr/bin/flock -n /tmp/publish_internals.lock /root/trading_workspace/cot-analyzer/scripts/publish_internals.sh >> /var/log/publish_internals.log 2>&1
