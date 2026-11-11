@@ -125,7 +125,7 @@ def test_each_block_has_a_fixed_scale_and_no_zoom():
     # On a palette whose bull slot is AAII's own (the default), it is AAII's line colour.
     same = COLORS._replace(bull=PALETTE[s.SENTIMENT_SLOTS["aaii"]])
     assert av.leg_colors(same)["bullish"] == s.sentiment_colors(PALETTE)["aaii"]
-    assert colors["bearish"] == COLORS.bear
+    assert colors["bearish"] == s.card_red(COLORS) != COLORS.bear
 
 
 # ── the published page ────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ def test_the_spread_block_is_bulls_minus_bears_for_the_recent_weeks():
     assert [t.split(" (")[0] for t in labels] == [f"{v:+.1f}" for v in want]
     # Green at or above zero, red below: the page's bull and bear.
     for v, c in zip(want, bar.marker.color):
-        assert c == hex_to_rgba(s.card_green(COLORS) if v >= 0 else COLORS.bear,
+        assert c == hex_to_rgba(s.card_green(COLORS) if v >= 0 else s.card_red(COLORS),
                                 av.BAR_OPACITY)
 
 

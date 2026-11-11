@@ -82,10 +82,12 @@ NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
 BAR_OPACITY = 0.85
 #: Text inside each segment: dark on the bright green and red, white on the grey.
 INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116",
-               "stocks": "#0e1116"}
+               "stocks": "#0e1116", "bonds": "#0e1116"}
 #: The segments filled with the toned-down green (this card's and the allocation
 #: card's), whose ink `segment_ink` picks from the fill, and the ink for a dark one.
 GREEN_KEYS = ("bullish", "stocks")
+#: Every segment filled with a toned-down colour, the red and the bonds blue included.
+TONED_KEYS = GREEN_KEYS + ("bearish", "bonds")
 LIGHT_INK = "#FFFFFF"
 #: Text inside a provisional (faint) segment, whatever its leg.
 PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
@@ -200,19 +202,20 @@ def read(get_bars=None):
 
 
 def leg_colors(colors):
-    """Bull and bear from the page's colour set, grey between. The green is toned down
-    by the survey lines' own step (`sentiment.card_green`), so it matches AAII's line
-    and columns; the bear red is the page's as it stands."""
+    """Bull and bear from the page's colour set, grey between. Both are toned down by
+    the survey lines' own step (`sentiment.card_green`, `card_red`), so the green
+    matches AAII's line and columns and the red does not outshout it."""
     return {"bullish": sentiment.card_green(colors), "neutral": NEUTRAL_COLOR,
-            "bearish": colors.bear}
+            "bearish": sentiment.card_red(colors)}
 
 
 def segment_ink(key, fill):
-    """The ink printed inside a segment. The grey and the red keep theirs. The green is
-    toned down from the palette's bull slot, and palettes disagree about how bright
-    that slot is, so its ink is chosen from the fill as drawn: the dark ink where it
-    still reads (4.8 to 1 on the default palette), white on a darker green."""
-    if key not in GREEN_KEYS or not str(fill).startswith("#"):
+    """The ink printed inside a segment. The grey keeps its own. The green, red and blue
+    are toned down from palette colours, and palettes disagree about how bright those
+    are, so their ink is chosen from the fill as drawn: the dark ink where it still
+    reads (4.8 to 1 on the default palette's green), white on a darker fill (its red
+    and blue, 6.1 and 5.0 to 1)."""
+    if key not in TONED_KEYS or not str(fill).startswith("#"):
         return INSIDE_TEXT[key]
     drawn = blend_over(fill, BAR_OPACITY)
     return INSIDE_TEXT[key] if relative_luminance(drawn) > INK_PIVOT else LIGHT_INK

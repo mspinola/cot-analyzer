@@ -301,11 +301,28 @@ SENTIMENT_STRENGTH = {"naaim": 0.75, "aaii": 0.75}
 #: allocation cards too", 2026-11-11). The cards draw it at their bar opacity on top;
 #: the dark ink printed inside a bar still reads at 4.8 to 1 (7.4 before).
 CARD_GREEN_STRENGTH = SENTIMENT_STRENGTH["aaii"]
+#: And for the cards' red (bearish votes, a share below its average) and the bonds
+#: blue: with the green calmer they were the loudest colours left in their cards ("add
+#: the red and blue color tone balancing", 2026-11-11). One step for all three, so the
+#: cards stay balanced as the lines are. On the default palette the red reads #c64040
+#: and the blue #4e82c2; both are too dark as bars for the dark ink, and
+#: `aaii_votes.segment_ink` prints white inside them (6.1 and 5.0 to 1).
+CARD_STRENGTH = CARD_GREEN_STRENGTH
+
+
+def card_tone(color):
+    """A card colour toned down by the page's one step; not a hex colour, unchanged."""
+    return blend_over(color, CARD_STRENGTH)
 
 
 def card_green(colors):
     """The bull green as the AAII cards fill with it: `colors.bull`, toned down."""
-    return blend_over(colors.bull, CARD_GREEN_STRENGTH)
+    return card_tone(colors.bull)
+
+
+def card_red(colors):
+    """The bear red as the AAII cards fill with it: `colors.bear`, toned down."""
+    return card_tone(colors.bear)
 
 
 def sentiment_colors(palette):
