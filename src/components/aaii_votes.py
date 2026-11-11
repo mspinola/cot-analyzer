@@ -52,7 +52,7 @@ import plotly.graph_objects as go
 
 import viz_constants as vc
 from components import sentiment
-from components.plot_colors import hex_to_rgba
+from components.plot_colors import INK_PIVOT, blend_over, hex_to_rgba, relative_luminance
 
 AAII_NEUTRAL = "AAII_NEUTRAL"
 #: Each leg's provisional series (NOT official; see the module docstring).
@@ -81,7 +81,12 @@ ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
 BAR_OPACITY = 0.85
 #: Text inside each segment: dark on the bright green and red, white on the grey.
-INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116"}
+INSIDE_TEXT = {"bullish": "#0e1116", "neutral": "#FFFFFF", "bearish": "#0e1116",
+               "stocks": "#0e1116"}
+#: The segments filled with the toned-down green (this card's and the allocation
+#: card's), whose ink `segment_ink` picks from the fill, and the ink for a dark one.
+GREEN_KEYS = ("bullish", "stocks")
+LIGHT_INK = "#FFFFFF"
 #: Text inside a provisional (faint) segment, whatever its leg.
 PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Pixels each half adds to its rows: the title above, the margins.
@@ -195,8 +200,22 @@ def read(get_bars=None):
 
 
 def leg_colors(colors):
-    """Bull and bear from the page's colour set (the columns use the same), grey between."""
-    return {"bullish": colors.bull, "neutral": NEUTRAL_COLOR, "bearish": colors.bear}
+    """Bull and bear from the page's colour set, grey between. The green is toned down
+    by the survey lines' own step (`sentiment.card_green`), so it matches AAII's line
+    and columns; the bear red is the page's as it stands."""
+    return {"bullish": sentiment.card_green(colors), "neutral": NEUTRAL_COLOR,
+            "bearish": colors.bear}
+
+
+def segment_ink(key, fill):
+    """The ink printed inside a segment. The grey and the red keep theirs. The green is
+    toned down from the palette's bull slot, and palettes disagree about how bright
+    that slot is, so its ink is chosen from the fill as drawn: the dark ink where it
+    still reads (4.8 to 1 on the default palette), white on a darker green."""
+    if key not in GREEN_KEYS or not str(fill).startswith("#"):
+        return INSIDE_TEXT[key]
+    drawn = blend_over(fill, BAR_OPACITY)
+    return INSIDE_TEXT[key] if relative_luminance(drawn) > INK_PIVOT else LIGHT_INK
 
 
 def _bar(key, label, colors):
@@ -206,7 +225,8 @@ def _bar(key, label, colors):
                 marker=dict(color=hex_to_rgba(fill, BAR_OPACITY) if fill.startswith("#")
                             else fill),
                 textposition="inside", insidetextanchor="middle",
-                insidetextfont=dict(color=INSIDE_TEXT[key], size=11), cliponaxis=False)
+                insidetextfont=dict(color=segment_ink(key, fill), size=11),
+                cliponaxis=False)
 
 
 def _finish(fig, title, rows):
@@ -252,7 +272,7 @@ def recent_figure(votes, colors):
             # Light text on a faint segment: the dark text the bright bars carry sat on a
             # dimmed fill over the dark page and could not be read.
             bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
-                late, PROVISIONAL_TEXT, INSIDE_TEXT[key]).tolist())
+                late, PROVISIONAL_TEXT, bar["insidetextfont"]["color"]).tolist())
         vals = recent[key].round(1).to_numpy()
         fig.add_trace(go.Bar(
             x=vals, y=rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
