@@ -207,7 +207,7 @@ from plotly.subplots import make_subplots
 
 import viz_constants as vc
 from components import exposure_traces
-from components.plot_colors import hex_to_rgba
+from components.plot_colors import blend_over, hex_to_rgba
 
 NAAIM = "NAAIM_EXPOSURE"
 #: The weeks after the official series' end, hand-kept and NOT official (marketdata's
@@ -285,11 +285,21 @@ COLUMN_AXES = ("yaxis", "yaxis2", "yaxis3", "yaxis4")
 #: Neither borrowed meaning is drawn on this page, and in all five palettes the two stay
 #: distinct.
 SENTIMENT_SLOTS = {"naaim": 5, "aaii": 3}
+#: How much of a slot's colour each series keeps, the rest being the page background.
+#: NAAIM's slot is the palette's violet (#A78BFA on the default), which as a 2px line
+#: and a panel of columns was the brightest thing on the page ("the purple is too
+#: bright", 2026-11-11). At 0.75 it reads #846fc2 there: 4.0 to 1 on the page, and
+#: further from AAII's green than the full colour was (colour difference 30.8 against
+#: 29.1; the dataviz skill's validate_palette.js, dark mode on #1a1a1a). Still the
+#: palette's own colour, so a palette switch repaints it.
+SENTIMENT_STRENGTH = {"naaim": 0.75, "aaii": 1.0}
 
 
 def sentiment_colors(palette):
     """NAAIM's and AAII's line colours from the palette, keyed like the frame."""
-    return {key: palette[slot] for key, slot in SENTIMENT_SLOTS.items()}
+    return {key: blend_over(palette[slot], SENTIMENT_STRENGTH[key])
+            if SENTIMENT_STRENGTH[key] < 1 else palette[slot]
+            for key, slot in SENTIMENT_SLOTS.items()}
 
 
 #: The two series, in drawing order.
@@ -957,17 +967,36 @@ def _fit_columns(fig, window):
 
 # ── words ─────────────────────────────────────────────────────────────────────
 
+#: The crowd's state from its index, in the chart's own words and at its own lines
+#: (LO and HI, the dashed 20 and 80). A description of the crowd, never "bullish" or
+#: "bearish": on a sentiment survey that word reads either as the crowd's mood or as a
+#: call on the market, which point opposite ways, and the page's one study of the call
+#: found a marginal lean that did not clear its line (STUDY_NOTE).
+STATE_LONG, STATE_WASHED, STATE_MID = "Crowd leans long", "Washed out", "Mid-range"
+
+
+def crowd_state(index):
+    """STATE_LONG at or above HI, STATE_WASHED at or below LO, else STATE_MID. Decided
+    on the index as the page prints it (a whole number), so a tile never reads
+    "Mid-range, index 80"."""
+    shown = round(index)
+    if shown >= HI:
+        return STATE_LONG
+    return STATE_WASHED if shown <= LO else STATE_MID
+
+
 def readings(read):
     """Each survey's newest reading for the published page's tiles, in SERIES order:
-    its own number as published, its index on this read's lookback, the stored date
-    and whether that week is provisional. A survey that is not in is left out."""
+    its own number as published, its index on this read's lookback and the crowd state
+    that index puts it in, the stored date and whether that week is provisional. A
+    survey that is not in is left out."""
     out = []
     for key, label in SERIES:
         raw, index = latest_reading(read, key), latest_index(read, key)
         if raw is None or index is None:
             continue
         out.append({"key": key, "label": label, "value": raw, "index": index,
-                    "date": read.last[key],
+                    "state": crowd_state(index), "date": read.last[key],
                     "provisional": bool(len(provisional_weeks(read, key)))})
     return out
 

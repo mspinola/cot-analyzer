@@ -47,7 +47,8 @@ def test_the_readings_strip_leads_with_each_surveys_number_and_its_index():
     tiles = st.survey_tiles(read)
     for tile, r in zip(tiles, s.readings(read)):
         assert tile["label"] == r["label"] and tile["value"] == f"{r['value']:.1f}"
-        assert tile["context"] == (f"Index {r['index']:.0f} of 100 on its "
+        assert tile["state"] == r["state"] == s.crowd_state(r["index"])
+        assert tile["context"] == (f"index {r['index']:.0f} of 100 on its "
                                    f"{s.DEFAULT_LOOKBACK}-year range")
         assert tile["foot"].startswith(st._date(r["date"]))
         assert tile["foot"].endswith("provisional") == r["provisional"]
@@ -57,7 +58,13 @@ def test_the_readings_strip_leads_with_each_surveys_number_and_its_index():
     assert f'<div class="value">{tiles[0]["value"]}</div>' in strip
     # The sentence it replaced is gone from the page, and the toggle rewrites the tiles.
     assert 'id="summary"' not in page and "On the 3-year range index" not in page
-    assert "d.tiles.forEach" in page and "tile.querySelector('.ctx').textContent" in page
+    assert "d.tiles.forEach" in page and "tile.querySelector('.rest').textContent" in page
+    # The crowd state leads the context, as a word in the tile's ink, and the toggle
+    # rewrites it with the index it is read from.
+    assert (f'<div class="ctx"><b class="state">{tiles[0]["state"]}</b> · '
+            f'<span class="rest">{tiles[0]["context"]}</span></div>') in strip
+    assert "if (state) { state.textContent = t.state; }" in page
+    assert ".tile .state { font-weight: 600; color: var(--ink); }" in page
     assert "1-year range" in st.survey_tiles(reads[1])[0]["context"]
 
 
