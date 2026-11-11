@@ -181,8 +181,10 @@ def caption(alloc):
 
 
 def leg_colors(colors):
-    """Stocks in the page's bull green, bonds blue, cash the votes card's grey."""
-    return {"stocks": colors.bull, "bonds": BONDS_COLOR, "cash": aaii_votes.NEUTRAL_COLOR}
+    """Stocks in the page's bull green, toned down as the survey lines are
+    (`sentiment.card_green`), bonds blue, cash the votes card's grey."""
+    return {"stocks": sentiment.card_green(colors), "bonds": BONDS_COLOR,
+            "cash": aaii_votes.NEUTRAL_COLOR}
 
 
 def _bar(key, label, colors):
@@ -190,7 +192,10 @@ def _bar(key, label, colors):
     return dict(orientation="h", name=label, legendgroup=key, showlegend=False,
                 marker=dict(color=hex_to_rgba(fill, aaii_votes.BAR_OPACITY)),
                 textposition="inside", insidetextanchor="middle",
-                insidetextfont=dict(color=INSIDE_TEXT[key], size=11), cliponaxis=False)
+                insidetextfont=dict(
+                    color=(aaii_votes.segment_ink(key, fill) if key in aaii_votes.GREEN_KEYS
+                           else INSIDE_TEXT[key]), size=11),
+                cliponaxis=False)
 
 
 def _pct(v):
@@ -244,7 +249,8 @@ def stock_gap_figure(alloc, colors):
     avg = float(alloc.average["stocks"])
     gap = (recent["stocks"] - avg).round(1)
     rows = _months(recent.index)
-    color = [hex_to_rgba(colors.bull if v >= 0 else colors.bear, aaii_votes.BAR_OPACITY)
+    color = [hex_to_rgba(sentiment.card_green(colors) if v >= 0 else colors.bear,
+                         aaii_votes.BAR_OPACITY)
              for v in gap]
     fig = go.Figure(go.Bar(
         x=gap.clip(-STOCK_GAP_LIMIT, STOCK_GAP_LIMIT).to_numpy(), y=rows, orientation="h",
@@ -308,7 +314,8 @@ GAP_AXIS = "yaxis3"
 #: at the bonds blue's own lightness and the two lines ran together (colour difference
 #: 12.4 where 15 is the floor); this one clears every pair against the stocks green and
 #: bonds blue for normal and colour-blind vision (18.3 and 9.1 at worst; the dataviz
-#: skill's validate_palette.js, dark mode on #1a1a1a, all pairs, 2026-11-10).
+#: skill's validate_palette.js, dark mode on #1a1a1a, all pairs, 2026-11-10). Checked
+#: again with the green toned down (2026-11-11): 20.2 and 17.8 at worst.
 CASH_LINE_COLOR = "#d1d5db"
 #: The gap panel's zero line: visible, and quieter than the lines that cross it.
 ZERO_ALPHA = 0.45

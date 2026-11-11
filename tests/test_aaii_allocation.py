@@ -8,7 +8,7 @@ import pytest
 
 from components import aaii_allocation as aa
 from components import aaii_votes as av
-from components import exposure_traces
+from components import exposure_traces, sentiment
 from components import sentiment_static as st
 from components.plot_colors import hex_to_rgba
 from tests.test_aaii_votes import _legs_bars, _payload, _reads
@@ -85,7 +85,8 @@ def test_stocks_against_the_average_on_a_fixed_scale():
     np.testing.assert_allclose(bar.x, want)
     assert list(bar.text) == [f"{v:+.1f}" for v in want]
     for v, c in zip(want, bar.marker.color):
-        assert c == hex_to_rgba(COLORS.bull if v >= 0 else COLORS.bear, av.BAR_OPACITY)
+        assert c == hex_to_rgba(sentiment.card_green(COLORS) if v >= 0 else COLORS.bear,
+                                av.BAR_OPACITY)
     assert list(gap.layout.xaxis.range) == [-aa.STOCK_GAP_LIMIT, aa.STOCK_GAP_LIMIT]
     assert gap.layout.annotations[0].text == f"Stocks vs average ({avg:.1f}%)"
 
@@ -223,6 +224,32 @@ def test_the_gap_panel_draws_each_share_against_its_three_year_average():
     assert fig.layout.yaxis3.zeroline
 
 
+def test_the_cards_green_is_toned_down_and_still_carries_its_dark_text():
+    """One green on the page: the cards' fill matches AAII's toned-down line, and the
+    dark ink printed inside a green bar keeps 4.5 to 1 on it."""
+    from components.plot_colors import blend_over, relative_luminance
+    green = sentiment.card_green(COLORS)
+    assert green == blend_over(COLORS.bull, sentiment.CARD_GREEN_STRENGTH) != COLORS.bull
+    assert aa.leg_colors(COLORS)["stocks"] == av.leg_colors(COLORS)["bullish"] == green
+    assert aa.leg_colors(COLORS)["bonds"] == aa.BONDS_COLOR      # as it stands
+    # The ink follows the fill as drawn, because palettes disagree about how bright
+    # their bull slot is: dark on the default palette's green, white on a darker one.
+    def ratio(fill, ink):
+        pair = sorted((relative_luminance(blend_over(fill, av.BAR_OPACITY)),
+                       relative_luminance(ink)), reverse=True)
+        return (pair[0] + 0.05) / (pair[1] + 0.05)
+    default = blend_over("#34D399", sentiment.CARD_GREEN_STRENGTH)
+    assert av.segment_ink("stocks", default) == aa.INSIDE_TEXT["stocks"]
+    assert av.segment_ink("bullish", green) == av.LIGHT_INK      # the fixture's is darker
+    for fill in (default, green):
+        for key in av.GREEN_KEYS:
+            assert ratio(fill, av.segment_ink(key, fill)) >= 4.5
+    # The grey and the red keep the ink they had.
+    assert av.segment_ink("bearish", COLORS.bear) == av.INSIDE_TEXT["bearish"]
+    recent, _, _ = aa.figures(aa.read(_alloc_bars()[1]), COLORS)
+    assert recent.data[0].insidetextfont.color == av.segment_ink("stocks", green)
+
+
 def test_the_cash_gap_line_is_a_light_grey_the_stack_keeps_its_own():
     """The stack's grey was 3.6 to 1 as a thin line; the gap panel's cash line takes a
     lighter one, validated apart from the stocks green and bonds blue."""
@@ -230,7 +257,8 @@ def test_the_cash_gap_line_is_a_light_grey_the_stack_keeps_its_own():
     by_name = {t.name: t for t in fig.data}
     assert by_name["Cash vs 3Y avg"].line.color == aa.CASH_LINE_COLOR
     assert by_name["Cash"].line.color == av.NEUTRAL_COLOR
-    assert by_name["Stocks vs 3Y avg"].line.color == COLORS.bull
+    assert by_name["Stocks vs 3Y avg"].line.color == sentiment.card_green(COLORS)
+    assert by_name["Stocks"].line.color == sentiment.card_green(COLORS)
     assert by_name["Bonds vs 3Y avg"].line.color == aa.BONDS_COLOR
 
 

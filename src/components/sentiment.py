@@ -293,9 +293,19 @@ SENTIMENT_SLOTS = {"naaim": 5, "aaii": 3}
 #: #2ea579: 4.2 and 5.6 to 1 on the page, and a colour difference of 23.0 for normal
 #: vision and 15.1 at worst for colour-blind (floors 15 and 8; the dataviz skill's
 #: validate_palette.js, dark mode on #1a1a1a, every check passing). Still the
-#: palette's own colours, so a palette switch repaints them. Only this page's two
-#: series: the votes card's bullish green and the stocks band keep the full colour.
+#: palette's own colours, so a palette switch repaints them.
 SENTIMENT_STRENGTH = {"naaim": 0.75, "aaii": 0.75}
+#: The same step for the green the AAII cards fill with (bullish votes, the stocks
+#: share), so the page has one green: left at full strength beside the toned-down
+#: lines it was the loudest colour left ("tone down the green in the votes and
+#: allocation cards too", 2026-11-11). The cards draw it at their bar opacity on top;
+#: the dark ink printed inside a bar still reads at 4.8 to 1 (7.4 before).
+CARD_GREEN_STRENGTH = SENTIMENT_STRENGTH["aaii"]
+
+
+def card_green(colors):
+    """The bull green as the AAII cards fill with it: `colors.bull`, toned down."""
+    return blend_over(colors.bull, CARD_GREEN_STRENGTH)
 
 
 def sentiment_colors(palette):

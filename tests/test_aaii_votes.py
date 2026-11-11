@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from components import aaii_votes as av
+from components import sentiment as s
 from components import sentiment_static as st
 from components.plot_colors import hex_to_rgba
 from tests.test_sentiment import COLORS, PALETTE, _fixtures, _no_cot_store  # noqa: F401 (autouse)
@@ -119,7 +120,12 @@ def test_each_block_has_a_fixed_scale_and_no_zoom():
     assert av.X_RANGE[0] == 0 and 100.2 < av.X_RANGE[1] < 101   # rounding room, no more
     assert all(w in av.SUBTITLE for w in ("(green)", "(grey)", "(red)"))
     colors = av.leg_colors(COLORS)
-    assert colors["bullish"] == COLORS.bull and colors["bearish"] == COLORS.bear
+    # The green is the page's bull green toned down to AAII's line; the red is as is.
+    assert colors["bullish"] == s.card_green(COLORS) != COLORS.bull
+    # On a palette whose bull slot is AAII's own (the default), it is AAII's line colour.
+    same = COLORS._replace(bull=PALETTE[s.SENTIMENT_SLOTS["aaii"]])
+    assert av.leg_colors(same)["bullish"] == s.sentiment_colors(PALETTE)["aaii"]
+    assert colors["bearish"] == COLORS.bear
 
 
 # ── the published page ────────────────────────────────────────────────────────
@@ -229,7 +235,9 @@ def test_provisional_rows_draw_faint_with_the_tag_beside_the_date():
     from components import sentiment as s
     np.testing.assert_allclose(bull.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
     # Light text on the faint rows, the leg's usual text on the others.
-    assert list(bull.insidetextfont.color) == [av.PROVISIONAL_TEXT] * 2 + [av.INSIDE_TEXT["bullish"]] * 2
+    # Official rows keep the ink the green fill as drawn calls for (the fixture's is dark).
+    ink = av.segment_ink("bullish", av.leg_colors(COLORS)["bullish"])
+    assert list(bull.insidetextfont.color) == [av.PROVISIONAL_TEXT] * 2 + [ink] * 2
     assert "provisional" in fig.layout.annotations[0].text
 
 
@@ -272,7 +280,8 @@ def test_the_spread_block_is_bulls_minus_bears_for_the_recent_weeks():
     assert [t.split(" (")[0] for t in labels] == [f"{v:+.1f}" for v in want]
     # Green at or above zero, red below: the page's bull and bear.
     for v, c in zip(want, bar.marker.color):
-        assert c == hex_to_rgba(COLORS.bull if v >= 0 else COLORS.bear, av.BAR_OPACITY)
+        assert c == hex_to_rgba(s.card_green(COLORS) if v >= 0 else COLORS.bear,
+                                av.BAR_OPACITY)
 
 
 def test_the_average_line_is_the_official_average_spread():
