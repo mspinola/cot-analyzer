@@ -86,10 +86,12 @@ STOCK_GAP_LIMIT = 25.0
 
 TITLE = "AAII asset allocation"
 SUBTITLE = ("AAII members' average split between stocks (green), bonds (blue) and cash "
-            "(grey), percent of portfolio, monthly: the last four surveys, newest first, beside the average "
-            "since 1987 and each share's highest month in the last year, and each recent "
-            "month's stocks share against its average since 1987. AAII publishes each "
-            "month in the first days of the next.")
+            "(grey), percent of portfolio, monthly.")
+#: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
+HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
+               "1987 with each share's highest month in the last year; and each recent "
+               "month's stocks share against its average since 1987. AAII publishes "
+               "each month in the first days of the next.")
 
 BONDS_COLOR = "#60A5FA"     # the app palette's blue
 #: Text inside each segment: dark on the bright green and blue, white on the grey.
@@ -270,14 +272,16 @@ def figures(alloc, colors):
 # ── the history chart, its own card ────────────────────────────────────────────
 
 PRICE_TITLE = "AAII allocation against price"
-PRICE_SUBTITLE = ("SPY on top. Under it, AAII members' split between stocks (green), "
-                  "bonds (blue) and cash (grey) each month since 1987, stacked to 100% "
-                  "of portfolio: stocks sit on the floor, so their band's top edge is the "
-                  "stocks share, and the dashed line is its average since 1987. At the "
-                  "bottom, each share minus its own average over the prior three years, "
-                  "in points. Opens on the whole history (SPY's starts in 1993); the "
-                  "buttons zoom in. Each month is drawn on its last day, about a month "
-                  "before AAII publishes it.")
+PRICE_SUBTITLE = ("SPY above AAII members' monthly split between stocks (green), bonds "
+                  "(blue) and cash (grey) since 1987, and each share against its own "
+                  "prior three years.")
+PRICE_HOW_TO_READ = (
+    "The middle panel stacks the shares to 100% of portfolio: stocks sit on the floor, "
+    "so their band's top edge is the stocks share, and the dashed line is its average "
+    "since 1987. The bottom panel is each share minus its own average over the prior "
+    "three years, in points. Opens on the whole history (SPY's starts in 1993); the "
+    "buttons zoom in. Each month is drawn on its last day, about a month before AAII "
+    "publishes it.")
 #: Taller than the sentiment chart's 470 by about the gap panel, so the two panels it
 #: shared keep roughly the room they had, and the gap panel gets the most: its three
 #: lines cross within a few points of zero and need the height to read apart. At 600
@@ -298,6 +302,14 @@ GAP_YEARS = GAP_MONTHS // 12
 #: stack is a share of 100 and stays on its fixed scale. The gap panel keeps zero in
 #: view, as the sentiment page's column panels do.
 GAP_AXIS = "yaxis3"
+#: Cash in the gap panel, as a line. The stack's grey (#6b7280, picked to carry white
+#: text on a filled bar) is 3.6 to 1 on the page as a 1.5px line and was the hardest of
+#: the three to follow. A light grey, and not the mid step between them: #9ca3af sits
+#: at the bonds blue's own lightness and the two lines ran together (colour difference
+#: 12.4 where 15 is the floor); this one clears every pair against the stocks green and
+#: bonds blue for normal and colour-blind vision (18.3 and 9.1 at worst; the dataviz
+#: skill's validate_palette.js, dark mode on #1a1a1a, all pairs, 2026-11-10).
+CASH_LINE_COLOR = "#d1d5db"
 #: The gap panel's zero line: visible, and quieter than the lines that cross it.
 ZERO_ALPHA = 0.45
 PRICE_REFIT = {exposure_traces.REFIT_META: {
@@ -389,7 +401,8 @@ def price_figure(alloc, spy, colors):
             continue
         fig.add_trace(go.Scatter(
             x=g.index, y=g, mode="lines", name=f"{label} vs {GAP_YEARS}Y avg",
-            showlegend=False, line=dict(color=fills[key], width=1.5),
+            showlegend=False,
+            line=dict(color=CASH_LINE_COLOR if key == "cash" else fills[key], width=1.5),
             customdata=trail[key].reindex(g.index),
             hovertemplate=f"{label} vs {GAP_YEARS}Y avg " + "%{y:+.1f} pts "
                           "(avg %{customdata:.1f})<extra></extra>"), row=3, col=1)

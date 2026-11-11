@@ -283,7 +283,7 @@ def test_the_average_line_is_the_official_average_spread():
     dashed = [s for s in fig.layout.shapes if s.line.dash == "dash"]
     assert len(dashed) == 1 and dashed[0].x0 == pytest.approx(avg)
     assert fig.layout.annotations[0].text == f"Bulls minus bears (avg {avg:+.1f} dashed)"
-    assert "since 1987 (dashed)" in av.SUBTITLE
+    assert "since 1987 (dashed)" in av.HOW_TO_READ
 
 
 def test_a_spread_beyond_the_scale_is_pinned_but_labelled_true():
@@ -363,7 +363,7 @@ def test_spread_labels_sit_on_the_empty_side_of_zero_beyond_the_average():
             assert a.xanchor == "left" and a.x == max(0.0, avg)
         else:
             assert a.xanchor == "right" and a.x == min(0.0, avg)
-    assert "percentile since 1987 in brackets" in av.SUBTITLE
+    assert "percentile since 1987 in brackets" in av.HOW_TO_READ
 
 
 def test_the_weakest_week_on_record_reads_1st_not_0th():

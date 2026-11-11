@@ -35,8 +35,69 @@ def test_every_lookback_is_embedded_with_both_figures():
     assert set(data) == {str(y) for y in s.LOOKBACK_YEARS}
     for entry in data.values():
         assert entry["price"]["data"] and entry["columns"]["data"]
-        assert entry["summary"].startswith("On the ")
-    assert data["1"]["summary"] != data["3"]["summary"]
+        assert [t["key"] for t in entry["tiles"]] == ["naaim", "aaii"]
+    assert data["1"]["tiles"] != data["3"]["tiles"]
+
+
+def test_the_readings_strip_leads_with_each_surveys_number_and_its_index():
+    """Three numbers where a paragraph stood: the survey's own value is the figure and
+    its index on the lookback is the context, so the two are never confused."""
+    reads = _reads()
+    read = reads[s.DEFAULT_LOOKBACK]
+    tiles = st.survey_tiles(read)
+    for tile, r in zip(tiles, s.readings(read)):
+        assert tile["label"] == r["label"] and tile["value"] == f"{r['value']:.1f}"
+        assert tile["context"] == (f"Index {r['index']:.0f} of 100 on its "
+                                   f"{s.DEFAULT_LOOKBACK}-year range")
+        assert tile["foot"].startswith(st._date(r["date"]))
+        assert tile["foot"].endswith("provisional") == r["provisional"]
+    page = st.render(reads, COLORS, PALETTE, clientside_js="")
+    strip = page.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
+    assert strip.count('class="tile"') == len(tiles) == 2
+    assert f'<div class="value">{tiles[0]["value"]}</div>' in strip
+    # The sentence it replaced is gone from the page, and the toggle rewrites the tiles.
+    assert 'id="summary"' not in page and "On the 3-year range index" not in page
+    assert "d.tiles.forEach" in page and "tile.querySelector('.ctx').textContent" in page
+    assert "1-year range" in st.survey_tiles(reads[1])[0]["context"]
+
+
+def test_each_card_opens_on_one_sentence_with_the_rest_behind_a_toggle():
+    from components import aaii_allocation as aa
+    from components import aaii_votes as av
+    from tests.test_aaii_allocation import _alloc_bars
+    from tests.test_aaii_votes import _legs_bars
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="",
+                     votes=av.read(_legs_bars()[1]), allocation=aa.read(_alloc_bars()[1]))
+    pairs = ((s.PRICE_SUBTITLE, s.PRICE_HOW_TO_READ), (av.SUBTITLE, av.HOW_TO_READ),
+             (aa.SUBTITLE, aa.HOW_TO_READ), (aa.PRICE_SUBTITLE, aa.PRICE_HOW_TO_READ))
+    import html as html_lib
+    for lead, how in pairs:
+        assert lead.count(". ") == 0 and lead.endswith(".")      # one sentence
+        assert f'<div class="sub">{html_lib.escape(lead)}</div>' in page
+        assert f"<p>{html_lib.escape(how)}</p></details>" in page
+    assert page.count(f"<summary>{s.HOW_TO_READ_LABEL}</summary>") == len(pairs)
+    assert "<details open" not in page                           # closed by default
+
+
+def test_a_phone_opens_the_weekly_charts_on_fewer_years_and_refits_them():
+    """Five years is 260 weeks across about 260px. The window is set in the layout the
+    page draws, so a lookback flip keeps it, and the y axes are fitted to it."""
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    shift = s.OPEN_YEARS - s.PHONE_OPEN_YEARS
+    assert 0 < s.PHONE_OPEN_YEARS < s.OPEN_YEARS
+    assert f"start.setFullYear(start.getFullYear() + {shift});" in page
+    assert "if (IDS.indexOf(id) >= 0 && layout.xaxis.range)" in page
+    # 3Y is still a button there, so the opening view can be returned to.
+    assert f"{s.PHONE_OPEN_YEARS}Y" not in st.PHONE_HIDDEN_RANGES
+    assert f"({s.PHONE_OPEN_YEARS} on a phone)" in s.PRICE_HOW_TO_READ
+    # Fitted on a phone's first draw and after every flip, which keeps the reader's x
+    # zoom but not the y ranges a zoom had fitted.
+    assert "if (PHONE || !first) { Promise.resolve(done).then(function () { refitNow(id); }); }" in page
+    assert "refit({'xaxis.range': [r[0], r[1]]}, id);" in page
+    # The figure grows by what the lifted buttons and the wrapped legend take.
+    assert (f"var height = (layout.height || 450) + {st.PHONE_BUTTON_LIFT_PX} + (ROOM[id] || 0);"
+            in page)
+    assert f"var ROOM = {{'{st.PRICE_ID}': {st.PHONE_LEGEND_ROOM_PX}}};" in page
 
 
 def test_the_published_notes_drop_the_local_only_line_and_the_app_keeps_it():
@@ -85,7 +146,7 @@ def test_a_phone_drops_two_zoom_buttons_and_keeps_the_short_ones():
     """Nine buttons overrun a phone-width plot; the page drops 2Y and 15Y there only."""
     html = st.render(_reads(), COLORS, PALETTE)
     assert f"window.matchMedia('{st.PHONE_QUERY}')" in html
-    assert '["2Y","15Y"]' in html and "fitted(fig.layout)" in html
+    assert '["2Y","15Y"]' in html and "fitted(fig.layout, id)" in html
     assert not {"3M", "6M"} & set(st.PHONE_HIDDEN_RANGES)
 
 

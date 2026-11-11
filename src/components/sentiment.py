@@ -239,6 +239,11 @@ _YEARS_WORD = {1: "year", 3: "three years"}
 AVERAGE_WEEKS = 2
 LO, HI = 20.0, 80.0               # fixed zones on the 0-100 index
 OPEN_YEARS = 5                    # the time views open on this many trailing years
+#: The published page's opening window below 600px. Five years is 260 weeks across
+#: about 260px of plot, a scribble; three is a button a phone still has (2Y is one of
+#: the two it drops) and is the default lookback's own window. Applied in the browser
+#: (sentiment_static), since one file serves both widths.
+PHONE_OPEN_YEARS = 3
 #: Zoom buttons ahead of the app's year ladder, for the recent weeks. A zoom, not a
 #: window: the index keeps its 1- or 3-year scale ("The real-time reading").
 RANGE_MONTHS = (3, 6)
@@ -308,15 +313,21 @@ STUDY_NOTE = (
 
 #: The two cards' headings, shared by the page and its published copy (sentiment_static).
 PRICE_TITLE = "Sentiment against price"
+#: A card opens on one sentence (the subtitle) and keeps the rest behind a "How to
+#: read this" toggle, closed by default: at 3-4 lines on a desktop and 8-9 on a phone
+#: the full text stood between the reader and every chart (2026-11-10 page review).
+HOW_TO_READ_LABEL = "How to read this"
 PRICE_SUBTITLE = (
-    f"NAAIM and AAII on one panel as range indexes: each {AVERAGE_WEEKS}-week average "
-    "placed between its own lowest (0) and highest (100) reading of the lookback. Above "
-    "80 the crowd leans long, below 20 it is washed out. Faint dots: each week as read, "
-    "on the same scale; the large one is the latest week, read out above the panel. "
-    "Shaded weeks: SPY below its high so far, amber 5-10%, orange 10-20%, red 20% or "
-    "more. "
-    f"Opens on {OPEN_YEARS} years; the buttons zoom down to {RANGE_MONTHS[0]} months "
-    "without changing the index.")
+    "NAAIM and AAII under SPY, each placed between its own lowest (0) and highest "
+    "(100) reading of the lookback: above 80 the crowd leans long, below 20 it is "
+    "washed out.")
+PRICE_HOW_TO_READ = (
+    f"Each line is a survey's {AVERAGE_WEEKS}-week average on that range index. Faint "
+    "dots: each week as read, on the same scale; the large one is the latest week, "
+    "read out above the panel with its index. Shaded weeks: SPY below its high so far, "
+    "amber 5-10%, orange 10-20%, red 20% or more. "
+    f"Opens on {OPEN_YEARS} years ({PHONE_OPEN_YEARS} on a phone); the buttons zoom "
+    f"down to {RANGE_MONTHS[0]} months without changing the index.")
 COLUMNS_TITLE = "Weekly columns"
 
 
@@ -681,7 +692,10 @@ def _drawdown_keys(fig):
     for level, (_, color, alpha, label) in enumerate(DRAWDOWN_LEVELS, start=1):
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers", name=label,
-            marker=dict(symbol="square", size=12, color=hex_to_rgba(color, alpha)),
+            # Filled as the band is, outlined in its full hue: at the bands' own 14-28%
+            # a 12px swatch on the dark page could not be told from the background.
+            marker=dict(symbol="square", size=12, color=hex_to_rgba(color, alpha),
+                        line=dict(color=color, width=1)),
             legendgroup=f"drawdown{level}", legendrank=1000 + level,
             hoverinfo="skip"), row=2, col=1)
 
@@ -942,6 +956,21 @@ def _fit_columns(fig, window):
 
 
 # ── words ─────────────────────────────────────────────────────────────────────
+
+def readings(read):
+    """Each survey's newest reading for the published page's tiles, in SERIES order:
+    its own number as published, its index on this read's lookback, the stored date
+    and whether that week is provisional. A survey that is not in is left out."""
+    out = []
+    for key, label in SERIES:
+        raw, index = latest_reading(read, key), latest_index(read, key)
+        if raw is None or index is None:
+            continue
+        out.append({"key": key, "label": label, "value": raw, "index": index,
+                    "date": read.last[key],
+                    "provisional": bool(len(provisional_weeks(read, key)))})
+    return out
+
 
 def summary(read):
     """One sentence on the latest index readings, or None when neither series is in.
