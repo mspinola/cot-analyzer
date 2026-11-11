@@ -602,6 +602,14 @@ box: root's crontab runs `scripts/publish_surveys.sh` daily at 19:15, which need
 [docs/surveys-publishing.md](../docs/surveys-publishing.md). The crontab line is
 `server-side/publish-surveys.cron`.
 
+## 11. Publish internals.bluemagicai.com (cron)
+
+The static copy of the Market Internals page goes up the same way, an hour later:
+`scripts/publish_internals.sh` daily at 20:15, after the breadth series have landed,
+into a `/root/internals-dashboard` clone. Setup and failure notes:
+[docs/internals-publishing.md](../docs/internals-publishing.md). The crontab line is
+`server-side/publish-internals.cron`.
+
 ## Upgrading
 
 Code moves by git; data moves by rsync.

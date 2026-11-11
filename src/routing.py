@@ -66,7 +66,13 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: starts sending it, or the views in between are answered and dropped. Nothing
 #: breaks either way, which is exactly why the ordering is easy to get wrong and
 #: worth saying: /ahlt was published and counted as nothing until it was listed.
-EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys'}
+#:
+#: `internals` goes up through the same publisher: the market internals page's static copy
+#: (scripts/export_internals_page.py, docs/internals-publishing.md). Its recorded path
+#: is the app page's own, on purpose: the static copy is to replace `/internals`, which
+#: then redirects to it, so one path carries the page's views across the move.
+EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys',
+                  'internals': '/internals'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the
