@@ -223,6 +223,17 @@ def test_the_gap_panel_draws_each_share_against_its_three_year_average():
     assert fig.layout.yaxis3.zeroline
 
 
+def test_the_cash_gap_line_is_a_light_grey_the_stack_keeps_its_own():
+    """The stack's grey was 3.6 to 1 as a thin line; the gap panel's cash line takes a
+    lighter one, validated apart from the stocks green and bonds blue."""
+    _, _, fig = _price_fig(months=LONG_MONTHS)
+    by_name = {t.name: t for t in fig.data}
+    assert by_name["Cash vs 3Y avg"].line.color == aa.CASH_LINE_COLOR
+    assert by_name["Cash"].line.color == av.NEUTRAL_COLOR
+    assert by_name["Stocks vs 3Y avg"].line.color == COLORS.bull
+    assert by_name["Bonds vs 3Y avg"].line.color == aa.BONDS_COLOR
+
+
 def test_the_gap_panel_is_the_tallest_so_its_lines_read_apart():
     _, _, fig = _price_fig(months=LONG_MONTHS)
     span = [fig.layout[a].domain[1] - fig.layout[a].domain[0]
@@ -266,16 +277,25 @@ def test_the_published_page_names_the_allocation_survey_outside_its_cards():
     assert f'<div class="eyebrow">{st.EYEBROW_ALLOCATION}</div>' in head
     assert "weekly" not in st.EYEBROW_ALLOCATION.lower()
     assert f"AAII allocation <b>{alloc.last:%b %Y}</b>" in head
-    lead = f'<p class="summary" id="{st.ALLOCATION_SUMMARY_ID}">'
-    assert html.index('id="summary"') < html.index(lead) < html.index('class="lookback"')
-    assert "AAII asset allocation, " in html.split(lead)[1].split("</p>")[0]
+    # Its tile closes the readings strip, after the two surveys' own.
+    tile = st.stocks_tile(alloc)
+    gap = alloc.recent.iloc[0]["stocks"] - alloc.average["stocks"]
+    assert tile == {"key": st.STOCKS_KEY, "label": "AAII stocks allocation",
+                    "value": f"{alloc.recent.iloc[0]['stocks']:.1f}%",
+                    "context": (f"{abs(gap):.1f} points {'above' if gap >= 0 else 'below'} "
+                                f"its average since {alloc.since.year}"),
+                    "foot": f"{alloc.last:%b %Y}"}
+    strip = html.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
+    assert strip.count('class="tile"') == 3
+    assert strip.index('data-key="aaii"') < strip.index(f'data-key="{st.STOCKS_KEY}"')
+    assert f'<div class="value">{tile["value"]}</div>' in strip
     notes = html.split(f'<div class="notes" id="{st.ALLOCATION_NOTES_ID}">')[1].split("</div>")[0]
     assert notes.count("<p>") == len(aa.caption(alloc)) and "Context, not signal" in notes
     # Outside the two elements the lookback toggle rewrites.
     assert html.index('id="notes"') < html.index(f'id="{st.ALLOCATION_NOTES_ID}"')
     assert "Asset Allocation Survey (aaii.com)" in html.split("<footer>")[1]
     bare = st.render(_reads(), COLORS, PALETTE)
-    for gone in (st.ALLOCATION_SUMMARY_ID, st.ALLOCATION_NOTES_ID, "Asset Allocation"):
+    for gone in (f'data-key="{st.STOCKS_KEY}"', st.ALLOCATION_NOTES_ID, "Asset Allocation"):
         assert gone not in bare.split("<body>")[1].split("<script")[0]
     assert f'<div class="eyebrow">{st.EYEBROW}</div>' in bare
 

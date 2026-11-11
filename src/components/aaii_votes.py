@@ -70,10 +70,12 @@ HIGH_DAYS = 365
 
 TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
-            "on stocks over the next six months: the last four surveys, newest first, "
-            "beside the average since 1987 and each vote's highest week in the last "
-            "year, and each recent week's bulls minus bears against its average since "
-            "1987 (dashed), with its percentile since 1987 in brackets.")
+            "on stocks over the next six months.")
+#: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
+HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
+               "1987 with each vote's highest week in the last year; and each recent "
+               "week's bulls minus bears against its average since 1987 (dashed), with "
+               "its percentile since 1987 in brackets.")
 
 ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable

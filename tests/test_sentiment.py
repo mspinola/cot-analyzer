@@ -726,6 +726,17 @@ def test_dots_sit_under_the_line_and_the_marker_on_the_newest_dot():
         assert marker.y[0] == newest.iloc[-1]
 
 
+def test_the_shading_keys_are_outlined_in_their_full_hue():
+    """Filled as the band is (14-28%), a 12px swatch vanished into the dark page."""
+    _, get_bars = _fixtures()
+    fig = s.price_sentiment_figure(s.build_read(get_bars), COLORS, PALETTE)
+    keys = [t for t in fig.data if (t.legendgroup or "").startswith("drawdown")]
+    assert len(keys) == len(s.DRAWDOWN_LEVELS)
+    for key, (_, color, alpha, label) in zip(keys, s.DRAWDOWN_LEVELS):
+        assert key.name == label and key.marker.line.color == color
+        assert key.marker.line.width == 1 and key.marker.color == hex_to_rgba(color, alpha)
+
+
 def test_the_title_reads_out_the_latest_survey_as_published():
     _, get_bars = _fixtures()
     read = s.build_read(get_bars)

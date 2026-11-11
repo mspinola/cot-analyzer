@@ -23,9 +23,25 @@ What the static page keeps from the app, and how:
 **Card order.** The two cards the lookback toggle redraws (sentiment against price,
 weekly columns) come first, directly under the toggle; the AAII votes and allocation
 cards, which it never changes, follow. Until 2026-11-10 the columns sat last, three
-cards below the toggle that drives them. The allocation survey has its own lead line
-and notes (`aaii_allocation.summary`, `caption`), outside `#summary` and `#notes`,
-which the toggle rewrites.
+cards below the toggle that drives them. The allocation survey has its own notes
+(`aaii_allocation.caption`), outside `#notes`, which the toggle rewrites.
+
+**The readings strip** replaces the app's summary sentence: one tile per survey (its
+own number, its index on the lookback, its date) and one for the stocks share, so the
+page leads with three numbers rather than a paragraph whose second half was the
+provisional-data caveat the notes already carry in full. The toggle rewrites the two
+survey tiles (`#readings [data-key]`); the stocks tile is static.
+
+**Card text.** Each card opens on one sentence; the rest sits in a closed
+`<details>` ("How to read this").
+
+**On a phone** (below 600px, `fitted` in the page's script) the two weekly charts open
+on `sentiment.PHONE_OPEN_YEARS`, not five years, every chart is taller by what the
+lifted zoom buttons take, and the price chart by its legend's extra rows as well. The
+y axes are then re-fitted to the window on screen, as they are after every lookback
+flip: `Plotly.react` restores a reader's zoom on x (the figures' `uirevision`) but
+not the y ranges the re-fit set, so a flip after a zoom showed one year of SPY on the
+five-year scale (found 2026-11-10).
 
 The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
 loaded from Plotly's CDN rather than inlined (about 4.6 MB). The version is read from the
@@ -107,6 +123,12 @@ PHONE_QUERY = "(max-width: 600px)"
 #: where the title ends at 181; measured 2026-11-10 on all three range-button charts).
 #: 22 cleared the one-line titles; the columns chart's two-line row header needs 32.
 PHONE_BUTTON_LIFT_PX = 32
+#: Extra height for the price chart on a phone, px. Its legend wraps from one row to
+#: four there and Plotly takes the room out of the plot, which shrank the gap between
+#: the panels under the index panel's two-line readout until it sat on SPY's line.
+#: Three more rows at about 29px each (measured at 375px, 2026-11-10: with 57 the gap
+#: was 27px under a 31px readout; with 90 the plot is 368px and the gap 29).
+PHONE_LEGEND_ROOM_PX = 90
 
 PRICE_ID = "price"
 COLUMNS_ID = "columns"
@@ -124,10 +146,54 @@ GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
 #: The AAII allocation against SPY: one figure, not indexed, so embedded once like the
 #: grid cards, but drawn and re-fitted on zoom like the price chart.
 ALLOCATION_PRICE_ID = "allocation-price"
-#: The allocation survey's lead line and its notes, static beside the sentiment ones.
-ALLOCATION_SUMMARY_ID = "allocation-summary"
+#: The allocation survey's notes, static beside the sentiment ones.
 ALLOCATION_NOTES_ID = "allocation-notes"
+#: The readings strip, and the stocks tile's key beside the surveys' own.
+READINGS_ID = "readings"
+STOCKS_KEY = "stocks"
 ALLOCATION_PRICE_KEY = "allocation_price"
+
+
+def survey_tiles(read):
+    """The readings strip's survey tiles for one lookback: label, value, context, foot.
+    The value is the survey's own number; the index it sits at is the context."""
+    n = read.lookback_years
+    return [{"key": r["key"], "label": r["label"], "value": f"{r['value']:.1f}",
+             "context": f"Index {r['index']:.0f} of 100 on its {n}-year range",
+             "foot": _date(r["date"]) + (" · provisional" if r["provisional"] else "")}
+            for r in sentiment.readings(read)]
+
+
+def stocks_tile(allocation):
+    """The stocks share and its gap from the average since the survey began."""
+    share = float(allocation.recent.iloc[0]["stocks"])
+    gap = share - float(allocation.average["stocks"])
+    return {"key": STOCKS_KEY, "label": "AAII stocks allocation", "value": f"{share:.1f}%",
+            "context": (f"{abs(gap):.1f} points {'above' if gap >= 0 else 'below'} its "
+                        f"average since {allocation.since.year}"),
+            "foot": f"{allocation.last:%b %Y}"}
+
+
+def _tiles(tiles):
+    esc = html.escape
+    return (f'<div class="tiles" id="{READINGS_ID}" role="group" aria-label="Latest readings">'
+            + "".join(
+                f'<div class="tile" data-key="{esc(t["key"])}">'
+                f'<div class="label">{esc(t["label"])}</div>'
+                f'<div class="value">{esc(t["value"])}</div>'
+                f'<div class="ctx">{esc(t["context"])}</div>'
+                f'<div class="foot">{esc(t["foot"])}</div></div>' for t in tiles)
+            + '</div>\n')
+
+
+def _sub(subtitle, how=None):
+    """A card's one-sentence subtitle and, closed under it, the rest."""
+    esc = html.escape
+    out = f'<div class="sub">{esc(subtitle)}</div>\n'
+    if how:
+        out += (f'<details class="how"><summary>{esc(sentiment.HOW_TO_READ_LABEL)}</summary>'
+                f'<p>{esc(how)}</p></details>\n')
+    return out
 
 
 def lookback_payload(read, colors, palette):
@@ -135,7 +201,7 @@ def lookback_payload(read, colors, palette):
     return {
         "price": json.loads(sentiment.price_sentiment_figure(read, colors, palette).to_json()),
         "columns": json.loads(sentiment.columns_figure(read, colors, palette).to_json()),
-        "summary": sentiment.summary(read) or "",
+        "tiles": survey_tiles(read),
         "caption": sentiment.caption(read, local=False),
     }
 
@@ -220,12 +286,12 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
     buttons = "".join(f'<button type="button" data-years="{y}" aria-pressed="{pressed[y]}">'
                       f'{y}Y</button>' for y in sorted(reads))
     notes = "".join(f"<p>{esc(p)}</p>" for p in default["caption"])
-    # The allocation survey's lead line and notes sit outside the elements the lookback
-    # toggle rewrites (#summary, #notes): nothing in them depends on the lookback.
-    allocation_summary = allocation_notes = ""
+    # The allocation survey's tile and notes are not rewritten by the lookback toggle:
+    # nothing in them depends on the lookback.
+    tiles = list(default["tiles"])
+    allocation_notes = ""
     if allocation is not None:
-        allocation_summary = (f'<p class="summary" id="{ALLOCATION_SUMMARY_ID}">'
-                              f'{esc(aaii_allocation.summary(allocation))}</p>\n')
+        tiles.append(stocks_tile(allocation))
         allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}">'
                             + "".join(f"<p>{esc(p)}</p>"
                                       for p in aaii_allocation.caption(allocation))
@@ -269,8 +335,21 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .asof b {{ color: var(--ink); font-weight: 600; }}
 .asof a {{ color: var(--ink-2); }}
 @media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
-.summary {{ color: var(--ink); font-size: 0.9rem; margin: 0 0 10px; }}
-#summary:has(+ #{ALLOCATION_SUMMARY_ID}) {{ margin-bottom: 4px; }}
+/* The readings strip: label, value, context, date. Values in the page's sans with
+   proportional figures; text in the ink tokens, never a series colour. */
+.tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; }}
+.tile {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
+.tile .label {{ font-size: 0.8rem; color: var(--ink-2); }}
+.tile .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
+.tile .ctx {{ font-size: 0.82rem; color: var(--ink); }}
+.tile .foot {{ font-size: 0.75rem; color: var(--muted); margin-top: 2px; }}
+/* On a phone a tile is one row: words on the left, the value on the right. */
+@media (max-width: 600px) {{
+  .tiles {{ grid-template-columns: minmax(0, 1fr); gap: 6px; }}
+  .tile {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 8px 12px; }}
+  .tile .label, .tile .ctx, .tile .foot {{ grid-column: 1; }}
+  .tile .value {{ grid-column: 2; grid-row: 1 / span 3; font-size: 1.5rem; }}
+}}
 .lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
   font-size: 10px; padding: 2px 8px; cursor: pointer; }}
@@ -278,6 +357,9 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
 .card .sub {{ font-size: 0.8rem; margin-bottom: 6px; }}
+.card .how {{ font-size: 0.8rem; margin: -2px 0 8px; }}
+.card .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
+.card .how p {{ margin: 4px 0 0; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 @media (min-width: {aaii_votes.VOTES_THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
@@ -290,11 +372,9 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <main>
 {_nav()}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
-<p class="summary" id="summary">{esc(default["summary"])}</p>
-{allocation_summary}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{_tiles(tiles)}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
-<div class="sub">{esc(sentiment.PRICE_SUBTITLE)}</div>
-<div id="{PRICE_ID}"><div class="plot"></div></div></section>
+{_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 {_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
@@ -315,30 +395,63 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
   var ONCE = {{'{ALLOCATION_PRICE_ID}': '{ALLOCATION_PRICE_KEY}'}};
   var KEYS = {{'{PRICE_ID}': 'price', '{COLUMNS_ID}': 'columns'}};
   var refit = window.dash_clientside.clientside.autoscale_y_axes;
-  var HIDDEN = window.matchMedia('{PHONE_QUERY}').matches ? {_script_json(list(PHONE_HIDDEN_RANGES))} : [];
+  var PHONE = window.matchMedia('{PHONE_QUERY}').matches;
+  var HIDDEN = PHONE ? {_script_json(list(PHONE_HIDDEN_RANGES))} : [];
+  // Extra height on a phone, by chart: the legend rows Plotly takes out of the plot.
+  var ROOM = {{'{PRICE_ID}': {PHONE_LEGEND_ROOM_PX}}};
   function plotOf(id) {{ return document.querySelector('#' + id + ' .plot'); }}
-  function fitted(layout) {{
+  function fitted(layout, id) {{
     var rs = layout.xaxis && layout.xaxis.rangeselector;
-    if (!HIDDEN.length || !rs) {{ return layout; }}
+    if (!PHONE || !rs) {{ return layout; }}
     var buttons = rs.buttons.filter(function (b) {{ return HIDDEN.indexOf(b.label) < 0; }});
     // Lifted above the top panel's title: on a phone the seven buttons span the plot,
-    // and level with the title they drew over it.
+    // and level with the title they drew over it. The figure grows by the lift (and
+    // by its legend's extra rows), so the plot keeps the height it has on a desktop.
     var margin = Object.assign({{}}, layout.margin);
     margin.t = (margin.t || 0) + {PHONE_BUTTON_LIFT_PX};
-    var plotH = (layout.height || 450) - margin.t - (margin.b || 0);
+    var height = (layout.height || 450) + {PHONE_BUTTON_LIFT_PX} + (ROOM[id] || 0);
+    var plotH = height - margin.t - (margin.b || 0);
     var lifted = Object.assign({{}}, rs, {{buttons: buttons, yanchor: 'bottom',
                                           y: 1 + {PHONE_BUTTON_LIFT_PX} / plotH}});
-    var xaxis = Object.assign({{}}, layout.xaxis, {{rangeselector: lifted}});
-    return Object.assign({{}}, layout, {{xaxis: xaxis, margin: margin}});
+    var out = Object.assign({{}}, layout, {{margin: margin, height: height}});
+    out.xaxis = Object.assign({{}}, layout.xaxis, {{rangeselector: lifted}});
+    // The weekly charts open on fewer years: five is a scribble at this width.
+    if (IDS.indexOf(id) >= 0 && layout.xaxis.range) {{
+      var start = new Date(layout.xaxis.range[0]);
+      start.setFullYear(start.getFullYear() + {sentiment.OPEN_YEARS - sentiment.PHONE_OPEN_YEARS});
+      var from = start.toISOString().slice(0, 10);
+      Object.keys(out).forEach(function (k) {{
+        if (k.indexOf('xaxis') === 0 && out[k].range) {{
+          out[k] = Object.assign({{}}, out[k], {{range: [from, out[k].range[1]]}});
+        }}
+      }});
+    }}
+    return out;
+  }}
+  // Fit the y axes to the window now on screen, by the rule a zoom uses.
+  function refitNow(id) {{
+    var gd = plotOf(id), r = gd.layout && gd.layout.xaxis && gd.layout.xaxis.range;
+    if (!r) {{ return; }}
+    try {{ refit({{'xaxis.range': [r[0], r[1]]}}, id); }} catch (e) {{ console.error(e); }}
   }}
   function draw(years, first) {{
     var d = DATA[String(years)];
     IDS.forEach(function (id) {{
       var fig = d[KEYS[id]];
       var fn = first ? Plotly.newPlot : Plotly.react;
-      fn(plotOf(id), fig.data, fitted(fig.layout), CONFIG);
+      var done = fn(plotOf(id), fig.data, fitted(fig.layout, id), CONFIG);
+      // A first draw on a desktop is already fitted to its window by the server. A
+      // phone opens on a shorter one, and a flip keeps the reader's x zoom but not
+      // the y ranges fitted to it, so both are fitted again here.
+      if (PHONE || !first) {{ Promise.resolve(done).then(function () {{ refitNow(id); }}); }}
     }});
-    document.getElementById('summary').textContent = d.summary;
+    d.tiles.forEach(function (t) {{
+      var tile = document.querySelector('#{READINGS_ID} [data-key="' + t.key + '"]');
+      if (!tile) {{ return; }}
+      tile.querySelector('.value').textContent = t.value;
+      tile.querySelector('.ctx').textContent = t.context;
+      tile.querySelector('.foot').textContent = t.foot;
+    }});
     var notes = document.getElementById('notes');
     notes.textContent = '';
     d.caption.forEach(function (t) {{
@@ -359,7 +472,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
   }});
   Object.keys(ONCE).forEach(function (id) {{
     var fig = DATA[ONCE[id]];
-    if (fig) {{ Plotly.newPlot(plotOf(id), fig.data, fitted(fig.layout), CONFIG); }}
+    if (fig) {{ Plotly.newPlot(plotOf(id), fig.data, fitted(fig.layout, id), CONFIG); }}
   }});
   IDS.concat(Object.keys(ONCE).filter(function (id) {{ return DATA[ONCE[id]]; }})).forEach(function (id) {{
     plotOf(id).on('plotly_relayout', function (ev) {{
@@ -376,31 +489,32 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 """
 
 
-def _grid_card(title, subtitle, element_id, blocks):
+def _grid_card(title, subtitle, element_id, blocks, how=None):
     """A card of figure blocks in the wrapping grid (`.votes-grid`, named for the first
     card that used it): one across on a phone, two from 768px, three from 1200px."""
     esc = html.escape
     return (f'<section class="card"><h2>{esc(title)}</h2>\n'
-            f'<div class="sub">{esc(subtitle)}</div>\n'
-            f'<div id="{element_id}" class="votes-grid">'
+            + _sub(subtitle, how)
+            + f'<div id="{element_id}" class="votes-grid">'
             + "".join(f'<div class="plot" data-half="{h}"></div>' for h in blocks)
             + '</div></section>\n')
 
 
 def _votes_card():
-    return _grid_card(aaii_votes.TITLE, aaii_votes.SUBTITLE, VOTES_ID, VOTES_HALVES)
+    return _grid_card(aaii_votes.TITLE, aaii_votes.SUBTITLE, VOTES_ID, VOTES_HALVES,
+                      aaii_votes.HOW_TO_READ)
 
 
 def _allocation_card():
     return _grid_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE, ALLOCATION_ID,
-                      ALLOCATION_BLOCKS)
+                      ALLOCATION_BLOCKS, aaii_allocation.HOW_TO_READ)
 
 
 def _allocation_price_card():
     esc = html.escape
     return (f'<section class="card"><h2>{esc(aaii_allocation.PRICE_TITLE)}</h2>\n'
-            f'<div class="sub">{esc(aaii_allocation.PRICE_SUBTITLE)}</div>\n'
-            f'<div id="{ALLOCATION_PRICE_ID}"><div class="plot"></div></div></section>\n')
+            + _sub(aaii_allocation.PRICE_SUBTITLE, aaii_allocation.PRICE_HOW_TO_READ)
+            + f'<div id="{ALLOCATION_PRICE_ID}"><div class="plot"></div></div></section>\n')
 
 
 def write(path, reads, colors, palette, **kw):

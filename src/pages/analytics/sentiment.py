@@ -69,7 +69,7 @@ def export_button(view):
     ])
 
 
-def _card(title, subtitle, figure, graph_id=None, controls=None, export=None):
+def _card(title, subtitle, figure, graph_id=None, controls=None, export=None, how=None):
     """A card around one figure, or around several: stacked on a phone, two across from
     Bootstrap's md width (768px), all across from xl (1200px)."""
     if isinstance(figure, (list, tuple)):
@@ -86,6 +86,13 @@ def _card(title, subtitle, figure, graph_id=None, controls=None, export=None):
     body = [head]
     if subtitle:
         body.append(html.Div(subtitle, style=SUB_STYLE))
+    if how:
+        # The rest of the card's text, closed by default, as on the published page.
+        body.append(html.Details(
+            [html.Summary(sentiment.HOW_TO_READ_LABEL,
+                          style={"cursor": "pointer", "color": vc.BRIGHTER_TEXT_COLOR}),
+             html.Div(how, style={"marginTop": "4px"})],
+            style={**SUB_STYLE, "marginBottom": "8px"}))
     if controls is not None:
         body.append(controls)
     # The body is what an export captures, so it carries the export's container id.
@@ -157,7 +164,7 @@ def layout(**_):
         cards = [
             _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
-                  export="price"),
+                  export="price", how=sentiment.PRICE_HOW_TO_READ),
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,
                   sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
@@ -167,17 +174,19 @@ def layout(**_):
         if votes is not None:
             # Not redrawn by the lookback: nothing in it is indexed.
             cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
-                               aaii_votes.figures(votes, colors), export="votes"))
+                               aaii_votes.figures(votes, colors), export="votes",
+                               how=aaii_votes.HOW_TO_READ))
         allocation = aaii_allocation.read()
         if allocation is not None:
             # Monthly and not indexed: the lookback does not redraw it either.
             cards.append(_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE,
                                aaii_allocation.figures(allocation, colors),
-                               export="allocation"))
+                               export="allocation", how=aaii_allocation.HOW_TO_READ))
             cards.append(_card(aaii_allocation.PRICE_TITLE, aaii_allocation.PRICE_SUBTITLE,
                                aaii_allocation.price_figure(
                                    allocation, read.frame.get("spy"), colors),
-                               ALLOCATION_PRICE_CHART, export="allocation_price"))
+                               ALLOCATION_PRICE_CHART, export="allocation_price",
+                               how=aaii_allocation.PRICE_HOW_TO_READ))
             # Its lead line under the sentiment one and its notes after theirs, both
             # outside the elements the lookback callback rewrites.
             head.insert(-1, html.Div(aaii_allocation.summary(allocation),
