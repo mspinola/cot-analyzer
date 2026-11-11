@@ -288,11 +288,14 @@ SENTIMENT_SLOTS = {"naaim": 5, "aaii": 3}
 #: How much of a slot's colour each series keeps, the rest being the page background.
 #: NAAIM's slot is the palette's violet (#A78BFA on the default), which as a 2px line
 #: and a panel of columns was the brightest thing on the page ("the purple is too
-#: bright", 2026-11-11). At 0.75 it reads #846fc2 there: 4.0 to 1 on the page, and
-#: further from AAII's green than the full colour was (colour difference 30.8 against
-#: 29.1; the dataviz skill's validate_palette.js, dark mode on #1a1a1a). Still the
-#: palette's own colour, so a palette switch repaints it.
-SENTIMENT_STRENGTH = {"naaim": 0.75, "aaii": 1.0}
+#: bright", 2026-11-11); with it toned down alone AAII's green (#34D399) took its
+#: place, so both take the same step. On the default palette they read #846fc2 and
+#: #2ea579: 4.2 and 5.6 to 1 on the page, and a colour difference of 23.0 for normal
+#: vision and 15.1 at worst for colour-blind (floors 15 and 8; the dataviz skill's
+#: validate_palette.js, dark mode on #1a1a1a, every check passing). Still the
+#: palette's own colours, so a palette switch repaints them. Only this page's two
+#: series: the votes card's bullish green and the stocks band keep the full colour.
+SENTIMENT_STRENGTH = {"naaim": 0.75, "aaii": 0.75}
 
 
 def sentiment_colors(palette):

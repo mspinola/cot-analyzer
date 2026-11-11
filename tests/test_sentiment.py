@@ -742,20 +742,24 @@ def test_the_crowd_state_uses_the_charts_own_lines_and_words():
         assert r["state"] == s.crowd_state(r["index"])
 
 
-def test_naaims_colour_is_the_palettes_violet_toned_down():
-    """The full slot colour was the brightest thing on the page. Still derived from the
-    palette, so a palette switch repaints it; AAII keeps its slot as it is."""
+def test_the_two_survey_colours_are_their_palette_slots_toned_down_alike():
+    """The full violet was the brightest thing on the page, and with it toned down
+    alone the green was. Both take the same step, still derived from the palette, so
+    a palette switch repaints them."""
     from components.plot_colors import blend_over, relative_luminance
     colors = s.sentiment_colors(PALETTE)
-    slot = PALETTE[s.SENTIMENT_SLOTS["naaim"]]
-    assert colors["naaim"] == blend_over(slot, s.SENTIMENT_STRENGTH["naaim"]) != slot
-    assert colors["aaii"] == PALETTE[s.SENTIMENT_SLOTS["aaii"]]
-    assert relative_luminance(colors["naaim"]) < relative_luminance(slot)
-    # Still a readable mark on the page: 3 to 1 or better against the background.
     page = relative_luminance(vc.BACKGROUND_COLOR)
-    assert (relative_luminance(colors["naaim"]) + 0.05) / (page + 0.05) >= 3.0
-    other = ["#000000"] * 5 + ["#FF00FF"]
-    assert s.sentiment_colors(other)["naaim"] == blend_over("#FF00FF", 0.75)
+    assert s.SENTIMENT_STRENGTH["naaim"] == s.SENTIMENT_STRENGTH["aaii"] < 1
+    for key in ("naaim", "aaii"):
+        slot = PALETTE[s.SENTIMENT_SLOTS[key]]
+        assert colors[key] == blend_over(slot, s.SENTIMENT_STRENGTH[key]) != slot
+        assert relative_luminance(colors[key]) < relative_luminance(slot)
+        # Still a readable mark on the page: 3 to 1 or better against the background.
+        assert (relative_luminance(colors[key]) + 0.05) / (page + 0.05) >= 3.0
+    assert colors["naaim"] != colors["aaii"]
+    other = ["#000000"] * 3 + ["#00FF00", "#000000", "#FF00FF"]
+    assert s.sentiment_colors(other) == {"naaim": blend_over("#FF00FF", 0.75),
+                                         "aaii": blend_over("#00FF00", 0.75)}
 
 
 def test_the_shading_keys_are_outlined_in_their_full_hue():
