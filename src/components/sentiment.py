@@ -512,10 +512,26 @@ def build_read(get_bars=None, lookback_years=DEFAULT_LOOKBACK, get_positioning=N
                          lookback_years=lookback_years, provisional_by=provisional)
 
 
-def _dated(read, key):
-    """A series' newest date for the page's words, flagged when it is provisional."""
-    tail = ", provisional" if provisional_weeks(read, key) else ""
-    return f"{read.last[key]:%Y-%m-%d}{tail}"
+def _dated(read, key, short=False):
+    """A series' newest date for the page's words, flagged when it is provisional.
+    `short` is the chart title's spelling ("2026-11-04 prov", as the votes card labels
+    its provisional week), where a phone-width panel has no room for the word."""
+    if not provisional_weeks(read, key):
+        return f"{read.last[key]:%Y-%m-%d}"
+    return f"{read.last[key]:%Y-%m-%d}" + (" prov" if short else ", provisional")
+
+
+#: What each survey's own number is called beside its index, so the two are never
+#: read as one: NAAIM publishes an exposure, AAII a spread in points.
+RAW_NAME = {"naaim": "exposure", "aaii": "bulls minus bears"}
+
+
+def latest_index(read, key):
+    """The newest value of a survey's range index, or None when it is not in."""
+    col = f"{key}_idx"
+    if col not in read.frame or key not in read.last or read.frame[col].dropna().empty:
+        return None
+    return float(read.frame[col].dropna().iloc[-1])
 
 
 # ── figures ───────────────────────────────────────────────────────────────────
@@ -730,18 +746,23 @@ def latest_reading(read, key):
 
 
 def _index_title(read):
-    """The combined panel's title: each survey's newest reading, as published, and the
-    date it was read, one survey a line. The real-time readout; the index values are in
-    the summary line and the hover."""
+    """The combined panel's title: each survey's newest reading as published, its index
+    on this panel's scale, and the date it was read, one survey a line.
+
+    Both numbers, each named: the panel's axis is the index, so "NAAIM 78.6" alone sat
+    on a 0-100 scale beside a marker at 64 and a summary line saying "NAAIM at 64"
+    (2026-11-10 page review)."""
     parts = []
     for key, label in (("naaim", "NAAIM"), ("aaii", "AAII")):
-        value = latest_reading(read, key)
-        if value is not None and f"{key}_idx" in read.frame:
-            parts.append(f"{label} {value:.1f} ({_dated(read, key)})")
+        value, index = latest_reading(read, key), latest_index(read, key)
+        if value is not None and index is not None:
+            parts.append(f"{label} {value:.1f}, index {index:.0f} "
+                         f"({_dated(read, key, short=True)})")
     # One survey a line, no "Latest:" lead: on one line the pair ran past a phone-width
     # panel (395 pixels where 253 fit; the index-valued title before it took 373),
     # cutting AAII off, and with the lead the NAAIM line alone still ran 5 over. The
     # dates say these are the newest readings; the card subtitle says it in words.
+    # "prov", not "provisional": with the index added the long word ran past the panel.
     return "<br>".join(parts) if parts else "Sentiment range index"
 
 
@@ -927,10 +948,13 @@ def summary(read):
     Dated by the stored observation, as the chart title is, not by the week's Friday."""
     parts = []
     for key, label in SERIES:
-        col = f"{key}_idx"
-        if col in read.frame and key in read.last and read.frame[col].notna().any():
-            parts.append(f"{label.split()[0]} at {read.frame[col].dropna().iloc[-1]:.0f} "
-                         f"({_dated(read, key)})")
+        index = latest_index(read, key)
+        if index is None:
+            continue
+        # The survey's own number beside its index, named, as the chart title has it.
+        raw = latest_reading(read, key)
+        named = f"{RAW_NAME[key]} {raw:.1f}, " if raw is not None else ""
+        parts.append(f"{label.split()[0]} at {index:.0f} ({named}{_dated(read, key)})")
     if not parts:
         return None
     if read.provisional:
