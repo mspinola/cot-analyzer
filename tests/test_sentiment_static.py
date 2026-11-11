@@ -166,14 +166,14 @@ def test_a_phone_lifts_the_zoom_buttons_above_the_top_panel_title():
 
 def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
     """The same row dbmf-tracker's three templates carry (its tests/test_site_nav.py
-    pins the same list), with Surveys current and the app's own Market Internals page
-    linked as "Market"."""
+    pins the same list), with Surveys current and the market internals site linked as
+    "Market"."""
     links = re.findall(r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>', st._nav())
     assert links == [("https://dbmf.bluemagicai.com/", "DBMF"),
                      ("https://ahlt.bluemagicai.com/", "AHLT"),
                      ("https://orr.bluemagicai.com/", "ORR"),
                      ("https://surveys.bluemagicai.com/", "Surveys"),
-                     ("https://bluemagicai.com/internals", "Market"),
+                     ("https://internals.bluemagicai.com/", "Market"),
                      ("https://bluemagicai.com/", "COT Analyzer &rarr;")]
     assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', st._nav()) == ["Surveys"]
     # The fund pages' placeholder for the monitor not yet published, in their slot.

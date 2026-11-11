@@ -6,7 +6,7 @@ recreated), the published cutoffs are cotmetrics' and this page's own are named,
 the headline counts reads rather than averaging them, and a symbol the store does
 not hold is named as awaiting rather than drawn or raised.
 
-Store-free: `get_bars` is injected; `_get_bars` / `_last_date` are stood in for.
+Store-free: `get_bars` is injected; `_get_bars` is stood in for.
 """
 import numpy as np
 import pandas as pd
@@ -54,13 +54,6 @@ def _universe(n=120):
         frames[symbol] = _walk(n, seed=10 + i, with_volume=True)
     frames[mi.ROTATION_NUMER] = _walk(n, seed=30, with_volume=True)
     return frames
-
-
-@pytest.fixture(autouse=True)
-def _fresh_cache():
-    mi._snapshot.cache_clear()
-    yield
-    mi._snapshot.cache_clear()
 
 
 # ── FOMO ──────────────────────────────────────────────────────────────────────
@@ -340,18 +333,3 @@ def test_stale_notes_name_reads_priced_before_the_newest():
     notes = mi.stale_notes(snap)
     assert notes == ["FOMO last read 2026-09-01"]
 
-
-def test_the_cache_is_keyed_on_the_stores_last_dates(monkeypatch):
-    calls = []
-    frames = _universe()
-    monkeypatch.setattr(mi, "_get_bars", _bars(frames))
-    monkeypatch.setattr(mi, "build_snapshot",
-                        lambda get_bars=None: calls.append(1) or "snap")
-    dates = {"2026-09-15"}
-    monkeypatch.setattr(mi, "_last_date", lambda symbol: next(iter(dates)))
-    assert mi.snapshot() == "snap" and mi.snapshot() == "snap"
-    assert len(calls) == 1
-    dates.clear()
-    dates.add("2026-09-16")          # a nightly delivery moves every date
-    mi.snapshot()
-    assert len(calls) == 2

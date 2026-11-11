@@ -96,13 +96,13 @@ DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, a
 HOME = "https://bluemagicai.com/"
 #: The monitor row the DBMF, AHLT and ORR pages carry, with this page marked current.
 #: Hand-kept in step with dbmf-tracker's templates (its tests/test_site_nav.py names
-#: this file). Market is the app's own /internals page, the one Monitors entry that
-#: is not a site of its own.
+#: this file). Market is the market internals page, a site of its own since 2026-11-11
+#: (`market_internals_static`, which draws this same row with itself current).
 SITES = (("DBMF", "https://dbmf.bluemagicai.com/"),
          ("AHLT", "https://ahlt.bluemagicai.com/"),
          ("ORR", "https://orr.bluemagicai.com/"),
          ("Surveys", "https://surveys.bluemagicai.com/"),
-         ("Market", HOME + "internals"))
+         ("Market", "https://internals.bluemagicai.com/"))
 CURRENT = "Surveys"
 #: The placeholder the fund pages carry for the monitor not yet published, drawn
 #: after this site in the row, as theirs is. (name, hover text); None once KISS ships.

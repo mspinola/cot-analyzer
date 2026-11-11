@@ -8,6 +8,7 @@ for a site that is up. It fails silently in the one place nobody runs locally, s
 pinned here.
 """
 import app_cot
+import routing
 
 
 def _items(menu_label):
@@ -20,7 +21,7 @@ def _items(menu_label):
 
 def test_the_monitors_menu_carries_the_tape_read_and_every_fund_book():
     assert [(i.children, i.href) for i in _items("Monitors")] == [
-        ("Market Internals", "/internals"),
+        ("Market Internals", "https://internals.bluemagicai.com/"),
         ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
         ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
         ("ORR Book", "https://orr.bluemagicai.com/"),
@@ -37,7 +38,18 @@ def test_an_off_origin_entry_leaves_the_dash_router_alone():
         assert (item.target == "_blank") is off_origin
 
 
-def test_market_internals_left_analytics_rather_than_being_listed_twice():
-    """It moved; a copy in both menus would be two ways to the same page and two
-    items the active-state callback lights up at once."""
-    assert "/internals" not in [i.href for i in _items("Analytics")]
+def test_market_internals_is_linked_once_and_only_at_its_own_site():
+    """It left the app for internals.bluemagicai.com; an in-app entry would be a
+    link to a redirect."""
+    hrefs = [i.href for menu in ("Analytics", "Monitors") for i in _items(menu)]
+    assert "/internals" not in hrefs
+    assert hrefs.count(routing.INTERNALS_URL) == 1
+
+
+def test_the_old_internals_address_redirects_to_the_site():
+    """Bookmarks and the links older monitor pages carry must keep working, and the
+    unknown-path guard must admit the path or the route never runs."""
+    assert "/internals" in routing.EXTRA_PATHS
+    response = app_cot.app.server.test_client().get("/internals")
+    assert response.status_code == 301
+    assert response.headers["Location"] == "https://internals.bluemagicai.com/"

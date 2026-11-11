@@ -1,14 +1,14 @@
 """What the market internals page says and draws, apart from how it is laid out.
 
-Two renderers draw `components.market_internals`' snapshot: the app's `/internals`
-page (Dash components, `pages/analytics/internals.py`) and the published static copy
-(`components.market_internals_static`, one HTML file). Everything the two must agree
-on lives here, so neither can drift from the other: the card titles, the number
-formats, the detail lines, the footer, and the three figures. Nothing in this module
-computes a read; every number comes off the snapshot.
+`components.market_internals_static` lays these out as one HTML file, the page at
+internals.bluemagicai.com: the card titles, the number formats, the detail lines, the
+footer, and the three figures. Nothing in this module computes a read; every number
+comes off `components.market_internals`' snapshot.
 
-No Dash import, on purpose: the static export runs without an app, and
-`dash.register_page` in the page module cannot be imported outside one.
+It is a module of its own because until 2026-11-11 a second renderer shared it, the
+app's `/internals` page (Dash components), and the two could not be allowed to say
+different things. That page now 301s to the static one. No Dash import, so the export
+runs without an app.
 """
 import plotly.graph_objects as go
 from cotmetrics import indicators

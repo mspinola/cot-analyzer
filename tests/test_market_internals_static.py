@@ -45,9 +45,8 @@ def test_every_plot_element_has_its_figure_and_nothing_is_embedded_unused():
         assert fig["data"] and fig["layout"]
 
 
-def test_the_figures_are_the_app_pages_own():
-    """The embedded FOMO and credit figures are the shared builders' output, the ones
-    `pages/analytics/internals.py` hands to dcc.Graph."""
+def test_the_figures_are_the_view_modules_own():
+    """The embedded FOMO and credit figures are the view module's, unaltered."""
     snap = _snap()
     data = _payload(st.render(snap, COLORS))
     assert data[st.FOMO_KEY] == json.loads(view.fomo_figure(snap.fomo, COLORS).to_json())
