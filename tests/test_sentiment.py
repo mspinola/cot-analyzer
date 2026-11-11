@@ -726,6 +726,42 @@ def test_dots_sit_under_the_line_and_the_marker_on_the_newest_dot():
         assert marker.y[0] == newest.iloc[-1]
 
 
+def test_the_crowd_state_uses_the_charts_own_lines_and_words():
+    """At or past the dashed 80 and 20, decided on the index as printed, and never
+    "bullish" or "bearish": the word would read as a call on the market."""
+    assert s.crowd_state(s.HI) == s.crowd_state(100.0) == s.STATE_LONG
+    assert s.crowd_state(s.LO) == s.crowd_state(0.0) == s.STATE_WASHED
+    assert s.crowd_state(s.HI - 1) == s.crowd_state(s.LO + 1) == s.STATE_MID
+    # 79.6 prints as 80, so it reads as the zone the number shown is in.
+    assert s.crowd_state(79.6) == s.STATE_LONG and s.crowd_state(79.4) == s.STATE_MID
+    assert s.crowd_state(20.4) == s.STATE_WASHED
+    for word in (s.STATE_LONG, s.STATE_WASHED, s.STATE_MID):
+        assert "bull" not in word.lower() and "bear" not in word.lower()
+    _, get_bars = _fixtures()
+    for r in s.readings(s.build_read(get_bars)):
+        assert r["state"] == s.crowd_state(r["index"])
+
+
+def test_the_two_survey_colours_are_their_palette_slots_toned_down_alike():
+    """The full violet was the brightest thing on the page, and with it toned down
+    alone the green was. Both take the same step, still derived from the palette, so
+    a palette switch repaints them."""
+    from components.plot_colors import blend_over, relative_luminance
+    colors = s.sentiment_colors(PALETTE)
+    page = relative_luminance(vc.BACKGROUND_COLOR)
+    assert s.SENTIMENT_STRENGTH["naaim"] == s.SENTIMENT_STRENGTH["aaii"] < 1
+    for key in ("naaim", "aaii"):
+        slot = PALETTE[s.SENTIMENT_SLOTS[key]]
+        assert colors[key] == blend_over(slot, s.SENTIMENT_STRENGTH[key]) != slot
+        assert relative_luminance(colors[key]) < relative_luminance(slot)
+        # Still a readable mark on the page: 3 to 1 or better against the background.
+        assert (relative_luminance(colors[key]) + 0.05) / (page + 0.05) >= 3.0
+    assert colors["naaim"] != colors["aaii"]
+    other = ["#000000"] * 3 + ["#00FF00", "#000000", "#FF00FF"]
+    assert s.sentiment_colors(other) == {"naaim": blend_over("#FF00FF", 0.75),
+                                         "aaii": blend_over("#00FF00", 0.75)}
+
+
 def test_the_shading_keys_are_outlined_in_their_full_hue():
     """Filled as the band is (14-28%), a 12px swatch vanished into the dark page."""
     _, get_bars = _fixtures()

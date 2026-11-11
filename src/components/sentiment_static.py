@@ -30,7 +30,9 @@ cards below the toggle that drives them. The allocation survey has its own notes
 own number, its index on the lookback, its date) and one for the stocks share, so the
 page leads with three numbers rather than a paragraph whose second half was the
 provisional-data caveat the notes already carry in full. The toggle rewrites the two
-survey tiles (`#readings [data-key]`); the stocks tile is static.
+survey tiles (`#readings [data-key]`); the stocks tile is static. Each survey tile
+names the crowd state its index means (`sentiment.crowd_state`: leans long, washed
+out or mid-range, at the chart's 80 and 20), in words and in the tile's own ink.
 
 **Card text.** Each card opens on one sentence; the rest sits in a closed
 `<details>` ("How to read this").
@@ -155,11 +157,13 @@ ALLOCATION_PRICE_KEY = "allocation_price"
 
 
 def survey_tiles(read):
-    """The readings strip's survey tiles for one lookback: label, value, context, foot.
-    The value is the survey's own number; the index it sits at is the context."""
+    """The readings strip's survey tiles for one lookback: label, value, state, context,
+    foot. The value is the survey's own number; the index it sits at is the context,
+    led by the crowd state that index means (`sentiment.crowd_state`)."""
     n = read.lookback_years
     return [{"key": r["key"], "label": r["label"], "value": f"{r['value']:.1f}",
-             "context": f"Index {r['index']:.0f} of 100 on its {n}-year range",
+             "state": r["state"],
+             "context": f"index {r['index']:.0f} of 100 on its {n}-year range",
              "foot": _date(r["date"]) + (" · provisional" if r["provisional"] else "")}
             for r in sentiment.readings(read)]
 
@@ -176,13 +180,20 @@ def stocks_tile(allocation):
 
 def _tiles(tiles):
     esc = html.escape
+
+    def context(t):
+        # A survey tile leads its context with the crowd state, in the tile's own ink:
+        # a word, not a colour, so it cannot be read as a buy or sell flag.
+        state = (f'<b class="state">{esc(t["state"])}</b> · ' if t.get("state") else "")
+        return f'<div class="ctx">{state}<span class="rest">{esc(t["context"])}</span></div>'
+
     return (f'<div class="tiles" id="{READINGS_ID}" role="group" aria-label="Latest readings">'
             + "".join(
                 f'<div class="tile" data-key="{esc(t["key"])}">'
                 f'<div class="label">{esc(t["label"])}</div>'
                 f'<div class="value">{esc(t["value"])}</div>'
-                f'<div class="ctx">{esc(t["context"])}</div>'
-                f'<div class="foot">{esc(t["foot"])}</div></div>' for t in tiles)
+                + context(t)
+                + f'<div class="foot">{esc(t["foot"])}</div></div>' for t in tiles)
             + '</div>\n')
 
 
@@ -341,7 +352,8 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .tile {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
 .tile .label {{ font-size: 0.8rem; color: var(--ink-2); }}
 .tile .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
-.tile .ctx {{ font-size: 0.82rem; color: var(--ink); }}
+.tile .ctx {{ font-size: 0.82rem; color: var(--ink-2); }}
+.tile .state {{ font-weight: 600; color: var(--ink); }}
 .tile .foot {{ font-size: 0.75rem; color: var(--muted); margin-top: 2px; }}
 /* On a phone a tile is one row: words on the left, the value on the right. */
 @media (max-width: 600px) {{
@@ -449,7 +461,9 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
       var tile = document.querySelector('#{READINGS_ID} [data-key="' + t.key + '"]');
       if (!tile) {{ return; }}
       tile.querySelector('.value').textContent = t.value;
-      tile.querySelector('.ctx').textContent = t.context;
+      var state = tile.querySelector('.state');
+      if (state) {{ state.textContent = t.state; }}
+      tile.querySelector('.rest').textContent = t.context;
       tile.querySelector('.foot').textContent = t.foot;
     }});
     var notes = document.getElementById('notes');
