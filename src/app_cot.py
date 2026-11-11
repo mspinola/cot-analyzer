@@ -327,6 +327,19 @@ def crowd_redirect():
     return redirect('/?' + query if query else '/', code=301)
 
 
+@app.server.route('/internals')
+def internals_redirect():
+    """Market Internals' old address, from before it became a site of its own.
+
+    The page is now a static file at internals.bluemagicai.com
+    (docs/internals-publishing.md), published by cron like the other monitors,
+    and this app no longer draws it. A 301 so bookmarks, search results and the
+    links in older monitor pages keep working.
+    """
+    from flask import redirect
+    return redirect(routing.INTERNALS_URL, code=301)
+
+
 @app.server.route('/confirm')
 def confirm_subscription():
     import subscribers
@@ -608,12 +621,12 @@ _ANALYTICS_STATIC_PAGES = (
 
 #: The Monitors menu: daily reads of what the market and other people's books
 #: are doing, as against the weekly CFTC positioning the rest of the app is
-#: built on. Market Internals moved here out of Analytics, which is where the
-#: fund dashboards would otherwise have had to go: Analytics is the COT data cut
+#: built on. They are not under Analytics because Analytics is the COT data cut
 #: several ways, and a managed-futures ETF's holdings table is not that cut.
-_MONITOR_PAGES = (
-    ("Market Internals", "/internals"),
-) + local_pages.monitor_entries()
+#: The in-app half holds only the local-only pages now: Market Internals was the
+#: last public one, and it is a site of its own since 2026-11-11 (first in the
+#: external list below; /internals 301s to it).
+_MONITOR_PAGES = local_pages.monitor_entries()
 
 #: The fund-book dashboards, on ANOTHER origin: static GitHub Pages sites, one
 #: subdomain each, with no server of their own (the same pages the view
@@ -629,8 +642,10 @@ _MONITOR_PAGES = (
 #: managed-futures program positioned in), so reading one after the other is the
 #: comparison; ORR is a different question entirely. Surveys last: not a book but
 #: the published copy of the sentiment page, the same order the monitor pages'
-#: own header row uses, so the menu and the row agree.
+#: own header row uses, so the menu and the row agree. Market Internals leads,
+#: where it stood when it was a page of this app: the one daily read of the tape.
 _MONITOR_EXTERNAL_PAGES = (
+    ("Market Internals", routing.INTERNALS_URL),
     ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
     ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
     ("ORR Book", "https://orr.bluemagicai.com/"),

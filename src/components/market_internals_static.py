@@ -1,16 +1,15 @@
 """The market internals page as one self-contained HTML file, for its own subdomain.
 
-The app's `/internals` page drawn without the app: the same snapshot
-(`components.market_internals`), the same titles, formats and figures
-(`components.market_internals_view`), under the header the other monitors carry
+What was the app's `/internals` page until 2026-11-11 (that path now 301s here): the
+snapshot (`components.market_internals`) and the titles, formats and figures
+(`components.market_internals_view`) it drew, under the header the other monitors carry
 (DBMF, AHLT, ORR, Surveys), so the five read as one set. Published the way the
 surveys page is: `scripts/export_internals_page.py` writes the file and dbmf-tracker's
 `deploy/publish_pages.py --key internals` pushes it to a GitHub Pages repo of its own
 (docs/internals-publishing.md).
 
-Nothing had to be recreated in JavaScript. The app's page has no controls and no
-callbacks, and its charts are static plots with hover off, so the published page is
-the same cards with the figures embedded as JSON and drawn once.
+No JavaScript beyond drawing: the page has no controls, and its charts are static
+plots with hover off, so the figures are embedded as JSON and drawn once.
 
 The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
 loaded from Plotly's CDN (`sentiment_static.plotly_js_url`, and the reason is there).
@@ -306,7 +305,7 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .asof b {{ color: var(--ink); font-weight: 600; }}
 @media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} }}
 /* The cards: the app page's three columns (3, 6 and 3 of 12) from 1200px, one column
-   below. Not the app's 992px: a quarter of that is 230px, narrower than the ETF table
+   below. Not the old app page's 992px: a quarter of that is 230px, narrower than the ETF table
    (measured 2026-11-11), so the side columns also hold a 300px floor. */
 .lean {{ color: var(--ink); font-size: 1.5rem; font-weight: 500; }}
 .summary {{ margin-bottom: 16px; }}

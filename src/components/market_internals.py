@@ -46,7 +46,6 @@ the equities task has fetched them) yields no card and is named as awaiting data
 never a blank card and never an error. The tape_context rule.
 """
 
-import functools
 from dataclasses import dataclass
 from typing import Optional
 
@@ -230,12 +229,6 @@ class Snapshot:
 def _get_bars(symbol, tier=None):
     import marketdata
     return marketdata.get_bars(symbol) if tier is None else marketdata.get_bars(symbol, tier)
-
-
-def _last_date(symbol):
-    import marketdata
-    prov = marketdata.provenance(symbol)
-    return None if prov is None else prov.last_date
 
 
 def _dates(index):
@@ -514,7 +507,11 @@ def summary_sentences(snapshot):
 
 def build_snapshot(get_bars=None):
     """Every read the store can serve, and the symbols it cannot. Pure over
-    `get_bars(symbol, tier=None)`; the module default reads the store."""
+    `get_bars(symbol, tier=None)`; the module default reads the store.
+
+    Uncached: the one caller is the nightly static export
+    (scripts/export_internals_page.py). The per-request cache keyed on the store's
+    dates went with the app's `/internals` page on 2026-11-11."""
     get_bars = get_bars or _get_bars
     awaiting = []
 
@@ -587,29 +584,6 @@ def _all_symbols():
     return tuple(dict.fromkeys(out))
 
 
-def _stamp():
-    """The cache key: the store's last bar date per symbol, None where the store
-    holds nothing. Keyed on the data rather than the clock, the tape_context
-    convention: a nightly delivery invalidates the entry and nothing else does."""
-    stamp = []
-    for symbol in _all_symbols():
-        try:
-            stamp.append(_last_date(symbol))
-        except Exception:  # noqa: BLE001 -- absent symbol, unset store, stale checkout
-            stamp.append(None)
-    return tuple(stamp)
-
-
-@functools.lru_cache(maxsize=4)
-def _snapshot(stamp):
-    return build_snapshot()
-
-
-def snapshot():
-    """The current snapshot, cached until the store's dates move."""
-    return _snapshot(_stamp())
-
-
 def stale_notes(snap, max_days=3):
     """Reads priced more than `max_days` before the newest read, named: a series
     whose delivery stopped is drawn (its reading was true as of its date) but a
@@ -634,10 +608,3 @@ def stale_notes(snap, max_days=3):
             named.append(f"{row.symbol} last priced {row.date}")
     return named
 
-
-def warm():
-    """Fill the cache, for the boot warmer. Swallowing is the warmer's own rule."""
-    try:
-        snapshot()
-    except Exception as e:  # noqa: BLE001
-        utils.cot_logger.warning(f"market internals: cache warm failed: {e}")

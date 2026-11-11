@@ -35,16 +35,21 @@ SERVED_PREFIXES = (
 #: admits it.
 BEACON_PATH = '/seen.gif'
 
+#: Where Market Internals lives since it left this app (docs/internals-publishing.md).
+#: /internals 301s here, and the Monitors menu links it.
+INTERNALS_URL = 'https://internals.bluemagicai.com/'
+
 #: Real paths belonging to no page: the browser's automatic favicon request, Dash's
 #: own copy of it, the email-link and crawler endpoints (plain Flask routes in
 #: app_cot, which `app.routes` does not list because it only knows Dash's own),
 #: and the two old addresses that are explicit 301 routes, invisible to
 #: `app.routes` the same way: /graphs to /analysis?view=grid, and /crowd to /
-#: since the Crowdedness Board became the landing page. A redirect's own path
+#: since the Crowdedness Board became the landing page, and /internals to its
+#: own subdomain (INTERNALS_URL above). A redirect's own path
 #: has to be admitted HERE or this guard 404s it before the route ever runs,
 #: which turns a working redirect into a dead bookmark.
 EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
-                         '/confirm', '/unsubscribe', '/graphs', '/crowd',
+                         '/confirm', '/unsubscribe', '/graphs', '/crowd', '/internals',
                          '/robots.txt', '/sitemap.xml',
                          '/manifest.webmanifest', '/sw.js',
                          BEACON_PATH})
@@ -69,8 +74,8 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #:
 #: `internals` goes up through the same publisher: the market internals page's static copy
 #: (scripts/export_internals_page.py, docs/internals-publishing.md). Its recorded path
-#: is the app page's own, on purpose: the static copy is to replace `/internals`, which
-#: then redirects to it, so one path carries the page's views across the move.
+#: is the old app page's own, on purpose: `/internals` now redirects to the static
+#: copy, so one path carries the page's views across the move.
 EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys',
                   'internals': '/internals'}
 

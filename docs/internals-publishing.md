@@ -7,22 +7,16 @@ GitHub Pages repo (`mspinola/internals-dashboard`) by dbmf-tracker's
 pages use. [surveys-publishing.md](surveys-publishing.md) is the model, and the reasons
 given there (why the VPS, why one machine) hold here unchanged.
 
-**Status, 2026-11-11: built, not live.** The renderer, the build command, the publish
-script and the cron line exist. The repo, the DNS record, the first publish and the cron
-install are the go-live steps below, and none has been done.
+**Status: live since 2026-11-11.** The first publish went up from the Mac that day, and
+the app's own `/internals` page was removed in favour of a 301 to the subdomain.
 
-## One page, two renderers, one set of numbers
+## One renderer, no computation
 
-| | draws | reads |
-|---|---|---|
-| the app's `/internals` | `src/pages/analytics/internals.py` (Dash) | `market_internals.snapshot()` |
-| the static copy | `src/components/market_internals_static.py` (HTML) | `market_internals.build_snapshot()` |
-
-Both take every number, label and cutoff from `components/market_internals.py` (which
-takes the FOMO zones and the net-highs regime from `cotmetrics.indicators`), and every
-title, number format, detail line and figure from `components/market_internals_view.py`.
-Neither renderer computes anything. The app's page has no controls and its charts are
-static plots, so the copy needed no JavaScript beyond drawing the embedded figures.
+`src/components/market_internals_static.py` lays the page out. Every number, label and
+cutoff comes from `components/market_internals.py` (which takes the FOMO zones and the
+net-highs regime from `cotmetrics.indicators`), and every title, number format, detail
+line and figure from `components/market_internals_view.py`. The page has no controls
+and its charts are static plots, so its only JavaScript draws the embedded figures.
 
 ## Build it locally
 
@@ -42,7 +36,7 @@ Windows share.
 - No read at all (the store could not be read): `export-internals: not written`, exit 1,
   and the published page stays as it was.
 - Some reads missing: the page goes up with those cards saying "Awaiting data", the
-  app page's own rule, and the run names them on stderr (`awaiting ...`).
+  page's rule for a series not delivered yet, and the run names them on stderr (`awaiting ...`).
 - A read trailing the newest by more than three days is drawn and named, on the page and
   on stderr (`trailing: ...`).
 
@@ -58,37 +52,25 @@ publish between the two. An unchanged page pushes nothing. Log:
 
 The publisher adds the view beacon (`p=internals`) and the GoatCounter tag (path
 `/internals`). `routing.EXTERNAL_PAGES` allowlists the key and records it as
-`/internals`, the app page's own path, so the page's views stay on one row when the app
-page becomes a redirect. The app must be deployed with that allowlist entry BEFORE the
-first publish, or the views in between are answered and dropped.
+`/internals`, the old app page's own path, so the page's views stay on one row across
+the move. (The first publish went up before the allowlist was deployed, so the views in
+between were answered and dropped.)
 
-## Go-live, in order
+## How it went live (2026-11-11), for the next monitor
 
-1. Merge and deploy this change (`systemctl restart cot-analyzer` picks up the
-   allowlist).
-2. Create the public repo `mspinola/internals-dashboard` and clone it beside the
-   workspace (`~/code/internals-dashboard` on the Mac).
+1. The allowlist entry merged and deployed first (cot-analyzer #191).
+2. Public repo `mspinola/internals-dashboard`, cloned beside the workspace.
 3. Namecheap: `CNAME internals mspinola.github.io.`
-4. First publish, by hand from the Mac, carrying the domain:
-
-       scripts/publish_internals.sh --cname internals.bluemagicai.com
-
-   Then in the repo's Settings > Pages: serve from `main`, and enforce HTTPS once the
-   certificate is issued.
+4. First publish by hand from the Mac, carrying the domain:
+   `scripts/publish_internals.sh --cname internals.bluemagicai.com`. Then Pages enabled
+   on `main` and HTTPS enforced once the certificate was issued (minutes).
 5. On the VPS:
 
        cd /root && git clone git@github.com:mspinola/internals-dashboard.git
        /root/trading_workspace/cot-analyzer/scripts/publish_internals.sh --dry-run
        crontab -l 2>/dev/null | cat - /root/trading_workspace/cot-analyzer/server-side/publish-internals.cron | crontab -
 
-## After it is live (a second change, not this one)
-
-Until then every link still points at the app's page, so this change is safe to deploy
-before the subdomain exists. Once it resolves:
-
-- "Market" in the monitors row points at the subdomain: `sentiment_static.SITES` here,
-  and dbmf-tracker's three templates with its `tests/test_site_nav.py`.
-- The app's Monitors menu entry moves from `_MONITOR_PAGES` to
-  `_MONITOR_EXTERNAL_PAGES`.
-- `/internals` becomes a 301 to the subdomain (the `/crowd` pattern: a Flask route plus
-  an entry in `routing.EXTRA_PATHS`), and `src/pages/analytics/internals.py` goes.
+6. Then the links: "Market" in the monitors row (`sentiment_static.SITES` here,
+   dbmf-tracker's three templates and its `tests/test_site_nav.py`), the app's Monitors
+   menu entry (`_MONITOR_EXTERNAL_PAGES`), and `/internals` as a 301
+   (`app_cot.internals_redirect`, admitted by `routing.EXTRA_PATHS`).
