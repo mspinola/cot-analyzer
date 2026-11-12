@@ -381,28 +381,31 @@ LABEL_FLIP = 75
 PERCENTILE_X_RANGE = [-3, 103]
 
 
-def percentile_figure(rows, fills, title, n_rows, since):
-    """The percentile block shared with the allocation card. `rows`: (key, label, value
-    text, percentile 1-100, word) per leg, top down; `fills`: key -> the leg's colour;
-    `n_rows`: the height in rows, the card's other blocks', so the blocks line up;
-    `since`: the history's first year, for the hover. Not dated: a dated title ran 25px
-    past its block four across at 1440, and the recent block's top row dates it."""
+def percentile_figure(rows, fills, title, n_rows, since, hovers=None):
+    """The percentile block shared with the allocation and NAAIM cards. `rows`: (key,
+    label, value text, percentile 1-100, word) per leg, top down; `fills`: key -> the
+    leg's colour; `n_rows`: the height in rows, the card's other blocks', so the blocks
+    line up; `since`: the history's first year, for the hover; `hovers`: each row's
+    hover text instead, for rows ranked against different histories. Not dated: a dated
+    title ran 25px past its block four across at 1440, and the recent block's top row
+    dates it."""
     track = hex_to_rgba(vc.TEXT_COLOR, TRACK_ALPHA)
-    names = [f"{label} {value}" for _, label, value, _, _ in rows]
+    names = [f"{label} {value}".strip() for _, label, value, _, _ in rows]
+    hovers = hovers or [None] * len(rows)
     fig = go.Figure()
     for name in names:
         fig.add_trace(go.Scatter(x=[0, 100], y=[name, name], mode="lines",
                                  line=dict(color=track, width=TRACK_WIDTH),
                                  hoverinfo="skip", showlegend=False))
-    for (key, label, value, pct, word), name in zip(rows, names):
-        phrase = sentiment.percentile_phrase(word, since)
+    for (key, label, value, pct, word), name, hover in zip(rows, names, hovers):
+        hover = hover or f"{label} {value}: {sentiment.percentile_phrase(word, since)}"
         fig.add_trace(go.Scatter(
             x=[pct], y=[name], mode="markers+text", text=[word],
             textposition="middle left" if pct > LABEL_FLIP else "middle right",
             textfont=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR),
             marker=dict(color=fills[key], size=MARKER_SIZE,
                         line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1)),
-            hovertemplate=f"{label} {value}: {phrase}<extra></extra>",
+            hovertemplate=f"{hover}<extra></extra>",
             cliponaxis=False, showlegend=False))
     fig.add_vline(x=50, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"))
     _finish(fig, title, n_rows)

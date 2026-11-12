@@ -18,7 +18,7 @@ import components.sentiment as sentiment
 import local_pages
 import viz_config
 import viz_constants as vc
-from components import aaii_allocation, aaii_votes, plot_colors
+from components import aaii_allocation, aaii_votes, naaim_card, plot_colors
 
 PRICE_CHART = "sentiment_price_chart"
 COLUMNS_CHART = "sentiment_columns_chart"
@@ -29,6 +29,7 @@ ZOOM_SINK = "sentiment_zoom_sink"
 #: Each card's PNG export: the card body is the picture, the button sits in its
 #: header. Keyed by the view's short name, which also names the file.
 EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
+           "naaim": ("sentiment_naaim_export", "sentiment_naaim_export_btn"),
            "votes": ("sentiment_votes_export", "sentiment_votes_export_btn"),
            "allocation": ("sentiment_allocation_export", "sentiment_allocation_export_btn"),
            "allocation_price": ("sentiment_allocation_price_export",
@@ -158,11 +159,16 @@ def layout(**_):
                                 "fontSize": "0.9rem"}, className="mb-2"))
     cards, extra_notes = [], []
     if not read.frame.empty:
-        # The current readings lead: the votes and allocation cards (newest week and
+        # The current readings lead: the NAAIM, votes and allocation cards (newest week and
         # month, recent rows, percentiles) are not indexed, so the lookback never
         # redraws them. The toggle follows, directly above the two cards it redraws,
         # and the allocation-against-price history closes the page (the static page's
         # order, sentiment_static's "Card order").
+        naaim = naaim_card.read()
+        if naaim is not None:
+            cards.append(_card(naaim_card.TITLE, naaim_card.SUBTITLE,
+                               naaim_card.figures(naaim, colors, palette), export="naaim",
+                               how=naaim_card.HOW_TO_READ))
         votes = aaii_votes.read()
         if votes is not None:
             cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
