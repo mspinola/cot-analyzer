@@ -388,7 +388,7 @@ def test_the_weakest_week_on_record_reads_1st_not_0th():
 
 # ── the percentile block ──────────────────────────────────────────────────────
 
-def test_the_percentile_block_ranks_the_newest_week_on_every_official_week():
+def test_the_percentile_block_has_a_row_per_history_and_a_dot_per_vote():
     frames, get_bars = _legs_bars()
     votes = av.read(get_bars)
     newest = votes.recent.iloc[0]
@@ -396,20 +396,49 @@ def test_the_percentile_block_ranks_the_newest_week_on_every_official_week():
     fig = av.figures(votes, COLORS)[3]
     tracks, dots = fig.data[:3], fig.data[3:]
     assert all(list(t.x) == [0, 100] and t.hoverinfo == "skip" for t in tracks)
+    rows = [f"Since {votes.since:%Y}", "Last 3 years", "Last year"]
     fills = av.leg_colors(COLORS)
+    end = official.index[-1]
     for dot, (key, _, label) in zip(dots, av.LEGS):
         pct, word = votes.latest_pct[key]
         assert pct == s.percentile_of(official[key].to_numpy(), newest[key])
         assert word == s.percentile_word(official[key].to_numpy(), newest[key])
-        assert list(dot.x) == [pct] and list(dot.text) == [word]
-        assert list(dot.y) == [f"{label} {newest[key]:.1f}%"]
-        assert dot.marker.color == fills[key]
-        assert dot.textposition == ("middle left" if pct > av.LABEL_FLIP else "middle right")
-        assert s.percentile_phrase(word, votes.since.year) in dot.hovertemplate
-    assert fig.layout.annotations[0].text == f"Newest week, percentile since {votes.since:%Y}"
-    assert all(d.marker.opacity is None for d in dots)
+        # The windows rank the newest week against the window's EARLIER weeks.
+        want = []
+        for _, days in av.WINDOWS:
+            window = official[(official.index > end - pd.Timedelta(days=days))
+                              & (official.index < end)][key]
+            want.append(s.percentile_of(window.to_numpy(), newest[key]))
+        assert [dict(v)[key][0] for _, v in votes.window_pct] == want
+        # The number is the percentile; the place is dodged only where dots would meet.
+        assert list(dot.text) == [str(x) for x in (pct, *want)] and list(dot.y) == rows
+        assert dot.marker.color == fills[key] and dot.textposition == "middle center"
+        assert f"{label} {newest[key]:.1f}%" in dot.customdata[0]
+        assert dot.customdata[0].endswith(f"every week since {votes.since:%Y}")
+        assert dot.customdata[2].endswith("the last year")
+    assert fig.layout.annotations[0].text == "Newest week, percentile"
     # The median dotted, and no other line that would read as a zone.
     assert [(sh.x0, sh.line.dash) for sh in fig.layout.shapes] == [(50, "dot")]
+
+
+@pytest.mark.parametrize("values, want", [
+    ([26, 4, 96], [26, 4, 96]),                     # clear of each other: unmoved
+    ([8, 8, 94], [3.5, 12.5, 94]),                  # one spot: spread about it
+    ([13, 5, 91], [13.5, 4.5, 91]),                 # close: pushed apart, centred
+    ([1, 2, 60], [0.0, 9.0, 60]),                   # against the end: kept on the track
+    ([99, 100, 97], [91.0, 100.0, 82.0]),           # three at the top
+    ([50, 45, 55], [50, 41, 59]),                   # a chain of three
+])
+def test_dots_that_would_cover_each_other_are_dodged_sideways(values, want):
+    assert av.dodge(values) == pytest.approx(want)
+
+
+def test_dodged_dots_never_come_closer_than_the_spacing():
+    rng = np.random.default_rng(3)
+    for _ in range(500):
+        xs = sorted(av.dodge(list(rng.integers(1, 101, 3))))
+        assert all(b - a >= av.DOT_SPACING - 1e-9 for a, b in zip(xs, xs[1:]))
+        assert 0 <= xs[0] and xs[-1] <= 100
 
 
 def test_a_provisional_newest_week_is_ranked_on_official_weeks_and_not_tagged():
@@ -423,4 +452,4 @@ def test_a_provisional_newest_week_is_ranked_on_official_weeks_and_not_tagged():
                                                            newest[key])
     dots = av.figures(votes, COLORS)[3].data[3:]
     assert all(d.marker.opacity is None for d in dots)
-    assert not any("provisional" in d.hovertemplate for d in dots)
+    assert not any("provisional" in h for d in dots for h in d.customdata)
