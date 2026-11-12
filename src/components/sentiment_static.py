@@ -450,8 +450,11 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .lookback button[aria-pressed="true"] {{ border-color: var(--ink); }}
 .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
-.card .sub {{ font-size: 0.8rem; margin-bottom: 6px; }}
-.card .how {{ font-size: 0.8rem; margin: -2px 0 4px; }}
+/* The subtitle and its "How to read this" share one line while the help is closed
+   (2026-11-12, 17px back on every card); opened, the help drops to its own line. */
+.card .sub {{ font-size: 0.8rem; display: inline; margin-right: 10px; }}
+.card .how {{ font-size: 0.8rem; display: inline-block; margin: 0 0 6px; }}
+.card .how[open] {{ display: block; margin-top: 2px; }}
 .card .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
 .card .how p {{ margin: 4px 0 0; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 24px; }}
