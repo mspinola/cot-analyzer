@@ -4,7 +4,7 @@ published copy (surveys.bluemagicai.com), beside the AAII votes card.
 
 The votes card says what members expect; this one says what they hold. Same layout,
 one figure per block in the same wrapping grid (`aaii_votes`, breakpoints
-VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_THREE_ACROSS_MIN_PX):
+VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_ALL_ACROSS_MIN_PX):
 
 1. **Recent months.** The last four surveys, newest on top, each split into stocks,
    bonds and cash (as AAII headlines them, rounded to a tenth of a point, so a row can
@@ -16,6 +16,12 @@ VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_THREE_ACROSS_MIN_PX):
    (2009-03) to 77.0 (2000-01) around an average of 62.3, so every month on record fits
    (-21.5 to +14.7; measured on the store's 468 months, 2026-11-09). Green above the
    average, red below.
+4. **Percentile.** The newest month's three shares, each as a percentile of every
+   stored month (`aaii_votes.percentile_figure`, added 2026-11-12 with the votes
+   card's). The shares have drifted: cash averaged 33.4% in 1987-89 and 17.2% in the
+   2020s, stocks 47.1% and 67.3% (decade means, 2026-11-12), so a full-history
+   percentile on cash or stocks partly measures that drift. October 2026's cash at
+   13.3% is the 1st percentile; HOW_TO_READ says so.
 
 Added 2026-11-09 at the user's request, "just like the AAII sentiment numbers".
 
@@ -63,7 +69,7 @@ marketdata's AAII_ALLOC_* series, built by hand from AAII's member spreadsheet.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import numpy as np
@@ -88,10 +94,14 @@ TITLE = "AAII asset allocation"
 SUBTITLE = ("AAII members' average split between stocks (green), bonds (blue) and cash "
             "(grey), percent of portfolio, monthly.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
-               "1987 with each share's highest month in the last year; and each recent "
-               "month's stocks share against its average since 1987. AAII publishes "
-               "each month in the first days of the next.")
+HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average since "
+               "1987 with each share's highest month in the last year; each recent "
+               "month's stocks share against its average since 1987; and the newest "
+               "month's shares as percentiles of every month since 1987 (the dotted "
+               "line is the median). The shares have drifted over the decades, cash "
+               "from about 33% in the late 1980s to about 17% in the 2020s, so a low "
+               "cash percentile partly reflects the drift. AAII publishes each month "
+               "in the first days of the next.")
 
 BONDS_COLOR = "#60A5FA"     # the app palette's blue
 #: Text inside each segment: dark on the bright green and blue, white on the grey.
@@ -103,7 +113,9 @@ class Allocation:
     """`recent`: the last RECENT_MONTHS surveys, newest first, a percent column per
     share, indexed by month end. `average`: each share's mean over every stored month,
     percent. `since`: the first stored month. `highs`: share -> (percent, month end)
-    over the last HIGH_DAYS. `last`: the newest month."""
+    over the last HIGH_DAYS. `last`: the newest month. `latest_pct`: share ->
+    (percentile 1-100, word) for the newest month against every stored month
+    (`aaii_votes.latest_percentiles`)."""
     recent: pd.DataFrame
     average: pd.Series
     since: date
@@ -111,6 +123,7 @@ class Allocation:
     last: date
     #: Every stored month, oldest first, a percent column per share: the history chart's.
     months: pd.DataFrame | None = None
+    latest_pct: dict = field(default_factory=dict)
 
 
 def legs(get_bars=None):
@@ -136,7 +149,8 @@ def summarize(frame, recent=RECENT_MONTHS, high_days=HIGH_DAYS):
     highs = {key: (float(year[key].max()), year[key].idxmax().date()) for key, *_ in LEGS}
     return Allocation(recent=frame.iloc[::-1].head(recent), average=frame.mean(),
                       since=frame.index[0].date(), highs=highs, last=end.date(),
-                      months=frame)
+                      months=frame,
+                      latest_pct=aaii_votes.latest_percentiles(frame, frame.iloc[-1], LEGS))
 
 
 def read(get_bars=None):
@@ -270,11 +284,23 @@ def stock_gap_figure(alloc, colors):
     return fig
 
 
+def latest_figure(alloc, colors):
+    """The newest month's three shares, each as a percentile of every stored month,
+    the votes card's percentile block (`aaii_votes.percentile_figure`)."""
+    newest = alloc.recent.iloc[0]
+    rows = [(key, label, f"{newest[key]:.1f}%", *alloc.latest_pct[key])
+            for key, _, label in LEGS]
+    return aaii_votes.percentile_figure(
+        rows, leg_colors(colors),
+        f"Newest month, percentile since {alloc.since:%Y}",
+        len(alloc.recent), alloc.since.year)
+
+
 def figures(alloc, colors):
-    """The card's three blocks, (recent, history, gap), laid out by each page like the
-    votes card's."""
+    """The card's four blocks, (recent, history, gap, latest), laid out by each page
+    like the votes card's."""
     return (recent_figure(alloc, colors), history_figure(alloc, colors),
-            stock_gap_figure(alloc, colors))
+            stock_gap_figure(alloc, colors), latest_figure(alloc, colors))
 
 
 

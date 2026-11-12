@@ -136,13 +136,14 @@ PRICE_ID = "price"
 COLUMNS_ID = "columns"
 VOTES_ID = "votes"
 #: The payload key for the AAII votes figures, beside the lookback keys: the card does
-#: not depend on the lookback, so it is embedded once and drawn once. Two halves.
+#: not depend on the lookback, so it is embedded once and drawn once. Four blocks
+#: (still called halves, the name from when there were two).
 VOTES_KEY = "votes"
-VOTES_HALVES = ("recent", "history", "spread")
+VOTES_HALVES = ("recent", "history", "spread", "latest")
 #: The AAII allocation card: the same block grid, its own payload key.
 ALLOCATION_ID = "allocation"
 ALLOCATION_KEY = "allocation"
-ALLOCATION_BLOCKS = ("recent", "history", "gap")
+ALLOCATION_BLOCKS = ("recent", "history", "gap", "latest")
 #: (element id, payload key) of every block-grid card, drawn once each by the same JS.
 GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
 #: The AAII allocation against SPY: one figure, not indexed, so embedded once like the
@@ -159,11 +160,15 @@ ALLOCATION_PRICE_KEY = "allocation_price"
 def survey_tiles(read):
     """The readings strip's survey tiles for one lookback: label, value, state, context,
     foot. The value is the survey's own number; the index it sits at is the context,
-    led by the crowd state that index means (`sentiment.crowd_state`)."""
+    led by the crowd state that index means (`sentiment.crowd_state`), then its
+    percentile against every official week (`sentiment.latest_percentile`). The
+    percentile does not move with the lookback; the tile carries it on every lookback
+    so the toggle's redraw rewrites it with the same words."""
     n = read.lookback_years
     return [{"key": r["key"], "label": r["label"], "value": f"{r['value']:.1f}",
              "state": r["state"],
              "context": f"index {r['index']:.0f} of 100 on its {n}-year range",
+             "pct": r["pct"],
              "foot": _date(r["date"]) + (" · provisional" if r["provisional"] else "")}
             for r in sentiment.readings(read)]
 
@@ -172,9 +177,12 @@ def stocks_tile(allocation):
     """The stocks share and its gap from the average since the survey began."""
     share = float(allocation.recent.iloc[0]["stocks"])
     gap = share - float(allocation.average["stocks"])
+    pct = allocation.latest_pct.get("stocks")
     return {"key": STOCKS_KEY, "label": "AAII stocks allocation", "value": f"{share:.1f}%",
             "context": (f"{abs(gap):.1f} points {'above' if gap >= 0 else 'below'} its "
                         f"average since {allocation.since.year}"),
+            "pct": (sentiment.percentile_phrase(pct[1], allocation.since.year)
+                    if pct else None),
             "foot": f"{allocation.last:%b %Y}"}
 
 
@@ -193,6 +201,7 @@ def _tiles(tiles):
                 f'<div class="label">{esc(t["label"])}</div>'
                 f'<div class="value">{esc(t["value"])}</div>'
                 + context(t)
+                + (f'<div class="pct">{esc(t["pct"])}</div>' if t.get("pct") else "")
                 + f'<div class="foot">{esc(t["foot"])}</div></div>' for t in tiles)
             + '</div>\n')
 
@@ -354,13 +363,14 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .tile .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
 .tile .ctx {{ font-size: 0.82rem; color: var(--ink-2); }}
 .tile .state {{ font-weight: 600; color: var(--ink); }}
+.tile .pct {{ font-size: 0.82rem; color: var(--ink-2); }}
 .tile .foot {{ font-size: 0.75rem; color: var(--muted); margin-top: 2px; }}
 /* On a phone a tile is one row: words on the left, the value on the right. */
 @media (max-width: 600px) {{
   .tiles {{ grid-template-columns: minmax(0, 1fr); gap: 6px; }}
   .tile {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 8px 12px; }}
-  .tile .label, .tile .ctx, .tile .foot {{ grid-column: 1; }}
-  .tile .value {{ grid-column: 2; grid-row: 1 / span 3; font-size: 1.5rem; }}
+  .tile .label, .tile .ctx, .tile .pct, .tile .foot {{ grid-column: 1; }}
+  .tile .value {{ grid-column: 2; grid-row: 1 / span 4; font-size: 1.5rem; }}
 }}
 .lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
@@ -374,7 +384,7 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .card .how p {{ margin: 4px 0 0; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
-@media (min-width: {aaii_votes.VOTES_THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
+@media (min-width: {aaii_votes.VOTES_ALL_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 </style>
@@ -464,6 +474,8 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
       var state = tile.querySelector('.state');
       if (state) {{ state.textContent = t.state; }}
       tile.querySelector('.rest').textContent = t.context;
+      var pct = tile.querySelector('.pct');
+      if (pct && t.pct) {{ pct.textContent = t.pct; }}
       tile.querySelector('.foot').textContent = t.foot;
     }});
     var notes = document.getElementById('notes');
@@ -505,7 +517,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 
 def _grid_card(title, subtitle, element_id, blocks, how=None):
     """A card of figure blocks in the wrapping grid (`.votes-grid`, named for the first
-    card that used it): one across on a phone, two from 768px, three from 1200px."""
+    card that used it): one across on a phone, two from 768px, four from 1400px."""
     esc = html.escape
     return (f'<section class="card"><h2>{esc(title)}</h2>\n'
             + _sub(subtitle, how)

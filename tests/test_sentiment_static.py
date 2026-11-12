@@ -218,3 +218,19 @@ def test_the_title_ticker_is_readable_on_the_page():
     assert (hi + 0.05) / (lo + 0.05) >= 4.5
     # The focus ring on the Monitors links used the same invisible colour.
     assert "a:focus-visible { outline: 2px solid var(--ticker);" in page
+
+
+def test_each_survey_tile_carries_its_percentile_on_every_lookback():
+    reads = _reads()
+    html = st.render(reads, COLORS, PALETTE)
+    strip = html.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
+    payload = _payload(html)
+    for key in ("naaim", "aaii"):
+        word, since = s.latest_percentile(reads[s.DEFAULT_LOOKBACK], key)
+        phrase = s.percentile_phrase(word, since)
+        assert f'<div class="pct">{phrase}</div>' in strip
+        # The toggle rewrites the tile; every lookback carries the same words.
+        assert {next(t["pct"] for t in payload[str(y)]["tiles"] if t["key"] == key)
+                for y in s.LOOKBACK_YEARS} == {phrase}
+    assert "tile.querySelector('.pct')" in html
+    assert ".tile .value { grid-column: 2; grid-row: 1 / span 4;" in html
