@@ -230,6 +230,11 @@ def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None)
 
 #: The bulls-minus-bears percentile block's one leg, in `LEGS`' shape.
 SPREAD_KEY = "spread"
+#: The bulls-minus-bears block's dot colour: the palette's third slot (amber on the
+#: default, Non-Reportable elsewhere in the app, drawn nowhere on this page), toned
+#: down by the cards' step. It first took AAII's line green, which next to the votes
+#: block read as one more bullish dot ("change the bulls-bears color", 2026-11-12).
+SPREAD_SLOT = 2
 SPREAD_LEGS = ((SPREAD_KEY, None, "Bulls minus bears"),)
 
 
@@ -573,7 +578,7 @@ def legend_title(name, legs, fills):
 
 def spread_figure_percentiles(votes, palette, name=SPREAD_PERCENTILE_NAME):
     """The newest week's bulls minus bears as a percentile over the three histories, one
-    dot a row in AAII's line colour on the page (`sentiment.sentiment_colors`), the tile's
+    dot a row in the palette's amber (SPREAD_SLOT), the tile's
     number (its 8th since 1987 on 2026-11-12) with the two windows beside it. On the
     percentiles card since 2026-11-12, where the allocation block had been ("replaced
     with an AAII bulls-bears percentile view")."""
@@ -582,7 +587,7 @@ def spread_figure_percentiles(votes, palette, name=SPREAD_PERCENTILE_NAME):
              f"every week since {votes.since:%Y}")]
     rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.spread_window_pct]
     legs = [(SPREAD_KEY, "bulls minus bears")]
-    fills = {SPREAD_KEY: sentiment.sentiment_colors(palette)["aaii"]}
+    fills = {SPREAD_KEY: sentiment.card_tone(palette[SPREAD_SLOT])}
     return dots_figure(rows, legs, fills, {SPREAD_KEY: f"{spread:+.1f}"},
                        legend_title(name, legs, fills))
 

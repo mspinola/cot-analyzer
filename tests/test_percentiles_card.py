@@ -95,8 +95,10 @@ def test_the_bulls_bears_block_ranks_the_spread_over_three_histories():
     fig = av.spread_figure_percentiles(votes, PALETTE)
     dot = fig.data[3]
     assert list(dot.text) == [str(x) for x in [votes.spread_pct[0], *want]]
-    green = s.sentiment_colors(PALETTE)["aaii"]
-    assert dot.marker.color == green
+    amber = s.card_tone(PALETTE[av.SPREAD_SLOT])
+    # Not a green: beside the votes block it read as one more bullish dot.
+    assert amber not in (av.leg_colors(COLORS)["bullish"], s.sentiment_colors(PALETTE)["aaii"])
+    assert dot.marker.color == amber
     assert fig.layout.annotations[0].text == (
-        f'AAII: <span style="color:{green}"><b>bulls minus bears</b></span>')
+        f'AAII: <span style="color:{amber}"><b>bulls minus bears</b></span>')
     assert dot.customdata[0].startswith(f"bulls minus bears {newest:+.1f}:")
