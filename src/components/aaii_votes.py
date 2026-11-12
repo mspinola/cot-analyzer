@@ -43,8 +43,8 @@ same way, so the card agrees with the chart beside it.
 **Provisional weeks.** The store's AAII legs end where the member spreadsheet last
 downloaded ends; marketdata's AAII_*_PROVISIONAL carry the weeks since, typed from AAII's
 public results page (rounded to a tenth of a point). They reach the recent rows only,
-after the official end and only when all three legs are present, drawn faint with
-"prov" beside the date, as the chart above draws them hollow and faint. The average
+after the official end and only when all three legs are present, drawn and dated as
+any other week (the page's footer names them, `sentiment.provisional_note`). The average
 and the one-year highs stay on official weeks, so a rounded hand-typed week never sets
 a long-run number; the highs' year ends on the newest official week.
 
@@ -56,7 +56,6 @@ of its own, and none of this is one: it is the survey's own numbers, rearranged.
 from dataclasses import dataclass, field
 from datetime import date
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -69,8 +68,6 @@ AAII_NEUTRAL = "AAII_NEUTRAL"
 PROVISIONAL = {"bullish": sentiment.AAII_BULL_PROVISIONAL,
                "neutral": "AAII_NEUTRAL_PROVISIONAL",
                "bearish": sentiment.AAII_BEAR_PROVISIONAL}
-#: Beside a provisional week's date, in the row label (short: labels set the bars' width).
-PROVISIONAL_TAG = "prov"
 #: (key, store symbol, label), in the order the bar stacks them, left to right.
 LEGS = (("bullish", sentiment.AAII_BULL, "Bullish"),
         ("neutral", AAII_NEUTRAL, "Neutral"),
@@ -103,8 +100,6 @@ GREEN_KEYS = ("bullish", "stocks")
 #: Every segment filled with a toned-down colour, the red and the bonds blue included.
 TONED_KEYS = GREEN_KEYS + ("bearish", "bonds")
 LIGHT_INK = "#FFFFFF"
-#: Text inside a provisional (faint) segment, whatever its leg.
-PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Pixels each half adds to its rows: the title above, the margins.
 FIGURE_CHROME = 44
 #: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all four from
@@ -288,29 +283,19 @@ def _finish(fig, title, rows):
 
 
 def recent_figure(votes, colors):
-    """The last RECENT_WEEKS surveys, newest on top, provisional ones faint."""
+    """The last RECENT_WEEKS surveys, newest on top."""
     recent = votes.recent
     spread = (recent["bullish"] - recent["bearish"]).to_numpy()
-    late = recent.index.isin(votes.provisional)
-    rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
-            for d, p in zip(recent.index, late)]
+    rows = [f"{d:%Y-%m-%d}" for d in recent.index]
     fig = go.Figure()
     for key, _, label in LEGS:
         bar = _bar(key, label, colors)
-        if late.any():
-            bar["marker"] = dict(bar["marker"], opacity=np.where(
-                late, sentiment.PROVISIONAL_OPACITY, 1.0))
-            # Light text on a faint segment: the dark text the bright bars carry sat on a
-            # dimmed fill over the dark page and could not be read.
-            bar["insidetextfont"] = dict(bar["insidetextfont"], color=np.where(
-                late, PROVISIONAL_TEXT, bar["insidetextfont"]["color"]).tolist())
         vals = recent[key].round(1).to_numpy()
         fig.add_trace(go.Bar(
             x=vals, y=rows, text=[f"{v:.1f}%" for v in vals], customdata=spread,
             hovertemplate=(f"{label} " + "%{x:.1f}%  (bulls minus bears %{customdata:+.1f})"
                            "<extra>%{y}</extra>"), **bar))
-    title = "Recent weeks (faint: provisional)" if late.any() else "Recent weeks"
-    return _finish(fig, title, len(rows))
+    return _finish(fig, "Recent weeks", len(rows))
 
 
 def history_figure(votes, colors):
@@ -337,21 +322,18 @@ def history_figure(votes, colors):
 
 def spread_figure(votes, colors):
     """Bulls minus bears for the recent weeks, on a fixed +-SPREAD_LIMIT scale, red below
-    zero and green above, provisional weeks faint; the official average since the series
+    zero and green above; the official average since the series
     began is a dashed line across them (the rows stay four, so the blocks line up)."""
     recent = votes.recent
     spread = (recent["bullish"] - recent["bearish"]).round(1)
-    late = recent.index.isin(votes.provisional)
-    rows = [f"{d:%Y-%m-%d} {PROVISIONAL_TAG}" if p else f"{d:%Y-%m-%d}"
-            for d, p in zip(recent.index, late)]
+    rows = [f"{d:%Y-%m-%d}" for d in recent.index]
     fills = leg_colors(colors)
     color = [hex_to_rgba(fills["bullish" if v >= 0 else "bearish"], BAR_OPACITY)
              for v in spread]
     shown = spread.clip(-SPREAD_LIMIT, SPREAD_LIMIT)
     fig = go.Figure(go.Bar(
         x=shown.to_numpy(), y=rows, orientation="h", showlegend=False,
-        marker=dict(color=color, opacity=np.where(late, sentiment.PROVISIONAL_OPACITY, 1.0)
-                    if late.any() else None),
+        marker=dict(color=color),
         customdata=[[b, r, f"{v:+.1f}", ordinal(p) if p else "?"] for b, r, v, p in zip(
             recent["bullish"].round(1), recent["bearish"].round(1), spread,
             votes.spread_pct or (None,) * len(spread))],
@@ -399,13 +381,12 @@ LABEL_FLIP = 75
 PERCENTILE_X_RANGE = [-3, 103]
 
 
-def percentile_figure(rows, fills, title, n_rows, since, provisional=False):
+def percentile_figure(rows, fills, title, n_rows, since):
     """The percentile block shared with the allocation card. `rows`: (key, label, value
     text, percentile 1-100, word) per leg, top down; `fills`: key -> the leg's colour;
     `n_rows`: the height in rows, the card's other blocks', so the blocks line up;
-    `since`: the history's first year, for the hover. A `provisional` reading draws
-    its dots faint, as the recent rows draw a provisional week; the title has no room
-    to say so (a dated title ran 25px past its block four across at 1440)."""
+    `since`: the history's first year, for the hover. Not dated: a dated title ran 25px
+    past its block four across at 1440, and the recent block's top row dates it."""
     track = hex_to_rgba(vc.TEXT_COLOR, TRACK_ALPHA)
     names = [f"{label} {value}" for _, label, value, _, _ in rows]
     fig = go.Figure()
@@ -414,14 +395,12 @@ def percentile_figure(rows, fills, title, n_rows, since, provisional=False):
                                  line=dict(color=track, width=TRACK_WIDTH),
                                  hoverinfo="skip", showlegend=False))
     for (key, label, value, pct, word), name in zip(rows, names):
-        phrase = sentiment.percentile_phrase(word, since) + (
-            " (provisional)" if provisional else "")
+        phrase = sentiment.percentile_phrase(word, since)
         fig.add_trace(go.Scatter(
             x=[pct], y=[name], mode="markers+text", text=[word],
             textposition="middle left" if pct > LABEL_FLIP else "middle right",
             textfont=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR),
             marker=dict(color=fills[key], size=MARKER_SIZE,
-                        opacity=sentiment.PROVISIONAL_OPACITY if provisional else 1.0,
                         line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1)),
             hovertemplate=f"{label} {value}: {phrase}<extra></extra>",
             cliponaxis=False, showlegend=False))
@@ -434,15 +413,14 @@ def percentile_figure(rows, fills, title, n_rows, since, provisional=False):
 def latest_figure(votes, colors):
     """The newest week's three shares, each as a percentile of every official week's
     since the series began: where AAII's own card shows a raw share against a bar, this
-    says whether the share is unusual. The newest week may be provisional."""
+    says whether the share is unusual."""
     newest = votes.recent.iloc[0]
     rows = [(key, label, f"{newest[key]:.1f}%", *votes.latest_pct[key])
             for key, _, label in LEGS]
-    # Not dated: the recent block's top row is this week, dated and tagged there.
+    # Not dated: the recent block's top row is this week, dated there.
     return percentile_figure(
         rows, leg_colors(colors), f"Newest week, percentile since {votes.since:%Y}",
-        len(votes.recent), votes.since.year,
-        provisional=votes.recent.index[0] in votes.provisional)
+        len(votes.recent), votes.since.year)
 
 
 def figures(votes, colors):

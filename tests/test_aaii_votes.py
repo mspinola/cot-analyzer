@@ -230,20 +230,19 @@ def test_provisional_weeks_never_stand_in_for_missing_official_legs():
     assert av.read(get_bars) is None
 
 
-def test_provisional_rows_draw_faint_with_the_tag_beside_the_date():
+def test_provisional_rows_draw_and_date_as_any_other_week():
+    """Since 2026-11-12 only the page's footer names provisional weeks: readers did not
+    use the faint rows and the "prov" beside the date."""
     _, get_bars, _ = _with_provisional()
     votes = av.read(get_bars)
+    assert len(votes.provisional) == 2
     fig, *_ = av.figures(votes, COLORS)
     bull = next(t for t in fig.data if t.name == "Bullish")
-    assert list(bull.y[:2]) == [f"{d:%Y-%m-%d} {av.PROVISIONAL_TAG}" for d in WEEKS[[119, 118]]]
-    assert list(bull.y[2:]) == [f"{d:%Y-%m-%d}" for d in WEEKS[[117, 116]]]
-    from components import sentiment as s
-    np.testing.assert_allclose(bull.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
-    # Light text on the faint rows, the leg's usual text on the others.
-    # Official rows keep the ink the green fill as drawn calls for (the fixture's is dark).
+    assert list(bull.y) == [f"{d:%Y-%m-%d}" for d in WEEKS[[119, 118, 117, 116]]]
+    assert bull.marker.opacity is None
     ink = av.segment_ink("bullish", av.leg_colors(COLORS)["bullish"])
-    assert list(bull.insidetextfont.color) == [av.PROVISIONAL_TEXT] * 2 + [ink] * 2
-    assert "provisional" in fig.layout.annotations[0].text
+    assert bull.insidetextfont.color == ink
+    assert fig.layout.annotations[0].text == "Recent weeks"
 
 
 def test_without_provisional_weeks_the_card_is_unchanged():
@@ -311,12 +310,11 @@ def test_a_spread_beyond_the_scale_is_pinned_but_labelled_true():
     assert fig.layout.annotations[1].text.strip().startswith("+75.0 (")
 
 
-def test_provisional_weeks_draw_faint_in_the_spread_block_too():
+def test_provisional_weeks_draw_as_any_other_week_in_the_spread_block_too():
     _, get_bars, _ = _with_provisional()
     bar = _spread(av.read(get_bars)).data[0]
-    from components import sentiment as s
-    np.testing.assert_allclose(bar.marker.opacity, [s.PROVISIONAL_OPACITY] * 2 + [1.0] * 2)
-    assert bar.y[0].endswith(av.PROVISIONAL_TAG)
+    assert bar.marker.opacity is None
+    assert list(bar.y) == [f"{d:%Y-%m-%d}" for d in WEEKS[[119, 118, 117, 116]]]
 
 
 
@@ -409,12 +407,12 @@ def test_the_percentile_block_ranks_the_newest_week_on_every_official_week():
         assert dot.textposition == ("middle left" if pct > av.LABEL_FLIP else "middle right")
         assert s.percentile_phrase(word, votes.since.year) in dot.hovertemplate
     assert fig.layout.annotations[0].text == f"Newest week, percentile since {votes.since:%Y}"
-    assert all(d.marker.opacity == 1.0 for d in dots)
+    assert all(d.marker.opacity is None for d in dots)
     # The median dotted, and no other line that would read as a zone.
     assert [(sh.x0, sh.line.dash) for sh in fig.layout.shapes] == [(50, "dot")]
 
 
-def test_a_provisional_newest_week_is_tagged_and_ranked_on_official_weeks():
+def test_a_provisional_newest_week_is_ranked_on_official_weeks_and_not_tagged():
     frames, get_bars, _ = _with_provisional()
     votes = av.read(get_bars)
     official = av.legs(get_bars)
@@ -424,5 +422,5 @@ def test_a_provisional_newest_week_is_tagged_and_ranked_on_official_weeks():
         assert votes.latest_pct[key][0] == s.percentile_of(official[key].to_numpy(),
                                                            newest[key])
     dots = av.figures(votes, COLORS)[3].data[3:]
-    assert all(d.marker.opacity == s.PROVISIONAL_OPACITY for d in dots)
-    assert all("(provisional)" in d.hovertemplate for d in dots)
+    assert all(d.marker.opacity is None for d in dots)
+    assert not any("provisional" in d.hovertemplate for d in dots)

@@ -31,11 +31,17 @@ allocation cards sat below the charts. The allocation survey has its own notes
 
 **The readings strip** replaces the app's summary sentence: one tile per survey (its
 own number, its index on the lookback, its date) and one for the stocks share, so the
-page leads with three numbers rather than a paragraph whose second half was the
-provisional-data caveat the notes already carry in full. The toggle rewrites the two
-survey tiles (`#readings [data-key]`); the stocks tile is static. Each survey tile
-names the crowd state its index means (`sentiment.crowd_state`: leans long, washed
-out or mid-range, at the chart's 80 and 20), in words and in the tile's own ink.
+page leads with three numbers rather than a paragraph. Since 2026-11-12 each tile is
+built to be read at a glance: its percentile against the full history in a badge at
+the top right, a 0-100 gauge under the value, and one line in words ("Near its lows
+since 1987"), all in the tier's colour (`sentiment.percentile_tier`: warm toward the
+history's highs, cool toward its lows, plain in between), which also edges the tile.
+None of that moves with the lookback, so it is drawn once. The toggle rewrites the two
+survey tiles' value, crowd-state line (`sentiment.crowd_state`, the index at the
+chart's 80 and 20) and date (`#readings [data-key]`); the stocks tile is static.
+
+**Provisional weeks** are not marked anywhere on the page but its footer
+(`sentiment.provisional_note`), since 2026-11-12: readers did not use the distinction.
 
 **Card text.** Each card opens on one sentence; the rest sits in a closed
 `<details>` ("How to read this").
@@ -102,6 +108,10 @@ TICKER_COLOR = vc.SOLARIZED_DARK_BLUE
 #: Monitors row is.
 PAGE_COLOR, SURFACE_COLOR, LINE_COLOR = "#0d1013", "#151a1e", "rgba(255,255,255,0.09)"
 PAGE_MAX_WIDTH_PX, PAGE_GUTTER_PX = 1180, 20
+#: The tiles' tier tones (`sentiment.percentile_tier`): warm toward a history's highs,
+#: cool toward its lows. Neither is a series colour on this page (the votes' green and
+#: red, the allocation's bonds blue is darker), so a tile never reads as one of them.
+TONE_HIGH, TONE_LOW = "#e3a33b", "#6fb0e0"
 DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, as range "
                "indexes with SPY's drawdowns behind them, and AAII members' monthly "
                "split between stocks, bonds and cash since 1987.")
@@ -180,8 +190,7 @@ def survey_tiles(read):
     return [{"key": r["key"], "label": r["label"], "value": f"{r['value']:.1f}",
              "state": r["state"],
              "context": f"index {r['index']:.0f} of 100 on its {n}-year range",
-             "pct": r["pct"],
-             "foot": _date(r["date"]) + (" · provisional" if r["provisional"] else "")}
+             "pct": r["pct"], "rank": r["rank"], "foot": _date(r["date"])}
             for r in sentiment.readings(read)]
 
 
@@ -195,6 +204,7 @@ def stocks_tile(allocation):
                         f"average since {allocation.since.year}"),
             "pct": (sentiment.percentile_phrase(pct[1], allocation.since.year)
                     if pct else None),
+            "rank": (*pct, allocation.since.year) if pct else None,
             "foot": f"{allocation.last:%b %Y}"}
 
 
@@ -202,20 +212,35 @@ def _tiles(tiles):
     esc = html.escape
 
     def context(t):
-        # A survey tile leads its context with the crowd state, in the tile's own ink:
-        # a word, not a colour, so it cannot be read as a buy or sell flag.
+        # A survey tile leads its context with the crowd state on its lookback, in the
+        # tile's own ink: the colour is the percentile's, and two colours on one tile
+        # for two scales would contradict each other as often as not.
         state = (f'<b class="state">{esc(t["state"])}</b> · ' if t.get("state") else "")
         return f'<div class="ctx">{state}<span class="rest">{esc(t["context"])}</span></div>'
 
+    def rank(t):
+        # The badge, the gauge and the tier line: the same percentile three ways, for
+        # the eye (colour), the hand (position) and the reader (words).
+        pct, word, since = t["rank"]
+        tier, words = sentiment.percentile_tier(pct, word)
+        record = word in (sentiment.HIGHEST, sentiment.LOWEST)
+        badge = (f'<div class="rank" title="{esc(t["pct"])}">'
+                 + (esc(word.capitalize()) if record
+                    else f'{esc(word)}<small> pctl</small>') + '</div>')
+        body = (f'<div class="gauge" aria-hidden="true"><i style="left:{pct}%"></i></div>'
+                f'<div class="tier">{esc(words)} since {since}</div>')
+        return badge, body, tier
+
+    out = []
+    for t in tiles:
+        badge, body, tier = rank(t) if t.get("rank") else ("", "", sentiment.TIER_MID)
+        out.append(f'<div class="tile tier-{tier}" data-key="{esc(t["key"])}">'
+                   f'<div class="head"><div class="label">{esc(t["label"])}</div>{badge}</div>'
+                   f'<div class="value">{esc(t["value"])}</div>'
+                   + body + context(t)
+                   + f'<div class="foot">{esc(t["foot"])}</div></div>')
     return (f'<div class="tiles" id="{READINGS_ID}" role="group" aria-label="Latest readings">'
-            + "".join(
-                f'<div class="tile" data-key="{esc(t["key"])}">'
-                f'<div class="label">{esc(t["label"])}</div>'
-                f'<div class="value">{esc(t["value"])}</div>'
-                + context(t)
-                + (f'<div class="pct">{esc(t["pct"])}</div>' if t.get("pct") else "")
-                + f'<div class="foot">{esc(t["foot"])}</div></div>' for t in tiles)
-            + '</div>\n')
+            + "".join(out) + '</div>\n')
 
 
 def _sub(subtitle, how=None):
@@ -254,6 +279,12 @@ def _nav():
     return ('<nav class="sites" aria-label="Monitors"><span class="sep">Monitors</span>'
             + "".join(links)
             + f'<a class="home" href="{HOME}">COT Analyzer &rarr;</a></nav>')
+
+
+def _provisional(read):
+    """The footer's sentence on the provisional weeks, as its own line, or nothing."""
+    note = sentiment.provisional_note(read)
+    return f'<p class="prov">{html.escape(note)}</p>' if note else ""
 
 
 def _date(d):
@@ -373,22 +404,37 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .asof b {{ color: var(--ink); font-weight: 600; }}
 .asof a {{ color: var(--ink-2); }}
 @media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
-/* The readings strip: label, value, context, date. Values in the page's sans with
-   proportional figures; text in the ink tokens, never a series colour. */
+/* The readings strip: label and percentile badge, value, gauge, tier line, context,
+   date. The tier (sentiment.percentile_tier) sets --tone: warm toward the history's
+   highs, cool toward its lows, none in between; filled past 90 and 10, outlined past
+   80 and 20. Values and words stay in the ink tokens. */
 .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; }}
-.tile {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
+.tile {{ --tone: var(--muted); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
+.tile.tier-top, .tile.tier-high {{ --tone: {TONE_HIGH}; }}
+.tile.tier-bottom, .tile.tier-low {{ --tone: {TONE_LOW}; }}
+.tile:not(.tier-mid) {{ border-left-color: var(--tone); }}
+.tile .head {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }}
 .tile .label {{ font-size: 0.8rem; color: var(--ink-2); }}
+.tile .rank {{ font-size: 0.8rem; font-weight: 600; line-height: 1.3; white-space: nowrap; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--ink-2); }}
+.tile .rank small {{ font-size: 0.7rem; font-weight: 500; }}
+.tile.tier-high .rank, .tile.tier-low .rank {{ border-color: var(--tone); color: var(--tone); }}
+.tile.tier-top .rank, .tile.tier-bottom .rank {{ background: var(--tone); border-color: var(--tone); color: var(--page); }}
 .tile .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
+.tile .gauge {{ position: relative; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); margin: 8px 5px 6px; }}
+.tile .gauge::after {{ content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 10px; background: var(--muted); }}
+.tile .gauge i {{ position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: var(--tone); box-shadow: 0 0 0 2px var(--surface); z-index: 1; }}
+.tile.tier-mid .gauge i {{ background: var(--ink-2); }}
+.tile .tier {{ font-size: 0.85rem; font-weight: 600; color: var(--ink); }}
+.tile:not(.tier-mid) .tier {{ color: var(--tone); }}
 .tile .ctx {{ font-size: 0.82rem; color: var(--ink-2); }}
 .tile .state {{ font-weight: 600; color: var(--ink); }}
-.tile .pct {{ font-size: 0.82rem; color: var(--ink-2); }}
 .tile .foot {{ font-size: 0.75rem; color: var(--muted); margin-top: 2px; }}
-/* On a phone a tile is one row: words on the left, the value on the right. */
 @media (max-width: 600px) {{
   .tiles {{ grid-template-columns: minmax(0, 1fr); gap: 6px; }}
-  .tile {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 8px 12px; }}
-  .tile .label, .tile .ctx, .tile .pct, .tile .foot {{ grid-column: 1; }}
-  .tile .value {{ grid-column: 2; grid-row: 1 / span 4; font-size: 1.5rem; }}
+  .tile {{ padding: 8px 12px; }}
+  .tile .value {{ font-size: 1.5rem; }}
 }}
 .lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
@@ -404,6 +450,7 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
+footer .prov {{ margin: 0 0 6px; }}
 </style>
 <script src="{plotly_js_url()}" charset="utf-8"></script>
 </head>
@@ -417,7 +464,7 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 {_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
-{allocation_notes}<footer>{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
+{allocation_notes}<footer>{_provisional(reads[sentiment.DEFAULT_LOOKBACK])}{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>
 <script type="application/json" id="surveys-data">{_script_json(payload)}</script>
@@ -491,8 +538,6 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
       var state = tile.querySelector('.state');
       if (state) {{ state.textContent = t.state; }}
       tile.querySelector('.rest').textContent = t.context;
-      var pct = tile.querySelector('.pct');
-      if (pct && t.pct) {{ pct.textContent = t.pct; }}
       tile.querySelector('.foot').textContent = t.foot;
     }});
     var notes = document.getElementById('notes');

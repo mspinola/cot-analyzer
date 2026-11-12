@@ -50,11 +50,10 @@ def test_the_readings_strip_leads_with_each_surveys_number_and_its_index():
         assert tile["state"] == r["state"] == s.crowd_state(r["index"])
         assert tile["context"] == (f"index {r['index']:.0f} of 100 on its "
                                    f"{s.DEFAULT_LOOKBACK}-year range")
-        assert tile["foot"].startswith(st._date(r["date"]))
-        assert tile["foot"].endswith("provisional") == r["provisional"]
+        assert tile["foot"] == st._date(r["date"])       # never "provisional"
     page = st.render(reads, COLORS, PALETTE, clientside_js="")
     strip = page.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
-    assert strip.count('class="tile"') == len(tiles) == 2
+    assert strip.count('<div class="tile tier-') == len(tiles) == 2
     assert f'<div class="value">{tiles[0]["value"]}</div>' in strip
     # The sentence it replaced is gone from the page, and the toggle rewrites the tiles.
     assert 'id="summary"' not in page and "On the 3-year range index" not in page
@@ -219,20 +218,72 @@ def test_the_title_ticker_is_readable_on_the_page():
     assert "a:focus-visible { outline: 2px solid var(--ticker);" in page
 
 
-def test_each_survey_tile_carries_its_percentile_on_every_lookback():
+def test_each_survey_tile_shows_its_percentile_three_ways_in_its_tier():
+    """A badge at the top right, a gauge under the value and a line in words, all in
+    the tier's tone and the tile edged in it, so a glance reads the state (2026-11-12).
+    Full history, so the same on every lookback and drawn once, outside the toggle."""
     reads = _reads()
     html = st.render(reads, COLORS, PALETTE)
     strip = html.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
     payload = _payload(html)
     for key in ("naaim", "aaii"):
-        word, since = s.latest_percentile(reads[s.DEFAULT_LOOKBACK], key)
-        phrase = s.percentile_phrase(word, since)
-        assert f'<div class="pct">{phrase}</div>' in strip
-        # The toggle rewrites the tile; every lookback carries the same words.
-        assert {next(t["pct"] for t in payload[str(y)]["tiles"] if t["key"] == key)
-                for y in s.LOOKBACK_YEARS} == {phrase}
-    assert "tile.querySelector('.pct')" in html
-    assert ".tile .value { grid-column: 2; grid-row: 1 / span 4;" in html
+        pct, word, since = s.latest_rank(reads[s.DEFAULT_LOOKBACK], key)
+        tier, words = s.percentile_tier(pct, word)
+        tile = re.search(rf'<div class="tile tier-{tier}" data-key="{key}">.*?'
+                         r'<div class="foot">', strip, re.S).group(0)
+        assert f'<div class="rank" title="{s.percentile_phrase(word, since)}">' in tile
+        assert f'{word}<small> pctl</small></div>' in tile
+        assert f'<i style="left:{pct}%"></i>' in tile
+        assert f'<div class="tier">{words} since {since}</div>' in tile
+        assert {next(tuple(t["rank"]) for t in payload[str(y)]["tiles"] if t["key"] == key)
+                for y in s.LOOKBACK_YEARS} == {(pct, word, since)}
+    # The toggle rewrites value, state, context and date only.
+    assert "querySelector('.rank')" not in html and "querySelector('.tier')" not in html
+    assert f".tile.tier-top, .tile.tier-high {{ --tone: {st.TONE_HIGH}; }}" in html
+    assert f".tile.tier-bottom, .tile.tier-low {{ --tone: {st.TONE_LOW}; }}" in html
+    assert ".tile:not(.tier-mid) { border-left-color: var(--tone); }" in html
+
+
+@pytest.mark.parametrize("pct, word, want", [
+    (100, s.HIGHEST, (s.TIER_TOP, "Highest")), (1, s.LOWEST, (s.TIER_BOTTOM, "Lowest")),
+    (95, "95th", (s.TIER_TOP, "Near its highs")), (90, "90th", (s.TIER_TOP, "Near its highs")),
+    (89, "89th", (s.TIER_HIGH, "High")), (80, "80th", (s.TIER_HIGH, "High")),
+    (79, "79th", (s.TIER_MID, "In its usual range")), (50, "50th", (s.TIER_MID, "In its usual range")),
+    (21, "21st", (s.TIER_MID, "In its usual range")), (20, "20th", (s.TIER_LOW, "Low")),
+    (11, "11th", (s.TIER_LOW, "Low")), (10, "10th", (s.TIER_BOTTOM, "Near its lows")),
+    (2, "2nd", (s.TIER_BOTTOM, "Near its lows"))])
+def test_percentile_tiers(pct, word, want):
+    assert s.percentile_tier(pct, word) == want
+
+
+def test_a_record_reading_says_so_in_its_badge():
+    tile = {"key": "naaim", "label": "NAAIM", "value": "99.0", "state": "Mid-range",
+            "context": "c", "pct": "highest since 2006", "rank": (100, s.HIGHEST, 2006),
+            "foot": "f"}
+    out = st._tiles([tile])
+    assert '<div class="tile tier-top" data-key="naaim">' in out
+    assert '<div class="rank" title="highest since 2006">Highest</div>' in out
+    assert '<div class="tier">Highest since 2006</div>' in out
+
+
+def test_only_the_footer_names_the_provisional_weeks():
+    """Readers did not use the provisional marks, which were on every tile date, chart,
+    hover and note; since 2026-11-12 one footer sentence carries them."""
+    from tests.test_sentiment import _with_aaii_provisional, _with_provisional
+    for make in (_with_provisional, _with_aaii_provisional):
+        _, get_bars, _ = make()
+        reads = {y: s.build_read(get_bars, lookback_years=y) for y in s.LOOKBACK_YEARS}
+        html = st.render(reads, COLORS, PALETTE, clientside_js="")
+        body = html.split("<body>")[1]
+        before, footer = body.split("<footer>")[0], body.split("<footer>")[1].split("</footer>")[0]
+        assert "provisional" not in before.lower()
+        note = s.provisional_note(reads[s.DEFAULT_LOOKBACK])
+        import html as html_lib
+        assert footer.startswith(f'<p class="prov">{html_lib.escape(note)}</p>')
+        payload = _payload(html)
+        assert "provisional" not in json.dumps(payload).lower()
+    html = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    assert 'class="prov"' not in html.split("<footer>")[1]
 
 
 def test_the_page_matches_the_other_monitors_background_and_column():

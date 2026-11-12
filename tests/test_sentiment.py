@@ -587,7 +587,9 @@ def _with_provisional(n_official=180, n_prov=6, stale=True):
     return frames, get_bars, full
 
 
-def test_provisional_weeks_extend_the_official_series_and_are_flagged():
+def test_provisional_weeks_extend_the_official_series_and_only_the_footer_names_them():
+    """Since 2026-11-12 the summary, caption and dates no longer flag provisional weeks;
+    one footer sentence does (`provisional_note`)."""
     frames, get_bars, full = _with_provisional()
     read = s.build_read(get_bars)
     official_end = s.weekly(frames[s.NAAIM]["Close"]).index[-1]
@@ -595,10 +597,13 @@ def test_provisional_weeks_extend_the_official_series_and_are_flagged():
     # The stale week is not spliced in: the official reading stands.
     assert read.frame.loc[official_end, "naaim"] == full["Close"].iloc[179]
     assert read.frame.loc[read.provisional[-1], "naaim"] == full["Close"].iloc[185] + 1.0
-    assert "provisional" in s.summary(read) and "last 6 weeks" in s.summary(read)
+    # Filled by provisional weeks, NAAIM is not a quarter behind, so nothing says so.
+    assert "provisional" not in s.summary(read) and "quarter behind" not in s.summary(read)
     text = " ".join(s.caption(read))
-    assert "6 weeks from" in text and "provisional" in text
-    assert f"NAAIM {read.last['naaim']:%Y-%m-%d} (provisional)," in text
+    assert "provisional" not in text and f"NAAIM {read.last['naaim']:%Y-%m-%d}," in text
+    note = s.provisional_note(read)
+    assert note.startswith("Provisional data: NAAIM's newest 6 weeks are read off")
+    assert "AAII" not in note
 
 
 def test_provisional_weeks_never_stand_in_for_a_missing_official_series():
@@ -608,28 +613,28 @@ def test_provisional_weeks_never_stand_in_for_a_missing_official_series():
     assert read.provisional == () and "naaim" not in read.frame and s.NAAIM in read.awaiting
 
 
-def test_provisional_weeks_draw_dotted_hollow_and_faint():
+def test_provisional_weeks_draw_as_any_other_week():
     _, get_bars, _ = _with_provisional()
     read = s.build_read(get_bars)
     fig = s.price_sentiment_figure(read, COLORS, PALETTE)
     solid = next(t for t in fig.data if t.name == "NAAIM exposure")
-    dotted = next(t for t in fig.data if t.name == "NAAIM exposure (provisional)")
-    assert dotted.line.dash == "dot" and dotted.showlegend is False
-    assert pd.Timestamp(dotted.x[0]) == pd.Timestamp(solid.x[-1])   # the segments join
-    assert pd.Timestamp(solid.x[-1]) < read.provisional[0]
-    assert fig.layout.annotations[1].text.split("<br>")[0].endswith(" prov)")
+    assert not any("provisional" in (t.name or "") for t in fig.data)
+    assert solid.line.dash is None
+    assert pd.Timestamp(solid.x[-1]) == read.provisional[-1]      # one line to the end
+    assert "prov" not in fig.layout.annotations[1].text
     cols = s.columns_figure(read, COLORS, PALETTE)
     naaim = next(t for t in cols.data if t.name == "NAAIM against its average")
-    faint = pd.DatetimeIndex(naaim.x).isin(read.provisional)
-    assert faint.sum() == 6
-    np.testing.assert_allclose(np.asarray(naaim.marker.opacity)[faint], s.PROVISIONAL_OPACITY)
-    np.testing.assert_allclose(np.asarray(naaim.marker.opacity)[~faint], 1.0)
+    assert naaim.marker.opacity is None
+    assert "provisional" not in naaim.hovertemplate
 
 
 def test_without_provisional_weeks_nothing_is_flagged():
     _, get_bars = _fixtures()
     read = s.build_read(get_bars)
     assert read.provisional == () and "provisional" not in s.summary(read)
+    assert s.provisional_note(read) is None
+    # Without provisional weeks NAAIM's store really is a quarter behind, and says so.
+    assert "quarter behind" in s.summary(read)
     fig = s.price_sentiment_figure(read, COLORS, PALETTE)
     assert not any("provisional" in (t.name or "") for t in fig.data)
 
@@ -788,17 +793,15 @@ def test_the_title_reads_out_the_latest_survey_as_published():
     assert naaim == read.frame["naaim"].dropna().iloc[-1]
 
 
-def test_a_provisional_latest_week_draws_a_hollow_marker_and_hollow_dots():
+def test_a_provisional_latest_week_draws_a_filled_marker_and_filled_dots():
     _, get_bars, _ = _with_provisional()
     read = s.build_read(get_bars)
     fig = s.price_sentiment_figure(read, COLORS, PALETTE)
+    line = next(t for t in fig.data if t.name == "NAAIM exposure")
     marker = next(t for t in fig.data if t.name == "NAAIM exposure, latest")
-    assert marker.marker.color == vc.BACKGROUND_COLOR
+    assert marker.marker.color == line.line.color != vc.BACKGROUND_COLOR
     dots = next(t for t in fig.data if t.name == "NAAIM exposure, week as read")
-    hollow = pd.DatetimeIndex(dots.x).isin(read.provisional)
-    assert hollow.sum() == 6
-    assert set(np.asarray(dots.marker.color)[hollow]) == {vc.BACKGROUND_COLOR}
-    assert vc.BACKGROUND_COLOR not in set(np.asarray(dots.marker.color)[~hollow])
+    assert dots.marker.color == line.line.color
 
 
 # ── provisional AAII weeks ────────────────────────────────────────────────────
@@ -825,7 +828,7 @@ def _with_aaii_provisional(n_official=180, n_prov=2, stale=True, legs=(True, Tru
     return frames, get_bars, full
 
 
-def test_provisional_aaii_weeks_extend_the_official_legs_and_are_flagged():
+def test_provisional_aaii_weeks_extend_the_official_legs_and_only_the_footer_names_them():
     frames, get_bars, full = _with_aaii_provisional()
     read = s.build_read(get_bars)
     weeks = s.provisional_weeks(read, "aaii")
@@ -840,20 +843,19 @@ def test_provisional_aaii_weeks_extend_the_official_legs_and_are_flagged():
         (bull.iloc[181] - bear.iloc[181]) * 100)
     assert read.last["aaii"] == bull.index[181].date()
     summ = s.summary(read)
-    assert "AAII at" in summ and f"{read.last['aaii']:%Y-%m-%d}, provisional)" in summ
-    assert "AAII's last 2 weeks are provisional" in summ
+    assert "AAII at" in summ and f"{read.last['aaii']:%Y-%m-%d})" in summ
+    assert "provisional" not in summ
     text = " ".join(s.caption(read))
-    assert f"AAII {read.last['aaii']:%Y-%m-%d} (provisional)" in text
-    assert (f"AAII's last 2 weeks are provisional (through {read.last['aaii']:%Y-%m-%d})"
-            in text) and "within 0.1 point" in text
+    assert f"AAII {read.last['aaii']:%Y-%m-%d}" in text and "provisional" not in text
+    note = s.provisional_note(read)
+    assert "AAII's newest 2 weeks are typed from" in note and "within 0.1 point" in note
+    assert "NAAIM" not in note
 
 
 def test_one_provisional_aaii_week_reads_in_the_singular():
     _, get_bars, _ = _with_aaii_provisional(n_prov=1)
     read = s.build_read(get_bars)
-    assert "AAII's last week is provisional" in s.summary(read)
-    assert (f"AAII's last week is provisional ({read.last['aaii']:%Y-%m-%d})"
-            in " ".join(s.caption(read)))
+    assert "AAII's newest week is typed from" in s.provisional_note(read)
 
 
 @pytest.mark.parametrize("legs", [(True, False), (False, True)])
@@ -872,37 +874,24 @@ def test_provisional_aaii_weeks_never_stand_in_for_missing_official_legs():
     assert s.AAII_BEAR in read.awaiting
 
 
-def test_provisional_aaii_weeks_draw_dotted_hollow_and_faint():
+def test_provisional_aaii_weeks_draw_as_any_other_week():
     _, get_bars, _ = _with_aaii_provisional()
     read = s.build_read(get_bars)
     weeks = s.provisional_weeks(read, "aaii")
     fig = s.price_sentiment_figure(read, COLORS, PALETTE)
     label = "AAII bulls minus bears"
     solid = next(t for t in fig.data if t.name == label)
-    dotted = next(t for t in fig.data if t.name == f"{label} (provisional)")
-    assert dotted.line.dash == "dot"
-    assert pd.Timestamp(dotted.x[0]) == pd.Timestamp(solid.x[-1])   # the segments join
-    assert pd.Timestamp(solid.x[-1]) < weeks[0]
+    assert not any("provisional" in (t.name or "") for t in fig.data)
+    assert pd.Timestamp(solid.x[-1]) == weeks[-1]
     marker = next(t for t in fig.data if t.name == f"{label}, latest")
-    assert marker.marker.color == vc.BACKGROUND_COLOR
-    dots = next(t for t in fig.data if t.name == f"{label}, week as read")
-    hollow = pd.DatetimeIndex(dots.x).isin(weeks)
-    assert hollow.sum() == 2
-    assert set(np.asarray(dots.marker.color)[hollow]) == {vc.BACKGROUND_COLOR}
+    assert marker.marker.color == solid.line.color
     title = fig.layout.annotations[1].text
     assert f"AAII {s.latest_reading(read, 'aaii'):.1f}, index " in title
-    # The title's short spelling, as the votes card labels its provisional week.
-    assert title.endswith(" prov)") and "NAAIM" in title.split("<br>")[0]
-    assert "prov" not in title.split("<br>")[0]
-    # NAAIM's line has no dotted stretch of its own.
-    assert not any(t.name == "NAAIM exposure (provisional)" for t in fig.data)
+    assert title.endswith(f"({read.last['aaii']:%Y-%m-%d})") and "prov" not in title
     cols = s.columns_figure(read, COLORS, PALETTE)
     bars_ = next(t for t in cols.data if t.name == label)
-    faint = pd.DatetimeIndex(bars_.x).isin(weeks)
-    assert faint.sum() == 2
-    np.testing.assert_allclose(np.asarray(bars_.marker.opacity)[faint], s.PROVISIONAL_OPACITY)
-    np.testing.assert_allclose(np.asarray(bars_.marker.opacity)[~faint], 1.0)
-    assert list(np.asarray(bars_.customdata)[faint]) == [", provisional"] * 2
+    assert bars_.marker.opacity is None and bars_.customdata is None
+    assert "provisional" not in bars_.hovertemplate
 
 
 def test_without_provisional_aaii_weeks_the_columns_carry_no_flag():
@@ -910,7 +899,7 @@ def test_without_provisional_aaii_weeks_the_columns_carry_no_flag():
     read = s.build_read(get_bars)
     cols = s.columns_figure(read, COLORS, PALETTE)
     bars_ = next(t for t in cols.data if t.name == "AAII bulls minus bears")
-    assert bars_.marker.opacity is None and set(np.asarray(bars_.customdata)) == {""}
+    assert bars_.marker.opacity is None and bars_.customdata is None
 
 
 def test_an_autorange_is_clipped_to_the_data_so_max_then_1y_lands_on_it():

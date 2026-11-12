@@ -85,10 +85,12 @@ behind, plus the paid history file) ends a quarter back. Since 2026-11-06 the we
 after its end come from marketdata's NAAIM_EXPOSURE_PROVISIONAL, a hand-kept series:
 the first backfill read off a StockCharts chart by bar height (median 0.19 points from
 NAAIM's values over 249 shared weeks; StockCharts itself differs on a few weeks), then
-one exact label a week. They extend the official series, never stand in for it, and are
-drawn apart everywhere they appear: a dotted index segment, a hollow latest marker,
-faint columns, and "provisional" beside every date they set. marketdata drops each week
-as NAAIM publishes it, so the dotted stretch shortens on its own.
+one exact label a week. They extend the official series, never stand in for it (a
+percentile ranks them against official weeks only), and marketdata drops each week as
+NAAIM publishes it. Until 2026-11-12 they were drawn apart everywhere they appeared (a
+dotted index segment, a hollow latest marker, faint columns, "provisional" beside every
+date); readers did not use the distinction, so they are now drawn and dated as any other
+week, and one footer sentence (`provisional_note`) names them.
 
 **Provisional AAII weeks.** AAII's official legs are only as current as the member
 spreadsheet last downloaded by hand, while AAII's public results page shows each week
@@ -97,7 +99,7 @@ from marketdata's AAII_BULLISH_PROVISIONAL and AAII_BEARISH_PROVISIONAL, typed f
 that page one row a week (its rounded percentages, so bulls minus bears is within 0.1
 point of the spreadsheet's). The page dates a survey by its Wednesday; marketdata
 stores it on the Thursday after, where the spreadsheet reports it (21 of 21 shared
-weeks). Spliced on and drawn exactly as NAAIM's provisional weeks are, and dropped by
+weeks). Spliced on and treated exactly as NAAIM's provisional weeks are, and dropped by
 marketdata once a newer spreadsheet is built.
 
 **The commercials row is a contrast, not a pairing.** Added 2026-11-06 at the user's
@@ -211,11 +213,9 @@ from components.plot_colors import blend_over, hex_to_rgba
 
 NAAIM = "NAAIM_EXPOSURE"
 #: The weeks after the official series' end, hand-kept and NOT official (marketdata's
-#: NAAIM_EXPOSURE_PROVISIONAL). Spliced on after the official end and drawn apart:
-#: dashed index line, faint columns, "provisional" beside every date it sets.
+#: NAAIM_EXPOSURE_PROVISIONAL). Spliced on after the official end and drawn as any
+#: other week; the footer names them (`provisional_note`).
 NAAIM_PROVISIONAL = "NAAIM_EXPOSURE_PROVISIONAL"
-#: How much fainter a provisional NAAIM column draws than an official one.
-PROVISIONAL_OPACITY = 0.4
 AAII_BULL = "AAII_BULLISH"
 AAII_BEAR = "AAII_BEARISH"
 #: AAII's weeks after the member spreadsheet's end, typed from the public results page
@@ -563,13 +563,33 @@ def build_read(get_bars=None, lookback_years=DEFAULT_LOOKBACK, get_positioning=N
                          lookback_years=lookback_years, provisional_by=provisional)
 
 
-def _dated(read, key, short=False):
-    """A series' newest date for the page's words, flagged when it is provisional.
-    `short` is the chart title's spelling ("2026-11-04 prov", as the votes card labels
-    its provisional week), where a phone-width panel has no room for the word."""
-    if not provisional_weeks(read, key):
-        return f"{read.last[key]:%Y-%m-%d}"
-    return f"{read.last[key]:%Y-%m-%d}" + (" prov" if short else ", provisional")
+def _dated(read, key):
+    """A series' newest date for the page's words. Never flagged provisional: since
+    2026-11-12 the page says once, in its footer (`provisional_note`), where the newest
+    weeks come from, and draws and dates them as any other week. Readers did not use
+    the distinction, and it was on every date, title, hover and chart."""
+    return f"{read.last[key]:%Y-%m-%d}"
+
+
+def provisional_note(read):
+    """One sentence for the page's footer on the weeks that are provisional, or None
+    when none is. The only place the page names them (`_dated`)."""
+    # Counted, not dated: the AAII weeks are keyed by Friday while the page dates a
+    # reading by its stored observation, and two dates for one week would disagree.
+    parts = []
+    if read.provisional:
+        parts.append(f"NAAIM's newest {_weeks_word(len(read.provisional))} read off a "
+                     "StockCharts chart (within about 0.2 points of NAAIM's own values), "
+                     "since NAAIM's free table runs about a quarter behind")
+    aaii_late = provisional_weeks(read, "aaii")
+    if aaii_late:
+        parts.append(f"AAII's newest {_weeks_word(len(aaii_late))} typed from AAII's public "
+                     "results page (bulls minus bears within 0.1 point of the member "
+                     "spreadsheet)")
+    if not parts:
+        return None
+    return ("Provisional data: " + "; ".join(parts) + ". Each is replaced by the official "
+            "value when it is published.")
 
 
 #: What each survey's own number is called beside its index, so the two are never
@@ -751,42 +771,27 @@ def _index_line(fig, read, key, label, color, row):
     raw = f[[f"{key}_avg", key, f"{key}_raw_idx"]].reindex(idx.index).to_numpy()
     hover = ("%{y:.0f}  (" + f"{AVERAGE_WEEKS}-wk avg " + "%{customdata[0]:.1f}; "
              "week %{customdata[1]:.1f}, index %{customdata[2]:.0f})")
-    late_weeks = provisional_weeks(read, key)
-    prov = idx.index.isin(late_weeks)
-    solid = ~prov
+    # Provisional weeks are drawn as every other week: the footer says which they are
+    # (`provisional_note`). Until 2026-11-12 they were dotted, hollow and faint.
     dots = f[f"{key}_raw_idx"].dropna()
     if not dots.empty:
-        # Under the line, faint, hollow where provisional. The line's hover already
-        # carries the week's reading, so the dots add none.
-        dprov = dots.index.isin(late_weeks)
+        # Under the line, faint. The line's hover already carries the week's reading,
+        # so the dots add none.
         fig.add_trace(go.Scatter(
             x=dots.index, y=dots, mode="markers", name=f"{label}, week as read",
             legendgroup=key, showlegend=False, hoverinfo="skip", opacity=RAW_DOT_OPACITY,
-            marker=dict(size=RAW_DOT_SIZE, color=np.where(dprov, vc.BACKGROUND_COLOR, color),
-                        line=dict(color=color, width=np.where(dprov, 1, 0)))),
+            marker=dict(size=RAW_DOT_SIZE, color=color, line=dict(width=0))),
             row=row, col=1)
     fig.add_trace(go.Scatter(
-        x=idx.index[solid], y=idx[solid], mode="lines", line=dict(color=color, width=1.8),
-        name=label, legendgroup=key, customdata=raw[solid],
+        x=idx.index, y=idx, mode="lines", line=dict(color=color, width=1.8),
+        name=label, legendgroup=key, customdata=raw,
         hovertemplate=hover + "<extra>" + label + "</extra>"), row=row, col=1)
-    if prov.any():
-        # Dashed from the last official week, so the two segments join.
-        first = int(np.argmax(prov))
-        seg = slice(max(first - 1, 0), len(idx))
-        fig.add_trace(go.Scatter(
-            x=idx.index[seg], y=idx.iloc[seg], mode="lines",
-            line=dict(color=color, width=1.8, dash="dot"), name=f"{label} (provisional)",
-            legendgroup=key, showlegend=False, customdata=raw[seg],
-            hovertemplate=hover + "<extra>" + label + ", provisional</extra>"),
-            row=row, col=1)
     # The latest week's marker, on the newest raw dot (the reading the title names, not
-    # the half-week-late average), hollow when that reading is provisional.
+    # the half-week-late average).
     at, y = (dots.index[-1], dots.iloc[-1]) if not dots.empty else (idx.index[-1], idx.iloc[-1])
-    late = at in late_weeks
-    fill = vc.BACKGROUND_COLOR if late else color
-    edge = color if late else vc.BACKGROUND_COLOR
     fig.add_trace(go.Scatter(x=[at], y=[y], mode="markers", name=f"{label}, latest",
-                             marker=dict(size=8, color=fill, line=dict(color=edge, width=1.5)),
+                             marker=dict(size=8, color=color,
+                                         line=dict(color=vc.BACKGROUND_COLOR, width=1.5)),
                              cliponaxis=False, hoverinfo="skip", showlegend=False),
                   row=row, col=1)
 
@@ -811,12 +816,11 @@ def _index_title(read):
         value, index = latest_reading(read, key), latest_index(read, key)
         if value is not None and index is not None:
             parts.append(f"{label} {value:.1f}, index {index:.0f} "
-                         f"({_dated(read, key, short=True)})")
+                         f"({_dated(read, key)})")
     # One survey a line, no "Latest:" lead: on one line the pair ran past a phone-width
     # panel (395 pixels where 253 fit; the index-valued title before it took 373),
     # cutting AAII off, and with the lead the NAAIM line alone still ran 5 over. The
     # dates say these are the newest readings; the card subtitle says it in words.
-    # "prov", not "provisional": with the index added the long word ran past the panel.
     return "<br>".join(parts) if parts else "Sentiment range index"
 
 
@@ -883,12 +887,9 @@ def price_sentiment_figure(read, colors, palette):
     return fig
 
 
-def _columns(fig, s, label, color, row, hovertemplate, customdata=None, faint=None):
-    """One series as weekly columns, the way get_net_pos_plot draws a COT group.
-    `faint` marks columns to draw at PROVISIONAL_OPACITY of the others."""
+def _columns(fig, s, label, color, row, hovertemplate, customdata=None):
+    """One series as weekly columns, the way get_net_pos_plot draws a COT group."""
     marker = dict(color=color, line=dict(color=color, width=0.5))
-    if faint is not None and np.any(faint):
-        marker["opacity"] = np.where(faint, PROVISIONAL_OPACITY, 1.0)
     fig.add_trace(go.Bar(x=s.index, y=s, name=label, opacity=COLUMN_OPACITY,
                          marker=marker,
                          showlegend=False, customdata=customdata,
@@ -951,18 +952,13 @@ def columns_figure(read, colors, palette):
     if "naaim_dev" in f:
         dev = f["naaim_dev"].dropna().round(1)
         raw = f[["naaim", "naaim_trail"]].reindex(dev.index).round(1).to_numpy()
-        prov = dev.index.isin(read.provisional)
-        raw = np.column_stack([raw, np.where(prov, ", provisional", "")])
         _columns(fig, dev, "NAAIM against its average", sent["naaim"], 2,
-                 "%{y}  (exposure %{customdata[0]}%{customdata[2]}, "
-                 f"{n}Y average " + "%{customdata[1]})<extra>NAAIM</extra>", raw,
-                 faint=prov)
+                 "%{y}  (exposure %{customdata[0]}, "
+                 f"{n}Y average " + "%{customdata[1]})<extra>NAAIM</extra>", raw)
     if "aaii" in f:
         aaii = f["aaii"].dropna().round(1)
-        prov = aaii.index.isin(provisional_weeks(read, "aaii"))
         _columns(fig, aaii, "AAII bulls minus bears", sent["aaii"], 3,
-                 "%{y} pts%{customdata}<extra>AAII bulls minus bears</extra>",
-                 np.where(prov, ", provisional", ""), faint=prov)
+                 "%{y} pts<extra>AAII bulls minus bears</extra>")
     if "comm" in f:
         _columns(fig, f["comm"].dropna().round(1), "ES commercials", palette[COMM_SLOT], 4,
                  "%{y}% of OI<extra>ES commercials</extra>")
@@ -1068,35 +1064,68 @@ def official_history(read, key):
     return s[~s.index.isin(late)] if late else s
 
 
-def latest_percentile(read, key):
-    """(word, first year) for the newest reading against every official week since the
-    series began, or None. Full history, not the lookback: the index already says where
-    the week sits in its recent range, and this answers how unusual it is against all
-    of it. Measured 2026-11-12 the two can disagree a lot (NAAIM 78.6: index 64 on three
-    years, 62nd percentile since 2006, 34th over the last three years)."""
+def latest_rank(read, key):
+    """(percentile 1-100, word, first year) for the newest reading against every
+    official week since the series began, or None. Full history, not the lookback: the
+    index already says where the week sits in its recent range, and this answers how
+    unusual it is against all of it. Measured 2026-11-12 the two can disagree a lot
+    (NAAIM 78.6: index 64 on three years, 62nd percentile since 2006, 34th over the last
+    three years)."""
     raw, history = latest_reading(read, key), official_history(read, key)
     if raw is None or history is None or history.empty:
         return None
-    return percentile_word(history.to_numpy(), raw), history.index[0].year
+    h = history.to_numpy()
+    return percentile_of(h, raw), percentile_word(h, raw), history.index[0].year
+
+
+def latest_percentile(read, key):
+    """(word, first year): `latest_rank` without the number, or None."""
+    rank = latest_rank(read, key)
+    return rank[1:] if rank else None
+
+
+#: A percentile's tier on the tiles, extremes first: (key, words). The key picks the
+#: tile's colour (warm toward the history's highs, cool toward its lows, none in
+#: between, strongest past 90 and 10), the words its one-line reading ("Near its lows
+#: since 1987"). Temperature, not red and green: the tiles say how unusual a reading
+#: is, and a high one is not a call to sell any more than a red bar is.
+TIER_TOP, TIER_HIGH, TIER_MID, TIER_LOW, TIER_BOTTOM = "top", "high", "mid", "low", "bottom"
+
+
+def percentile_tier(pct, word):
+    """(tier key, words) for a reading at percentile `pct` (`word` its percentile word,
+    HIGHEST or LOWEST for a record)."""
+    if word == HIGHEST:
+        return TIER_TOP, "Highest"
+    if word == LOWEST:
+        return TIER_BOTTOM, "Lowest"
+    if pct >= 90:
+        return TIER_TOP, "Near its highs"
+    if pct >= 80:
+        return TIER_HIGH, "High"
+    if pct <= 10:
+        return TIER_BOTTOM, "Near its lows"
+    if pct <= 20:
+        return TIER_LOW, "Low"
+    return TIER_MID, "In its usual range"
 
 
 def readings(read):
     """Each survey's newest reading for the published page's tiles, in SERIES order:
     its own number as published, its index on this read's lookback and the crowd state
     that index puts it in, its percentile against every official week since the series
-    began (`pct`, a phrase, or None), the stored date and whether that week is
-    provisional. A survey that is not in is left out."""
+    began (`pct`, a phrase, or None; `rank`, `latest_rank`'s tuple, or None) and the
+    stored date. A survey that is not in is left out."""
     out = []
     for key, label in SERIES:
         raw, index = latest_reading(read, key), latest_index(read, key)
         if raw is None or index is None:
             continue
-        pct = latest_percentile(read, key)
+        rank = latest_rank(read, key)
         out.append({"key": key, "label": label, "value": raw, "index": index,
                     "state": crowd_state(index),
-                    "pct": percentile_phrase(*pct) if pct else None,
-                    "date": read.last[key],
-                    "provisional": bool(len(provisional_weeks(read, key)))})
+                    "pct": percentile_phrase(*rank[1:]) if rank else None,
+                    "rank": rank, "date": read.last[key]})
     return out
 
 
@@ -1118,22 +1147,16 @@ def summary(read):
                      f"{_dated(read, key)})")
     if not parts:
         return None
-    if read.provisional:
-        bound = (f" NAAIM's last {len(read.provisional)} weeks are provisional, hand-kept "
-                 "until NAAIM publishes them.")
-    elif "naaim" in read.last:
-        bound = " NAAIM's store runs about a quarter behind the others."
-    else:
-        bound = ""
-    aaii_late = provisional_weeks(read, "aaii")
-    if aaii_late:
-        bound += (f" AAII's last {_weeks_word(len(aaii_late))} provisional, from AAII's "
-                  "public page until the member spreadsheet is rebuilt.")
+    # Provisional weeks fill NAAIM's quarter-long gap; without them the reading is old,
+    # and that the reader does need to know. Which weeks are provisional is the
+    # footer's to say (`provisional_note`).
+    bound = (" NAAIM's store runs about a quarter behind the others."
+             if "naaim" in read.last and not read.provisional else "")
     return (f"On the {read.lookback_years}-year range index: {', '.join(parts)}." + bound)
 
 
 def _weeks_word(n):
-    """'week is' or 'N weeks are', for a sentence about the newest provisional weeks."""
+    """'week is' or 'N weeks are', for the footer's sentence on provisional weeks."""
     return "week is" if n == 1 else f"{n} weeks are"
 
 
@@ -1142,8 +1165,7 @@ def caption(read, local=True):
     `local=False` is the published copy (sentiment_static), which drops the local-only
     line: that copy IS the publication."""
     names = {"spy": "SPY", "naaim": "NAAIM", "aaii": "AAII", "comm": "ES COT"}
-    flag = {k: " (provisional)" for k in names if provisional_weeks(read, k)}
-    dated = ", ".join(f"{names[k]} {read.last[k]:%Y-%m-%d}{flag.get(k, '')}"
+    dated = ", ".join(f"{names[k]} {read.last[k]:%Y-%m-%d}"
                       for k in names if k in read.last)
     parts = []
     if dated:
@@ -1154,31 +1176,14 @@ def caption(read, local=True):
         f"{_YEARS_WORD.get(read.lookback_years, f'{read.lookback_years} years')}. "
         "When an old high or low leaves that window the scale shifts under the line, as "
         "it does for the COT index.")
+    # Which weeks are provisional, and from where, is the footer's (`provisional_note`).
     if read.provisional:
-        parts.append(
-            f"NAAIM's official series runs about a quarter behind: its free table is "
-            f"delayed and current readings are subscriber-only. The {len(read.provisional)} "
-            f"weeks from {read.provisional[0]:%Y-%m-%d} are provisional, read off a "
-            "StockCharts chart or its label (about 0.2 points from NAAIM's own values "
-            "where both exist, with a few weeks where StockCharts differs), drawn dotted "
-            "and faint, and replaced by NAAIM's values as they are published. Every point "
-            "sits on the Friday of the week it became public.")
+        parts.append("Every NAAIM point sits on the Friday of the week it became public.")
     else:
         parts.append(
             "NAAIM in the store runs about a quarter behind: its free table is delayed and "
             "current readings are subscriber-only. Every point sits on the Friday of the "
             "week it became public.")
-    aaii_late = provisional_weeks(read, "aaii")
-    if aaii_late:
-        n = len(aaii_late)
-        # Dated by the stored observation, as the title is, not by the week's Friday.
-        through = "" if n == 1 else "through "
-        parts.append(
-            f"AAII's last {_weeks_word(n)} provisional ({through}{read.last['aaii']:%Y-%m-%d}): "
-            "typed from AAII's public results page, "
-            "whose rounded percentages put bulls minus bears within 0.1 point of the member "
-            "spreadsheet's, drawn hollow and faint, and replaced when the spreadsheet is "
-            "next downloaded.")
     parts.append(PRICE_NOTE)
     parts.append(STUDY_NOTE)
     if read.lookback_years != DEFAULT_LOOKBACK:

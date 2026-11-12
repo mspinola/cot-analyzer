@@ -326,9 +326,10 @@ def test_the_published_page_names_the_allocation_survey_outside_its_cards():
                                 f"its average since {alloc.since.year}"),
                     "pct": sentiment.percentile_phrase(alloc.latest_pct["stocks"][1],
                                                        alloc.since.year),
+                    "rank": (*alloc.latest_pct["stocks"], alloc.since.year),
                     "foot": f"{alloc.last:%b %Y}"}
     strip = html.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
-    assert strip.count('class="tile"') == 3
+    assert strip.count('<div class="tile tier-') == 3
     assert strip.index('data-key="aaii"') < strip.index(f'data-key="{st.STOCKS_KEY}"')
     assert f'<div class="value">{tile["value"]}</div>' in strip
     notes = html.split(f'<div class="notes" id="{st.ALLOCATION_NOTES_ID}">')[1].split("</div>")[0]
