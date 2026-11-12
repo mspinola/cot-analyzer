@@ -115,9 +115,12 @@ GREEN_KEYS = ("bullish", "stocks")
 TONED_KEYS = GREEN_KEYS + ("bearish", "bonds")
 LIGHT_INK = "#FFFFFF"
 #: Pixels each half adds to its rows: the title above (BLOCK_TOP), the margins, and a
-#: few for the category axis's half-row padding. 44 (top 26, bottom 4) until 2026-11-12.
-FIGURE_CHROME = 30
-BLOCK_TOP = 22
+#: few for the category axis's half-row padding. 44 (top 26, bottom 4), then 30 (top
+#: 22), both 2026-11-12. ROW_HEIGHT stays 22: measured that day, 20px rows had Plotly
+#: shrink the numbers inside the bars to about 8px and 18px rows hid them all, so the
+#: trims come from the margins and the card header instead.
+FIGURE_CHROME = 24
+BLOCK_TOP = 18
 #: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all four from
 #: VOTES_ALL_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
 #: date labels and every segment's text (all 18 showed at 309 on a phone, and at 332 a
