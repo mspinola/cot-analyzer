@@ -286,19 +286,20 @@ def stock_gap_figure(alloc, colors):
     return fig
 
 
-PERCENTILE_TITLE = "AAII allocation: stocks, bonds, cash"
+PERCENTILE_NAME = "AAII allocation"
 
 
-def latest_figure(alloc, colors, title=PERCENTILE_TITLE):
+def latest_figure(alloc, colors, name=PERCENTILE_NAME):
     """The newest month's three shares as percentiles of every month since 1987, of the
     last three years' and of the last year's (`aaii_votes.dots_figure`, the votes
     block's layout). On the percentiles card since 2026-11-12."""
     newest = alloc.recent.iloc[0]
     rows = [(f"Since {alloc.since:%Y}", alloc.latest_pct, f"every month since {alloc.since:%Y}")]
     rows += [(label, pcts, f"the {label.lower()}") for label, pcts in alloc.window_pct]
+    legs, fills = [(key, label) for key, _, label in LEGS], leg_colors(colors)
     return aaii_votes.dots_figure(
-        rows, [(key, label) for key, _, label in LEGS], leg_colors(colors),
-        {key: f"{newest[key]:.1f}%" for key, *_ in LEGS}, title)
+        rows, legs, fills, {key: f"{newest[key]:.1f}%" for key, *_ in LEGS},
+        aaii_votes.legend_title(name, legs, fills))
 
 
 def figures(alloc, colors):

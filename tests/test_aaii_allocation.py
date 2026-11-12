@@ -406,7 +406,8 @@ def test_the_percentile_block_ranks_the_newest_month_over_three_histories():
         assert list(dot.y) == [f"Since {alloc.since:%Y}", "Last 3 years", "Last year"]
         assert dot.marker.color == fills[key]
         assert dot.customdata[0].endswith(f"every month since {alloc.since:%Y}")
-    assert fig.layout.annotations[0].text == aa.PERCENTILE_TITLE
+    assert fig.layout.annotations[0].text == "AAII allocation: " + ", ".join(
+        f'<span style="color:{fills[k]}"><b>{k}</b></span>' for k in ("stocks", "bonds", "cash"))
 
 
 def test_the_app_page_leads_with_the_current_readings(monkeypatch):

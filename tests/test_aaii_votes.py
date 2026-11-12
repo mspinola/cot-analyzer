@@ -417,7 +417,10 @@ def test_the_percentile_block_has_a_row_per_history_and_a_dot_per_vote():
         assert f"{label} {newest[key]:.1f}%" in dot.customdata[0]
         assert dot.customdata[0].endswith(f"every week since {votes.since:%Y}")
         assert dot.customdata[2].endswith("the last year")
-    assert fig.layout.annotations[0].text == av.PERCENTILE_TITLE
+    # The block names each vote in its dots' colour: out of its card, nothing else does.
+    assert fig.layout.annotations[0].text == "AAII votes: " + ", ".join(
+        f'<span style="color:{fills[k]}"><b>{w}</b></span>'
+        for k, w in (("bullish", "bullish"), ("neutral", "neutral"), ("bearish", "bearish")))
     # The median dotted, and no other line that would read as a zone.
     assert [(sh.x0, sh.line.dash) for sh in fig.layout.shapes] == [(50, "dot")]
 
