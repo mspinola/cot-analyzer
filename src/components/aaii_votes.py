@@ -88,7 +88,11 @@ HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average si
                "the late 1980s to 28% in the 2020s, so a low neutral percentile partly "
                "reflects the drift.")
 
-ROW_HEIGHT = 30             # pixels per bar row
+#: Pixels per bar row. 30 until 2026-11-12, when the three grid cards (NAAIM, votes,
+#: allocation) took 428px each at 1280 and did not fit a screen together ("can compress
+#: vertically a bit to get more on a single screen"). At 22 a bar is 16.5px (bargap
+#: 0.25), still room for the 11px text inside it.
+ROW_HEIGHT = 22
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
 BAR_OPACITY = 0.85
 #: Text inside each segment: dark on the bright green and red, white on the grey.
@@ -100,8 +104,10 @@ GREEN_KEYS = ("bullish", "stocks")
 #: Every segment filled with a toned-down colour, the red and the bonds blue included.
 TONED_KEYS = GREEN_KEYS + ("bearish", "bonds")
 LIGHT_INK = "#FFFFFF"
-#: Pixels each half adds to its rows: the title above, the margins.
-FIGURE_CHROME = 44
+#: Pixels each half adds to its rows: the title above (BLOCK_TOP), the margins, and a
+#: few for the category axis's half-row padding. 44 (top 26, bottom 4) until 2026-11-12.
+FIGURE_CHROME = 30
+BLOCK_TOP = 22
 #: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all four from
 #: VOTES_ALL_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
 #: date labels and every segment's text (all 18 showed at 309 on a phone, and at 332 a
@@ -259,7 +265,7 @@ def _finish(fig, title, rows):
     """Layout for one half: fixed 0 to 100, no zoom, rows read top down, a left title."""
     fig.update_layout(
         barmode="stack", bargap=0.25, height=ROW_HEIGHT * rows + FIGURE_CHROME,
-        margin=dict(l=8, r=8, t=26, b=4),
+        margin=dict(l=8, r=8, t=BLOCK_TOP, b=2),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=vc.TEXT_COLOR, size=11), hovermode="closest",
         hoverlabel=dict(bgcolor="#0e1116", bordercolor=vc.GRID_COLOR,

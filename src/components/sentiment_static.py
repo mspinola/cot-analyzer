@@ -448,13 +448,13 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
   font-size: 10px; padding: 2px 8px; cursor: pointer; }}
 .lookback button[aria-pressed="true"] {{ border-color: var(--ink); }}
-.card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }}
+.card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
 .card .sub {{ font-size: 0.8rem; margin-bottom: 6px; }}
-.card .how {{ font-size: 0.8rem; margin: -2px 0 8px; }}
+.card .how {{ font-size: 0.8rem; margin: -2px 0 4px; }}
 .card .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
 .card .how p {{ margin: 4px 0 0; }}
-.votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
+.votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
