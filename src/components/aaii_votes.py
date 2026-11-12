@@ -5,9 +5,10 @@ page (local `/sentiment`) and its published copy (surveys.bluemagicai.com).
 The index chart above it turns AAII into one number (bulls minus bears, placed on a
 trailing range). This card keeps the three shares apart, because a bearish week with
 few neutrals and one with many read differently, and the spread alone cannot say
-which. Three blocks, each its own figure in a wrapping grid (one figure with several
+which. Four blocks, each its own figure in a wrapping grid (one figure with several
 columns cannot reflow, and stacked on a desktop the bars ran the page's full width,
-all colour): all three across on a wide page, two on a medium one, stacked on a phone.
+all colour): all four across on the widest page, two on a medium one, stacked on a
+phone.
 
 1. **Recent weeks.** The last four surveys, newest on top, each a bar split into the
    three shares (they sum to 100, within 0.2 for rounding in AAII's file).
@@ -17,9 +18,17 @@ all colour): all three across on a wide page, two on a medium one, stacked on a 
    as bars on a fixed +-50 scale (red below zero, green above), against a dashed line
    at its official average since 1987. Added 2026-11-09 at the user's request; the
    weekly columns lower on the page chart the same spread week by week.
+4. **Percentile.** The newest week's three shares, each a dot on a 0-100 track at its
+   percentile of every official week since 1987 (`sentiment.percentile_of`: the share
+   of weeks at or below it), "highest" or "lowest" past every one. Added 2026-11-12 at
+   the user's request. Full history, not the page's lookback: the index already places
+   a week in its recent range, and this says how unusual it is against all of it. A
+   dotted median and no 10/90 lines, which would read as zones nothing has tested.
+   Neutral has drifted (decade means 40.7% in 1987-89, 28.0% in the 2020s; bearish
+   27.3% and 36.7%), so its percentile partly measures the drift; HOW_TO_READ says so.
 
 Added 2026-11-09 at the user's request, after AAII's own results page, which shows the
-same two blocks. The store reproduces that page: the four recent weeks match row for
+first two blocks. The store reproduces that page: the four recent weeks match row for
 row, the three one-year highs match to the decimal (49.5, 31.4, 53.3 on the day), and
 the averages since 1987 come out 37.6 / 30.9 / 31.5 against AAII's 37.5 / 31.0 / 31.5.
 AAII's own averages are presumably taken over a slightly different set of weeks; these
@@ -43,7 +52,7 @@ of every stored week; the high is the largest share in the 365 days ending on th
 newest week (53 surveys). Nothing is smoothed or indexed. This repo computes no metrics
 of its own, and none of this is one: it is the survey's own numbers, rearranged.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import numpy as np
@@ -72,10 +81,14 @@ TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
             "on stocks over the next six months.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
-               "1987 with each vote's highest week in the last year; and each recent "
+HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average since "
+               "1987 with each vote's highest week in the last year; each recent "
                "week's bulls minus bears against its average since 1987 (dashed), with "
-               "its percentile since 1987 in brackets.")
+               "its percentile since 1987 in brackets; and the newest week's three "
+               "shares as percentiles of every week since 1987 (the dotted line is the "
+               "median). Neutral has drifted down over the decades, from about 41% in "
+               "the late 1980s to 28% in the 2020s, so a low neutral percentile partly "
+               "reflects the drift.")
 
 ROW_HEIGHT = 30             # pixels per bar row
 NEUTRAL_COLOR = "#6b7280"   # grey that keeps white text readable
@@ -93,13 +106,15 @@ LIGHT_INK = "#FFFFFF"
 PROVISIONAL_TEXT = vc.BRIGHTER_TEXT_COLOR
 #: Pixels each half adds to its rows: the title above, the margins.
 FIGURE_CHROME = 44
-#: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all three from
-#: VOTES_THREE_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
+#: The card's blocks: two side by side from VOTES_SIDE_BY_SIDE_MIN_PX, all four from
+#: VOTES_ALL_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
 #: date labels and every segment's text (all 18 showed at 309 on a phone, and at 332 a
-#: block at 768); three across at 768 would give each about 220. Both are Bootstrap's
-#: md and xl breakpoints, so the app page's columns break at the same widths.
+#: block at 768); three across at 768 would give each about 220. Four across waits for
+#: 1400 (the page's widest, about 315 a block), where three had gone across from 1200:
+#: four at 1200 gave each about 265. Both are Bootstrap's md and xxl breakpoints, so the
+#: app page's columns break at the same widths.
 VOTES_SIDE_BY_SIDE_MIN_PX = 768
-VOTES_THREE_ACROSS_MIN_PX = 1200
+VOTES_ALL_ACROSS_MIN_PX = 1400
 #: The spread block's fixed scale, points either side of zero: the same length means the
 #: same spread every week. AAII's spread has run -54.0 (1990-10-19) to +62.9 (2003-06-26);
 #: 0.68% of weeks fall outside +-50 and draw pinned to the edge with their true value
@@ -117,7 +132,10 @@ class Votes:
     `since`: the first stored week. `highs`: leg -> (percent, date) over the last
     HIGH_DAYS. `last`: the newest week shown. `provisional`: the dates in `recent` that
     are provisional, oldest first. `spread_pct`: each `recent` row's bulls minus bears
-    as a percentile (1-100) of every official week's, in `recent`'s order."""
+    as a percentile (1-100) of every official week's, in `recent`'s order.
+    `latest_pct`: vote -> (percentile 1-100, word) for the newest row's share against
+    every official week's (`sentiment.percentile_of`, `sentiment.percentile_word`:
+    "96th", or "highest" / "lowest"), the percentile block's."""
     recent: pd.DataFrame
     average: pd.Series
     since: date
@@ -125,6 +143,7 @@ class Votes:
     last: date
     provisional: tuple = ()
     spread_pct: tuple = ()
+    latest_pct: dict = field(default_factory=dict)
 
 
 def legs(get_bars=None):
@@ -175,7 +194,8 @@ def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None)
     rows = shown.iloc[::-1].head(recent)
     return Votes(recent=rows, average=frame.mean(),
                  since=frame.index[0].date(), highs=highs, last=shown.index[-1].date(),
-                 provisional=late, spread_pct=spread_percentiles(frame, rows))
+                 provisional=late, spread_pct=spread_percentiles(frame, rows),
+                 latest_pct=latest_percentiles(frame, rows.iloc[0]))
 
 
 def spread_percentiles(official, rows):
@@ -184,15 +204,21 @@ def spread_percentiles(official, rows):
     official weeks but never joins them, as for the average and the highs."""
     history = (official["bullish"] - official["bearish"]).to_numpy()
     values = (rows["bullish"] - rows["bearish"]).to_numpy()
-    return tuple(max(1, int(round(float((history <= v).mean()) * 100))) for v in values)
+    return tuple(sentiment.percentile_of(history, v) for v in values)
 
 
-def ordinal(n):
-    """1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st, 22nd ... 100th."""
-    if 10 <= n % 100 <= 20:
-        return f"{n}th"
-    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
+def latest_percentiles(official, row, legs=LEGS):
+    """Each leg of `row` (the newest, perhaps provisional) as a percentile word of
+    every OFFICIAL row's, `sentiment.percentile_word`."""
+    out = {}
+    for key, *_ in legs:
+        history, value = official[key].to_numpy(), float(row[key])
+        out[key] = (sentiment.percentile_of(history, value),
+                    sentiment.percentile_word(history, value))
+    return out
+
+
+ordinal = sentiment.ordinal
 
 
 def read(get_bars=None):
@@ -359,8 +385,66 @@ def _spread_labels(spread, pct):
     return [f"{v:+.1f} ({ordinal(p)})" for v, p in zip(spread, pct)]
 
 
+#: The percentile block: a faint 0-100 track per row, the reading a dot on it in its
+#: leg's colour, the median a dotted line. No 10/90 or 20/80 lines: those would read as
+#: zones, and nothing on the page has tested a percentile threshold.
+TRACK_ALPHA = 0.18
+TRACK_WIDTH = 6
+MARKER_SIZE = 13
+#: Past this percentile the label sits left of its dot, so it stays inside the block.
+LABEL_FLIP = 75
+#: A little past 0 and 100, so a dot at either end is not cut in half.
+PERCENTILE_X_RANGE = [-3, 103]
+
+
+def percentile_figure(rows, fills, title, n_rows, since, provisional=False):
+    """The percentile block shared with the allocation card. `rows`: (key, label, value
+    text, percentile 1-100, word) per leg, top down; `fills`: key -> the leg's colour;
+    `n_rows`: the height in rows, the card's other blocks', so the blocks line up;
+    `since`: the history's first year, for the hover. A `provisional` reading draws
+    its dots faint, as the recent rows draw a provisional week; the title has no room
+    to say so (a dated title ran 25px past its block four across at 1440)."""
+    track = hex_to_rgba(vc.TEXT_COLOR, TRACK_ALPHA)
+    names = [f"{label} {value}" for _, label, value, _, _ in rows]
+    fig = go.Figure()
+    for name in names:
+        fig.add_trace(go.Scatter(x=[0, 100], y=[name, name], mode="lines",
+                                 line=dict(color=track, width=TRACK_WIDTH),
+                                 hoverinfo="skip", showlegend=False))
+    for (key, label, value, pct, word), name in zip(rows, names):
+        phrase = sentiment.percentile_phrase(word, since) + (
+            " (provisional)" if provisional else "")
+        fig.add_trace(go.Scatter(
+            x=[pct], y=[name], mode="markers+text", text=[word],
+            textposition="middle left" if pct > LABEL_FLIP else "middle right",
+            textfont=dict(size=11, color=vc.BRIGHTER_TEXT_COLOR),
+            marker=dict(color=fills[key], size=MARKER_SIZE,
+                        opacity=sentiment.PROVISIONAL_OPACITY if provisional else 1.0,
+                        line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1)),
+            hovertemplate=f"{label} {value}: {phrase}<extra></extra>",
+            cliponaxis=False, showlegend=False))
+    fig.add_vline(x=50, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"))
+    _finish(fig, title, n_rows)
+    fig.update_xaxes(range=PERCENTILE_X_RANGE)
+    return fig
+
+
+def latest_figure(votes, colors):
+    """The newest week's three shares, each as a percentile of every official week's
+    since the series began: where AAII's own card shows a raw share against a bar, this
+    says whether the share is unusual. The newest week may be provisional."""
+    newest = votes.recent.iloc[0]
+    rows = [(key, label, f"{newest[key]:.1f}%", *votes.latest_pct[key])
+            for key, _, label in LEGS]
+    # Not dated: the recent block's top row is this week, dated and tagged there.
+    return percentile_figure(
+        rows, leg_colors(colors), f"Newest week, percentile since {votes.since:%Y}",
+        len(votes.recent), votes.since.year,
+        provisional=votes.recent.index[0] in votes.provisional)
+
+
 def figures(votes, colors):
-    """The card's three blocks, (recent, history, spread), laid out by each page at
-    VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_THREE_ACROSS_MIN_PX."""
+    """The card's four blocks, (recent, history, spread, latest), laid out by each page
+    at VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_ALL_ACROSS_MIN_PX."""
     return (recent_figure(votes, colors), history_figure(votes, colors),
-            spread_figure(votes, colors))
+            spread_figure(votes, colors), latest_figure(votes, colors))

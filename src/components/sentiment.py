@@ -1015,18 +1015,87 @@ def crowd_state(index):
     return STATE_WASHED if shown <= LO else STATE_MID
 
 
+def percentile_of(history, value):
+    """`value` as a percentile of `history`: the share of it at or below `value`, 1 to
+    100 (the votes card's convention since #182, and the definition
+    `cotmetrics.exposure.expanding_pct_rank` uses). NaNs in `history` are ignored."""
+    h = np.asarray(history, dtype=float)
+    h = h[~np.isnan(h)]
+    return max(1, int(round(float((h <= value).mean()) * 100)))
+
+
+def ordinal(n):
+    """1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st, 22nd ... 100th."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+#: A reading past every week of its history, said as a record rather than a rank:
+#: "100th" reads as a score, and a provisional week below every official one would
+#: otherwise print "1st" beside the official weeks tied there.
+HIGHEST, LOWEST = "highest", "lowest"
+
+
+def percentile_word(history, value):
+    """A reading's place in `history` for the page: "96th", or HIGHEST / LOWEST when
+    no week of the history is above / below it."""
+    h = np.asarray(history, dtype=float)
+    h = h[~np.isnan(h)]
+    if len(h) and value >= h.max():
+        return HIGHEST
+    if len(h) and value <= h.min():
+        return LOWEST
+    return ordinal(percentile_of(h, value))
+
+
+def percentile_phrase(word, since):
+    """'96th percentile since 1987', or 'highest since 1987'."""
+    if word in (HIGHEST, LOWEST):
+        return f"{word} since {since}"
+    return f"{word} percentile since {since}"
+
+
+def official_history(read, key):
+    """A survey's OFFICIAL weeks as read: the spliced series without its provisional
+    weeks, so a hand-typed week is ranked against the history but never joins it (as
+    the votes card's average and highs)."""
+    if key not in read.frame:
+        return None
+    s = read.frame[key].dropna()
+    late = provisional_weeks(read, key)
+    return s[~s.index.isin(late)] if late else s
+
+
+def latest_percentile(read, key):
+    """(word, first year) for the newest reading against every official week since the
+    series began, or None. Full history, not the lookback: the index already says where
+    the week sits in its recent range, and this answers how unusual it is against all
+    of it. Measured 2026-11-12 the two can disagree a lot (NAAIM 78.6: index 64 on three
+    years, 62nd percentile since 2006, 34th over the last three years)."""
+    raw, history = latest_reading(read, key), official_history(read, key)
+    if raw is None or history is None or history.empty:
+        return None
+    return percentile_word(history.to_numpy(), raw), history.index[0].year
+
+
 def readings(read):
     """Each survey's newest reading for the published page's tiles, in SERIES order:
     its own number as published, its index on this read's lookback and the crowd state
-    that index puts it in, the stored date and whether that week is provisional. A
-    survey that is not in is left out."""
+    that index puts it in, its percentile against every official week since the series
+    began (`pct`, a phrase, or None), the stored date and whether that week is
+    provisional. A survey that is not in is left out."""
     out = []
     for key, label in SERIES:
         raw, index = latest_reading(read, key), latest_index(read, key)
         if raw is None or index is None:
             continue
+        pct = latest_percentile(read, key)
         out.append({"key": key, "label": label, "value": raw, "index": index,
-                    "state": crowd_state(index), "date": read.last[key],
+                    "state": crowd_state(index),
+                    "pct": percentile_phrase(*pct) if pct else None,
+                    "date": read.last[key],
                     "provisional": bool(len(provisional_weeks(read, key)))})
     return out
 
@@ -1042,7 +1111,11 @@ def summary(read):
         # The survey's own number beside its index, named, as the chart title has it.
         raw = latest_reading(read, key)
         named = f"{RAW_NAME[key]} {raw:.1f}, " if raw is not None else ""
-        parts.append(f"{label.split()[0]} at {index:.0f} ({named}{_dated(read, key)})")
+        # Its percentile against all its history beside the number it ranks.
+        pct = latest_percentile(read, key)
+        ranked = f"{percentile_phrase(*pct)}, " if pct else ""
+        parts.append(f"{label.split()[0]} at {index:.0f} ({named}{ranked}"
+                     f"{_dated(read, key)})")
     if not parts:
         return None
     if read.provisional:

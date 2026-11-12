@@ -78,7 +78,7 @@ def test_the_high_is_the_largest_share_of_the_last_year_only():
 def test_the_two_halves_stack_the_recent_weeks_and_place_each_high_on_its_own_row():
     _, get_bars = _legs_bars()
     votes = av.read(get_bars)
-    recent_fig, history_fig, _ = av.figures(votes, COLORS)
+    recent_fig, history_fig, *_ = av.figures(votes, COLORS)
     assert recent_fig.layout.barmode == history_fig.layout.barmode == "stack"
     recent, history = list(recent_fig.data), list(history_fig.data)
     assert [t.name for t in recent] == [t.name for t in history] == ["Bullish", "Neutral", "Bearish"]
@@ -101,16 +101,18 @@ def test_the_two_halves_stack_the_recent_weeks_and_place_each_high_on_its_own_ro
 def test_the_blocks_are_the_same_height_so_they_line_up_side_by_side():
     _, get_bars = _legs_bars()
     figs = av.figures(av.read(get_bars), COLORS)
-    assert len(figs) == 3 and len({f.layout.height for f in figs}) == 1
-    assert [len(f.data[0].y) for f in figs] == [4, 4, 4]
+    assert len(figs) == 4 and len({f.layout.height for f in figs}) == 1
+    # The percentile block has three rows (one per vote) in the same height.
+    assert [len(f.data[0].y) for f in figs[:3]] == [4, 4, 4]
 
 
 def test_each_block_has_a_fixed_scale_and_no_zoom():
     _, get_bars = _legs_bars()
-    *shares, spread = av.figures(av.read(get_bars), COLORS)
+    *shares, spread, latest = av.figures(av.read(get_bars), COLORS)
     assert list(spread.layout.xaxis.range) == [-av.SPREAD_LIMIT, av.SPREAD_LIMIT]
-    for fig in (*shares, spread):
-        if fig is not spread:
+    assert list(latest.layout.xaxis.range) == av.PERCENTILE_X_RANGE
+    for fig in (*shares, spread, latest):
+        if fig not in (spread, latest):
             assert list(fig.layout.xaxis.range) == av.X_RANGE
         assert fig.layout.xaxis.fixedrange
         assert fig.layout.yaxis.autorange == "reversed"       # newest week on top
@@ -163,14 +165,14 @@ def test_without_votes_the_page_leaves_the_card_out():
 
 
 def test_the_blocks_go_across_at_the_same_widths_on_both_pages():
-    """The published grid goes two across and three across at the constants; the app's
-    columns at Bootstrap's md and xl breakpoints, which are the same 768 and 1200px."""
+    """The published grid goes two across and four across at the constants; the app's
+    columns at Bootstrap's md and xxl breakpoints, which are the same 768 and 1400px."""
     html = st.render(_reads(), COLORS, PALETTE, votes=av.read(_legs_bars()[1]))
-    assert (av.VOTES_SIDE_BY_SIDE_MIN_PX, av.VOTES_THREE_ACROSS_MIN_PX) == (768, 1200)
+    assert (av.VOTES_SIDE_BY_SIDE_MIN_PX, av.VOTES_ALL_ACROSS_MIN_PX) == (768, 1400)
     assert (f"@media (min-width: {av.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid "
             "{{ grid-template-columns: repeat(2,".replace("{{", "{")) in html
-    assert (f"@media (min-width: {av.VOTES_THREE_ACROSS_MIN_PX}px) {{ .votes-grid "
-            "{{ grid-template-columns: repeat(3,".replace("{{", "{")) in html
+    assert (f"@media (min-width: {av.VOTES_ALL_ACROSS_MIN_PX}px) {{ .votes-grid "
+            "{{ grid-template-columns: repeat(4,".replace("{{", "{")) in html
 
 
 # ── provisional weeks ─────────────────────────────────────────────────────────
@@ -249,8 +251,8 @@ def test_without_provisional_weeks_the_card_is_unchanged():
     assert all(t.marker.opacity is None for t in fig.data)
 
 
-def test_the_app_card_puts_the_blocks_in_md_and_xl_columns():
-    """Two across from Bootstrap's md (768px), three from xl (1200px), like the published
+def test_the_app_card_puts_the_blocks_in_md_and_xxl_columns():
+    """Two across from Bootstrap's md (768px), four from xxl (1400px), like the published
     grid."""
     import dash_bootstrap_components as dbc
 
@@ -258,8 +260,8 @@ def test_the_app_card_puts_the_blocks_in_md_and_xl_columns():
     _, get_bars = _legs_bars()
     card = page._card("t", None, av.figures(av.read(get_bars), COLORS))
     row = card.children.children[-1]
-    assert isinstance(row, dbc.Row) and [c.md for c in row.children] == [6, 6, 6]
-    assert [c.xl for c in row.children] == [4, 4, 4]
+    assert isinstance(row, dbc.Row) and [c.md for c in row.children] == [6, 6, 6, 6]
+    assert [c.xxl for c in row.children] == [3, 3, 3, 3]
 
 
 # ── bulls minus bears ─────────────────────────────────────────────────────────
@@ -381,3 +383,43 @@ def test_the_weakest_week_on_record_reads_1st_not_0th():
         frames[sym].iloc[-1, 0] = v
     votes = av.read(get_bars)
     assert votes.spread_pct[0] == 1
+
+
+# ── the percentile block ──────────────────────────────────────────────────────
+
+def test_the_percentile_block_ranks_the_newest_week_on_every_official_week():
+    frames, get_bars = _legs_bars()
+    votes = av.read(get_bars)
+    newest = votes.recent.iloc[0]
+    official = av.legs(get_bars)
+    fig = av.figures(votes, COLORS)[3]
+    tracks, dots = fig.data[:3], fig.data[3:]
+    assert all(list(t.x) == [0, 100] and t.hoverinfo == "skip" for t in tracks)
+    fills = av.leg_colors(COLORS)
+    for dot, (key, _, label) in zip(dots, av.LEGS):
+        pct, word = votes.latest_pct[key]
+        assert pct == s.percentile_of(official[key].to_numpy(), newest[key])
+        assert word == s.percentile_word(official[key].to_numpy(), newest[key])
+        assert list(dot.x) == [pct] and list(dot.text) == [word]
+        assert list(dot.y) == [f"{label} {newest[key]:.1f}%"]
+        assert dot.marker.color == fills[key]
+        assert dot.textposition == ("middle left" if pct > av.LABEL_FLIP else "middle right")
+        assert s.percentile_phrase(word, votes.since.year) in dot.hovertemplate
+    assert fig.layout.annotations[0].text == f"Newest week, percentile since {votes.since:%Y}"
+    assert all(d.marker.opacity == 1.0 for d in dots)
+    # The median dotted, and no other line that would read as a zone.
+    assert [(sh.x0, sh.line.dash) for sh in fig.layout.shapes] == [(50, "dot")]
+
+
+def test_a_provisional_newest_week_is_tagged_and_ranked_on_official_weeks():
+    frames, get_bars, _ = _with_provisional()
+    votes = av.read(get_bars)
+    official = av.legs(get_bars)
+    assert votes.recent.index[0] in votes.provisional
+    newest = votes.recent.iloc[0]
+    for key, *_ in av.LEGS:
+        assert votes.latest_pct[key][0] == s.percentile_of(official[key].to_numpy(),
+                                                           newest[key])
+    dots = av.figures(votes, COLORS)[3].data[3:]
+    assert all(d.marker.opacity == s.PROVISIONAL_OPACITY for d in dots)
+    assert all("(provisional)" in d.hovertemplate for d in dots)

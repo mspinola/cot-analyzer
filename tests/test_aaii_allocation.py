@@ -64,7 +64,7 @@ def test_recent_months_newest_first_average_and_last_years_highs():
 def test_the_blocks_label_months_and_line_up():
     _, get_bars = _alloc_bars()
     alloc = aa.read(get_bars)
-    recent, history, gap = aa.figures(alloc, COLORS)
+    recent, history, gap, _ = aa.figures(alloc, COLORS)
     months = [f"{d:%Y-%m}" for d in alloc.recent.index]
     assert list(recent.data[0].y) == months and list(gap.data[0].y) == months
     assert list(history.data[0].y) == ["Average", "Stocks high", "Bonds high", "Cash high"]
@@ -126,7 +126,7 @@ def test_without_the_survey_the_page_leaves_the_card_out():
 
 def test_share_labels_carry_no_percent_sign_so_narrow_segments_keep_them():
     _, get_bars = _alloc_bars()
-    recent, history, _ = aa.figures(aa.read(get_bars), COLORS)
+    recent, history, *_ = aa.figures(aa.read(get_bars), COLORS)
     labels = [t for f in (recent, history) for tr in f.data for t in tr.text if t]
     assert labels and not any("%" in t for t in labels)
     assert "percent of portfolio" in aa.SUBTITLE
@@ -258,7 +258,7 @@ def test_the_cards_green_is_toned_down_and_still_carries_its_dark_text():
         assert ratio(fill, av.LIGHT_INK) >= 4.5
     # The grey keeps the ink it had.
     assert av.segment_ink("neutral", av.NEUTRAL_COLOR) == av.INSIDE_TEXT["neutral"]
-    recent, _, _ = aa.figures(aa.read(_alloc_bars()[1]), COLORS)
+    recent, *_ = aa.figures(aa.read(_alloc_bars()[1]), COLORS)
     assert recent.data[0].insidetextfont.color == av.segment_ink("stocks", green)
 
 
@@ -324,6 +324,8 @@ def test_the_published_page_names_the_allocation_survey_outside_its_cards():
                     "value": f"{alloc.recent.iloc[0]['stocks']:.1f}%",
                     "context": (f"{abs(gap):.1f} points {'above' if gap >= 0 else 'below'} "
                                 f"its average since {alloc.since.year}"),
+                    "pct": sentiment.percentile_phrase(alloc.latest_pct["stocks"][1],
+                                                       alloc.since.year),
                     "foot": f"{alloc.last:%b %Y}"}
     strip = html.split(f'id="{st.READINGS_ID}"')[1].split('<div class="lookback"')[0]
     assert strip.count('class="tile"') == 3
@@ -379,3 +381,20 @@ def test_the_app_page_refits_the_price_chart_without_a_load_time_call(monkeypatc
         importlib.reload(page)
         for key in [k for k, v in dash.page_registry.items() if v.get("path") == "/sentiment"]:
             del dash.page_registry[key]
+
+
+def test_the_percentile_block_ranks_the_newest_month_on_every_month():
+    _, get_bars = _alloc_bars()
+    alloc = aa.read(get_bars)
+    months = aa.legs(get_bars)
+    fig = aa.figures(alloc, COLORS)[3]
+    dots = fig.data[3:]
+    fills = aa.leg_colors(COLORS)
+    for dot, (key, _, label) in zip(dots, aa.LEGS):
+        pct, word = alloc.latest_pct[key]
+        assert pct == sentiment.percentile_of(months[key].to_numpy(), months[key].iloc[-1])
+        assert list(dot.x) == [pct] and list(dot.text) == [word]
+        assert list(dot.y) == [f"{label} {months[key].iloc[-1]:.1f}%"]
+        assert dot.marker.color == fills[key]
+    assert fig.layout.annotations[0].text == f"Newest month, percentile since {alloc.since:%Y}"
+    assert fig.layout.height == aa.figures(alloc, COLORS)[0].layout.height

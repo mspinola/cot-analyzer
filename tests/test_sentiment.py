@@ -221,8 +221,9 @@ def test_the_summary_reads_each_surveys_latest_index():
         # The survey's own number sits beside its index, named, so "at 64" is never
         # read as the exposure.
         raw = s.latest_reading(read, key)
+        word, since = s.latest_percentile(read, key)
         assert (f"{name} at {idx.iloc[-1]:.0f} ({s.RAW_NAME[key]} {raw:.1f}, "
-                f"{read.last[key]:%Y-%m-%d})") in line
+                f"{s.percentile_phrase(word, since)}, {read.last[key]:%Y-%m-%d})") in line
     assert "quarter behind" in line
 
 
@@ -941,3 +942,49 @@ def test_the_refit_handler_clears_a_matched_axis_stale_autorange_on_a_window_fit
     assert "/^xaxis\\d+$/.test(k) && gd.layout[k] && gd.layout[k].autorange === true" in fit
     assert "update[k + '.autorange'] = false;" in fit
     assert "isFinite(t0) && isFinite(t1)" in fit      # a reset (infinite bounds) is left alone
+
+
+# ── percentiles against the whole history ─────────────────────────────────────
+
+def test_percentile_is_the_share_at_or_below_from_1_to_100():
+    history = [1.0, 2.0, 3.0, 4.0, np.nan]
+    assert s.percentile_of(history, 3.0) == 75        # NaN ignored; ties count as below
+    assert s.percentile_of(history, 0.0) == 1         # never 0
+    assert s.percentile_of(history, 9.0) == 100
+    assert [s.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22, 96, 100)] == [
+        "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "96th", "100th"]
+
+
+def test_a_reading_past_every_week_is_a_record_not_a_rank():
+    history = np.arange(1.0, 101.0)
+    assert s.percentile_word(history, 96.0) == "96th"
+    assert s.percentile_word(history, 100.0) == s.HIGHEST
+    assert s.percentile_word(history, 250.0) == s.HIGHEST
+    assert s.percentile_word(history, 1.0) == s.LOWEST
+    assert s.percentile_phrase("96th", 1987) == "96th percentile since 1987"
+    assert s.percentile_phrase(s.HIGHEST, 1987) == "highest since 1987"
+
+
+def test_the_newest_reading_is_ranked_on_all_official_weeks_not_the_lookback():
+    _, get_bars = _fixtures()
+    for years in s.LOOKBACK_YEARS:
+        read = s.build_read(get_bars, lookback_years=years)
+        for key in ("naaim", "aaii"):
+            history = read.frame[key].dropna()
+            word, since = s.latest_percentile(read, key)
+            assert since == history.index[0].year
+            assert word == s.percentile_word(history.to_numpy(), history.iloc[-1])
+        tile = {r["key"]: r for r in s.readings(read)}
+        word, since = s.latest_percentile(read, "naaim")
+        assert tile["naaim"]["pct"] == s.percentile_phrase(word, since)
+
+
+def test_a_provisional_week_is_ranked_against_the_official_weeks_only():
+    _, get_bars, _ = _with_aaii_provisional()
+    read = s.build_read(get_bars)
+    late = s.provisional_weeks(read, "aaii")
+    official = s.official_history(read, "aaii")
+    assert len(official) == read.frame["aaii"].dropna().size - len(late)
+    assert not official.index.isin(late).any()
+    word, _ = s.latest_percentile(read, "aaii")
+    assert word == s.percentile_word(official.to_numpy(), s.latest_reading(read, "aaii"))
