@@ -163,6 +163,11 @@ class Votes:
     spread_pct: tuple = ()
     latest_pct: dict = field(default_factory=dict)
     window_pct: tuple = ()
+    #: The newest week's bulls minus bears over the same three histories as
+    #: `latest_pct` / `window_pct`, keyed SPREAD_KEY: since the start (official weeks)
+    #: and per WINDOWS row (every week shown, provisional included).
+    spread_latest_pct: dict = field(default_factory=dict)
+    spread_window_pct: tuple = ()
 
 
 def legs(get_bars=None):
@@ -211,11 +216,26 @@ def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None)
         shown = pd.concat([frame, late])
         late = tuple(late.index)
     rows = shown.iloc[::-1].head(recent)
+    official_spread, shown_spread = _spread_frame(frame), _spread_frame(shown)
     return Votes(recent=rows, average=frame.mean(),
                  since=frame.index[0].date(), highs=highs, last=shown.index[-1].date(),
                  provisional=late, spread_pct=spread_percentiles(frame, rows),
                  latest_pct=latest_percentiles(frame, rows.iloc[0]),
-                 window_pct=window_percentiles(shown, rows.iloc[0]))
+                 window_pct=window_percentiles(shown, rows.iloc[0]),
+                 spread_latest_pct=latest_percentiles(
+                     official_spread, shown_spread.iloc[-1], SPREAD_LEGS),
+                 spread_window_pct=window_percentiles(
+                     shown_spread, shown_spread.iloc[-1], legs=SPREAD_LEGS))
+
+
+#: The bulls-minus-bears percentile block's one leg, in `LEGS`' shape.
+SPREAD_KEY = "spread"
+SPREAD_LEGS = ((SPREAD_KEY, None, "Bulls minus bears"),)
+
+
+def _spread_frame(frame):
+    """Bulls minus bears, in points, as a one-column frame `latest_percentiles` reads."""
+    return pd.DataFrame({SPREAD_KEY: frame["bullish"] - frame["bearish"]})
 
 
 def window_percentiles(shown, row, windows=WINDOWS, legs=LEGS):
@@ -538,6 +558,7 @@ def dots_figure(rows, legs, fills, values, title, n_rows=PERCENTILE_ROWS):
 
 
 PERCENTILE_NAME = "AAII votes"
+SPREAD_PERCENTILE_NAME = "AAII"
 
 
 def legend_title(name, legs, fills):
@@ -548,6 +569,22 @@ def legend_title(name, legs, fills):
     words = ", ".join(f'<span style="color:{fills[key]}"><b>{label.lower()}</b></span>'
                       for key, label in legs)
     return f"{name}: {words}"
+
+
+def spread_figure_percentiles(votes, palette, name=SPREAD_PERCENTILE_NAME):
+    """The newest week's bulls minus bears as a percentile over the three histories, one
+    dot a row in AAII's line colour on the page (`sentiment.sentiment_colors`), the tile's
+    number (its 8th since 1987 on 2026-11-12) with the two windows beside it. On the
+    percentiles card since 2026-11-12, where the allocation block had been ("replaced
+    with an AAII bulls-bears percentile view")."""
+    spread = float(votes.recent.iloc[0]["bullish"] - votes.recent.iloc[0]["bearish"])
+    rows = [(f"Since {votes.since:%Y}", votes.spread_latest_pct,
+             f"every week since {votes.since:%Y}")]
+    rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.spread_window_pct]
+    legs = [(SPREAD_KEY, "bulls minus bears")]
+    fills = {SPREAD_KEY: sentiment.sentiment_colors(palette)["aaii"]}
+    return dots_figure(rows, legs, fills, {SPREAD_KEY: f"{spread:+.1f}"},
+                       legend_title(name, legs, fills))
 
 
 def latest_figure(votes, colors, name=PERCENTILE_NAME):

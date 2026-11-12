@@ -256,19 +256,21 @@ def history_figure(naaim, palette):
     return fig
 
 
-PERCENTILE_TITLE = "NAAIM exposure"
+PERCENTILE_NAME = "NAAIM"
 
 
-def latest_figure(naaim, palette, title=PERCENTILE_TITLE):
+def latest_figure(naaim, palette, name=PERCENTILE_NAME):
     """The newest reading as a percentile of the full official history and of the two
     windows (`aaii_votes.dots_figure`, one dot a row). On the percentiles card since
     2026-11-12."""
     rows = [(label, {"naaim": (pct, word)},
              f"every week since {naaim.since:%Y}" if i == 0 else f"the {label.lower()}")
             for i, (label, pct, word, _) in enumerate(naaim.latest)]
-    return aaii_votes.dots_figure(rows, [("naaim", "NAAIM")],
-                                  {"naaim": naaim_color(palette)},
-                                  {"naaim": f"{naaim.recent.iloc[0]:.1f}"}, title)
+    legs, fills = [("naaim", "exposure")], {"naaim": naaim_color(palette)}
+    # "NAAIM: exposure", the word in its dots' violet, as the AAII blocks name theirs.
+    return aaii_votes.dots_figure(rows, legs, fills,
+                                  {"naaim": f"{naaim.recent.iloc[0]:.1f}"},
+                                  aaii_votes.legend_title(name, legs, fills))
 
 
 def figures(naaim, colors, palette):

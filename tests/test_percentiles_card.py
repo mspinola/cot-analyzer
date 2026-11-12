@@ -30,18 +30,20 @@ def test_the_card_leads_under_the_tiles_with_a_block_per_survey():
         assert [r[0] for r in rows][1:] == ["Last 3 years", "Last year"]
 
 
-def test_each_survey_card_keeps_three_blocks():
+def test_naaim_and_votes_keep_three_blocks_and_allocation_has_its_percentiles_back():
     html = st.render(_reads(), COLORS, PALETTE, **_all())
     payload = _payload(html)
     assert set(payload[st.NAAIM_KEY]) == set(st.NAAIM_BLOCKS)
     assert set(payload[st.VOTES_KEY]) == set(st.VOTES_HALVES)
     assert set(payload[st.ALLOCATION_KEY]) == set(st.ALLOCATION_BLOCKS)
-    assert all(len(b) == 3 for b in (st.NAAIM_BLOCKS, st.VOTES_HALVES, st.ALLOCATION_BLOCKS))
+    assert len(st.NAAIM_BLOCKS) == len(st.VOTES_HALVES) == 3
+    assert st.ALLOCATION_BLOCKS[-1] == "latest" and len(st.ALLOCATION_BLOCKS) == 4
+    assert "allocation" not in payload[st.PERCENTILES_KEY]
 
 
 def test_only_the_surveys_that_are_in_get_a_block():
     html = st.render(_reads(), COLORS, PALETTE, votes=av.read(_legs_bars()[1]))
-    assert list(_payload(html)[st.PERCENTILES_KEY]) == ["votes"]
+    assert list(_payload(html)[st.PERCENTILES_KEY]) == ["votes", "bulls_bears"]
     html = st.render(_reads(), COLORS, PALETTE)
     assert f'id="{st.PERCENTILES_ID}"' not in html
     assert st.PERCENTILES_KEY not in _payload(html)
@@ -63,9 +65,38 @@ def test_the_naaim_block_is_one_dot_a_row_with_its_percentile_inside():
     assert list(dots[0].y) == [label for label, *_ in naaim.latest]
     assert dots[0].marker.color == nc.naaim_color(PALETTE)
     assert dots[0].customdata[0].endswith(f"percentile of every week since {naaim.since:%Y}")
-    assert fig.layout.annotations[0].text == nc.PERCENTILE_TITLE
+    violet = nc.naaim_color(PALETTE)
+    assert fig.layout.annotations[0].text == (
+        f'NAAIM: <span style="color:{violet}"><b>exposure</b></span>')
 
 
 def test_the_median_line_is_drawn_under_the_dots():
     fig = av.latest_figure(av.read(_legs_bars()[1]), COLORS)
     assert [(sh.x0, sh.line.dash, sh.layer) for sh in fig.layout.shapes] == [(50, "dot", "below")]
+
+
+def test_the_bulls_bears_block_ranks_the_spread_over_three_histories():
+    import pandas as pd
+
+    from components import sentiment as s
+    _, get_bars = _legs_bars()
+    votes = av.read(get_bars)
+    official = av.legs(get_bars)
+    spread = official["bullish"] - official["bearish"]
+    newest = float(spread.iloc[-1])
+    assert votes.spread_latest_pct[av.SPREAD_KEY][0] == s.percentile_of(spread.to_numpy(), newest)
+    # The since-the-start rank is the spread block's top row's, and the tile's.
+    assert votes.spread_latest_pct[av.SPREAD_KEY][0] == votes.spread_pct[0]
+    end = spread.index[-1]
+    want = [s.percentile_of(spread[(spread.index > end - pd.Timedelta(days=d))
+                                   & (spread.index < end)].to_numpy(), newest)
+            for _, d in av.WINDOWS]
+    assert [p[av.SPREAD_KEY][0] for _, p in votes.spread_window_pct] == want
+    fig = av.spread_figure_percentiles(votes, PALETTE)
+    dot = fig.data[3]
+    assert list(dot.text) == [str(x) for x in [votes.spread_pct[0], *want]]
+    green = s.sentiment_colors(PALETTE)["aaii"]
+    assert dot.marker.color == green
+    assert fig.layout.annotations[0].text == (
+        f'AAII: <span style="color:{green}"><b>bulls minus bears</b></span>')
+    assert dot.customdata[0].startswith(f"bulls minus bears {newest:+.1f}:")

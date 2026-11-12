@@ -94,11 +94,15 @@ TITLE = "AAII asset allocation"
 SUBTITLE = ("AAII members' average split between stocks (green), bonds (blue) and cash "
             "(grey), percent of portfolio, monthly.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
-               "1987 with each share's highest month in the last year; and each recent "
-               "month's stocks share against its average since 1987. The newest "
-               "month's percentiles are in the Percentiles card at the top of the "
-               "page. AAII publishes each month in the first days of the next.")
+HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average since "
+               "1987 with each share's highest month in the last year; each recent "
+               "month's stocks share against its average since 1987; and the newest "
+               "month's shares as percentiles (the number in each dot) of every month "
+               "since 1987, of the last three years and of the last year (the dotted "
+               "line is the median). The shares have drifted over the decades, cash "
+               "from about 33% in the late 1980s to about 17% in the 2020s, so a low "
+               "cash percentile since 1987 partly reflects the drift. AAII publishes "
+               "each month in the first days of the next.")
 
 BONDS_COLOR = "#60A5FA"     # the app palette's blue
 #: Text inside each segment: dark on the bright green and blue, white on the grey.
@@ -289,7 +293,7 @@ def stock_gap_figure(alloc, colors):
 PERCENTILE_NAME = "AAII allocation"
 
 
-def latest_figure(alloc, colors, name=PERCENTILE_NAME):
+def latest_figure(alloc, colors, name=PERCENTILE_NAME, n_rows=aaii_votes.PERCENTILE_ROWS):
     """The newest month's three shares as percentiles of every month since 1987, of the
     last three years' and of the last year's (`aaii_votes.dots_figure`, the votes
     block's layout). On the percentiles card since 2026-11-12."""
@@ -299,14 +303,18 @@ def latest_figure(alloc, colors, name=PERCENTILE_NAME):
     legs, fills = [(key, label) for key, _, label in LEGS], leg_colors(colors)
     return aaii_votes.dots_figure(
         rows, legs, fills, {key: f"{newest[key]:.1f}%" for key, *_ in LEGS},
-        aaii_votes.legend_title(name, legs, fills))
+        aaii_votes.legend_title(name, legs, fills), n_rows)
 
 
 def figures(alloc, colors):
-    """The card's three blocks, (recent, history, gap). The percentile block moved to
-    the percentiles card on 2026-11-12 (`latest_figure`)."""
+    """The card's four blocks, (recent, history, gap, latest), two across. The
+    percentile block spent part of 2026-11-12 on the percentiles card and came back the
+    same day ("the aaii allocation percentiles should move to the aaii asset allocation
+    card"): a monthly holding beside two weekly opinions read as a third survey of the
+    same kind. Here it is as tall as the other blocks, so the grid lines up."""
     return (recent_figure(alloc, colors), history_figure(alloc, colors),
-            stock_gap_figure(alloc, colors))
+            stock_gap_figure(alloc, colors),
+            latest_figure(alloc, colors, n_rows=len(alloc.recent)))
 
 
 PRICE_TITLE = "AAII allocation against price"
