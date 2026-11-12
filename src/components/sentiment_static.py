@@ -20,10 +20,13 @@ What the static page keeps from the app, and how:
 - **Not the PNG export.** It leans on html2canvas and the app's theme container; a
   reader of a static page has the browser's own screenshot.
 
-**Card order.** The two cards the lookback toggle redraws (sentiment against price,
-weekly columns) come first, directly under the toggle; the AAII votes and allocation
-cards, which it never changes, follow. Until 2026-11-10 the columns sat last, three
-cards below the toggle that drives them. The allocation survey has its own notes
+**Card order.** The current readings lead: under the tiles come the AAII votes and
+allocation cards (the newest week and month, their recent rows and their
+percentiles), which the lookback toggle never changes. The toggle follows, directly
+above the two cards it redraws (sentiment against price, weekly columns), and the
+allocation-against-price history closes the page. Until 2026-11-10 the columns sat
+last, three cards below the toggle that drives them; until 2026-11-12 the votes and
+allocation cards sat below the charts. The allocation survey has its own notes
 (`aaii_allocation.caption`), outside `#notes`, which the toggle rewrites.
 
 **The readings strip** replaces the app's summary sentence: one tile per survey (its
@@ -90,6 +93,15 @@ H1_TICKER, H1_REST = "Surveys", "NAAIM and AAII"
 #: about 1.2 to 1, an invisible word (2026-11-10 page review). The theme's blue reads
 #: at 4.8 to 1; tests hold it above 4.5.
 TICKER_COLOR = vc.SOLARIZED_DARK_BLUE
+#: The page, card and border colours, and the column, of the DBMF, AHLT and ORR pages
+#: (dbmf-tracker's templates, dark theme), so moving between the four monitors keeps
+#: the background and the header in place. Until 2026-11-12 this page took the app's
+#: #1a1a1a and a 1400px column: visibly greyer, and wider, so the Monitors row jumped
+#: sideways on every switch. The charts' backgrounds are transparent, so they sit on
+#: whatever card colour this sets. Hand-kept in step with those templates, as the
+#: Monitors row is.
+PAGE_COLOR, SURFACE_COLOR, LINE_COLOR = "#0d1013", "#151a1e", "rgba(255,255,255,0.09)"
+PAGE_MAX_WIDTH_PX, PAGE_GUTTER_PX = 1180, 20
 DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, as range "
                "indexes with SPY's drawdowns behind them, and AAII members' monthly "
                "split between stocks, bonds and cash since 1987.")
@@ -327,13 +339,15 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
-:root {{ --page: {vc.BACKGROUND_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
-  --muted: #7d8794; --line: rgba(255,255,255,0.10); --surface: rgba(28,28,28,0.55);
+:root {{ --page: {PAGE_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
+  --muted: #7d8794; --line: {LINE_COLOR}; --surface: {SURFACE_COLOR};
   --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND}; --ticker: {TICKER_COLOR};
   --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }}
+*, *::before, *::after {{ box-sizing: border-box; }}
 html, body {{ background: var(--page); color: var(--ink-2); margin: 0; font-family: var(--sans); }}
-main {{ max-width: 1400px; margin: 0 auto; padding: 16px; }}
+body {{ padding-inline: {PAGE_GUTTER_PX}px; padding-block: 28px 56px; }}
+main {{ max-width: {PAGE_MAX_WIDTH_PX}px; margin: 0 auto; }}
 /* The header is the fund pages' (dbmf-tracker's templates), rule for rule, so the
    four monitors read as one set: the Monitors row, then eyebrow, accent ticker and
    title on the left and the as-of on the right. Only the theme differs, this page
@@ -348,6 +362,10 @@ nav.sites .sep {{ color: var(--muted); }}
 nav.sites .soon {{ color: var(--muted); padding: 3px 9px; border: 1px dashed var(--line); border-radius: 6px; cursor: default; }}
 nav.sites .soon small {{ font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-left: 3px; }}
 header.top {{ display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }}
+/* The fund pages' body sets 14px/1.5 and their header inherits it; here only the header
+   takes it, so the cards keep their own text metrics while the eyebrow and title land
+   on the same pixels as theirs. */
+nav.sites, header.top {{ line-height: 1.5; }}
 .eyebrow {{ font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }}
 h1 {{ color: var(--ink); margin: 2px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }}
 h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
@@ -384,7 +402,6 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .card .how p {{ margin: 4px 0 0; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
-@media (min-width: {aaii_votes.VOTES_ALL_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 </style>
@@ -394,12 +411,12 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <main>
 {_nav()}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
-{_tiles(tiles)}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{_tiles(tiles)}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 {_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
-{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
+{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
 {allocation_notes}<footer>{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>

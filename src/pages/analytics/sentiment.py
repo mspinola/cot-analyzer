@@ -71,8 +71,9 @@ def export_button(view):
 
 def _card(title, subtitle, figure, graph_id=None, controls=None, export=None, how=None):
     """A card around one figure, or around several: stacked on a phone, two across from
-    Bootstrap's md width (768px), all across from xxl (1400px), the published page's
-    breakpoints (aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX, VOTES_ALL_ACROSS_MIN_PX)."""
+    Bootstrap's md width (768px), all across from xxl (1400px)
+    (aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX, VOTES_ALL_ACROSS_MIN_PX). The published
+    page stops at two across: its column is capped at 1180px, this page's is not."""
     if isinstance(figure, (list, tuple)):
         # md=6: two across from 768px; xxl: all across from 1400px (12 // n each).
         graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=6,
@@ -157,12 +158,25 @@ def layout(**_):
                                 "fontSize": "0.9rem"}, className="mb-2"))
     cards, extra_notes = [], []
     if not read.frame.empty:
+        # The current readings lead: the votes and allocation cards (newest week and
+        # month, recent rows, percentiles) are not indexed, so the lookback never
+        # redraws them. The toggle follows, directly above the two cards it redraws,
+        # and the allocation-against-price history closes the page (the static page's
+        # order, sentiment_static's "Card order").
+        votes = aaii_votes.read()
+        if votes is not None:
+            cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
+                               aaii_votes.figures(votes, colors), export="votes",
+                               how=aaii_votes.HOW_TO_READ))
+        allocation = aaii_allocation.read()
+        if allocation is not None:
+            cards.append(_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE,
+                               aaii_allocation.figures(allocation, colors),
+                               export="allocation", how=aaii_allocation.HOW_TO_READ))
         # The toggle exists only with the charts it redraws, so its callback never
         # targets a chart the page did not render.
-        head.append(lookback_buttons())
-        # The two cards the lookback redraws come first, together under its toggle;
-        # the AAII cards after them are not indexed and never change with it.
-        cards = [
+        cards += [
+            lookback_buttons(),
             _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
                   export="price", how=sentiment.PRICE_HOW_TO_READ),
@@ -171,18 +185,7 @@ def layout(**_):
                   sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
                   export="columns"),
         ]
-        votes = aaii_votes.read()
-        if votes is not None:
-            # Not redrawn by the lookback: nothing in it is indexed.
-            cards.append(_card(aaii_votes.TITLE, aaii_votes.SUBTITLE,
-                               aaii_votes.figures(votes, colors), export="votes",
-                               how=aaii_votes.HOW_TO_READ))
-        allocation = aaii_allocation.read()
         if allocation is not None:
-            # Monthly and not indexed: the lookback does not redraw it either.
-            cards.append(_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE,
-                               aaii_allocation.figures(allocation, colors),
-                               export="allocation", how=aaii_allocation.HOW_TO_READ))
             cards.append(_card(aaii_allocation.PRICE_TITLE, aaii_allocation.PRICE_SUBTITLE,
                                aaii_allocation.price_figure(
                                    allocation, read.frame.get("spy"), colors),
@@ -190,9 +193,9 @@ def layout(**_):
                                how=aaii_allocation.PRICE_HOW_TO_READ))
             # Its lead line under the sentiment one and its notes after theirs, both
             # outside the elements the lookback callback rewrites.
-            head.insert(-1, html.Div(aaii_allocation.summary(allocation),
-                                     style={**NOTE_STYLE, "color": vc.BRIGHTER_TEXT_COLOR,
-                                            "fontSize": "0.9rem"}, className="mb-2"))
+            head.append(html.Div(aaii_allocation.summary(allocation),
+                                 style={**NOTE_STYLE, "color": vc.BRIGHTER_TEXT_COLOR,
+                                        "fontSize": "0.9rem"}, className="mb-2"))
             extra_notes = [html.P(p, style=NOTE_STYLE)
                            for p in aaii_allocation.caption(allocation)]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),

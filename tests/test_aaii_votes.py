@@ -154,9 +154,11 @@ def test_the_published_page_carries_the_card_once_when_votes_are_in():
     assert all(f["layout"]["barmode"] == "stack" for f in payload[st.VOTES_KEY].values())
     # Once, beside the lookbacks, not inside each.
     assert all(st.VOTES_KEY not in v for k, v in payload.items() if k != st.VOTES_KEY)
-    # After the two cards the lookback toggle redraws, which sit together under it.
-    assert html.index(f'id="{st.PRICE_ID}"') < html.index(f'id="{st.COLUMNS_ID}"') \
-        < html.index(f'id="{st.VOTES_ID}"')
+    # The current readings lead: under the tiles, above the lookback toggle and the
+    # two cards it redraws, which sit together under it.
+    assert html.index(f'id="{st.READINGS_ID}"') < html.index(f'id="{st.VOTES_ID}"') \
+        < html.index('class="lookback"') < html.index(f'id="{st.PRICE_ID}"') \
+        < html.index(f'id="{st.COLUMNS_ID}"')
 
 
 def test_without_votes_the_page_leaves_the_card_out():
@@ -165,14 +167,15 @@ def test_without_votes_the_page_leaves_the_card_out():
 
 
 def test_the_blocks_go_across_at_the_same_widths_on_both_pages():
-    """The published grid goes two across and four across at the constants; the app's
-    columns at Bootstrap's md and xxl breakpoints, which are the same 768 and 1400px."""
+    """The published grid goes two across at the constant, as the app's columns do at
+    Bootstrap's md (768px). It never goes four across: in the monitors' 1180px column
+    a quarter is 268px, and the block titles ran past it (2026-11-12). The app, with no
+    column cap, still goes four across at xxl (1400px)."""
     html = st.render(_reads(), COLORS, PALETTE, votes=av.read(_legs_bars()[1]))
     assert (av.VOTES_SIDE_BY_SIDE_MIN_PX, av.VOTES_ALL_ACROSS_MIN_PX) == (768, 1400)
     assert (f"@media (min-width: {av.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid "
             "{{ grid-template-columns: repeat(2,".replace("{{", "{")) in html
-    assert (f"@media (min-width: {av.VOTES_ALL_ACROSS_MIN_PX}px) {{ .votes-grid "
-            "{{ grid-template-columns: repeat(4,".replace("{{", "{")) in html
+    assert "repeat(4," not in html
 
 
 # ── provisional weeks ─────────────────────────────────────────────────────────
