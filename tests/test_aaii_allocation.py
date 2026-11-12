@@ -64,7 +64,7 @@ def test_recent_months_newest_first_average_and_last_years_highs():
 def test_the_blocks_label_months_and_line_up():
     _, get_bars = _alloc_bars()
     alloc = aa.read(get_bars)
-    recent, history, gap, _ = aa.figures(alloc, COLORS)
+    recent, history, gap = aa.figures(alloc, COLORS)
     months = [f"{d:%Y-%m}" for d in alloc.recent.index]
     assert list(recent.data[0].y) == months and list(gap.data[0].y) == months
     assert list(history.data[0].y) == ["Average", "Stocks high", "Bonds high", "Cash high"]
@@ -386,21 +386,27 @@ def test_the_app_page_refits_the_price_chart_without_a_load_time_call(monkeypatc
             del dash.page_registry[key]
 
 
-def test_the_percentile_block_ranks_the_newest_month_on_every_month():
+def test_the_percentile_block_ranks_the_newest_month_over_three_histories():
     _, get_bars = _alloc_bars()
     alloc = aa.read(get_bars)
     months = aa.legs(get_bars)
-    fig = aa.figures(alloc, COLORS)[3]
+    fig = aa.latest_figure(alloc, COLORS)
     dots = fig.data[3:]
     fills = aa.leg_colors(COLORS)
+    end, newest = months.index[-1], months.iloc[-1]
     for dot, (key, _, label) in zip(dots, aa.LEGS):
         pct, word = alloc.latest_pct[key]
-        assert pct == sentiment.percentile_of(months[key].to_numpy(), months[key].iloc[-1])
-        assert list(dot.x) == [pct] and list(dot.text) == [word]
-        assert list(dot.y) == [f"{label} {months[key].iloc[-1]:.1f}%"]
+        assert pct == sentiment.percentile_of(months[key].to_numpy(), newest[key])
+        want = [pct]
+        for _, days in av.WINDOWS:
+            window = months[(months.index > end - pd.Timedelta(days=days))
+                            & (months.index < end)][key]
+            want.append(sentiment.percentile_of(window.to_numpy(), newest[key]))
+        assert list(dot.text) == [str(x) for x in want]
+        assert list(dot.y) == [f"Since {alloc.since:%Y}", "Last 3 years", "Last year"]
         assert dot.marker.color == fills[key]
-    assert fig.layout.annotations[0].text == f"Newest month, percentile since {alloc.since:%Y}"
-    assert fig.layout.height == aa.figures(alloc, COLORS)[0].layout.height
+        assert dot.customdata[0].endswith(f"every month since {alloc.since:%Y}")
+    assert fig.layout.annotations[0].text == aa.PERCENTILE_TITLE
 
 
 def test_the_app_page_leads_with_the_current_readings(monkeypatch):

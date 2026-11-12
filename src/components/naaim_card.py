@@ -58,14 +58,13 @@ TITLE = "NAAIM exposure"
 SUBTITLE = ("Active managers' average stock exposure as NAAIM reports it each week, "
             "from 200% short to 200% long.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Four blocks: the last four readings, newest first, each with its "
+HOW_TO_READ = ("Three blocks: the last four readings, newest first, each with its "
                "percentile since 2006 in brackets and the average since 2006 dashed; "
-               "each week's change from the week before (green up, red down); the "
-               "average since 2006 with the last year's average, high and low; and the "
-               "newest reading as a percentile of every week since 2006, of the last "
-               "three years and of the last year (the dotted line is the median). The "
-               "last-year and three-year numbers include the newest weeks, which NAAIM "
-               "publishes for free only after about three months.")
+               "each week's change from the week before (green up, red down); and the "
+               "average since 2006 with the last year's average, high and low. The "
+               "last-year numbers include the newest weeks, which NAAIM publishes for "
+               "free only after about three months. The newest reading's percentiles "
+               "are in the Percentiles card at the top of the page.")
 
 BAR_OPACITY = aaii_votes.BAR_OPACITY
 #: The reading's fixed scale. NAAIM's official weeks run -3.6 (2011-10-05) to 120.6
@@ -257,19 +256,23 @@ def history_figure(naaim, palette):
     return fig
 
 
-def latest_figure(naaim, palette):
+PERCENTILE_TITLE = "NAAIM exposure"
+
+
+def latest_figure(naaim, palette, title=PERCENTILE_TITLE):
     """The newest reading as a percentile of the full official history and of the two
-    windows (`aaii_votes.percentile_figure`, the votes card's dots)."""
-    value = f"{naaim.recent.iloc[0]:.1f}"
-    rows = [("naaim", label, "", pct, word) for label, pct, word, _ in naaim.latest]
-    hovers = [f"{value}: {hover}" for *_, hover in naaim.latest]
-    return aaii_votes.percentile_figure(
-        rows, {"naaim": naaim_color(palette)}, "Newest week, percentile",
-        len(naaim.recent), naaim.since.year, hovers=hovers)
+    windows (`aaii_votes.dots_figure`, one dot a row). On the percentiles card since
+    2026-11-12."""
+    rows = [(label, {"naaim": (pct, word)},
+             f"every week since {naaim.since:%Y}" if i == 0 else f"the {label.lower()}")
+            for i, (label, pct, word, _) in enumerate(naaim.latest)]
+    return aaii_votes.dots_figure(rows, [("naaim", "NAAIM")],
+                                  {"naaim": naaim_color(palette)},
+                                  {"naaim": f"{naaim.recent.iloc[0]:.1f}"}, title)
 
 
 def figures(naaim, colors, palette):
-    """The card's four blocks, (recent, change, history, latest), laid out as the votes
-    card's are."""
+    """The card's three blocks, (recent, change, history). The percentile block moved to
+    the percentiles card on 2026-11-12 (`latest_figure`)."""
     return (recent_figure(naaim, palette), change_figure(naaim, colors),
-            history_figure(naaim, palette), latest_figure(naaim, palette))
+            history_figure(naaim, palette))

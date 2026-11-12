@@ -101,14 +101,15 @@ def test_the_two_halves_stack_the_recent_weeks_and_place_each_high_on_its_own_ro
 def test_the_blocks_are_the_same_height_so_they_line_up_side_by_side():
     _, get_bars = _legs_bars()
     figs = av.figures(av.read(get_bars), COLORS)
-    assert len(figs) == 4 and len({f.layout.height for f in figs}) == 1
-    # The percentile block has three rows (one per vote) in the same height.
-    assert [len(f.data[0].y) for f in figs[:3]] == [4, 4, 4]
+    # Three blocks: the percentile block moved to the percentiles card.
+    assert len(figs) == 3 and len({f.layout.height for f in figs}) == 1
+    assert [len(f.data[0].y) for f in figs] == [4, 4, 4]
 
 
 def test_each_block_has_a_fixed_scale_and_no_zoom():
     _, get_bars = _legs_bars()
-    *shares, spread, latest = av.figures(av.read(get_bars), COLORS)
+    *shares, spread = av.figures(av.read(get_bars), COLORS)
+    latest = av.latest_figure(av.read(get_bars), COLORS)
     assert list(spread.layout.xaxis.range) == [-av.SPREAD_LIMIT, av.SPREAD_LIMIT]
     assert list(latest.layout.xaxis.range) == av.PERCENTILE_X_RANGE
     for fig in (*shares, spread, latest):
@@ -153,7 +154,8 @@ def test_the_published_page_carries_the_card_once_when_votes_are_in():
     assert set(payload[st.VOTES_KEY]) == set(st.VOTES_HALVES)
     assert all(f["layout"]["barmode"] == "stack" for f in payload[st.VOTES_KEY].values())
     # Once, beside the lookbacks, not inside each.
-    assert all(st.VOTES_KEY not in v for k, v in payload.items() if k != st.VOTES_KEY)
+    assert all(st.VOTES_KEY not in v for k, v in payload.items()
+               if k not in (st.VOTES_KEY, st.PERCENTILES_KEY))
     # The current readings lead: under the tiles, above the lookback toggle and the
     # two cards it redraws, which sit together under it.
     assert html.index(f'id="{st.READINGS_ID}"') < html.index(f'id="{st.VOTES_ID}"') \
@@ -254,16 +256,15 @@ def test_without_provisional_weeks_the_card_is_unchanged():
 
 
 def test_the_app_card_puts_the_blocks_in_md_and_xxl_columns():
-    """Two across from Bootstrap's md (768px), four from xxl (1400px), like the published
-    grid."""
+    """Two across from Bootstrap's md (768px), all three from xxl (1400px)."""
     import dash_bootstrap_components as dbc
 
     from pages.analytics import sentiment as page
     _, get_bars = _legs_bars()
     card = page._card("t", None, av.figures(av.read(get_bars), COLORS))
     row = card.children.children[-1]
-    assert isinstance(row, dbc.Row) and [c.md for c in row.children] == [6, 6, 6, 6]
-    assert [c.xxl for c in row.children] == [3, 3, 3, 3]
+    assert isinstance(row, dbc.Row) and [c.md for c in row.children] == [6, 6, 6]
+    assert [c.xxl for c in row.children] == [4, 4, 4]
 
 
 # ── bulls minus bears ─────────────────────────────────────────────────────────
@@ -393,7 +394,7 @@ def test_the_percentile_block_has_a_row_per_history_and_a_dot_per_vote():
     votes = av.read(get_bars)
     newest = votes.recent.iloc[0]
     official = av.legs(get_bars)
-    fig = av.figures(votes, COLORS)[3]
+    fig = av.latest_figure(votes, COLORS)
     tracks, dots = fig.data[:3], fig.data[3:]
     assert all(list(t.x) == [0, 100] and t.hoverinfo == "skip" for t in tracks)
     rows = [f"Since {votes.since:%Y}", "Last 3 years", "Last year"]
@@ -416,7 +417,7 @@ def test_the_percentile_block_has_a_row_per_history_and_a_dot_per_vote():
         assert f"{label} {newest[key]:.1f}%" in dot.customdata[0]
         assert dot.customdata[0].endswith(f"every week since {votes.since:%Y}")
         assert dot.customdata[2].endswith("the last year")
-    assert fig.layout.annotations[0].text == "Newest week, percentile"
+    assert fig.layout.annotations[0].text == av.PERCENTILE_TITLE
     # The median dotted, and no other line that would read as a zone.
     assert [(sh.x0, sh.line.dash) for sh in fig.layout.shapes] == [(50, "dot")]
 
@@ -450,6 +451,6 @@ def test_a_provisional_newest_week_is_ranked_on_official_weeks_and_not_tagged():
     for key, *_ in av.LEGS:
         assert votes.latest_pct[key][0] == s.percentile_of(official[key].to_numpy(),
                                                            newest[key])
-    dots = av.figures(votes, COLORS)[3].data[3:]
+    dots = av.latest_figure(votes, COLORS).data[3:]
     assert all(d.marker.opacity is None for d in dots)
     assert not any("provisional" in h for d in dots for h in d.customdata)

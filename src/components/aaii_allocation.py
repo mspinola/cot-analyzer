@@ -94,14 +94,11 @@ TITLE = "AAII asset allocation"
 SUBTITLE = ("AAII members' average split between stocks (green), bonds (blue) and cash "
             "(grey), percent of portfolio, monthly.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average since "
-               "1987 with each share's highest month in the last year; each recent "
-               "month's stocks share against its average since 1987; and the newest "
-               "month's shares as percentiles of every month since 1987 (the dotted "
-               "line is the median). The shares have drifted over the decades, cash "
-               "from about 33% in the late 1980s to about 17% in the 2020s, so a low "
-               "cash percentile partly reflects the drift. AAII publishes each month "
-               "in the first days of the next.")
+HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
+               "1987 with each share's highest month in the last year; and each recent "
+               "month's stocks share against its average since 1987. The newest "
+               "month's percentiles are in the Percentiles card at the top of the "
+               "page. AAII publishes each month in the first days of the next.")
 
 BONDS_COLOR = "#60A5FA"     # the app palette's blue
 #: Text inside each segment: dark on the bright green and blue, white on the grey.
@@ -124,6 +121,9 @@ class Allocation:
     #: Every stored month, oldest first, a percent column per share: the history chart's.
     months: pd.DataFrame | None = None
     latest_pct: dict = field(default_factory=dict)
+    #: (label, {share: (percentile, word)}) per `aaii_votes.WINDOWS` row: the newest
+    #: month against the window's earlier months (`aaii_votes.window_percentiles`).
+    window_pct: tuple = ()
 
 
 def legs(get_bars=None):
@@ -150,7 +150,9 @@ def summarize(frame, recent=RECENT_MONTHS, high_days=HIGH_DAYS):
     return Allocation(recent=frame.iloc[::-1].head(recent), average=frame.mean(),
                       since=frame.index[0].date(), highs=highs, last=end.date(),
                       months=frame,
-                      latest_pct=aaii_votes.latest_percentiles(frame, frame.iloc[-1], LEGS))
+                      latest_pct=aaii_votes.latest_percentiles(frame, frame.iloc[-1], LEGS),
+                      window_pct=aaii_votes.window_percentiles(frame, frame.iloc[-1],
+                                                               legs=LEGS))
 
 
 def read(get_bars=None):
@@ -284,27 +286,27 @@ def stock_gap_figure(alloc, colors):
     return fig
 
 
-def latest_figure(alloc, colors):
-    """The newest month's three shares, each as a percentile of every stored month,
-    the votes card's percentile block (`aaii_votes.percentile_figure`)."""
+PERCENTILE_TITLE = "AAII allocation: stocks, bonds, cash"
+
+
+def latest_figure(alloc, colors, title=PERCENTILE_TITLE):
+    """The newest month's three shares as percentiles of every month since 1987, of the
+    last three years' and of the last year's (`aaii_votes.dots_figure`, the votes
+    block's layout). On the percentiles card since 2026-11-12."""
     newest = alloc.recent.iloc[0]
-    rows = [(key, label, f"{newest[key]:.1f}%", *alloc.latest_pct[key])
-            for key, _, label in LEGS]
-    return aaii_votes.percentile_figure(
-        rows, leg_colors(colors),
-        f"Newest month, percentile since {alloc.since:%Y}",
-        len(alloc.recent), alloc.since.year)
+    rows = [(f"Since {alloc.since:%Y}", alloc.latest_pct, f"every month since {alloc.since:%Y}")]
+    rows += [(label, pcts, f"the {label.lower()}") for label, pcts in alloc.window_pct]
+    return aaii_votes.dots_figure(
+        rows, [(key, label) for key, _, label in LEGS], leg_colors(colors),
+        {key: f"{newest[key]:.1f}%" for key, *_ in LEGS}, title)
 
 
 def figures(alloc, colors):
-    """The card's four blocks, (recent, history, gap, latest), laid out by each page
-    like the votes card's."""
+    """The card's three blocks, (recent, history, gap). The percentile block moved to
+    the percentiles card on 2026-11-12 (`latest_figure`)."""
     return (recent_figure(alloc, colors), history_figure(alloc, colors),
-            stock_gap_figure(alloc, colors), latest_figure(alloc, colors))
+            stock_gap_figure(alloc, colors))
 
-
-
-# ── the history chart, its own card ────────────────────────────────────────────
 
 PRICE_TITLE = "AAII allocation against price"
 PRICE_SUBTITLE = ("SPY above AAII members' monthly split between stocks (green), bonds "
