@@ -19,12 +19,19 @@ enough room).
    as bars on a fixed +-50 scale (red below zero, green above), against a dashed line
    at its official average since 1987. Added 2026-11-09 at the user's request; the
    weekly columns lower on the page chart the same spread week by week.
-4. **Percentile.** The newest week's three shares, each a dot on a 0-100 track at its
-   percentile of every official week since 1987 (`sentiment.percentile_of`: the share
-   of weeks at or below it), "highest" or "lowest" past every one. Added 2026-11-12 at
-   the user's request. Full history, not the page's lookback: the index already places
-   a week in its recent range, and this says how unusual it is against all of it. A
-   dotted median and no 10/90 lines, which would read as zones nothing has tested.
+4. **Percentile.** The newest week's three shares as percentiles (`sentiment.percentile_of`:
+   the share of weeks at or below it) over three histories, one row each: every
+   official week since 1987, the last three years and the last year. Each row carries
+   three dots, green bullish, grey neutral, red bearish, each with its percentile
+   printed inside. Added 2026-11-12 at the user's request with one row per vote against
+   the full history; regrouped the same day into one row per history ("show since 1987,
+   last 3 years, last year, with each bar having three colored circles"), as the NAAIM
+   card's percentile block reads. The windows say where the week sits in the recent
+   regime, which the full history cannot. Like the NAAIM card's, they rank the newest
+   week against the window's EARLIER weeks, provisional ones included, since the
+   member spreadsheet can end a few weeks before the newest; the since-1987 row stays
+   official, as the average and the highs do. A dotted median and no 10/90 lines,
+   which would read as zones nothing has tested.
    Neutral has drifted (decade means 40.7% in 1987-89, 28.0% in the 2020s; bearish
    27.3% and 36.7%), so its percentile partly measures the drift; HOW_TO_READ says so.
 
@@ -74,6 +81,8 @@ LEGS = (("bullish", sentiment.AAII_BULL, "Bullish"),
         ("bearish", sentiment.AAII_BEAR, "Bearish"))
 RECENT_WEEKS = 4
 HIGH_DAYS = 365
+#: The percentile block's rows after the full official history, (label, days).
+WINDOWS = (("Last 3 years", 3 * HIGH_DAYS), ("Last year", HIGH_DAYS))
 
 TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
@@ -83,8 +92,9 @@ HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average si
                "1987 with each vote's highest week in the last year; each recent "
                "week's bulls minus bears against its average since 1987 (dashed), with "
                "its percentile since 1987 in brackets; and the newest week's three "
-               "shares as percentiles of every week since 1987 (the dotted line is the "
-               "median). Neutral has drifted down over the decades, from about 41% in "
+               "shares as percentiles (the number in each dot) of every week since "
+               "1987, of the last three years and of the last year (the dotted line is "
+               "the median). Neutral has drifted down over the decades, from about 41% in "
                "the late 1980s to 28% in the 2020s, so a low neutral percentile partly "
                "reflects the drift.")
 
@@ -138,7 +148,9 @@ class Votes:
     as a percentile (1-100) of every official week's, in `recent`'s order.
     `latest_pct`: vote -> (percentile 1-100, word) for the newest row's share against
     every official week's (`sentiment.percentile_of`, `sentiment.percentile_word`:
-    "96th", or "highest" / "lowest"), the percentile block's."""
+    "96th", or "highest" / "lowest"), the percentile block's first row. `window_pct`:
+    (label, {vote: (percentile, word)}) per WINDOWS row, the newest row ranked against
+    the window's earlier weeks, provisional included."""
     recent: pd.DataFrame
     average: pd.Series
     since: date
@@ -147,6 +159,7 @@ class Votes:
     provisional: tuple = ()
     spread_pct: tuple = ()
     latest_pct: dict = field(default_factory=dict)
+    window_pct: tuple = ()
 
 
 def legs(get_bars=None):
@@ -198,7 +211,20 @@ def summarize(frame, recent=RECENT_WEEKS, high_days=HIGH_DAYS, provisional=None)
     return Votes(recent=rows, average=frame.mean(),
                  since=frame.index[0].date(), highs=highs, last=shown.index[-1].date(),
                  provisional=late, spread_pct=spread_percentiles(frame, rows),
-                 latest_pct=latest_percentiles(frame, rows.iloc[0]))
+                 latest_pct=latest_percentiles(frame, rows.iloc[0]),
+                 window_pct=window_percentiles(shown, rows.iloc[0]))
+
+
+def window_percentiles(shown, row, windows=WINDOWS, legs=LEGS):
+    """Each window's (label, {leg: (percentile, word)}) for `row`, the newest week of
+    `shown`, against the window's weeks BEFORE it: every week shown, provisional
+    included, ending on the newest (`window_pct` in `Votes`)."""
+    end = shown.index[-1]
+    out = []
+    for label, days in windows:
+        window = shown[(shown.index > end - pd.Timedelta(days=days)) & (shown.index < end)]
+        out.append((label, latest_percentiles(window, row, legs)))
+    return tuple(out)
 
 
 def spread_percentiles(official, rows):
@@ -419,17 +445,92 @@ def percentile_figure(rows, fills, title, n_rows, since, hovers=None):
     return fig
 
 
+#: The windows block's dots: large enough to carry "100" inside at 9px.
+DOT_SIZE = 19
+DOT_TEXT_SIZE = 9
+#: Dots in one row closer than this many percentile points would cover each other (a
+#: 19px dot spans about 8 points of a phone's 230px track, under 5 of a desktop's), so
+#: `dodge` spreads them sideways to this spacing, about their shared position. The
+#: number inside each dot is its percentile; the dot's place is within a few points of
+#: it. On 2026-11-12 bullish and neutral were both the 8th percentile of the last year
+#: (one dot until dodged), and neutral 5 and bullish 13 touched at 800px. Nudging them
+#: above and below their row was tried first and ran into the next row's dots.
+DOT_SPACING = 9
+
+
+def dodge(values, spacing=DOT_SPACING, lo=0.0, hi=100.0):
+    """Where to draw dots at `values` on one 0-100 track so none covers another: each
+    group of dots closer than `spacing` is spread to `spacing` apart, centred on the
+    group's mean and kept inside [lo, hi]. A dot clear of the others stays put."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    groups = [[i] for i in order]
+
+    def placed(group):
+        centre = sum(values[i] for i in group) / len(group)
+        xs = [centre + (j - (len(group) - 1) / 2) * spacing for j in range(len(group))]
+        shift = max(lo - xs[0], 0.0) + min(hi - xs[-1], 0.0)
+        return [x + shift for x in xs]
+
+    merged = True
+    while merged:                     # merge until no two groups overlap once spread
+        merged = False
+        for g in range(len(groups) - 1):
+            if placed(groups[g + 1])[0] - placed(groups[g])[-1] < spacing:
+                groups[g:g + 2] = [groups[g] + groups[g + 1]]
+                merged = True
+                break
+    out = [0.0] * len(values)
+    for group in groups:
+        for i, x in zip(group, placed(group)):
+            out[i] = x
+    return out
+
+
+def dot_ink(fill):
+    """The number printed inside a dot: dark on a light fill, white on a dark one."""
+    if not str(fill).startswith("#"):
+        return LIGHT_INK
+    return INSIDE_TEXT["bullish"] if relative_luminance(fill) > INK_PIVOT else LIGHT_INK
+
+
 def latest_figure(votes, colors):
-    """The newest week's three shares, each as a percentile of every official week's
-    since the series began: where AAII's own card shows a raw share against a bar, this
-    says whether the share is unusual."""
+    """The newest week's three shares as percentiles over three histories, one row each
+    (since the series began, the last three years, the last year), each row three dots
+    in the votes' colours with the percentile inside. Where AAII's own card shows a raw
+    share against a bar, this says whether the share is unusual, and against what."""
     newest = votes.recent.iloc[0]
-    rows = [(key, label, f"{newest[key]:.1f}%", *votes.latest_pct[key])
-            for key, _, label in LEGS]
+    rows = [(f"Since {votes.since:%Y}", votes.latest_pct, f"every week since {votes.since:%Y}")]
+    rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.window_pct]
+    names = [name for name, *_ in rows]
+    # Each row's dots dodged sideways where they would cover each other (`dodge`).
+    places = [dict(zip((key for key, *_ in LEGS),
+                       dodge([pcts[key][0] for key, *_ in LEGS])))
+              for _, pcts, _ in rows]
+    track = hex_to_rgba(vc.TEXT_COLOR, TRACK_ALPHA)
+    fig = go.Figure()
+    for name in names:
+        fig.add_trace(go.Scatter(x=[0, 100], y=[name, name], mode="lines",
+                                 line=dict(color=track, width=TRACK_WIDTH),
+                                 hoverinfo="skip", showlegend=False))
+    fills = leg_colors(colors)
+    for key, _, label in LEGS:
+        ranks = [pcts[key] for _, pcts, _ in rows]
+        hovers = [f"{label} {newest[key]:.1f}%: {word} "
+                  f"{'of' if word in (sentiment.HIGHEST, sentiment.LOWEST) else 'percentile of'}"
+                  f" {what}" for (pct, word), (_, _, what) in zip(ranks, rows)]
+        fig.add_trace(go.Scatter(
+            x=[place[key] for place in places], y=names, mode="markers+text", name=label,
+            text=[str(pct) for pct, _ in ranks], textposition="middle center",
+            textfont=dict(size=DOT_TEXT_SIZE, color=dot_ink(fills[key])),
+            marker=dict(color=fills[key], size=DOT_SIZE,
+                        line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1)),
+            customdata=hovers, hovertemplate="%{customdata}<extra></extra>",
+            cliponaxis=False, showlegend=False))
+    fig.add_vline(x=50, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"))
     # Not dated: the recent block's top row is this week, dated there.
-    return percentile_figure(
-        rows, leg_colors(colors), f"Newest week, percentile since {votes.since:%Y}",
-        len(votes.recent), votes.since.year)
+    _finish(fig, "Newest week, percentile", len(votes.recent))
+    fig.update_xaxes(range=PERCENTILE_X_RANGE)
+    return fig
 
 
 def figures(votes, colors):
