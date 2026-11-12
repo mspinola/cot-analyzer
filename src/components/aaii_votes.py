@@ -88,15 +88,11 @@ TITLE = "AAII votes"
 SUBTITLE = ("The share of AAII members bullish (green), neutral (grey) and bearish (red) "
             "on stocks over the next six months.")
 #: The rest, behind the card's "How to read this" toggle (sentiment.HOW_TO_READ_LABEL).
-HOW_TO_READ = ("Four blocks: the last four surveys, newest first; the average since "
-               "1987 with each vote's highest week in the last year; each recent "
+HOW_TO_READ = ("Three blocks: the last four surveys, newest first; the average since "
+               "1987 with each vote's highest week in the last year; and each recent "
                "week's bulls minus bears against its average since 1987 (dashed), with "
-               "its percentile since 1987 in brackets; and the newest week's three "
-               "shares as percentiles (the number in each dot) of every week since "
-               "1987, of the last three years and of the last year (the dotted line is "
-               "the median). Neutral has drifted down over the decades, from about 41% in "
-               "the late 1980s to 28% in the 2020s, so a low neutral percentile partly "
-               "reflects the drift.")
+               "its percentile since 1987 in brackets. The newest week's percentiles "
+               "are in the Percentiles card at the top of the page.")
 
 #: Pixels per bar row. 30 until 2026-11-12, when the three grid cards (NAAIM, votes,
 #: allocation) took 428px each at 1280 and did not fit a screen together ("can compress
@@ -131,6 +127,10 @@ BLOCK_TOP = 18
 #: where four across is 268 a block at any window width, and the titles ran past it.
 VOTES_SIDE_BY_SIDE_MIN_PX = 768
 VOTES_ALL_ACROSS_MIN_PX = 1400
+#: Since 2026-11-12 each survey's card has three blocks and the percentiles card three,
+#: so the published page puts three across from here: at 1100px a block is about 326px
+#: in the 1180px column, over the 310 that keeps every label.
+THREE_ACROSS_MIN_PX = 1100
 #: The spread block's fixed scale, points either side of zero: the same length means the
 #: same spread every week. AAII's spread has run -54.0 (1990-10-19) to +62.9 (2003-06-26);
 #: 0.68% of weeks fall outside +-50 and draw pinned to the edge with their true value
@@ -496,29 +496,30 @@ def dot_ink(fill):
     return INSIDE_TEXT["bullish"] if relative_luminance(fill) > INK_PIVOT else LIGHT_INK
 
 
-def latest_figure(votes, colors):
-    """The newest week's three shares as percentiles over three histories, one row each
-    (since the series began, the last three years, the last year), each row three dots
-    in the votes' colours with the percentile inside. Where AAII's own card shows a raw
-    share against a bar, this says whether the share is unusual, and against what."""
-    newest = votes.recent.iloc[0]
-    rows = [(f"Since {votes.since:%Y}", votes.latest_pct, f"every week since {votes.since:%Y}")]
-    rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.window_pct]
+#: The percentile blocks' height in rows: three histories, a little air between them.
+PERCENTILE_ROWS = 3.5
+
+
+def dots_figure(rows, legs, fills, values, title, n_rows=PERCENTILE_ROWS):
+    """A percentile block: one track per history, top down, and on each a dot per leg
+    with its percentile printed inside. `rows`: (name, {leg key: (percentile 1-100,
+    word)}, what the history is in words, for the hover), top down; `legs`: (key,
+    label) in drawing order; `fills`: key -> colour; `values`: key -> the reading as
+    printed in the hover ("30.8%"). Dots that would cover each other are dodged
+    sideways (`dodge`); the number inside is always the percentile. Shared by the
+    percentiles card's NAAIM, AAII votes and AAII allocation blocks."""
     names = [name for name, *_ in rows]
-    # Each row's dots dodged sideways where they would cover each other (`dodge`).
-    places = [dict(zip((key for key, *_ in LEGS),
-                       dodge([pcts[key][0] for key, *_ in LEGS])))
-              for _, pcts, _ in rows]
+    keys = [key for key, _ in legs]
+    places = [dict(zip(keys, dodge([pcts[key][0] for key in keys]))) for _, pcts, _ in rows]
     track = hex_to_rgba(vc.TEXT_COLOR, TRACK_ALPHA)
     fig = go.Figure()
     for name in names:
         fig.add_trace(go.Scatter(x=[0, 100], y=[name, name], mode="lines",
                                  line=dict(color=track, width=TRACK_WIDTH),
                                  hoverinfo="skip", showlegend=False))
-    fills = leg_colors(colors)
-    for key, _, label in LEGS:
+    for key, label in legs:
         ranks = [pcts[key] for _, pcts, _ in rows]
-        hovers = [f"{label} {newest[key]:.1f}%: {word} "
+        hovers = [f"{label} {values[key]}: {word} "
                   f"{'of' if word in (sentiment.HIGHEST, sentiment.LOWEST) else 'percentile of'}"
                   f" {what}" for (pct, word), (_, _, what) in zip(ranks, rows)]
         fig.add_trace(go.Scatter(
@@ -529,15 +530,31 @@ def latest_figure(votes, colors):
                         line=dict(color=vc.BRIGHTER_TEXT_COLOR, width=1)),
             customdata=hovers, hovertemplate="%{customdata}<extra></extra>",
             cliponaxis=False, showlegend=False))
-    fig.add_vline(x=50, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"))
-    # Not dated: the recent block's top row is this week, dated there.
-    _finish(fig, "Newest week, percentile", len(votes.recent))
+    # Under the dots: drawn above, it ran through a dot at the median ("51").
+    fig.add_vline(x=50, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"), layer="below")
+    _finish(fig, title, n_rows)
     fig.update_xaxes(range=PERCENTILE_X_RANGE)
     return fig
 
 
+PERCENTILE_TITLE = "AAII votes: bullish, neutral, bearish"
+
+
+def latest_figure(votes, colors, title=PERCENTILE_TITLE):
+    """The newest week's three shares as percentiles over three histories, one row each
+    (since the series began, the last three years, the last year), each row three dots
+    in the votes' colours with the percentile inside. Where AAII's own card shows a raw
+    share against a bar, this says whether the share is unusual, and against what. On
+    the percentiles card since 2026-11-12, no longer in this card's grid."""
+    newest = votes.recent.iloc[0]
+    rows = [(f"Since {votes.since:%Y}", votes.latest_pct, f"every week since {votes.since:%Y}")]
+    rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.window_pct]
+    return dots_figure(rows, [(key, label) for key, _, label in LEGS], leg_colors(colors),
+                       {key: f"{newest[key]:.1f}%" for key, *_ in LEGS}, title)
+
+
 def figures(votes, colors):
-    """The card's four blocks, (recent, history, spread, latest), laid out by each page
-    at VOTES_SIDE_BY_SIDE_MIN_PX and VOTES_ALL_ACROSS_MIN_PX."""
+    """The card's three blocks, (recent, history, spread). The fourth, the percentile
+    block, moved to the percentiles card on 2026-11-12 (`latest_figure`)."""
     return (recent_figure(votes, colors), history_figure(votes, colors),
-            spread_figure(votes, colors), latest_figure(votes, colors))
+            spread_figure(votes, colors))

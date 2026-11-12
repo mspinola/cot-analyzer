@@ -74,7 +74,9 @@ def test_each_card_opens_on_one_sentence_with_the_rest_behind_a_toggle():
     from tests.test_aaii_votes import _legs_bars
     page = st.render(_reads(), COLORS, PALETTE, clientside_js="",
                      votes=av.read(_legs_bars()[1]), allocation=aa.read(_alloc_bars()[1]))
-    pairs = ((s.PRICE_SUBTITLE, s.PRICE_HOW_TO_READ), (av.SUBTITLE, av.HOW_TO_READ),
+    from components import percentiles_card as pc
+    pairs = ((pc.SUBTITLE, pc.HOW_TO_READ),
+             (s.PRICE_SUBTITLE, s.PRICE_HOW_TO_READ), (av.SUBTITLE, av.HOW_TO_READ),
              (aa.SUBTITLE, aa.HOW_TO_READ), (aa.PRICE_SUBTITLE, aa.PRICE_HOW_TO_READ))
     import html as html_lib
     for lead, how in pairs:

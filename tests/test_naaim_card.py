@@ -88,11 +88,11 @@ def test_a_record_reading_says_so_in_its_hover():
     assert n.latest[0][3] == f"highest of every week since {WEEKS[0]:%Y}"
 
 
-def test_the_four_blocks_share_one_height_and_fixed_scales():
+def test_the_three_blocks_share_one_height_and_fixed_scales():
     _, get_bars = _naaim_bars()
     figs = nc.figures(nc.read(get_bars), COLORS, PALETTE)
-    assert len(figs) == 4 and len({f.layout.height for f in figs}) == 1
-    recent, change, history, _ = figs
+    assert len(figs) == 3 and len({f.layout.height for f in figs}) == 1
+    recent, change, history = figs
     assert list(recent.layout.xaxis.range) == nc.X_RANGE
     assert list(history.layout.xaxis.range) == nc.X_RANGE
     assert list(change.layout.xaxis.range) == [-nc.CHANGE_LIMIT, nc.CHANGE_LIMIT]
