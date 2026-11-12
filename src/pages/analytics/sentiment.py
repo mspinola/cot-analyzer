@@ -167,7 +167,7 @@ def layout(**_):
         # order, sentiment_static's "Card order").
         naaim, votes, allocation = (naaim_card.read(), aaii_votes.read(),
                                     aaii_allocation.read())
-        blocks = percentiles_card.figures(colors, palette, naaim, votes, allocation)
+        blocks = percentiles_card.figures(colors, palette, naaim, votes)
         if blocks:
             cards.append(_card(percentiles_card.TITLE, percentiles_card.SUBTITLE,
                                [fig for _, fig in blocks], export="percentiles",

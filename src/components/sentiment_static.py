@@ -167,7 +167,7 @@ VOTES_HALVES = ("recent", "history", "spread")
 #: The AAII allocation card: the same block grid, its own payload key.
 ALLOCATION_ID = "allocation"
 ALLOCATION_KEY = "allocation"
-ALLOCATION_BLOCKS = ("recent", "history", "gap")
+ALLOCATION_BLOCKS = ("recent", "history", "gap", "latest")
 #: (element id, payload key) of every block-grid card, drawn once each by the same JS.
 NAAIM_ID = "naaim"
 NAAIM_KEY = "naaim"
@@ -338,7 +338,7 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
         if read.frame.empty:
             raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
     payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
-    pct_blocks = percentiles_card.figures(colors, palette, naaim, votes, allocation)
+    pct_blocks = percentiles_card.figures(colors, palette, naaim, votes)
     if pct_blocks:
         payload[PERCENTILES_KEY] = {key: json.loads(fig.to_json()) for key, fig in pct_blocks}
     if naaim is not None:
@@ -465,7 +465,7 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .card .how p {{ margin: 4px 0 0; }}
 .votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
-@media (min-width: {aaii_votes.THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
+@media (min-width: {aaii_votes.THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} .votes-grid.two {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 footer .prov {{ margin: 0 0 6px; }}
@@ -595,14 +595,15 @@ footer .prov {{ margin: 0 0 6px; }}
 """
 
 
-def _grid_card(title, subtitle, element_id, blocks, how=None):
+def _grid_card(title, subtitle, element_id, blocks, how=None, grid_class="votes-grid"):
     """A card of figure blocks in the wrapping grid (`.votes-grid`, named for the first
     card that used it): one across on a phone, two from 768px, three from 1100px
-    (`aaii_votes.THREE_ACROSS_MIN_PX`)."""
+    (`aaii_votes.THREE_ACROSS_MIN_PX`), or never three with `grid_class` "votes-grid
+    two" (a four-block card, 2x2)."""
     esc = html.escape
     return (f'<section class="card"><h2>{esc(title)}</h2>\n'
             + _sub(subtitle, how)
-            + f'<div id="{element_id}" class="votes-grid">'
+            + f'<div id="{element_id}" class="{grid_class}">'
             + "".join(f'<div class="plot" data-half="{h}"></div>' for h in blocks)
             + '</div></section>\n')
 
@@ -623,8 +624,11 @@ def _votes_card():
 
 
 def _allocation_card():
+    # Four blocks: two across at every width from 768px (2x2), never three, which
+    # would leave the fourth alone on a row.
     return _grid_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE, ALLOCATION_ID,
-                      ALLOCATION_BLOCKS, aaii_allocation.HOW_TO_READ)
+                      ALLOCATION_BLOCKS, aaii_allocation.HOW_TO_READ,
+                      grid_class="votes-grid two")
 
 
 def _allocation_price_card():

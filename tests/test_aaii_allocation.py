@@ -64,11 +64,11 @@ def test_recent_months_newest_first_average_and_last_years_highs():
 def test_the_blocks_label_months_and_line_up():
     _, get_bars = _alloc_bars()
     alloc = aa.read(get_bars)
-    recent, history, gap = aa.figures(alloc, COLORS)
+    recent, history, gap, latest = aa.figures(alloc, COLORS)
     months = [f"{d:%Y-%m}" for d in alloc.recent.index]
     assert list(recent.data[0].y) == months and list(gap.data[0].y) == months
     assert list(history.data[0].y) == ["Average", "Stocks high", "Bonds high", "Cash high"]
-    assert len({f.layout.height for f in (recent, history, gap)}) == 1
+    assert len({f.layout.height for f in (recent, history, gap, latest)}) == 1
     for trace, key in zip(recent.data, ("stocks", "bonds", "cash")):
         np.testing.assert_allclose(trace.x, alloc.recent[key].round(1))
     dated = [a.text.strip() for a in history.layout.annotations[:3]]
@@ -107,7 +107,9 @@ def test_the_published_page_carries_the_card_after_the_votes_card():
     _, alloc_bars = _alloc_bars()
     html = st.render(_reads(), COLORS, PALETTE, votes=av.read(votes_bars),
                      allocation=aa.read(alloc_bars))
-    assert html.count(f'<div id="{st.ALLOCATION_ID}" class="votes-grid">') == 1
+    # Four blocks, 2x2: the "two" grid never goes three across.
+    assert html.count(f'<div id="{st.ALLOCATION_ID}" class="votes-grid two">') == 1
+    assert ".votes-grid.two { grid-template-columns: repeat(2," in html
     assert aa.TITLE in html
     payload = _payload(html)
     assert set(payload[st.ALLOCATION_KEY]) == set(st.ALLOCATION_BLOCKS)
