@@ -7,8 +7,9 @@ trailing range). This card keeps the three shares apart, because a bearish week 
 few neutrals and one with many read differently, and the spread alone cannot say
 which. Four blocks, each its own figure in a wrapping grid (one figure with several
 columns cannot reflow, and stacked on a desktop the bars ran the page's full width,
-all colour): all four across on the widest page, two on a medium one, stacked on a
-phone.
+all colour): two across from a medium width, stacked on a phone, and all four across
+only in the app at its widest (the published page's 1180px column never gives four
+enough room).
 
 1. **Recent weeks.** The last four surveys, newest on top, each a bar split into the
    three shares (they sum to 100, within 0.2 for rounding in AAII's file).
@@ -110,9 +111,10 @@ FIGURE_CHROME = 44
 #: VOTES_ALL_ACROSS_MIN_PX, one column below. Each block needs about 310px to keep its
 #: date labels and every segment's text (all 18 showed at 309 on a phone, and at 332 a
 #: block at 768); three across at 768 would give each about 220. Four across waits for
-#: 1400 (the page's widest, about 315 a block), where three had gone across from 1200:
-#: four at 1200 gave each about 265. Both are Bootstrap's md and xxl breakpoints, so the
-#: app page's columns break at the same widths.
+#: 1400 (about 315 a block), where three had gone across from 1200: four at 1200 gave
+#: each about 265. Both are Bootstrap's md and xxl breakpoints. The published page
+#: uses only the first: since 2026-11-12 it sits in the other monitors' 1180px column,
+#: where four across is 268 a block at any window width, and the titles ran past it.
 VOTES_SIDE_BY_SIDE_MIN_PX = 768
 VOTES_ALL_ACROSS_MIN_PX = 1400
 #: The spread block's fixed scale, points either side of zero: the same length means the

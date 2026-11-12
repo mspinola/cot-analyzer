@@ -209,11 +209,10 @@ def _luminance(hex_color):
 def test_the_title_ticker_is_readable_on_the_page():
     """"Surveys" was drawn in the button blue, #002b36 on #1a1a1a: about 1.2 to 1,
     an invisible word (2026-11-10). WCAG's 4.5 to 1 for text, held here."""
-    import viz_constants as vc
     page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
     assert f"--ticker: {st.TICKER_COLOR};" in page
     assert "h1 .tk { font-family: var(--mono); font-weight: 600; color: var(--ticker); }" in page
-    hi, lo = sorted((_luminance(st.TICKER_COLOR), _luminance(vc.BACKGROUND_COLOR)),
+    hi, lo = sorted((_luminance(st.TICKER_COLOR), _luminance(st.PAGE_COLOR)),
                     reverse=True)
     assert (hi + 0.05) / (lo + 0.05) >= 4.5
     # The focus ring on the Monitors links used the same invisible colour.
@@ -234,3 +233,14 @@ def test_each_survey_tile_carries_its_percentile_on_every_lookback():
                 for y in s.LOOKBACK_YEARS} == {phrase}
     assert "tile.querySelector('.pct')" in html
     assert ".tile .value { grid-column: 2; grid-row: 1 / span 4;" in html
+
+
+def test_the_page_matches_the_other_monitors_background_and_column():
+    """The DBMF, AHLT and ORR pages sit on #0d1013 with #151a1e cards in a 1180px
+    column behind a 20px gutter. On the app's #1a1a1a and a 1400px column this page was
+    greyer and wider, so the Monitors row jumped sideways on every switch (2026-11-12)."""
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    assert "--page: #0d1013;" in page and "--surface: #151a1e;" in page
+    assert "*, *::before, *::after { box-sizing: border-box; }" in page
+    assert "body { padding-inline: 20px; padding-block: 28px 56px; }" in page
+    assert "main { max-width: 1180px; margin: 0 auto; }" in page

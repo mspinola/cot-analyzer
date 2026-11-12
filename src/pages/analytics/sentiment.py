@@ -71,8 +71,9 @@ def export_button(view):
 
 def _card(title, subtitle, figure, graph_id=None, controls=None, export=None, how=None):
     """A card around one figure, or around several: stacked on a phone, two across from
-    Bootstrap's md width (768px), all across from xxl (1400px), the published page's
-    breakpoints (aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX, VOTES_ALL_ACROSS_MIN_PX)."""
+    Bootstrap's md width (768px), all across from xxl (1400px)
+    (aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX, VOTES_ALL_ACROSS_MIN_PX). The published
+    page stops at two across: its column is capped at 1180px, this page's is not."""
     if isinstance(figure, (list, tuple)):
         # md=6: two across from 768px; xxl: all across from 1400px (12 // n each).
         graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=6,
