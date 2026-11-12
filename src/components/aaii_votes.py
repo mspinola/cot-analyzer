@@ -537,10 +537,20 @@ def dots_figure(rows, legs, fills, values, title, n_rows=PERCENTILE_ROWS):
     return fig
 
 
-PERCENTILE_TITLE = "AAII votes: bullish, neutral, bearish"
+PERCENTILE_NAME = "AAII votes"
 
 
-def latest_figure(votes, colors, title=PERCENTILE_TITLE):
+def legend_title(name, legs, fills):
+    """A percentiles block's title naming its legs, each word in its dots' colour and
+    bold ("AAII votes: bullish, neutral, bearish"): out of its own card the block lost
+    that card's subtitle, the only place the colours were named (2026-11-12, "the aaii
+    votes and aaii allocation loses there color context")."""
+    words = ", ".join(f'<span style="color:{fills[key]}"><b>{label.lower()}</b></span>'
+                      for key, label in legs)
+    return f"{name}: {words}"
+
+
+def latest_figure(votes, colors, name=PERCENTILE_NAME):
     """The newest week's three shares as percentiles over three histories, one row each
     (since the series began, the last three years, the last year), each row three dots
     in the votes' colours with the percentile inside. Where AAII's own card shows a raw
@@ -549,8 +559,9 @@ def latest_figure(votes, colors, title=PERCENTILE_TITLE):
     newest = votes.recent.iloc[0]
     rows = [(f"Since {votes.since:%Y}", votes.latest_pct, f"every week since {votes.since:%Y}")]
     rows += [(label, pcts, f"the {label.lower()}") for label, pcts in votes.window_pct]
-    return dots_figure(rows, [(key, label) for key, _, label in LEGS], leg_colors(colors),
-                       {key: f"{newest[key]:.1f}%" for key, *_ in LEGS}, title)
+    legs, fills = [(key, label) for key, _, label in LEGS], leg_colors(colors)
+    return dots_figure(rows, legs, fills, {key: f"{newest[key]:.1f}%" for key, *_ in LEGS},
+                       legend_title(name, legs, fills))
 
 
 def figures(votes, colors):
