@@ -198,6 +198,11 @@ def layout(**_):
                                         "fontSize": "0.9rem"}, className="mb-2"))
             extra_notes = [html.P(p, style=NOTE_STYLE)
                            for p in aaii_allocation.caption(allocation)]
+    # Which weeks are provisional, said once at the foot (the published page's footer),
+    # outside the caption the lookback rewrites: the charts and dates no longer mark them.
+    note = sentiment.provisional_note(read)
+    if note:
+        extra_notes = [*extra_notes, html.P(note, style=NOTE_STYLE)]
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
                           html.Div(extra_notes),
                           dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK),
