@@ -111,9 +111,9 @@ def test_the_published_page_carries_the_card_after_the_votes_card():
     assert aa.TITLE in html
     payload = _payload(html)
     assert set(payload[st.ALLOCATION_KEY]) == set(st.ALLOCATION_BLOCKS)
-    # After the two cards the lookback redraws, and after the votes.
-    assert html.index(f'id="{st.COLUMNS_ID}"') < html.index(f'id="{st.VOTES_ID}"') \
-        < html.index(f'id="{st.ALLOCATION_ID}"')
+    # After the votes, and both before the toggle and the two cards it redraws.
+    assert html.index(f'id="{st.VOTES_ID}"') < html.index(f'id="{st.ALLOCATION_ID}"') \
+        < html.index('class="lookback"') < html.index(f'id="{st.PRICE_ID}"')
     # One JS loop draws every block-grid card.
     assert json.dumps([list(c) for c in st.GRID_CARDS], separators=(",", ":")) in html
 
@@ -347,7 +347,9 @@ def test_the_published_page_draws_the_price_chart_once_and_refits_it():
     html = st.render(_reads(), COLORS, PALETTE, allocation=aa.read(alloc_bars))
     assert html.count(f'<div id="{st.ALLOCATION_PRICE_ID}">') == 1 and aa.PRICE_TITLE in html
     assert st.ALLOCATION_PRICE_KEY in _payload(html)
-    assert html.index(f'id="{st.COLUMNS_ID}"') < html.index(f'id="{st.ALLOCATION_ID}"') \
+    # The allocation card leads with the current readings; its price history closes
+    # the page, after the two cards the lookback redraws.
+    assert html.index(f'id="{st.ALLOCATION_ID}"') < html.index(f'id="{st.COLUMNS_ID}"') \
         < html.index(f'id="{st.ALLOCATION_PRICE_ID}"') < html.index('id="notes"')
     # Drawn outside the lookback loop, but hooked to the same refit as the price chart.
     assert f"'{st.ALLOCATION_PRICE_ID}': '{st.ALLOCATION_PRICE_KEY}'" in html
@@ -398,3 +400,38 @@ def test_the_percentile_block_ranks_the_newest_month_on_every_month():
         assert dot.marker.color == fills[key]
     assert fig.layout.annotations[0].text == f"Newest month, percentile since {alloc.since:%Y}"
     assert fig.layout.height == aa.figures(alloc, COLORS)[0].layout.height
+
+
+def test_the_app_page_leads_with_the_current_readings(monkeypatch):
+    """The app page keeps the static page's order: votes and allocation under the
+    summary, then the toggle directly above the two cards it redraws, then the
+    allocation-against-price history."""
+    import importlib
+
+    import local_pages
+    monkeypatch.delenv(local_pages.ENV, raising=False)
+    page = importlib.import_module("pages.analytics.sentiment")
+    _, votes_bars = _legs_bars()
+    _, alloc_bars = _alloc_bars()
+    read = _reads()[sentiment.DEFAULT_LOOKBACK]
+    votes, allocation = av.read(votes_bars), aa.read(alloc_bars)
+    monkeypatch.setattr(page.sentiment, "read", lambda *a, **k: read)
+    monkeypatch.setattr(page.aaii_votes, "read", lambda *a, **k: votes)
+    monkeypatch.setattr(page.aaii_allocation, "read", lambda *a, **k: allocation)
+
+    ids = []
+
+    def walk(node):
+        if isinstance(node, (list, tuple)):
+            for n in node:
+                walk(n)
+            return
+        if getattr(node, "id", None) is not None:
+            ids.append(node.id)
+        walk(getattr(node, "children", None) or [])
+
+    walk(page.layout())
+    order = [page.EXPORTS["votes"][0], page.EXPORTS["allocation"][0], page.LOOKBACK,
+             page.PRICE_CHART, page.COLUMNS_CHART, page.ALLOCATION_PRICE_CHART]
+    assert all(i in ids for i in order), [i for i in order if i not in ids]
+    assert [ids.index(i) for i in order] == sorted(ids.index(i) for i in order)

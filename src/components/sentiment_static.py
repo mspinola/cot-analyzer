@@ -20,10 +20,13 @@ What the static page keeps from the app, and how:
 - **Not the PNG export.** It leans on html2canvas and the app's theme container; a
   reader of a static page has the browser's own screenshot.
 
-**Card order.** The two cards the lookback toggle redraws (sentiment against price,
-weekly columns) come first, directly under the toggle; the AAII votes and allocation
-cards, which it never changes, follow. Until 2026-11-10 the columns sat last, three
-cards below the toggle that drives them. The allocation survey has its own notes
+**Card order.** The current readings lead: under the tiles come the AAII votes and
+allocation cards (the newest week and month, their recent rows and their
+percentiles), which the lookback toggle never changes. The toggle follows, directly
+above the two cards it redraws (sentiment against price, weekly columns), and the
+allocation-against-price history closes the page. Until 2026-11-10 the columns sat
+last, three cards below the toggle that drives them; until 2026-11-12 the votes and
+allocation cards sat below the charts. The allocation survey has its own notes
 (`aaii_allocation.caption`), outside `#notes`, which the toggle rewrites.
 
 **The readings strip** replaces the app's summary sentence: one tile per survey (its
@@ -394,12 +397,12 @@ footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18
 <main>
 {_nav()}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
-{_tiles(tiles)}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{_tiles(tiles)}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 {_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
-{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
+{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
 {allocation_notes}<footer>{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>

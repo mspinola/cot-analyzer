@@ -154,9 +154,11 @@ def test_the_published_page_carries_the_card_once_when_votes_are_in():
     assert all(f["layout"]["barmode"] == "stack" for f in payload[st.VOTES_KEY].values())
     # Once, beside the lookbacks, not inside each.
     assert all(st.VOTES_KEY not in v for k, v in payload.items() if k != st.VOTES_KEY)
-    # After the two cards the lookback toggle redraws, which sit together under it.
-    assert html.index(f'id="{st.PRICE_ID}"') < html.index(f'id="{st.COLUMNS_ID}"') \
-        < html.index(f'id="{st.VOTES_ID}"')
+    # The current readings lead: under the tiles, above the lookback toggle and the
+    # two cards it redraws, which sit together under it.
+    assert html.index(f'id="{st.READINGS_ID}"') < html.index(f'id="{st.VOTES_ID}"') \
+        < html.index('class="lookback"') < html.index(f'id="{st.PRICE_ID}"') \
+        < html.index(f'id="{st.COLUMNS_ID}"')
 
 
 def test_without_votes_the_page_leaves_the_card_out():
