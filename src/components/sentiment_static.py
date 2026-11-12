@@ -20,9 +20,10 @@ What the static page keeps from the app, and how:
 - **Not the PNG export.** It leans on html2canvas and the app's theme container; a
   reader of a static page has the browser's own screenshot.
 
-**Card order.** The current readings lead: under the tiles come the AAII votes and
-allocation cards (the newest week and month, their recent rows and their
-percentiles), which the lookback toggle never changes. The toggle follows, directly
+**Card order.** The current readings lead: under the tiles come the NAAIM card and
+the AAII votes and allocation cards (the newest week and month, their recent rows and
+their percentiles), which the lookback toggle never changes; NAAIM first, in the
+tiles' order (its card since 2026-11-12). The toggle follows, directly
 above the two cards it redraws (sentiment against price, weekly columns), and the
 allocation-against-price history closes the page. Until 2026-11-10 the columns sat
 last, three cards below the toggle that drives them; until 2026-11-12 the votes and
@@ -74,7 +75,7 @@ from pathlib import Path
 import plotly.offline
 
 import viz_constants as vc
-from components import aaii_allocation, aaii_votes, sentiment
+from components import aaii_allocation, aaii_votes, naaim_card, sentiment
 
 
 def plotly_js_url():
@@ -167,7 +168,11 @@ ALLOCATION_ID = "allocation"
 ALLOCATION_KEY = "allocation"
 ALLOCATION_BLOCKS = ("recent", "history", "gap", "latest")
 #: (element id, payload key) of every block-grid card, drawn once each by the same JS.
-GRID_CARDS = ((VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
+NAAIM_ID = "naaim"
+NAAIM_KEY = "naaim"
+NAAIM_BLOCKS = ("recent", "change", "history", "latest")
+
+GRID_CARDS = ((NAAIM_ID, NAAIM_KEY), (VOTES_ID, VOTES_KEY), (ALLOCATION_ID, ALLOCATION_KEY))
 #: The AAII allocation against SPY: one figure, not indexed, so embedded once like the
 #: grid cards, but drawn and re-fitted on zoom like the price chart.
 ALLOCATION_PRICE_ID = "allocation-price"
@@ -316,10 +321,10 @@ def _header(read, allocation=None):
 
 
 def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None,
-           allocation=None):
+           allocation=None, naaim=None):
     """The page for `reads`, a {lookback years: SentimentRead} with the default included,
-    `votes` (`aaii_votes.read()`) and `allocation` (`aaii_allocation.read()`), each of
-    whose cards is left out when it is None.
+    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
+    (`aaii_allocation.read()`), each of whose cards is left out when it is None.
 
     Raises ValueError when the default lookback is missing or any read is empty, so a
     failed store read stops the publish rather than putting an empty page up.
@@ -330,6 +335,9 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
         if read.frame.empty:
             raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
     payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
+    if naaim is not None:
+        payload[NAAIM_KEY] = {block: json.loads(fig.to_json()) for block, fig
+                              in zip(NAAIM_BLOCKS, naaim_card.figures(naaim, colors, palette))}
     if votes is not None:
         payload[VOTES_KEY] = {half: json.loads(fig.to_json()) for half, fig
                               in zip(VOTES_HALVES, aaii_votes.figures(votes, colors))}
@@ -458,7 +466,7 @@ footer .prov {{ margin: 0 0 6px; }}
 <main>
 {_nav()}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
-{_tiles(tiles)}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{_tiles(tiles)}{_naaim_card() if naaim is not None else ""}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
 {_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
@@ -586,6 +594,11 @@ def _grid_card(title, subtitle, element_id, blocks, how=None):
             + f'<div id="{element_id}" class="votes-grid">'
             + "".join(f'<div class="plot" data-half="{h}"></div>' for h in blocks)
             + '</div></section>\n')
+
+
+def _naaim_card():
+    return _grid_card(naaim_card.TITLE, naaim_card.SUBTITLE, NAAIM_ID, NAAIM_BLOCKS,
+                      naaim_card.HOW_TO_READ)
 
 
 def _votes_card():

@@ -419,6 +419,9 @@ def test_the_app_page_leads_with_the_current_readings(monkeypatch):
     monkeypatch.setattr(page.sentiment, "read", lambda *a, **k: read)
     monkeypatch.setattr(page.aaii_votes, "read", lambda *a, **k: votes)
     monkeypatch.setattr(page.aaii_allocation, "read", lambda *a, **k: allocation)
+    from tests.test_naaim_card import _naaim_bars
+    naaim = page.naaim_card.read(_naaim_bars()[1])
+    monkeypatch.setattr(page.naaim_card, "read", lambda *a, **k: naaim)
 
     ids = []
 
@@ -432,7 +435,8 @@ def test_the_app_page_leads_with_the_current_readings(monkeypatch):
         walk(getattr(node, "children", None) or [])
 
     walk(page.layout())
-    order = [page.EXPORTS["votes"][0], page.EXPORTS["allocation"][0], page.LOOKBACK,
+    order = [page.EXPORTS["naaim"][0], page.EXPORTS["votes"][0],
+             page.EXPORTS["allocation"][0], page.LOOKBACK,
              page.PRICE_CHART, page.COLUMNS_CHART, page.ALLOCATION_PRICE_CHART]
     assert all(i in ids for i in order), [i for i in order if i not in ids]
     assert [ids.index(i) for i in order] == sorted(ids.index(i) for i in order)
