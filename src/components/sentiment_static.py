@@ -323,68 +323,13 @@ def _header(read, allocation=None):
             f'</div><div class="asof">{asof}</div></header>')
 
 
-def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None,
-           allocation=None, naaim=None):
-    """The page for `reads`, a {lookback years: SentimentRead} with the default included,
-    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
-    (`aaii_allocation.read()`), each of whose cards is left out when it is None.
-
-    Raises ValueError when the default lookback is missing or any read is empty, so a
-    failed store read stops the publish rather than putting an empty page up.
-    """
-    if sentiment.DEFAULT_LOOKBACK not in reads:
-        raise ValueError(f"no read for the default lookback ({sentiment.DEFAULT_LOOKBACK}y)")
-    for years, read in reads.items():
-        if read.frame.empty:
-            raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
-    payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
-    pct_blocks = percentiles_card.figures(colors, palette, naaim, votes)
-    if pct_blocks:
-        payload[PERCENTILES_KEY] = {key: json.loads(fig.to_json()) for key, fig in pct_blocks}
-    if naaim is not None:
-        payload[NAAIM_KEY] = {block: json.loads(fig.to_json()) for block, fig
-                              in zip(NAAIM_BLOCKS, naaim_card.figures(naaim, colors, palette))}
-    if votes is not None:
-        payload[VOTES_KEY] = {half: json.loads(fig.to_json()) for half, fig
-                              in zip(VOTES_HALVES, aaii_votes.figures(votes, colors))}
-    if allocation is not None:
-        payload[ALLOCATION_KEY] = {
-            block: json.loads(fig.to_json()) for block, fig
-            in zip(ALLOCATION_BLOCKS, aaii_allocation.figures(allocation, colors))}
-        spy = reads[sentiment.DEFAULT_LOOKBACK].frame.get("spy")
-        payload[ALLOCATION_PRICE_KEY] = json.loads(
-            aaii_allocation.price_figure(allocation, spy, colors).to_json())
-    default = payload[str(sentiment.DEFAULT_LOOKBACK)]
-    stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-    js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
-    esc = html.escape
-
-    pressed = {y: "true" if y == sentiment.DEFAULT_LOOKBACK else "false" for y in reads}
-    buttons = "".join(f'<button type="button" data-years="{y}" aria-pressed="{pressed[y]}">'
-                      f'{y}Y</button>' for y in sorted(reads))
-    notes = "".join(f"<p>{esc(p)}</p>" for p in default["caption"])
-    # The allocation survey's tile and notes are not rewritten by the lookback toggle:
-    # nothing in them depends on the lookback.
-    tiles = list(default["tiles"])
-    allocation_notes = ""
-    if allocation is not None:
-        tiles.append(stocks_tile(allocation))
-        allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}">'
-                            + "".join(f"<p>{esc(p)}</p>"
-                                      for p in aaii_allocation.caption(allocation))
-                            + '</div>\n')
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(TITLE)}</title>
-<meta name="description" content="{esc(DESCRIPTION)}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
-<style>
-:root {{ --page: {PAGE_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
+def base_css():
+    """The stylesheet every page of this family opens with: the tokens, the monitors'
+    header, the readings tiles and the card with its subtitle and "How to read this".
+    One function so the surveys page and the market internals page
+    (`market_internals_static`) cannot drift apart rule by rule, which is how the
+    internals page came to sit on the old page colour and width (2026-11-15)."""
+    return f""":root {{ --page: {PAGE_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
   --muted: #7d8794; --line: {LINE_COLOR}; --surface: {SURFACE_COLOR};
   --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND}; --ticker: {TICKER_COLOR};
   --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -463,7 +408,71 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .card .how[open] {{ display: block; margin-top: 2px; }}
 .card .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
 .card .how p {{ margin: 4px 0 0; }}
-.votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 24px; }}
+"""
+
+
+def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None,
+           allocation=None, naaim=None):
+    """The page for `reads`, a {lookback years: SentimentRead} with the default included,
+    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
+    (`aaii_allocation.read()`), each of whose cards is left out when it is None.
+
+    Raises ValueError when the default lookback is missing or any read is empty, so a
+    failed store read stops the publish rather than putting an empty page up.
+    """
+    if sentiment.DEFAULT_LOOKBACK not in reads:
+        raise ValueError(f"no read for the default lookback ({sentiment.DEFAULT_LOOKBACK}y)")
+    for years, read in reads.items():
+        if read.frame.empty:
+            raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
+    payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
+    pct_blocks = percentiles_card.figures(colors, palette, naaim, votes)
+    if pct_blocks:
+        payload[PERCENTILES_KEY] = {key: json.loads(fig.to_json()) for key, fig in pct_blocks}
+    if naaim is not None:
+        payload[NAAIM_KEY] = {block: json.loads(fig.to_json()) for block, fig
+                              in zip(NAAIM_BLOCKS, naaim_card.figures(naaim, colors, palette))}
+    if votes is not None:
+        payload[VOTES_KEY] = {half: json.loads(fig.to_json()) for half, fig
+                              in zip(VOTES_HALVES, aaii_votes.figures(votes, colors))}
+    if allocation is not None:
+        payload[ALLOCATION_KEY] = {
+            block: json.loads(fig.to_json()) for block, fig
+            in zip(ALLOCATION_BLOCKS, aaii_allocation.figures(allocation, colors))}
+        spy = reads[sentiment.DEFAULT_LOOKBACK].frame.get("spy")
+        payload[ALLOCATION_PRICE_KEY] = json.loads(
+            aaii_allocation.price_figure(allocation, spy, colors).to_json())
+    default = payload[str(sentiment.DEFAULT_LOOKBACK)]
+    stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
+    esc = html.escape
+
+    pressed = {y: "true" if y == sentiment.DEFAULT_LOOKBACK else "false" for y in reads}
+    buttons = "".join(f'<button type="button" data-years="{y}" aria-pressed="{pressed[y]}">'
+                      f'{y}Y</button>' for y in sorted(reads))
+    notes = "".join(f"<p>{esc(p)}</p>" for p in default["caption"])
+    # The allocation survey's tile and notes are not rewritten by the lookback toggle:
+    # nothing in them depends on the lookback.
+    tiles = list(default["tiles"])
+    allocation_notes = ""
+    if allocation is not None:
+        tiles.append(stocks_tile(allocation))
+        allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}">'
+                            + "".join(f"<p>{esc(p)}</p>"
+                                      for p in aaii_allocation.caption(allocation))
+                            + '</div>\n')
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{esc(TITLE)}</title>
+<meta name="description" content="{esc(DESCRIPTION)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+{base_css()}.votes-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 24px; }}
 @media (min-width: {aaii_votes.VOTES_SIDE_BY_SIDE_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 @media (min-width: {aaii_votes.THREE_ACROSS_MIN_PX}px) {{ .votes-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} .votes-grid.two {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}

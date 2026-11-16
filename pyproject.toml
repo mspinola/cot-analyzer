@@ -105,7 +105,11 @@ dependencies = [
     # volatility panel draws: absent, the figure falls back to three panels and
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
-    "cotmetrics[options]>=0.15.1",
+    #
+    # 0.16.0 for `indicators.credit_appetite` / `credit_divergence` / `credit_zone`,
+    # which the market internals page's credit appetite card calls. Against 0.15.1
+    # they do not exist and the nightly export dies on AttributeError.
+    "cotmetrics[options]>=0.16.0",
 ]
 
 [project.optional-dependencies]
