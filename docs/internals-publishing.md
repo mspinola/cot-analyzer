@@ -14,9 +14,27 @@ the app's own `/internals` page was removed in favour of a 301 to the subdomain.
 
 `src/components/market_internals_static.py` lays the page out. Every number, label and
 cutoff comes from `components/market_internals.py` (which takes the FOMO zones and the
-net-highs regime from `cotmetrics.indicators`), and every title, number format, detail
-line and figure from `components/market_internals_view.py`. The page has no controls
-and its charts are static plots, so its only JavaScript draws the embedded figures.
+net-highs regime from `cotmetrics.indicators`, and the credit appetite gauge and its
+divergence days from the same module), and every title, text, tile and chart series from
+`components/market_internals_view.py`.
+
+## How it looks, and what draws the charts (since 2026-11-15)
+
+- **The surveys page's stylesheet.** The page opens with `sentiment_static.base_css()`:
+  the same tokens, header, readings tiles and cards. It follows that page's order too,
+  a strip of tiles (each read's number, its word, one line of context), then cards that
+  open on one sentence with the rest behind "How to read this". A change to the shared
+  rules reaches both pages.
+- **TradingView Lightweight Charts**, pinned (`LIGHTWEIGHT_CHARTS_VERSION`) and loaded
+  from unpkg, drawing plain series embedded as JSON. Scroll and zoom are off; the
+  crosshair shows the value and date under the cursor. The licence's attribution notice
+  and link are in the footer, which is why the per-chart logo is off. To move to a
+  newer release, change the constant, build locally and look at the page: nothing else
+  pins it. The table's sparklines are inline SVG.
+- **Credit appetite** (JNK against TLT, npf's `credit_xray.pine`) is a seventh card and
+  tile, drawn and described but not counted among the six reads: a stress reading was
+  not followed by a worse month when tested. The arithmetic was checked against the
+  TradingView pane on 2026-11-15 (cotmetrics #58 has the comparison).
 
 ## Build it locally
 

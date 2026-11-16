@@ -1,18 +1,27 @@
-"""The market internals page as one self-contained HTML file, for its own subdomain.
+"""The market internals page as one self-contained HTML file, internals.bluemagicai.com.
 
 What was the app's `/internals` page until 2026-11-11 (that path now 301s here): the
-snapshot (`components.market_internals`) and the titles, formats and figures
-(`components.market_internals_view`) it drew, under the header the other monitors carry
-(DBMF, AHLT, ORR, Surveys), so the five read as one set. Published the way the
-surveys page is: `scripts/export_internals_page.py` writes the file and dbmf-tracker's
+snapshot (`components.market_internals`) and the titles, texts and chart data
+(`components.market_internals_view`), published the way the surveys page is:
+`scripts/export_internals_page.py` writes the file and dbmf-tracker's
 `deploy/publish_pages.py --key internals` pushes it to a GitHub Pages repo of its own
 (docs/internals-publishing.md).
 
-No JavaScript beyond drawing: the page has no controls, and its charts are static
-plots with hover off, so the figures are embedded as JSON and drawn once.
+**It is the surveys page's sibling, and looks it** (since 2026-11-15). The stylesheet
+opens with `sentiment_static.base_css()`, the same tokens, header, readings tiles and
+cards, and the page follows that page's order: the monitors row and header, a strip of
+tiles with each read's number and word, then cards that open on one sentence with the
+rest behind "How to read this". Before that it kept the old app page's colours, width
+and three-column layout, and sat beside the surveys page as a different site.
 
-The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
-loaded from Plotly's CDN (`sentiment_static.plotly_js_url`, and the reason is there).
+**Charts are TradingView's Lightweight Charts**, loaded from unpkg at a pinned version
+(`LIGHTWEIGHT_CHARTS_VERSION`), drawn from the plain series `market_internals_view`
+embeds as JSON. Scroll and zoom are off (a quarter or a year is the whole series, and a
+chart that pans steals the page's scroll on a phone); the crosshair is what the library
+is here for, the value and date under the cursor. Its licence (Apache 2.0) asks for the
+attribution notice and a link to tradingview.com on the page: both are in the footer
+(`ATTRIBUTION`), which is why the per-chart logo is switched off. The table's
+sparklines are inline SVG, nine charts not worth nine chart instances.
 
 `generated_at` is written as `"generated_at":"..."` on purpose: publish_pages masks
 that exact spelling when deciding whether anything changed, so a rebuild with no new
@@ -22,14 +31,14 @@ as-of is the newest session the reads carry.
 from __future__ import annotations
 
 import html
-import json
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 
 import components.market_internals as mi
 import components.market_internals_view as view
 import viz_constants as vc
-from components import plot_colors
+from components import plot_colors, sentiment
 from components import sentiment_static as surveys
 
 TITLE = "Market Internals"
@@ -38,18 +47,37 @@ H1_TICKER, H1_REST = "Market", "internals"
 DESCRIPTION = ("Six daily reads of the tape on one page: Nasdaq FOMO, net new 52-week "
                "highs, advancing against declining issues, high-yield credit against its "
                "20-day average, staples over Nasdaq against its 50-day, and 20-session "
-               "up/down volume, beside an ETF table.")
+               "up/down volume, with a junk-against-Treasuries credit gauge and an ETF "
+               "table.")
 #: This page's name in the monitors row (`sentiment_static.SITES`, the one list).
 CURRENT = "Market"
 SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE), "
            "ETF daily bars from Yahoo Finance.")
+#: The chart library, pinned: an exact release, never `latest`, so a publish cannot
+#: change how the page draws. 5.2.1 (2026-08-12) is the release before the newest.
+LIGHTWEIGHT_CHARTS_VERSION = "5.2.1"
+#: The library's NOTICE file, and the link its licence asks for beside it.
+ATTRIBUTION = "TradingView Lightweight Charts™ Copyright (с) 2025 TradingView, Inc."
+ATTRIBUTION_URL = "https://www.tradingview.com/"
 
 DATA_ID = "internals-data"
-#: Payload keys of the three charts; a sparkline's key is SPARK_PREFIX + its symbol.
-FOMO_KEY, CREDIT_KEY, ROTATION_KEY = "fomo", "credit", "rotation"
-SPARK_PREFIX = "spark:"
+READINGS_ID = "readings"
+#: Payload keys of the four charts, each the `data-chart` of the element it draws in.
+FOMO_KEY, APPETITE_KEY, CREDIT_KEY, ROTATION_KEY = "fomo", "appetite", "credit", "rotation"
 
 _esc = html.escape
+
+
+def lightweight_charts_url():
+    return (f"https://unpkg.com/lightweight-charts@{LIGHTWEIGHT_CHARTS_VERSION}"
+            "/dist/lightweight-charts.standalone.production.js")
+
+
+def page_colors(colors):
+    """The verdict pair as this family of pages draws it: the palette's green and red,
+    toned down by the surveys cards' own step, so the two pages have one green."""
+    return types.SimpleNamespace(bull=sentiment.card_green(colors),
+                                 bear=sentiment.card_red(colors))
 
 
 def _date(stamp):
@@ -57,28 +85,24 @@ def _date(stamp):
     return surveys._date(datetime.strptime(stamp, "%Y-%m-%d"))
 
 
-def _fig(figure):
-    return json.loads(figure.to_json())
-
-
-def figures(snap, colors):
-    """Every figure the page draws, keyed by the `data-fig` of the element it goes in."""
+def charts(snap, colors):
+    """Every chart the page draws, keyed by the `data-chart` of its element."""
     out = {}
     if snap.fomo is not None:
-        out[FOMO_KEY] = _fig(view.fomo_figure(snap.fomo, colors))
+        out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
+    if snap.appetite is not None:
+        out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
     if snap.credit is not None:
-        out[CREDIT_KEY] = _fig(view.trend_figure(snap.credit))
+        out[CREDIT_KEY] = view.trend_chart(snap.credit)
     if snap.rotation is not None:
-        out[ROTATION_KEY] = _fig(view.trend_figure(snap.rotation))
-    for row in snap.assets:
-        out[SPARK_PREFIX + row.symbol] = _fig(view.spark_figure(row, colors))
+        out[ROTATION_KEY] = view.trend_chart(snap.rotation)
     return out
 
 
 # ── pieces ────────────────────────────────────────────────────────────────────
 
-def _plot(key, cls="plot"):
-    return f'<div class="{cls}" data-fig="{_esc(key)}"></div>'
+def _chart(key, spec_height):
+    return f'<div class="chart" data-chart="{_esc(key)}" style="height:{spec_height}px"></div>'
 
 
 def _badge(text, verdict, colors):
@@ -88,16 +112,19 @@ def _badge(text, verdict, colors):
             f'border-color:{plot_colors.hex_to_rgba(color, 0.35)}">{_esc(text)}</span>')
 
 
-def _card(title, *body):
-    return f'<section class="card"><h2>{_esc(title)}</h2>\n' + "\n".join(body) + '</section>\n'
+def _card(title, subtitle, how, *body):
+    """A card as the surveys page builds one: title, one sentence, the rest closed."""
+    head = surveys._sub(subtitle, how) if subtitle else ""
+    return (f'<section class="card"><h2>{_esc(title)}</h2>\n{head}'
+            + "\n".join(body) + '</section>\n')
 
 
 def _detail(text, cls="detail"):
     return f'<div class="{cls}">{_esc(text)}</div>'
 
 
-def _awaiting_card(title, symbols):
-    return _card(title, _detail(view.awaiting_text(symbols)))
+def _awaiting(symbols):
+    return _detail(view.awaiting_text(symbols))
 
 
 def _split_bar(left_pct, colors, cls="bar"):
@@ -106,21 +133,69 @@ def _split_bar(left_pct, colors, cls="bar"):
             f'<i style="width:{100 - left_pct:.1f}%;background:{colors.bear}"></i></div>')
 
 
-# ── cards, in the app page's order ────────────────────────────────────────────
+def _tiles(tiles):
+    """The readings strip, in the surveys tiles' markup (label, value, gauge where the
+    read is a 0-100 scale, the read's word, context, date). The word and the left edge
+    take the tile's tone; values stay in the page's ink."""
+    out = []
+    for t in tiles:
+        gauge = (f'<div class="gauge" aria-hidden="true"><i style="left:{t["gauge"]:.0f}%">'
+                 '</i></div>' if t["gauge"] is not None else "")
+        out.append(f'<div class="tile {t["tone"]}" data-key="{_esc(t["key"])}">'
+                   f'<div class="head"><div class="label">{_esc(t["label"])}</div></div>'
+                   f'<div class="value">{_esc(t["value"])}</div>{gauge}'
+                   f'<div class="tier">{_esc(t["state"])}</div>'
+                   f'<div class="ctx">{_esc(t["context"])}</div>'
+                   f'<div class="foot">{_esc(_date(t["date"]))}</div></div>')
+    return (f'<div class="tiles" id="{READINGS_ID}" role="group" aria-label="Latest readings">'
+            + "".join(out) + '</div>\n')
+
+
+# ── cards ─────────────────────────────────────────────────────────────────────
 
 def fomo_card(read, colors):
     if read is None:
-        return _awaiting_card(view.FOMO_TITLE, [mi.FOMO_SYMBOL])
+        return _card(view.FOMO_TITLE, None, None, _awaiting([mi.FOMO_SYMBOL]))
     change = view.verdict_color(mi.POSITIVE if read.change >= 0 else mi.NEGATIVE, colors)
     return _card(
-        view.FOMO_TITLE,
+        view.FOMO_TITLE, view.FOMO_SUBTITLE, view.FOMO_HOW,
         f'<div class="row"><span class="big">{read.value:.1f}</span>'
         f'{_badge(read.label, read.verdict, colors)}'
         f'<span class="detail push" style="color:{change}">'
         f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
-        _plot(FOMO_KEY),
-        f'<div class="detail between"><span>{_esc(view.FOMO_SPAN)}</span>'
-        f'<span>{_esc(view.FOMO_ZONES)}</span></div>',
+        _chart(FOMO_KEY, view.fomo_chart(read, colors)["height"]),
+        _detail(view.FOMO_ZONES),
+    )
+
+
+def appetite_card(read, credit, colors):
+    if read is None:
+        return _card(view.APPETITE_TITLE, None, None,
+                     _awaiting([mi.APPETITE_JUNK, mi.APPETITE_TREASURY]))
+    change = view.verdict_color(mi.POSITIVE if read.change >= 0 else mi.NEGATIVE, colors)
+    return _card(
+        view.APPETITE_TITLE, view.APPETITE_SUBTITLE, view.APPETITE_HOW,
+        f'<div class="row"><span class="big">{read.value:.0f}</span>'
+        f'{_badge(read.label, read.tone, colors)}'
+        f'<span class="detail push" style="color:{change}">'
+        f'{_esc(view.signed(read.change, ".0f"))} on the day</span></div>',
+        _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
+        _detail(view.appetite_status(read, credit)),
+    )
+
+
+def trend_card(read, title, subtitle, how, key, value_fmt, detail, awaiting_symbols, colors):
+    if read is None:
+        return _card(title, None, None, _awaiting(awaiting_symbols))
+    line, average = view.trend_key(read)
+    return _card(
+        title, subtitle, how,
+        f'<div class="row"><span class="big">{format(read.value, value_fmt)}</span>'
+        f'<span class="push">{_badge(read.label, read.verdict, colors)}</span></div>',
+        _detail(detail(read)),
+        _chart(key, view.trend_chart(read)["height"]),
+        f'<div class="detail"><span class="key">{_esc(line)}</span>'
+        f'<span style="color:{view.AVERAGE_COLOR}">{_esc(average)}</span></div>',
     )
 
 
@@ -142,42 +217,26 @@ def _net_highs_row(read, colors):
             f'<div class="gap">{_badge(read.label, read.verdict, colors)}</div></div></div>')
 
 
-def net_highs_card(reads, awaiting, colors):
-    rows = [_net_highs_row(r, colors) for r in reads]
-    missing = view.net_highs_awaiting(awaiting)
+def breadth_card(snap, colors):
+    """Net new highs on both exchanges, and the session's advancing share under them."""
+    rows = [_net_highs_row(r, colors) for r in snap.net_highs]
+    missing = view.net_highs_awaiting(snap.awaiting)
     if missing:
-        rows.append(_detail(view.awaiting_text(missing)))
-    return _card(view.NET_HIGHS_TITLE, *rows)
-
-
-def advance_decline_card(read, colors):
+        rows.append(_awaiting(missing))
+    rows.append(f'<h3>{_esc(view.ADVANCE_DECLINE_TITLE)}</h3>')
+    read = snap.advance_decline
     if read is None:
-        return _awaiting_card(view.ADVANCE_DECLINE_TITLE,
-                              [mi.ADVANCING_SYMBOL, mi.DECLINING_SYMBOL])
-    share = read.share * 100
-    return _card(
-        view.ADVANCE_DECLINE_TITLE,
-        _split_bar(share, colors, "bar round"),
-        f'<div class="between"><span style="color:{colors.bull}">{share:.0f}% advancing</span>'
-        f'{_badge(read.label, read.verdict, colors)}'
-        f'<span style="color:{colors.bear}">{100 - share:.0f}% declining</span></div>',
-        _detail(f"{read.advancing:,} up, {read.declining:,} down"),
-    )
-
-
-def trend_card(read, title, key, value_fmt, detail, awaiting_symbols, colors):
-    if read is None:
-        return _awaiting_card(title, awaiting_symbols)
-    line, average = view.trend_key(read)
-    return _card(
-        title,
-        f'<div class="row"><span class="big">{format(read.value, value_fmt)}</span>'
-        f'<span class="push">{_badge(read.label, read.verdict, colors)}</span></div>',
-        _detail(detail(read)),
-        _plot(key),
-        f'<div class="detail"><span class="key">{_esc(line)}</span>'
-        f'<span style="color:{view.AVERAGE_COLOR}">{_esc(average)}</span></div>',
-    )
+        rows.append(_awaiting([mi.ADVANCING_SYMBOL, mi.DECLINING_SYMBOL]))
+    else:
+        share = read.share * 100
+        rows += [
+            _split_bar(share, colors, "bar round"),
+            f'<div class="between"><span style="color:{colors.bull}">{share:.0f}% advancing'
+            f'</span>{_badge(read.label, read.verdict, colors)}'
+            f'<span style="color:{colors.bear}">{100 - share:.0f}% declining</span></div>',
+            _detail(f"{read.advancing:,} up, {read.declining:,} down"),
+        ]
+    return _card(view.NET_HIGHS_TITLE, view.NET_HIGHS_SUBTITLE, view.NET_HIGHS_HOW, *rows)
 
 
 def _updown_row(read, colors):
@@ -195,10 +254,19 @@ def updown_card(reads, awaiting, colors):
     rows = [_updown_row(r, colors) for r in reads]
     missing = [s for s in mi.UPDOWN_SYMBOLS if s in awaiting]
     if missing:
-        rows.append(_detail(view.awaiting_text(missing)))
+        rows.append(_awaiting(missing))
     if reads:
         rows.append(_detail(view.updown_foot(reads), "detail small"))
-    return _card(view.UPDOWN_TITLE, *rows)
+    return _card(view.UPDOWN_TITLE, view.UPDOWN_SUBTITLE, view.UPDOWN_HOW, *rows)
+
+
+def _spark(row, colors):
+    color = colors.bull if row.quarter_change >= 0 else colors.bear
+    return (f'<svg class="spark" viewBox="0 0 {view.SPARK_WIDTH} {view.SPARK_HEIGHT}" '
+            f'width="{view.SPARK_WIDTH}" height="{view.SPARK_HEIGHT}" role="img" '
+            f'aria-label="{_esc(row.symbol)}, {_esc(view.pct(row.quarter_change))} over '
+            f'three months"><polyline fill="none" stroke="{color}" stroke-width="1.2" '
+            f'points="{view.spark_points(row)}"/></svg>')
 
 
 def asset_table(rows, awaiting, colors):
@@ -210,11 +278,11 @@ def asset_table(rows, awaiting, colors):
             f'<tr><td class="name sym">{_esc(row.symbol)}</td>'
             f'<td class="name num">{row.last:,.2f}</td>'
             f'<td class="num" style="color:{day}">{_esc(view.pct(row.day_change))}</td>'
-            f'<td class="num">{_plot(SPARK_PREFIX + row.symbol, "spark")}</td></tr>')
+            f'<td class="num">{_spark(row, colors)}</td></tr>')
     for symbol in (s for s in mi.ASSET_SYMBOLS if s in awaiting):
         body.append(f'<tr><td>{_esc(symbol)}</td>'
                     f'<td colspan="3" class="detail">awaiting data</td></tr>')
-    return _card(view.ASSETS_TITLE,
+    return _card(view.ASSETS_TITLE, None, None,
                  f'<table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>')
 
 
@@ -242,33 +310,34 @@ def _header(snap):
 
 def _headline(snap, colors):
     lean, count = mi.headline(snap)
-    return (f'<div class="lean"><span>{_esc(lean)}</span> '
-            f'<span style="color:{view.headline_color(lean, colors)}">{_esc(count)}</span></div>'
-            f'<div class="detail summary">{_esc("; ".join(mi.summary_sentences(snap)))}</div>')
+    return (f'<p class="lean">{_esc(lean)} '
+            f'<b style="color:{view.headline_color(lean, colors)}">{_esc(count)}</b></p>')
 
 
 def render(snap, colors, generated_at=None):
-    """The page for `snap` (`market_internals.build_snapshot()`).
+    """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
+    palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
-    be read never replaces the published page with six "awaiting data" cards. A snapshot
-    missing SOME reads still renders, with the missing ones named: that is the app
-    page's own rule for a series that has not been delivered yet.
+    be read never replaces the published page with a row of "awaiting data" cards. A
+    snapshot missing SOME reads still renders, with the missing ones named: the page's
+    rule for a series that has not been delivered yet.
     """
     if snap.date is None or not any(v is not None for v in mi.read_verdicts(snap)):
         raise ValueError("the snapshot holds no reads"
                          + (f" (awaiting {', '.join(snap.awaiting)})" if snap.awaiting else ""))
+    colors = page_colors(colors)
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-    left = (fomo_card(snap.fomo, colors)
-            + net_highs_card(snap.net_highs, snap.awaiting, colors)
-            + advance_decline_card(snap.advance_decline, colors))
-    middle = (trend_card(snap.credit, view.CREDIT_TITLE, CREDIT_KEY, ".2f",
-                         view.credit_detail, [mi.CREDIT_SYMBOL], colors)
-              + trend_card(snap.rotation, view.ROTATION_TITLE, ROTATION_KEY, ".4f",
-                           view.rotation_detail, [mi.ROTATION_NUMER, mi.ROTATION_DENOM],
-                           colors))
-    right = (asset_table(snap.assets, snap.awaiting, colors)
-             + updown_card(snap.updown, snap.awaiting, colors))
+    gauges = fomo_card(snap.fomo, colors) + appetite_card(snap.appetite, snap.credit, colors)
+    trends = (trend_card(snap.credit, view.CREDIT_TITLE, view.CREDIT_SUBTITLE,
+                         view.CREDIT_HOW, CREDIT_KEY, ".2f", view.credit_detail,
+                         [mi.CREDIT_SYMBOL], colors)
+              + trend_card(snap.rotation, view.ROTATION_TITLE, view.ROTATION_SUBTITLE,
+                           view.ROTATION_HOW, ROTATION_KEY, ".4f", view.rotation_detail,
+                           [mi.ROTATION_NUMER, mi.ROTATION_DENOM], colors))
+    counts = (breadth_card(snap, colors)
+              + updown_card(snap.updown, snap.awaiting, colors)
+              + asset_table(snap.assets, snap.awaiting, colors))
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -280,92 +349,118 @@ def render(snap, colors, generated_at=None):
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
-:root {{ --page: {vc.BACKGROUND_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
-  --muted: #7d8794; --line: rgba(255,255,255,0.10); --surface: rgba(28,28,28,0.55);
-  --wash: rgba(255,255,255,0.06); --ticker: {surveys.TICKER_COLOR};
-  --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }}
-html, body {{ background: var(--page); color: var(--ink-2); margin: 0; font-family: var(--sans); }}
-main {{ max-width: 1400px; margin: 0 auto; padding: 16px; }}
-/* The monitors' header, rule for rule as on the surveys page (sentiment_static). */
-nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; margin-bottom: 14px; }}
-nav.sites a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; }}
-nav.sites a:hover {{ background: var(--wash); color: var(--ink); }}
-nav.sites a[aria-current="page"] {{ color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }}
-nav.sites a:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 1px; }}
-nav.sites .home {{ margin-left: auto; }}
-nav.sites .sep {{ color: var(--muted); }}
-nav.sites .soon {{ color: var(--muted); padding: 3px 9px; border: 1px dashed var(--line); border-radius: 6px; cursor: default; }}
-nav.sites .soon small {{ font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-left: 3px; }}
-header.top {{ display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }}
-.eyebrow {{ font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }}
-h1 {{ color: var(--ink); margin: 2px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; }}
-h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
-.asof {{ color: var(--ink-2); font-size: 13px; text-align: right; }}
-.asof b {{ color: var(--ink); font-weight: 600; }}
-@media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} }}
-/* The cards: the app page's three columns (3, 6 and 3 of 12) from 1200px, one column
-   below. Not the old app page's 992px: a quarter of that is 230px, narrower than the ETF table
-   (measured 2026-11-11), so the side columns also hold a 300px floor. */
-.lean {{ color: var(--ink); font-size: 1.5rem; font-weight: 500; }}
-.summary {{ margin-bottom: 16px; }}
-.cols {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; }}
-@media (min-width: 1200px) {{ .cols {{ grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr) minmax(300px, 1fr); }} }}
-.card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }}
-.card h2 {{ color: var(--ink-2); font-size: 0.85rem; font-weight: 400; margin: 0 0 0.4rem; }}
-.big {{ color: var(--ink); font-size: 1.9rem; font-weight: 600; line-height: 1.1; }}
-.big.mid {{ font-size: 1.4rem; }}
+{surveys.base_css()}/* This page's own rules, on the shared tokens above. A tile's tone is its read's side:
+   the constructive green, the defensive red (the surveys cards' toned pair), or none. */
+.tile.pos {{ --tone: {colors.bull}; }}
+.tile.neg {{ --tone: {colors.bear}; }}
+.tile.mid {{ border-left-color: var(--line); }}
+.tile.mid .tier {{ color: var(--ink); }}
+.tile.mid .gauge i {{ background: var(--ink-2); }}
+.lean {{ color: var(--ink); font-size: 1.05rem; font-weight: 500; margin: 0 0 10px; }}
+.lean b {{ font-weight: 600; }}
+/* Cards two across from 900px (the two gauges, then the two trend charts), and the
+   three without a time axis three across from 1100px; one column on a phone. */
+.cards {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }}
+@media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+@media (min-width: 1100px) {{ .cards.three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
+.card h3 {{ color: var(--ink); font-size: 0.85rem; font-weight: 400; margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }}
+.chart {{ width: 100%; margin: 6px 0 4px; }}
+.big {{ color: var(--ink); font-size: 1.75rem; font-weight: 600; line-height: 1.2; }}
+.big.mid {{ font-size: 1.3rem; }}
 .detail {{ font-size: 0.8rem; }}
-.detail.small {{ font-size: 0.72rem; }}
+.detail.small {{ font-size: 0.72rem; color: var(--muted); }}
 .name {{ color: var(--ink); }}
-.row {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }}
+.row {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }}
 .between {{ display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; }}
 .push {{ margin-left: auto; }}
 .right {{ text-align: right; }}
 .gap {{ margin-top: 4px; }}
 .key {{ margin-right: 12px; }}
 .badge {{ border: 1px solid; border-radius: 4px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }}
-.nh {{ border-left: 3px solid transparent; padding-left: 8px; margin-bottom: 16px; align-items: flex-start; }}
-.ud {{ margin-bottom: 16px; }}
+.nh {{ border-left: 3px solid transparent; padding-left: 8px; margin: 8px 0 14px; align-items: flex-start; }}
+.ud {{ margin: 8px 0 14px; }}
 .bar {{ display: flex; margin-bottom: 8px; }}
 .bar i {{ display: block; height: 8px; }}
 .bar.round i:first-child {{ border-radius: 4px 0 0 4px; }}
 .bar.round i:last-child {{ border-radius: 0 4px 4px 0; }}
 .bar.thin {{ margin: 4px 0; }}
 .bar.thin i {{ height: 6px; }}
-table {{ width: 100%; border-collapse: collapse; }}
+table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; }}
 th {{ font-size: 0.8rem; font-weight: 400; text-align: left; border-bottom: 1px solid var(--line); padding: 2px 0; }}
 th:not(:first-child), td.num {{ text-align: right; }}
-td {{ border-bottom: 1px solid var(--wash); padding: 2px 0; }}
+td {{ border-bottom: 1px solid var(--wash); padding: 3px 0; }}
 td.sym {{ font-weight: 600; }}
-.spark {{ display: inline-block; width: {view.SPARK_WIDTH}px; height: {view.SPARK_HEIGHT}px; vertical-align: middle; }}
-.notes {{ font-size: 0.75rem; line-height: 1.45; }}
-footer {{ color: var(--muted); font-size: 0.8rem; line-height: 1.45; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
+.spark {{ vertical-align: middle; }}
+.notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
+footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
+footer a {{ color: var(--ink-2); }}
 </style>
-<script src="{surveys.plotly_js_url()}" charset="utf-8"></script>
+<script src="{lightweight_charts_url()}" charset="utf-8"></script>
 </head>
 <body>
 <main>
 {_nav()}
 {_header(snap)}
 {_headline(snap, colors)}
-<div class="cols">
-<div>{left}</div>
-<div>{middle}</div>
-<div>{right}</div>
-</div>
-<div class="notes">{_esc(view.caption(snap))}</div>
-<footer>{_esc(SOURCES)}</footer>
+{_tiles(view.tiles(snap))}<div class="cards">
+{gauges}</div>
+<div class="cards">
+{trends}</div>
+<div class="cards three">
+{counts}</div>
+<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
+<footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
-<script type="application/json" id="{DATA_ID}">{surveys._script_json(figures(snap, colors))}</script>
+<script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors))}</script>
 <script>
 (function () {{
+  var LC = window.LightweightCharts;
+  if (!LC) {{ return; }}
   var DATA = JSON.parse(document.getElementById('{DATA_ID}').textContent);
-  var CONFIG = {{displayModeBar: false, responsive: true, staticPlot: true}};
-  document.querySelectorAll('[data-fig]').forEach(function (el) {{
-    var fig = DATA[el.dataset.fig];
-    if (fig) {{ Plotly.newPlot(el, fig.data, fig.layout, CONFIG); }}
+  var INK = '{vc.TEXT_COLOR}', GRID = 'rgba(255,255,255,0.06)';
+  document.querySelectorAll('[data-chart]').forEach(function (el) {{
+    var spec = DATA[el.dataset.chart];
+    if (!spec) {{ return; }}
+    var format = {{type: 'price', precision: spec.decimals, minMove: Math.pow(10, -spec.decimals)}};
+    var chart = LC.createChart(el, {{
+      autoSize: true,
+      layout: {{background: {{type: 'solid', color: 'transparent'}}, textColor: INK,
+               fontSize: 10, fontFamily: getComputedStyle(document.body).fontFamily,
+               attributionLogo: false}},
+      grid: {{vertLines: {{visible: false}}, horzLines: {{color: GRID}}}},
+      // A fixed 0-100 scale keeps thin margins, or the axis runs on to 120.
+      rightPriceScale: {{borderVisible: false,
+                        scaleMargins: spec.range ? {{top: 0.04, bottom: 0.04}} : {{top: 0.12, bottom: 0.1}}}},
+      timeScale: {{borderVisible: false, fixLeftEdge: true, fixRightEdge: true}},
+      // The whole series is on screen; panning would only take the page's scroll.
+      handleScroll: false, handleScale: false,
+      crosshair: {{mode: LC.CrosshairMode.Magnet}}
+    }});
+    var first = null;
+    spec.series.forEach(function (s) {{
+      var options = {{color: s.color, lineWidth: s.width, priceFormat: format,
+                     priceLineVisible: false, lastValueVisible: false}};
+      if (spec.range) {{
+        options.autoscaleInfoProvider = function () {{
+          return {{priceRange: {{minValue: spec.range[0], maxValue: spec.range[1]}}}};
+        }};
+      }}
+      var line = chart.addSeries(LC.LineSeries, options);
+      line.setData(s.data);
+      first = first || line;
+    }});
+    if (!first) {{ return; }}
+    spec.levels.forEach(function (level) {{
+      first.createPriceLine({{price: level.value, color: level.color, lineWidth: 1,
+                             lineStyle: LC.LineStyle.Dashed, axisLabelVisible: true, title: ''}});
+    }});
+    if (spec.markers.length) {{
+      LC.createSeriesMarkers(first, spec.markers.map(function (m) {{
+        return {{time: m.time, position: 'inBar', shape: 'circle', color: m.color, size: 1}};
+      }}));
+    }}
+    chart.timeScale().fitContent();
   }});
 }})();
 </script>
