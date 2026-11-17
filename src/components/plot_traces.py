@@ -180,8 +180,13 @@ def reconcile_legend_entries(fig, color_palette):
     return fig
 
 
-def add_trace_to_all(fig, df, col_name, row, col, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False, opacity=1, dash=None):
-    """ Global Legend Toggle Logic: Show legend only once, but use legendgroups to link all 5 plots"""
+def add_trace_to_all(fig, df, col_name, row, col, name, color, zorder, visible=True, is_bar=False, secondary=False, showlegend=False, opacity=1, dash=None, gl=True):
+    """ Global Legend Toggle Logic: Show legend only once, but use legendgroups to link all 5 plots
+
+    `gl=False` draws the line in SVG instead of WebGL. Plotly paints every WebGL trace on
+    a canvas beneath the SVG layer, so a line that must sit ON TOP of an SVG fill has to
+    be SVG itself, whatever order the traces are added in.
+    """
     if is_bar:
         fig.add_trace(go.Bar(
             x=df.index,
@@ -202,7 +207,7 @@ def add_trace_to_all(fig, df, col_name, row, col, name, color, zorder, visible=T
         line_dict = dict(color=color, width=1)
         if dash:
             line_dict["dash"] = dash
-        fig.add_trace(go.Scattergl(
+        fig.add_trace((go.Scattergl if gl else go.Scatter)(
             x=df.index,
             y=df[col_name],
             name=name,

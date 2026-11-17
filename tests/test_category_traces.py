@@ -452,3 +452,121 @@ def test_no_price_entry_is_invented_when_nothing_drew_one():
 
     ct.ensure_price_legend_entry(fig, PALETTE)
     assert not [t for t in fig.data if t.name == "Price"]
+
+
+# --- the banded fill under the net lines -------------------------------------------
+
+def _bands(values, n=None):
+    values = np.asarray(values, dtype=float)
+    idx = pd.date_range("2024-01-02", periods=len(values), freq="7D")
+    return ct.net_bands(idx, values)
+
+
+def test_net_bands_stack_outward_from_zero_on_each_side():
+    """Zero to the inner line is the inner category's; from there out is the outer's."""
+    x, lower, upper = _bands([[10, 30, -5, -20]])
+    assert len(x) == 1
+    # long side: 10 owns [0, 10], 30 owns [10, 30]; the shorts have nothing there
+    assert lower[0, :, 0].tolist() == [0, 10, 0, 0]
+    assert upper[0, :, 0].tolist() == [10, 30, 0, 0]
+    # short side mirrors it
+    assert lower[0, :, 1].tolist() == [0, 0, 0, -5]
+    assert upper[0, :, 1].tolist() == [0, 0, -5, -20]
+
+
+def test_net_bands_tile_each_side_without_overlap_or_gap():
+    """Every patch has exactly one owner: the bands on a side sum to the outermost line."""
+    rng = np.random.default_rng(7)
+    values = rng.normal(0, 20_000, (60, 5)).cumsum(axis=0)
+    x, lower, upper = _bands(values)
+    thickness = np.abs(upper - lower)
+    assert np.allclose(thickness[:, :, 0].sum(axis=1), np.abs(upper[:, :, 0]).max(axis=1))
+    assert np.allclose(thickness[:, :, 1].sum(axis=1), np.abs(upper[:, :, 1]).max(axis=1))
+
+
+def test_net_bands_add_a_point_where_two_lines_cross_between_reports():
+    """Without the crossing point the band changes owner mid-week and leaves a wedge."""
+    x, lower, upper = _bands([[10, 20], [20, 10]])
+    assert len(x) == 3, "two reports plus the crossing between them"
+    assert x[1] == x[0] + (x[2] - x[0]) / 2
+    # at the crossing both lines are at 15: one band spans [0, 15], the other is empty
+    assert sorted(np.abs(upper[1, :, 0] - lower[1, :, 0]).tolist()) == [0, 15]
+
+
+def test_net_bands_add_a_point_where_a_line_crosses_zero():
+    x, lower, upper = _bands([[10], [-30]])
+    assert len(x) == 3
+    assert x[1] == x[0] + (x[2] - x[0]) / 4          # a quarter of the way to -30
+    assert upper[1, 0].tolist() == [0, 0]
+    assert upper[0, 0].tolist() == [10, 0] and upper[2, 0].tolist() == [0, -30]
+
+
+@pytest.mark.parametrize("unit", ["s", "ms", "us", "ns"])
+def test_net_bands_keep_their_dates_whatever_unit_the_index_carries(unit):
+    """The store's index is not nanosecond; the bands once landed in January 1970."""
+    idx = pd.date_range("2024-01-02", periods=2, freq="7D").as_unit(unit)
+    x, _, _ = ct.net_bands(idx, np.array([[10.0, 20.0], [20.0, 10.0]]))
+    assert x[0] == idx[0] and x[-1] == idx[-1]
+    assert x[1] == pd.Timestamp("2024-01-05 12:00")
+
+
+def test_net_bands_read_a_missing_value_as_flat():
+    _, lower, upper = _bands([[np.nan, 5]])
+    assert upper[0, :, 0].tolist() == [0, 5] and lower[0, :, 0].tolist() == [0, 0]
+
+
+@pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
+@pytest.mark.parametrize("plot_id", ["net_pos", "pct_oi"])
+def test_net_panels_carry_bands_under_the_lines_in_overlay(report, plot_id):
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig = _figure(plot_id)
+    ct.build_panel(plot_id, fig, df, series, HEADER, 1, 1, PALETTE)
+
+    fills = [t for t in fig.data if t.fill == "tonexty"]
+    assert fills, "the net panels shade the space between the lines"
+    assert all(t.hoverinfo == "skip" and t.showlegend is False for t in fills)
+    # a fill pairs with the invisible lower edge drawn immediately before it
+    for i, t in enumerate(fig.data):
+        if t.fill == "tonexty":
+            assert fig.data[i - 1].fill is None and fig.data[i - 1].line.width == 0
+    # under the lines: every band comes before the first real category line
+    first_line = next(i for i, t in enumerate(fig.data)
+                      if t.line.width != 0 and t.name in {s.label for s in series})
+    assert max(i for i, t in enumerate(fig.data) if t.fill == "tonexty") < first_line
+    # WebGL traces paint beneath every SVG one, so fills and the lines over them are all SVG
+    assert all(t.type == "scatter" for t in fig.data[:first_line + len(series)])
+    # each fill is its own category's colour, and toggles with that category's legend entry
+    by_label = {s.label: s for s in series}
+    for t in fills:
+        assert t.fillcolor == ct.hex_to_rgba(by_label[t.name].color, vc.CATEGORY_BAND_ALPHA)
+        assert t.legendgroup == t.name.lower()
+
+
+def test_other_panels_carry_no_fill():
+    report = cot_categories.REPORT_TFF
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    for layout_facet in (False, True):
+        fig = _figure("index")
+        ct.build_panel("index", fig, df, series[:1] if layout_facet else series,
+                       HEADER, 1, 1, PALETTE, facet=layout_facet)
+        assert not [t for t in fig.data if t.fill]
+
+
+@pytest.mark.parametrize("report", list(cot_categories.REPORT_CHOICES))
+def test_faceted_net_rows_shade_their_one_line_to_zero(report):
+    """Small multiples: no bands (one category per row), the line itself fills to zero."""
+    df = _frame(report)
+    series = ct.category_series(report, None, PALETTE, frame=df)
+    fig, _, _ = _facet(df, series, ["net_pos", "pct_oi", "index"], show_price=False)
+
+    by_label = {s.label: s for s in series}
+    filled = [t for t in fig.data if t.fill]
+    assert not [t for t in fig.data if t.fill == "tonexty"]
+    # every category row of the two net columns, and nothing in the index column
+    assert len(filled) == 2 * len(series)
+    for t in filled:
+        assert t.fill == "tozeroy" and t.type == "scatter"
+        assert t.fillcolor == ct.hex_to_rgba(by_label[t.name].color, vc.CATEGORY_BAND_ALPHA)
+        assert t.line.width != 0, "the fill rides on the visible line, not a second trace"
