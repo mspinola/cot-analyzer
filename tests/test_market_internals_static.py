@@ -214,3 +214,16 @@ def test_the_header_names_the_newest_session():
 def test_the_publish_key_is_allowlisted_for_the_view_beacon():
     """publish_internals.sh sends `--key internals`; unlisted, its views are dropped."""
     assert external_page_path("internals") == "/internals"
+
+
+def test_the_page_and_its_charts_use_the_family_ink():
+    """Text, chart lines and axis labels in the fund pages' white and grey
+    (`sentiment_static.INK` / `INK_2`), never the app's cream."""
+    import viz_constants as vc
+    page = st.render(_snap(), COLORS)
+    lowered = page.lower()
+    assert vc.TEXT_COLOR.lower() not in lowered
+    assert vc.BRIGHTER_TEXT_COLOR.lower() not in lowered
+    data = _payload(page)
+    assert data[st.FOMO_KEY]["series"][0]["color"] == surveys.INK
+    assert f"var INK = '{surveys.INK_2}'" in page
