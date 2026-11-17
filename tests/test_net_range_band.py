@@ -152,13 +152,13 @@ def test_the_readout_sits_on_its_own_panel_in_a_stack():
 
 def test_the_band_does_not_disturb_the_legend_reconciliation():
     """The band traces are named for their group and window, never "Open Interest"
-    or "Price", so the figure-wide legend pass still counts one of each."""
+    or "Price", so the figure-wide legend pass invents neither for a panel that
+    draws neither."""
     df = _frame()
     fig = _net_pos(_figure(), df, range_weeks=WEEKS)
     pt.reconcile_legend_entries(fig, PALETTE)
     entries = [t for t in fig.data if t.showlegend]
-    assert [t.name for t in entries].count("Open Interest") == 1
-    assert not [t for t in entries if t.name == "Price"]
+    assert not [t for t in entries if t.name in ("Open Interest", "Price")]
 
 
 @pytest.mark.parametrize("value, text", [
@@ -167,6 +167,10 @@ def test_the_band_does_not_disturb_the_legend_reconciliation():
     (0, "0"),
     (-0.153, "(0.153)"),
     (0.2, "0.200"),
+    # A stitched market's contracts are fractional. They are still contracts.
+    (12_615.4, "12,615"),
+    (-8_550.4, "(8,550)"),
+    (1, "1"),
     (float("nan"), "n/a"),
     (None, "n/a"),
 ])

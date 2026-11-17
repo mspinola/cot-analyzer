@@ -47,8 +47,8 @@ VIEW_LABELS = {VIEW_STACK: "Panel stack · one market",
 # Which panels the GRID view offers, in picker order: the metrics worth comparing
 # across markets. The stack's own picker (below) is richer because per-panel basis
 # variants only make sense stacked on one market.
-GRID_PLOT_IDS = ["oi_pct", "willco", "spearman", "net_pos", "index", "zscore",
-                 "momentum", "max_pain", "max_pain_historical"]
+GRID_PLOT_IDS = ["oi_pct", "willco", "spearman", "net_pos", "open_interest", "index",
+                 "zscore", "momentum", "max_pain", "max_pain_historical"]
 GRID_PLOTS = registry.labels_for(GRID_PLOT_IDS)
 
 BASIS_AWARE_PLOTS = registry.BASIS_AWARE_PLOTS
@@ -59,8 +59,8 @@ BASIS_OVERLAY_SPEC = registry.BASIS_OVERLAY_SPEC
 # Which panels this page offers, in stack order. Everything about them beyond the
 # order comes from the registry.
 PLOT_IDS = ["price_candles", "macd", "willco", "index", "momentum", "zscore",
-            "net_pos", "oi_pct", "spearman", "lrg_sentiment", "max_pain",
-            "max_pain_historical"]
+            "net_pos", "open_interest", "oi_pct", "spearman", "lrg_sentiment",
+            "max_pain", "max_pain_historical"]
 
 # Basis variants offered as extra selectable panels rather than a page-wide control, so
 # a raw and a normalized read of the same metric can be stacked and compared directly.
@@ -554,8 +554,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                     value_col, y_title, y_range, zero_line = registry.BASIS_OVERLAY_SPEC[p]
                     fig = helpers.get_basis_overlay_plot(
                         fig, df, df_norm, value_col, r, c, color_palette,
-                        y_title=y_title, y_range=y_range, show_oi=show_price,
-                        zero_line=zero_line)
+                        y_title=y_title, y_range=y_range, zero_line=zero_line)
                     plot_idx += 1
                     continue
 
@@ -862,8 +861,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
                     value_col, y_title, y_range, zero_line = BASIS_OVERLAY_SPEC[selected_plot]
                     fig = helpers.get_basis_overlay_plot(
                         fig, df, df_norm, value_col, r, c, color_palette,
-                        y_title=y_title, y_range=y_range, show_oi=price_overlay,
-                        zero_line=zero_line)
+                        y_title=y_title, y_range=y_range, zero_line=zero_line)
                     plot_idx += 1
                     continue
 

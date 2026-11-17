@@ -1,5 +1,6 @@
 import math
 
+import cotmetrics.categories as cot_categories
 import cotmetrics.constants as const
 import cotmetrics.models as models
 import cotmetrics.utils as utils
@@ -10,6 +11,7 @@ from cotmetrics.indexer import get_indexer
 from dash import Input, Output, Patch, State, callback, clientside_callback, dcc, html, no_update
 
 import app_utils
+import components.category_traces as category_traces
 import components.plot_helpers as helpers
 import components.plot_registry as registry
 import components.tv_layout as tv_layout
@@ -35,8 +37,12 @@ controls.register_asset_link('oi_alignment_single_asset_filter_input')
 
 # Which panels this page offers, in stack order. Labels and everything else about them
 # comes from the registry, so a plot is described in one place rather than five.
-PLOT_IDS = ["oi_alignment", "macd", "willco", "index", "momentum", "zscore",
-            "net_pos", "oi_pct", "lrg_sentiment", "max_pain", "max_pain_historical"]
+PLOT_IDS = ["oi_alignment", "net_pos", "category_net", "open_interest", "willco",
+            "index", "momentum", "zscore", "oi_pct", "macd", "lrg_sentiment",
+            "max_pain", "max_pain_historical"]
+
+# A fresh session's stack: everything offered except the registry's opt-in panels.
+DEFAULT_PLOTS = [p for p in PLOT_IDS if p not in registry.DEFAULT_OFF_PLOTS]
 
 AVAILABLE_PLOTS = registry.labels_for(PLOT_IDS)
 
@@ -223,8 +229,7 @@ def layout(**kwargs):
                         options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
                         # All selected except the options-fed panels; see
                         # registry.DEFAULT_OFF_PLOTS for why they opt in.
-                        value=[p for p in AVAILABLE_PLOTS
-                               if p not in registry.DEFAULT_OFF_PLOTS],
+                        value=DEFAULT_PLOTS,
                         multi=True,
                         className="mb-3 dash-dropdown bg-dark text-white control-mobile-full",
                         style={'width': '200px'}
@@ -366,6 +371,35 @@ def _basis_aware(selected_plots):
 
 def _overlayable(selected_plots):
     return [p for p in (selected_plots or []) if p in registry.BASIS_OVERLAY_SPEC]
+
+
+def _in_stack_order(selected_plots):
+    """The selection in PLOT_IDS order, whatever order it was ticked in.
+
+    The picker hands back ids in click order, so a panel switched on later landed at
+    the foot of the stack, possibly ten panels below the price it is read against.
+    The stack has one order, and the positions belong directly under the tape.
+    """
+    return sorted(selected_plots, key=PLOT_IDS.index)
+
+
+def _category_panel(asset, lookback, palette):
+    """`((frame, series), title)` for the category_net panel, or `(None, None)`.
+
+    A market is in the Disaggregated report or the TFF one, never both (see
+    CotIndexer.available_reports_for), so there is nothing to choose: the panel shows
+    whichever exists and its title says which. A market in neither gets the panel's
+    empty-state note under the generic title.
+    """
+    reports = get_indexer().available_reports_for(asset)
+    if not reports:
+        return None, None
+    report = reports[0]
+    frame = get_indexer().get_category_data(asset, report, lookback)
+    if frame is None:
+        return None, None
+    series = category_traces.category_series(report, None, palette, frame=frame)
+    return (frame, series), f"{cot_categories.REPORT_LABELS[report]} Net Positions"
 
 
 def _panel_model(model_view):
@@ -618,7 +652,8 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
     print(f"Updating oi_alignment stack with asset={asset}, lookback={lookback}, price_overlay={price_overlay}")
     utils.cot_logger.info(f"Updating oi_alignment stack with asset={asset}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
 
-    selected_plots = registry.sanitize_selection(selected_plots, AVAILABLE_PLOTS)
+    selected_plots = _in_stack_order(
+        registry.sanitize_selection(selected_plots, AVAILABLE_PLOTS))
 
     if not asset or not selected_plots or selected_plots == 0:
         empty_message = html.P('SELECT ASSET AND PLOTS', style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
@@ -663,8 +698,13 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
         net_y_title = "net position"
     color_palette = viz_config.get_palette(palette_name)
     instrument = get_indexer().get_instrument_from_name(asset)
+
+    # The Disaggregated / TFF breakdown, loaded only when its panel is on the stack.
+    category, category_label = (_category_panel(asset, lookback, color_palette)
+                                if "category_net" in selected_plots else (None, None))
     titles = [registry.plot_title(p, asset=asset, instrument=instrument,
-                                  basis_view=basis, is_overlay=is_overlay)
+                                  basis_view=basis, is_overlay=is_overlay,
+                                  label=category_label if p == "category_net" else None)
               for p in selected_plots]
 
     num_cols = int(num_cols)
@@ -693,8 +733,7 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
                     value_col, y_title, y_range, zero_line = registry.BASIS_OVERLAY_SPEC[p]
                     fig = helpers.get_basis_overlay_plot(
                         fig, df, df_norm, value_col, r, c, color_palette,
-                        y_title=y_title, y_range=y_range, show_oi=True,
-                        zero_line=zero_line)
+                        y_title=y_title, y_range=y_range, zero_line=zero_line)
                     plot_idx += 1
                     continue
 
@@ -704,7 +743,7 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
                     palette=color_palette, show_price=True, asset=asset, model=model,
                     net_cols=(comm_net, lrg_net, sml_net), y_title=net_y_title,
                     range_weeks=controls.lookback_weeks(lookback, asset),
-                    setup_comms_only=setup_comms_only)
+                    setup_comms_only=setup_comms_only, category=category)
                 fig = spec.build(ctx) or fig
                 if spec.decorate:
                     ctx.fig = fig

@@ -288,6 +288,13 @@ CATEGORY_TINT_DASH = "dash"
 CATEGORY_DIVERGING_UP = "#2aa198"    # SOLARIZED_DARK_CYAN
 CATEGORY_DIVERGING_DOWN = "#cb4b16"  # SOLARIZED_DARK_ORANGE
 
+# Strength of the banded fill under the net-position lines (category_traces.net_bands).
+# Chosen by eye against the two ends: at 0.18 the thin bands (a category that briefly
+# dips inside its neighbour) were too faint to find, and at 0.55 the panel read as a
+# stacked chart, where band thickness means size. Here it means only how far a category
+# reaches beyond the next one in, so the fill must stay subordinate to the lines.
+CATEGORY_BAND_ALPHA = 0.35
+
 # How the page arranges the categories.
 LAYOUT_OVERLAY = "overlay"
 LAYOUT_FACET = "facet"

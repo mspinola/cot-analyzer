@@ -20,16 +20,18 @@ from collections import namedtuple
 
 import cotmetrics.categories as categories
 import cotmetrics.constants as const
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
 import viz_constants as vc
-from components.plot_colors import darken_hex, lighten_hex, relative_luminance
+from components.plot_colors import darken_hex, hex_to_rgba, lighten_hex, relative_luminance
 from components.plot_layout import visible_weeks
 from components.plot_traces import (
     PRICE_OVERLAY_VISIBILITY,
     add_legend_lines,
     add_trace_to_all,
+    format_net,
 )
 
 # One drawable category: the cotmetrics spec (which knows the column names), plus the
@@ -196,8 +198,149 @@ def _fit_range(df, cols, include_zero=False, negate=()):
     return [low, hi + span * _Y_PAD]
 
 
+def net_bands(index, values):
+    """Geometry for the banded fill under a set of net-position lines.
+
+    On each side of zero, the space from one line out to the next is one band, and it
+    belongs to the OUTER line: zero to the innermost long is that category's, from
+    there to the next long is the next category's, and so on, mirrored for the shorts.
+    Every patch of the panel therefore carries exactly one colour, where filling each
+    line to zero would blend wherever two categories sit on the same side.
+
+    A band's thickness is how far a category reaches beyond the next one in, NOT its
+    size; the line's height is still the value.
+
+    `values` is (weeks, categories), NaN read as flat. Returns `(x, lower, upper)`:
+    `x` a DatetimeIndex and the other two (points, categories, 2) arrays, the last axis
+    being the long side then the short side. A category off a side has lower == upper
+    == 0 there.
+
+    The points are the weekly dates PLUS every instant two lines (or a line and zero)
+    cross between reports, found by linear interpolation. Between consecutive points
+    the ordering of the lines is constant, so straight segments fill exactly. Computing
+    the bands on the weekly dates alone leaves a wedge at each crossing, because the
+    band changes owner part-way through the week and the fill cannot follow it.
+    """
+    v = np.nan_to_num(np.asarray(values, dtype=float))
+    # Pinned to nanoseconds: the store hands back a coarser unit, and reading its
+    # integers back as nanoseconds would put every band in January 1970.
+    t = pd.DatetimeIndex(index).as_unit("ns").asi8.astype(float)
+    n, m = v.shape
+    if n == 0 or m == 0:
+        return pd.DatetimeIndex([]), np.zeros((0, m, 2)), np.zeros((0, m, 2))
+
+    # Zero is a line too: a category crossing it changes side.
+    z = np.column_stack([v, np.zeros(n)])
+    upper_pairs = np.triu_indices(m + 1, k=1)
+    times, rows = [], []
+    for k in range(n - 1):
+        a, b = z[k], z[k + 1]
+        d0 = (a[:, None] - a[None, :])[upper_pairs]
+        d1 = (b[:, None] - b[None, :])[upper_pairs]
+        cross = d0 * d1 < 0
+        fracs = np.unique(np.concatenate(([0.0], d0[cross] / (d0[cross] - d1[cross]))))
+        times.append(t[k] + (t[k + 1] - t[k]) * fracs)
+        rows.append(a[None, :m] + (b - a)[None, :m] * fracs[:, None])
+    times.append(t[-1:])
+    rows.append(v[-1:])
+    x = np.concatenate(times)
+    dense = np.vstack(rows)
+
+    lower = np.zeros((len(x), m, 2))
+    upper = np.zeros((len(x), m, 2))
+    order = np.arange(m)
+    for side, sign in enumerate((1.0, -1.0)):
+        u = np.clip(dense * sign, 0, None)          # this side's magnitudes, others 0
+        for i in range(m):
+            mine = u[:, i]
+            # The next line in: the largest magnitude below mine. Ties go to the lower
+            # index, so two coincident lines give one zero-thickness band rather than
+            # two overlapping ones.
+            inside = (u < mine[:, None]) | ((u == mine[:, None]) & (order < i))
+            inside[:, i] = False
+            lower[:, i, side] = np.where(inside, u, 0).max(axis=1) * sign
+            upper[:, i, side] = mine * sign
+    lower[upper == 0] = 0
+    return pd.to_datetime(x.astype("int64")), lower, upper
+
+
+def _add_net_bands(fig, df, series, columns, row, col):
+    """Draw net_bands under the lines. Must run before the lines are added.
+
+    SVG traces, not the WebGL the rest of the page uses: `fill="tonexty"` between two
+    Scattergl traces drew nothing here (checked in the running app, with and without a
+    visible edge). The cost is that the category lines of a banded panel must be SVG
+    too, or they would sit on the WebGL canvas underneath these fills; `_draw` does
+    that.
+    """
+    if not columns:
+        return fig
+    x, lower, upper = net_bands(df.index, df[[c for _, c in columns]].to_numpy())
+    for i, (s, _) in enumerate(columns):
+        for side in (0, 1):
+            if not upper[:, i, side].any():
+                continue    # never on this side: no traces rather than two flat ones
+            shared = dict(x=x, mode="lines", line=dict(width=0), name=s.label,
+                          legendgroup=s.label.lower(), showlegend=False,
+                          hoverinfo="skip")
+            # `tonexty` fills to the trace immediately before, so the pair stays adjacent.
+            fig.add_trace(go.Scatter(y=lower[:, i, side], **shared),
+                          row=row, col=col, secondary_y=False)
+            fig.add_trace(go.Scatter(
+                y=upper[:, i, side], fill="tonexty",
+                fillcolor=hex_to_rgba(s.color, vc.CATEGORY_BAND_ALPHA), **shared),
+                row=row, col=col, secondary_y=False)
+    return fig
+
+
+# Categories per line of the latest-print readout.
+READOUT_PER_LINE = 3
+
+
+def add_latest_net_readout(fig, df, series, row, col):
+    """Each category's name and latest net print, in the panel's top-left corner.
+
+    The category twin of plot_traces._add_latest_net_readout, and for the same reason:
+    on a stack page the legend is figure-wide, so five category entries there would sit
+    beside toggles for panels that draw none of them. Here the names live on the one
+    panel they describe, each in its line's colour, which is also what keys the lines
+    once the legend no longer does.
+
+    Printed as whole contracts. A stitched market (a big contract plus its mini at a
+    fraction) carries fractional nets, and format_net reads a non-integer as a share
+    of open interest and prints three decimals. Broken over two lines past three
+    categories: five on one line run off a narrow panel.
+    """
+    if df.empty or not series:
+        return fig
+    latest = df.iloc[-1]
+    parts = []
+    for s in series:
+        column = categories.net_col(s.spec)
+        value = latest[column] if column in df.columns else None
+        if value is not None and not pd.isna(value):
+            value = round(float(value))
+        parts.append(f'<span style="color:{s.color}">{s.label} {format_net(value)}</span>')
+    gap = "&nbsp;&nbsp;"
+    text = gap.join(parts) if len(parts) <= READOUT_PER_LINE else "<br>".join(
+        gap.join(parts[i:i + READOUT_PER_LINE])
+        for i in range(0, len(parts), READOUT_PER_LINE))
+    fig.add_annotation(
+        row=row, col=col, xref="x domain", yref="y domain", x=0.01, y=0.98,
+        xanchor="left", yanchor="top", showarrow=False, align="left",
+        text=text, font=dict(size=10),
+        name="category_net_latest_readout")
+    return fig
+
+
+# How a net panel shades under its lines. Both are for signed series on a zero line.
+FILL_BANDS = "bands"    # overlay: the space between lines, see net_bands
+FILL_ZERO = "zero"      # small multiples: each row's one line, shaded to zero
+
+
 def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlegend,
-          y_title, zeroline=True, y_range=None, show_oi=False, fit=True):
+          y_title, zeroline=True, y_range=None, show_oi=False, fit=True,
+          fill=None):
     """The shape every line panel shares: one line per category, then the chrome.
 
     `column_fn(spec)` names the column to draw, so the panels below differ only in
@@ -205,14 +348,30 @@ def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlege
     drawn on lines rather than the grouped bars the legacy Net Positions panel uses:
     five bar series over a multi-year window collapses into noise, where five lines
     stay separable.
+
+    `fill` shades under the lines, for net positions only (signed, on a zero line).
+    FILL_BANDS shades the space between lines sharing an axis (see `net_bands`).
+    FILL_ZERO shades each line to zero, which is right only when the lines do not
+    share an axis, since overlapping shades blend: that is the small-multiples row,
+    where the shading makes the side a category is on readable at a glance. Both use
+    one strength, so a category looks the same in either layout.
     """
+    if fill == FILL_BANDS:
+        _add_net_bands(fig, df, series,
+                       [(s, column_fn(s.spec)) for s in series
+                        if column_fn(s.spec) in df.columns], row, col)
     columns = []
     for z, s in enumerate(series):
         column = column_fn(s.spec)
         if column in df.columns:
             columns.append(column)
             add_trace_to_all(fig, df, column, row, col, s.label, s.color, z,
-                             dash=s.dash)
+                             dash=s.dash, gl=not fill)
+            if fill == FILL_ZERO:
+                # On the line's own trace rather than a second one, so a faceted cell
+                # still holds exactly one series.
+                fig.data[-1].update(fill="tozeroy", fillcolor=hex_to_rgba(
+                    s.color, vc.CATEGORY_BAND_ALPHA))
     if show_oi and const.OPEN_INTEREST in df.columns:
         add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest",
                          palette[vc.CATEGORY_OI_SLOT], len(series), secondary=True)
@@ -235,7 +394,7 @@ def _draw(fig, df, series, column_fn, row, col, palette, *, show_price, showlege
 
 def get_category_net_pos_plot(fig, df, series, lookback_header, row, col, palette,
                               show_price=True, showlegend=True, show_oi=True,
-                              y_range=None):
+                              y_range=None, fill=FILL_BANDS):
     """Net contracts per category, with open interest on the secondary axis.
 
     Open interest rather than price here: net position is denominated in contracts,
@@ -243,18 +402,21 @@ def get_category_net_pos_plot(fig, df, series, lookback_header, row, col, palett
     denominator. The percent-of-OI panel answers it directly.
 
     `show_oi` is off in small multiples, where open interest gets its own row instead
-    of a second scale.
+    of a second scale. `fill` is FILL_ZERO there: the banded fill separates categories
+    that share an axis, and a faceted row holds one.
     """
     return _draw(fig, df, series, categories.net_col, row, col, palette,
                  show_price=show_price, showlegend=showlegend,
-                 y_title="net contracts", show_oi=show_oi, y_range=y_range)
+                 y_title="net contracts", show_oi=show_oi, y_range=y_range,
+                 fill=fill)
 
 
 def get_category_pct_oi_plot(fig, df, series, lookback_header, row, col, palette,
-                             show_price=True, showlegend=True):
+                             show_price=True, showlegend=True, fill=FILL_BANDS):
     """Net position as a percent of open interest, the size-invariant view."""
     return _draw(fig, df, series, categories.pct_oi_col, row, col, palette,
-                 show_price=show_price, showlegend=showlegend, y_title="% of OI")
+                 show_price=show_price, showlegend=showlegend, y_title="% of OI",
+                 fill=fill)
 
 
 def get_category_index_plot(fig, df, series, lookback_header, row, col, palette,
@@ -504,6 +666,10 @@ def build_panel(plot_id, fig, df, series, lookback_header, row, col, palette,
     # Open interest rides a secondary axis in overlay; in facets it gets its own row.
     if facet and "show_oi" in accepts:
         kwargs["show_oi"] = False
+    # The banded fill separates categories sharing an axis; a faceted row holds one,
+    # so it is shaded to its own zero line instead.
+    if facet and "fill" in accepts:
+        kwargs["fill"] = FILL_ZERO
     return builder(fig, df, series, lookback_header, row, col, palette, **kwargs) or fig
 
 
