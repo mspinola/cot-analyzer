@@ -14,7 +14,7 @@ under it for about a hundredth of Plotly's download. No Dash and no Plotly impor
 from cotmetrics import indicators
 
 import components.market_internals as mi
-import viz_constants as vc
+from components.sentiment_static import INK, INK_2
 
 AVERAGE_COLOR = "#5B8DD6"
 
@@ -90,7 +90,7 @@ def pct(fraction):
 
 
 def verdict_color(verdict, colors):
-    return {mi.POSITIVE: colors.bull, mi.NEGATIVE: colors.bear}.get(verdict, vc.TEXT_COLOR)
+    return {mi.POSITIVE: colors.bull, mi.NEGATIVE: colors.bear}.get(verdict, INK_2)
 
 
 def headline_color(lean, colors):
@@ -99,7 +99,7 @@ def headline_color(lean, colors):
         return colors.bull
     if lean.endswith("defensive."):
         return colors.bear
-    return vc.TEXT_COLOR
+    return INK_2
 
 
 def credit_detail(read):
@@ -229,7 +229,7 @@ def fomo_chart(read, colors):
     dates, values = read.path
     # Thinner than the trend charts on purpose: a year of a series this whippy is a
     # dense band, and the zone crossings are what has to stay legible through it.
-    return line_chart(220, [(vc.BRIGHTER_TEXT_COLOR, 1, dates, values)],
+    return line_chart(220, [(INK, 1, dates, values)],
                       levels=((indicators.FOMO_EXHAUSTION_MIN, colors.bear),
                               (indicators.FOMO_FEAR_MAX, colors.bull)),
                       value_range=(0, 100), decimals=0)
@@ -238,7 +238,7 @@ def fomo_chart(read, colors):
 def appetite_chart(read, colors):
     dates, values = read.path
     dot = {"risk_off": colors.bear, "risk_on": colors.bull}
-    return line_chart(220, [(vc.BRIGHTER_TEXT_COLOR, 1.5, dates, values)],
+    return line_chart(220, [(INK, 1.5, dates, values)],
                       levels=((indicators.CREDIT_COMFORT_MIN, colors.bull),
                               (indicators.CREDIT_STRESS_MAX, colors.bear)),
                       markers=[(d, dot[kind]) for d, kind in read.markers],
@@ -247,7 +247,7 @@ def appetite_chart(read, colors):
 
 def trend_chart(read):
     dates, values, averages = read.path
-    return line_chart(240, [(vc.BRIGHTER_TEXT_COLOR, 1.5, dates, values),
+    return line_chart(240, [(INK, 1.5, dates, values),
                             (AVERAGE_COLOR, 2, dates, averages)],
                       decimals=2 if read.key == "credit" else 4)
 

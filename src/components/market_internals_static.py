@@ -37,7 +37,6 @@ from pathlib import Path
 
 import components.market_internals as mi
 import components.market_internals_view as view
-import viz_constants as vc
 from components import plot_colors, sentiment
 from components import sentiment_static as surveys
 
@@ -204,7 +203,7 @@ _ARROWS = {1: "▲", -1: "▼", 0: "•"}
 
 def _net_highs_row(read, colors):
     color = view.verdict_color(read.verdict, colors)
-    ink = {1: colors.bull, -1: colors.bear, 0: vc.TEXT_COLOR}
+    ink = {1: colors.bull, -1: colors.bear, 0: surveys.INK_2}
     arrows = "".join(f'<span style="color:{ink[s]}">{_ARROWS[s]}</span> '
                      for s in read.last_three)
     edge = color if read.regime else "transparent"
@@ -418,7 +417,7 @@ footer a {{ color: var(--ink-2); }}
   var LC = window.LightweightCharts;
   if (!LC) {{ return; }}
   var DATA = JSON.parse(document.getElementById('{DATA_ID}').textContent);
-  var INK = '{vc.TEXT_COLOR}', GRID = 'rgba(255,255,255,0.06)';
+  var INK = '{surveys.INK_2}', GRID = 'rgba(255,255,255,0.06)';
   document.querySelectorAll('[data-chart]').forEach(function (el) {{
     var spec = DATA[el.dataset.chart];
     if (!spec) {{ return; }}

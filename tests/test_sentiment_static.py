@@ -297,3 +297,28 @@ def test_the_page_matches_the_other_monitors_background_and_column():
     assert "*, *::before, *::after { box-sizing: border-box; }" in page
     assert "body { padding-inline: 20px; padding-block: 28px 56px; }" in page
     assert "main { max-width: 1180px; margin: 0 auto; }" in page
+
+
+def test_the_text_is_the_fund_pages_white_and_grey_not_the_apps_cream():
+    """The DBMF, AHLT and ORR pages (dbmf-tracker's templates, dark theme) set
+    --ink #eef2f5, --ink-2 #b6bfc8 and --muted #7f8993. This page took the app's pair,
+    Solarized's cream, in its stylesheet and in every figure's labels; neither colour
+    may survive anywhere on the published page, solid or translucent."""
+    import viz_constants as vc
+    assert (st.INK, st.INK_2, st.MUTED) == ("#eef2f5", "#b6bfc8", "#7f8993")
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    assert "--ink: #eef2f5; --ink-2: #b6bfc8;" in page and "--muted: #7f8993;" in page
+    lowered = page.lower()
+    for app in (vc.TEXT_COLOR, vc.BRIGHTER_TEXT_COLOR):
+        assert app.lower() not in lowered
+        assert st._rgb_prefix(app) not in page
+    # The figures' labels moved with the stylesheet, not just the page around them.
+    assert page.count("#b6bfc8") > 100
+
+
+def test_page_ink_swaps_solid_and_translucent_forms_and_nothing_else():
+    import viz_constants as vc
+    from components.plot_colors import hex_to_rgba
+    text = f'{vc.TEXT_COLOR} {vc.TEXT_COLOR.upper()} {hex_to_rgba(vc.TEXT_COLOR, 0.3)} #dc322f'
+    assert st.page_ink(text) == f'{st.INK_2} {st.INK_2} {hex_to_rgba(st.INK_2, 0.3)} #dc322f'
+    assert st.page_ink(vc.BRIGHTER_TEXT_COLOR) == st.INK

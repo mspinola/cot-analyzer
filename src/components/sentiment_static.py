@@ -110,6 +110,13 @@ TICKER_COLOR = vc.SOLARIZED_DARK_BLUE
 #: Monitors row is.
 PAGE_COLOR, SURFACE_COLOR, LINE_COLOR = "#0d1013", "#151a1e", "rgba(255,255,255,0.09)"
 PAGE_MAX_WIDTH_PX, PAGE_GUTTER_PX = 1180, 20
+#: Their text colours too (the same templates' dark theme): the near-white the titles
+#: and values take, the grey of body text and axis labels, and the dimmer grey of
+#: eyebrows and footnotes. Until 2026-11-16 the published pages kept the app's own
+#: pair, which is Solarized's cream (#fdf6e3 on #eee8d5): beside the fund pages'
+#: cool white and grey the text read as yellowed. The app itself keeps its theme;
+#: only what is published changes, here and in `page_ink`.
+INK, INK_2, MUTED = "#eef2f5", "#b6bfc8", "#7f8993"
 #: The tiles' tier tones (`sentiment.percentile_tier`): warm toward a history's highs,
 #: cool toward its lows. Neither is a series colour on this page (the votes' green and
 #: red, the allocation's bonds blue is darker), so a tile never reads as one of them.
@@ -271,6 +278,30 @@ def lookback_payload(read, colors, palette):
     }
 
 
+def _rgb_prefix(hex_color):
+    """'rgba(r, g, b,' as `plot_colors.hex_to_rgba` spells a colour, alpha left open."""
+    h = hex_color.lstrip("#")
+    return "rgba({}, {}, {},".format(*(int(h[i:i + 2], 16) for i in (0, 2, 4)))
+
+
+def page_ink(text):
+    """`text` (serialized figures) with the app's two text colours swapped for the
+    page's, solid and translucent alike.
+
+    The figures are the app's own (`sentiment`, `aaii_votes`, `aaii_allocation`), built
+    once for the local `/sentiment` page and this one, and they colour their axis
+    labels, annotations and neutral lines from `viz_constants`. Rather than thread a
+    second theme through every figure builder, the published copy is recoloured as
+    text on the way out: the two colours are unique to that role, which a test pins by
+    requiring that neither survives anywhere on the page.
+    """
+    for app, page in ((vc.BRIGHTER_TEXT_COLOR, INK), (vc.TEXT_COLOR, INK_2)):
+        for old, new in ((app.lower(), page), (app.upper(), page),
+                         (_rgb_prefix(app), _rgb_prefix(page))):
+            text = text.replace(old, new)
+    return text
+
+
 def _script_json(value):
     """JSON safe inside a <script> element: no `</` can close it early."""
     return json.dumps(value, separators=(",", ":")).replace("</", "<\\/")
@@ -329,8 +360,8 @@ def base_css():
     One function so the surveys page and the market internals page
     (`market_internals_static`) cannot drift apart rule by rule, which is how the
     internals page came to sit on the old page colour and width (2026-11-15)."""
-    return f""":root {{ --page: {PAGE_COLOR}; --ink: {vc.BRIGHTER_TEXT_COLOR}; --ink-2: {vc.TEXT_COLOR};
-  --muted: #7d8794; --line: {LINE_COLOR}; --surface: {SURFACE_COLOR};
+    return f""":root {{ --page: {PAGE_COLOR}; --ink: {INK}; --ink-2: {INK_2};
+  --muted: {MUTED}; --line: {LINE_COLOR}; --surface: {SURFACE_COLOR};
   --wash: rgba(255,255,255,0.06); --accent: {vc.BLUE_BACKGROUND}; --ticker: {TICKER_COLOR};
   --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }}
@@ -494,7 +525,7 @@ footer .prov {{ margin: 0 0 6px; }}
 {allocation_notes}<footer>{_provisional(reads[sentiment.DEFAULT_LOOKBACK])}{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>
-<script type="application/json" id="surveys-data">{_script_json(payload)}</script>
+<script type="application/json" id="surveys-data">{page_ink(_script_json(payload))}</script>
 <script>window.dash_clientside = {{no_update: null}};</script>
 <script>
 {js}
