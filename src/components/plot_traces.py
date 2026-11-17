@@ -384,8 +384,10 @@ def get_spearman_plot(fig, df, row, col, color_palette, show_price=True):
 # read the commercial side, so the band shows the same series they judge.
 # Non-Commercials are near enough its mirror that the reading carries across.
 RANGE_BAND_GROUPS = {"comms": 0, "lrg": 1, "sml": 2}
-RANGE_BAND_FILL_ALPHA = 0.10
-RANGE_BAND_EDGE_ALPHA = 0.35
+# Halved from 0.10 / 0.35: at those the commercial band read as a red block behind
+# the whole panel and pulled the eye off the bars it is there to frame.
+RANGE_BAND_FILL_ALPHA = 0.05
+RANGE_BAND_EDGE_ALPHA = 0.20
 
 
 def net_range_band(series, weeks):
@@ -411,15 +413,17 @@ def net_range_band(series, weeks):
 def format_net(value):
     """Accounting-style net position: thousands separated, negatives in parentheses.
 
-    Contracts print as integers; the OI-normalized basis, a fraction inside +/-1,
-    prints to three places. Integrality decides: a contract count is always whole
-    and a share of open interest almost never is, and a share that happens to be
-    exactly zero or one reads correctly either way.
+    Contracts print as whole numbers; the OI-normalized basis, a fraction inside +/-1,
+    prints to three places. Magnitude decides, not integrality: a stitched market (a
+    big contract plus its mini at a fraction) carries fractional contract counts, and
+    reading "not a whole number" as "a share of open interest" printed the Dow's
+    commercials as (12615.500). A share cannot exceed one, so anything beyond it is
+    contracts and is rounded to the contract.
     """
     if value is None or pd.isna(value):
         return "n/a"
     v = float(value)
-    body = f"{abs(v):,.0f}" if v == int(v) else f"{abs(v):.3f}"
+    body = f"{abs(v):.3f}" if abs(v) <= 1 and v != int(v) else f"{abs(round(v)):,.0f}"
     return f"({body})" if v < 0 else body
 
 
@@ -468,9 +472,34 @@ def _add_latest_net_readout(fig, df, cols, row, col, color_palette, band_note=No
         name="net_latest_readout")
 
 
+def get_open_interest_plot(fig, df, row, col, color_palette):
+    """Open Interest on a panel of its own, on one axis.
+
+    For a stack that would otherwise carry it on the Net Positions panel's second
+    axis, behind the bars and the range band, where it is one more line crossing a
+    panel that is already full, on a scale unrelated to the one beside it. Fitted to
+    the window the chart opens on, like the panels around it.
+    """
+    if const.OPEN_INTEREST not in df.columns:
+        return fig
+    add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest",
+                     color_palette[4], 0)
+    weeks_to_view = 52 if app_utils.is_mobile() else const.DEFAULT_WEEKS_TO_VIEW
+    window = df[const.OPEN_INTEREST].iloc[max(0, len(df) - weeks_to_view):]
+    lo, hi = window.min(), window.max()
+    y_range = None
+    if not (pd.isna(lo) or pd.isna(hi)):
+        pad = (hi - lo) * 0.1 or max(abs(hi) * 0.1, 1000)
+        y_range = [max(lo - pad, 0), hi + pad]
+    fig.update_yaxes(title="contracts", row=row, col=col, range=y_range,
+                     gridcolor=vc.GRID_COLOR, zeroline=False, secondary_y=False,
+                     fixedrange=True)
+    return fig
+
+
 def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette, show_flips=False, y_title="net position",
                      range_weeks=None, range_group="comms"):
-    """Three net-position bar series, with Open Interest on the secondary axis.
+    """Three net-position bar series, on one axis.
 
     `range_weeks` shades one group's rolling range (see `net_range_band`) behind the
     bars, so the reader sees where the latest bar sits inside its own lookback in
@@ -479,11 +508,11 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
     sum across markets with different custom lookbacks has no single window.
     `range_group` names which group, a key of RANGE_BAND_GROUPS.
 
-    No price here, at either scale: the second axis carries Open Interest, which is
-    why the registry marks this panel SECONDARY_ALWAYS rather than SECONDARY_WITH_PRICE.
-    That is also why it takes no `show_price` -- it drew none whatever it was passed,
-    while its legend claimed one. `reconcile_legend_entries` settles the figure-wide
-    question of whether a stack containing this panel needs a Price entry.
+    No price here, and no Open Interest: it used to ride a second axis behind the
+    bars, on a scale unrelated to theirs, and now has a panel of its own
+    (`get_open_interest_plot`). So this panel takes no `show_price`, and
+    `reconcile_legend_entries` settles the figure-wide question of whether a stack
+    containing it needs a Price entry.
     """
     weeks_to_view = 52 if app_utils.is_mobile() else const.DEFAULT_WEEKS_TO_VIEW
     start_idx = max(0, len(df) - weeks_to_view)
@@ -524,33 +553,15 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
         pos_padding = abs(max_pos) * 0.1 or 1.0
     y_range = [min_pos - pos_padding, max_pos + pos_padding]
 
-    if const.OPEN_INTEREST in visible_df.columns:
-        oi_max = visible_df[const.OPEN_INTEREST].max()
-        oi_min = visible_df[const.OPEN_INTEREST].min()
-        if pd.isna(oi_max):
-            oi_max = 1000
-        if pd.isna(oi_min):
-            oi_min = 0
-    else:
-        oi_max, oi_min = 1000, 0
-    oi_padding = (oi_max - oi_min) * 0.1
-    if oi_padding == 0:
-        oi_padding = max(abs(oi_max) * 0.1, 1000)
-    oi_range = [oi_min - oi_padding, oi_max + oi_padding]
-
 
     add_trace_to_all(fig, df, comms_col, row, col, COMM_LABEL, color_palette[0], 0, is_bar=True, opacity=0.8)
     add_trace_to_all(fig, df, lrg_col, row, col, LRG_LABEL, color_palette[1], 1, is_bar=True, opacity=0.8)
     add_trace_to_all(fig, df, sml_col, row, col, SML_LABEL, color_palette[2], 2, is_bar=True, opacity=0.7)
-    add_trace_to_all(fig, df, const.OPEN_INTEREST, row, col, "Open Interest", color_palette[4], 3, secondary=True)
 
-    # Calculate independent tick steps to stop Plotly from auto-syncing the axes
     y_dtick = get_nice_dtick(y_range[1] - y_range[0])
-    oi_dtick = get_nice_dtick(oi_range[1] - oi_range[0])
 
     import numpy as np
     y_ticks = np.arange(math.ceil(y_range[0] / y_dtick) * y_dtick, y_range[1] + y_dtick/2, y_dtick).tolist()
-    oi_ticks = np.arange(math.ceil(oi_range[0] / oi_dtick) * oi_dtick, oi_range[1] + oi_dtick/2, oi_dtick).tolist()
 
     fig.update_yaxes(
         title=y_title,
@@ -564,21 +575,6 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
         fixedrange=False,
         tickmode="array",
         tickvals=y_ticks,
-        autorange=False
-    )
-
-    fig.update_yaxes(
-        title="OI",
-        row=row, col=col,
-        range=oi_range,
-        showgrid=False,
-        zeroline=False,
-        matches=None,
-        gridcolor=vc.EMPTY_COLOR,
-        secondary_y=True,
-        fixedrange=True,
-        tickmode="array",
-        tickvals=oi_ticks,
         autorange=False
     )
 
@@ -615,11 +611,6 @@ def get_net_pos_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palet
 
     showlegend = row == 1 and col == 1
     fig = update_legend(fig, showlegend, color_palette, show_price=False)
-    if showlegend:
-        # The line this panel really draws on its second axis. Duplicate entries are
-        # not a risk: a later `reconcile_legend_entries` adds one only if none exists.
-        fig = add_open_interest_legend(fig, color_palette)
-
     return fig
 
 
@@ -661,7 +652,7 @@ def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette
 
 
 def get_basis_overlay_plot(fig, df_raw, df_norm, value_col, row, col, color_palette,
-                           y_title, y_range=None, show_oi=True, zero_line=False):
+                           y_title, y_range=None, zero_line=False):
     """Draw one series on both positioning bases with the gap between them shaded.
 
     The comparison is what carries the information here, so this deliberately plots the
@@ -699,19 +690,8 @@ def get_basis_overlay_plot(fig, df_raw, df_norm, value_col, row, col, color_pale
                      norm_color, 1, showlegend=is_first,
                      dash=vc.BASIS_OVERLAY_DASH)
 
-    # Open Interest, not Price, as the context series. OI is the denominator of the
-    # transform this plot exists to visualize, so it's the series that explains why the
-    # two lines part company. Price is already the secondary on every other plot on the
-    # page, which makes it the redundant choice here specifically.
-    if show_oi:
-        add_trace_to_all(fig, df_raw, const.OPEN_INTEREST, row, col, "Open Interest",
-                         color_palette[4], 3, secondary=True, opacity=0.6,
-                         showlegend=is_first)
-        fig.update_yaxes(
-            title="OI", row=row, col=col, showgrid=False, zeroline=False,
-            gridcolor=vc.EMPTY_COLOR, secondary_y=True, fixedrange=True
-        )
-
+    # No context series on a second axis. Open Interest, the denominator of the
+    # transform this plot visualizes, used to ride there; it has a panel of its own now.
     fig.update_yaxes(
         title=y_title, row=row, col=col, secondary_y=False,
         range=y_range, showgrid=True, zeroline=False,

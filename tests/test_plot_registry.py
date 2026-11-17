@@ -22,6 +22,8 @@ EXPECTED_BASIS_AWARE = {"net_pos", "index", "zscore", "momentum", "spearman"}
 EXPECTED_INVARIANT_NOTE = {
     "oi_pct": "already normalized by OI",
     "willco": "already normalized by OI",
+    "category_net": "trader categories are in raw contracts",
+    "open_interest": "not a positioning metric",
     "max_pain": "not a COT metric",
     "max_pain_historical": "not a COT metric",
 }
@@ -35,19 +37,22 @@ EXPECTED_OVERLAY = {
 }
 
 # The `has_secondary` list each page kept inline, as (page, show_price, {ids}).
-# OI Alignment and Analysis always draw price; Aggregation never does, which is why
-# net_pos has to stay on a secondary axis independently of the price overlay.
+# OI Alignment and Analysis always draw price; Aggregation never does. net_pos was in
+# every set, Aggregation's included, while it carried Open Interest on a second axis;
+# it left them when Open Interest moved to a panel of its own.
 EXPECTED_SECONDARY = [
     ("oi_alignment", True, {"macd", "willco", "index", "momentum", "zscore",
-                            "net_pos", "oi_pct", "lrg_sentiment",
-                            "max_pain_historical"}),
+                            "oi_pct", "lrg_sentiment", "max_pain_historical"}),
     ("analysis", True, {"price_candles", "macd", "willco", "index", "momentum",
-                        "zscore", "oi_pct", "spearman", "lrg_sentiment", "net_pos",
+                        "zscore", "oi_pct", "spearman", "lrg_sentiment",
                         "max_pain_historical"}),
     ("analysis-grid", True, {"oi_pct", "willco", "spearman", "index", "zscore",
-                             "momentum", "net_pos", "max_pain_historical"}),
-    ("aggregation", False, {"net_pos"}),
+                             "momentum", "max_pain_historical"}),
+    ("aggregation", False, set()),
 ]
+
+# Panels that must never take a second axis, on any page, price drawn or not.
+ONE_AXIS = {"net_pos", "open_interest", "category_net"}
 
 ALL_IDS = set(reg.REGISTRY)
 
@@ -80,6 +85,11 @@ def test_secondary_axis_matches_shipped(page, show_price, expected):
     assert not (expected - got), f"{page}: {expected - got} should use secondary_y"
 
 
+@pytest.mark.parametrize("show_price", [True, False])
+def test_the_net_and_open_interest_panels_take_one_axis(show_price):
+    assert not {i for i in ONE_AXIS if reg.uses_secondary_y(i, show_price)}
+
+
 def test_overlay_implies_basis_aware():
     """Drawing both bases at once is meaningless for a panel the basis cannot move."""
     for pid in reg.BASIS_OVERLAY_SPEC:
@@ -100,12 +110,15 @@ def test_every_spec_is_buildable():
 
 def test_default_off_panels_are_real_and_options_fed():
     """The set the stack pages exclude from their default selection. Every member
-    must exist in the registry (a typo here silently defaults a panel back on)
-    and need an asset: only the options-proxy panels qualify (see the comment on
-    DEFAULT_OFF_PLOTS for why the premium/discount history is the one left)."""
+    must exist in the registry (a typo here silently defaults a panel back on).
+    Two qualify, for the two reasons the comment on DEFAULT_OFF_PLOTS gives: the
+    one options-proxy panel whose history is not yet trustworthy, and the z-score,
+    which restates the Positioning Index. The set is pinned so a third cannot join
+    without that comment being extended."""
     assert reg.DEFAULT_OFF_PLOTS <= set(reg.REGISTRY)
-    assert all(reg.REGISTRY[p].needs_asset for p in reg.DEFAULT_OFF_PLOTS)
-    assert reg.DEFAULT_OFF_PLOTS == {"max_pain_historical"}
+    assert reg.DEFAULT_OFF_PLOTS == {"max_pain_historical", "zscore"}
+    options_fed = {p for p in reg.DEFAULT_OFF_PLOTS if reg.REGISTRY[p].needs_asset}
+    assert options_fed == {"max_pain_historical"}
 
 
 def test_sanitize_selection_drops_retired_ids():
@@ -260,3 +273,199 @@ def test_every_panel_has_a_hint_that_names_how_to_read_it():
         assert spec.hint, spec.id
         assert spec.hint.startswith("<b>How to read this panel</b><br>"), spec.id
         assert "\n" not in spec.hint, spec.id
+
+
+# ── the Disaggregated / TFF panel on the stack pages ─────────────────────────
+
+def _category_ctx(report, category=True):
+    import numpy as np
+    import pandas as pd
+    import plotly.subplots as sp
+    from cotmetrics import categories as cot_categories
+
+    import components.category_traces as ct
+    import viz_config
+
+    palette = viz_config.get_palette(sorted(viz_config.get_palette_names())[0])
+    rng = np.random.default_rng(5)
+    idx = pd.date_range("2024-01-02", periods=40, freq="7D")
+    df = pd.DataFrame({"Open Interest": rng.integers(400_000, 600_000, 40)}, index=idx)
+    for spec in cot_categories.categories_for(report):
+        df[cot_categories.net_col(spec)] = rng.normal(0, 30_000, 40).cumsum()
+    series = ct.category_series(report, None, palette, frame=df)
+    fig = sp.make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
+    return reg.PlotCtx(fig=fig, row=1, col=1, palette=palette,
+                       category=(df, series) if category else None), series
+
+
+@pytest.mark.parametrize("report", ["disagg", "tff"])
+def test_category_net_draws_the_categories_pages_panel(report):
+    """Five category lines with their bands, on one axis: no Open Interest, no price."""
+    ctx, series = _category_ctx(report)
+    fig = reg.REGISTRY["category_net"].build(ctx)
+
+    labels = {s.label for s in series}
+    lines = [t for t in fig.data if t.name in labels and t.line.width != 0
+             and t.x is not None and len(t.x) > 1]
+    assert {t.name for t in lines} == labels
+    assert [t for t in fig.data if t.fill == "tonexty"], "the banded fill comes with it"
+    assert not [t for t in fig.data if t.name in ("Open Interest", "Price")]
+    assert {t.yaxis for t in fig.data} == {"y"}
+    assert not reg.uses_secondary_y("category_net", show_price=True)
+
+
+@pytest.mark.parametrize("report", ["disagg", "tff"])
+def test_category_net_names_its_categories_on_the_panel_not_in_the_legend(report):
+    """The legend is figure-wide; this is the only panel on the stack drawing these."""
+    ctx, series = _category_ctx(report)
+    fig = reg.REGISTRY["category_net"].build(ctx)
+
+    assert not [t for t in fig.data if t.showlegend], "no category legend entries"
+    readout = [a for a in fig.layout.annotations if a.name == "category_net_latest_readout"]
+    assert len(readout) == 1
+    frame = ctx.category[0]
+    from cotmetrics import categories as cot_categories
+
+    from components.plot_traces import format_net
+    for s in series:
+        # whole contracts: the fixture's nets are fractional, as a stitched market's are
+        latest = round(float(frame[cot_categories.net_col(s.spec)].iloc[-1]))
+        assert f'<span style="color:{s.color}">{s.label} {format_net(latest)}</span>' \
+            in readout[0].text
+    assert "." not in readout[0].text.replace("&nbsp;", ""), "no decimals on contracts"
+    assert readout[0].text.count("<br>") == 1, "five categories break over two lines"
+
+
+def test_category_net_says_so_when_the_market_has_no_category_report():
+    ctx, _ = _category_ctx("tff", category=False)
+    fig = reg.REGISTRY["category_net"].build(ctx)
+    assert not fig.data
+    assert [a.text for a in fig.layout.annotations] == [reg.NO_CATEGORY_REPORT_NOTE]
+
+
+def test_category_net_is_offered_on_oi_alignment_only():
+    import pathlib
+    pages = pathlib.Path(__file__).resolve().parents[1] / "src" / "pages" / "analytics"
+    offering = {p.stem for p in pages.glob("*.py") if '"category_net"' in p.read_text()}
+    assert offering == {"oi_alignment"}
+    assert "category_net" not in reg.BASIS_AWARE_PLOTS
+
+
+def _oi_alignment_source():
+    import ast
+    import pathlib
+    text = (pathlib.Path(__file__).resolve().parents[1] / "src" / "pages" / "analytics"
+            / "oi_alignment.py").read_text()
+    tree = ast.parse(text)
+
+    def literal(name):
+        return next(n.value for n in tree.body if isinstance(n, ast.Assign)
+                    and getattr(n.targets[0], "id", None) == name)
+    return tree, literal
+
+
+def test_oi_alignment_stacks_the_net_position_panels_directly_under_the_tape():
+    """Positions are read against price, so they sit second and third, in that order
+    however the picker was clicked (it hands ids back in click order). MACD, a
+    derivative of commercial net positioning, follows the % of OI panel."""
+    import ast
+    tree, literal = _oi_alignment_source()
+    ids = ast.literal_eval(literal("PLOT_IDS"))
+    assert ids[:3] == ["oi_alignment", "net_pos", "category_net"]
+    assert ids.index("macd") == ids.index("oi_pct") + 1
+
+    fn = next(n for n in tree.body
+              if isinstance(n, ast.FunctionDef) and n.name == "_in_stack_order")
+    scope = {"PLOT_IDS": ids}
+    exec(compile(ast.Module([fn], []), "oi_alignment", "exec"), scope)
+    clicked = ["zscore", "oi_alignment", "macd", "category_net", "net_pos"]
+    assert scope["_in_stack_order"](clicked) == \
+        ["oi_alignment", "net_pos", "category_net", "zscore", "macd"]
+
+
+def test_oi_alignment_default_stack_has_the_categories_and_not_the_z_score():
+    """A fresh session's stack: the category breakdown and Open Interest's own panel
+    are on, directly under Net Positions, and the registry's opt-in panels are off."""
+    import ast
+    _, literal = _oi_alignment_source()
+    ids = ast.literal_eval(literal("PLOT_IDS"))
+    default = [p for p in ids if p not in reg.DEFAULT_OFF_PLOTS]
+    assert default[:4] == ["oi_alignment", "net_pos", "category_net", "open_interest"]
+    assert "zscore" in ids and "zscore" not in default
+    assert "max_pain_historical" not in default
+
+
+# ── Open Interest on its own panel ───────────────────────────────────────────
+
+def _net_frame(n=120):
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(11)
+    idx = pd.date_range("2023-01-03", periods=n, freq="7D")
+    comm = rng.normal(0, 5_000, n).cumsum()
+    return pd.DataFrame({
+        const.COMM_NET: comm, const.LARGE_NET: -comm * 0.8, const.SMALL_NET: -comm * 0.2,
+        const.OPEN_INTEREST: 300_000 + rng.normal(0, 4_000, n).cumsum(),
+    }, index=idx)
+
+
+def _one_panel(plot_id, **ctx):
+    import plotly.subplots as sp
+
+    import viz_config
+    palette = viz_config.get_palette(sorted(viz_config.get_palette_names())[0])
+    fig = sp.make_subplots(rows=1, cols=1, specs=[[
+        {"secondary_y": reg.uses_secondary_y(plot_id)}]])
+    return reg.REGISTRY[plot_id].build(reg.PlotCtx(
+        fig=fig, row=1, col=1, palette=palette, df=_net_frame(), **ctx))
+
+
+def test_open_interest_panel_draws_the_one_line_on_one_axis():
+    fig = _one_panel("open_interest")
+    lines = [t for t in fig.data if t.x is not None and len(t.x) > 1]
+    assert [t.name for t in lines] == ["Open Interest"]
+    assert lines[0].yaxis == "y" and not reg.uses_secondary_y("open_interest")
+    lo, hi = fig.layout.yaxis.range
+    window = _net_frame()[const.OPEN_INTEREST].iloc[-52:]
+    assert lo <= window.min() and hi >= window.max(), "fitted to the opening window"
+
+
+def test_net_positions_carries_no_open_interest():
+    """Open Interest is drawn on its own panel and nowhere else's second axis."""
+    fig = _one_panel("net_pos")
+    assert not [t for t in fig.data if t.name == "Open Interest"]
+    # legend stubs sit on no axis; every drawn trace is on the first
+    assert {t.yaxis for t in fig.data if t.yaxis} == {"y"}
+    assert {t.name for t in fig.data if t.type == "bar"} == \
+        {"Commercial", "Non-Commercial", "Non-Reportable"}
+
+
+def test_the_basis_overlay_carries_no_open_interest():
+    import plotly.subplots as sp
+
+    import components.plot_traces as pt
+    import viz_config
+    palette = viz_config.get_palette(sorted(viz_config.get_palette_names())[0])
+    df = _net_frame()
+    df["comms_idx"] = 50.0
+    fig = sp.make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
+    fig = pt.get_basis_overlay_plot(fig, df, df, "comms_idx", 1, 1, palette,
+                                    y_title="Index", y_range=[0, 100])
+    assert not [t for t in fig.data if t.name == "Open Interest"]
+    assert {t.yaxis for t in fig.data} == {"y"}
+
+
+def test_open_interest_panel_is_offered_wherever_net_positions_is():
+    """Net Positions gave up its Open Interest line, so every page that stacks it
+    offers the panel the line moved to, directly after it."""
+    import ast
+    import pathlib
+    pages = pathlib.Path(__file__).resolve().parents[1] / "src" / "pages" / "analytics"
+    for page, list_name in [("oi_alignment", "PLOT_IDS"), ("analysis", "PLOT_IDS"),
+                            ("analysis", "GRID_PLOT_IDS"), ("aggregation", "PLOT_IDS")]:
+        tree = ast.parse((pages / f"{page}.py").read_text())
+        ids = next(ast.literal_eval(n.value) for n in tree.body
+                   if isinstance(n, ast.Assign)
+                   and getattr(n.targets[0], "id", None) == list_name)
+        assert "net_pos" in ids and "open_interest" in ids, (page, list_name)
+        assert ids.index("open_interest") > ids.index("net_pos"), (page, list_name)

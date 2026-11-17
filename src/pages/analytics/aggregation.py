@@ -27,7 +27,7 @@ dash.register_page(
 # Layout runs per request; the wiring must not.
 controls.register_lookback('agg_lookback_selector')
 
-PLOT_IDS = ["oi_pct", "net_pos", "index", "zscore"]
+PLOT_IDS = ["oi_pct", "net_pos", "open_interest", "index", "zscore"]
 
 # This page draws one frame aggregated across several assets, so a panel means something
 # slightly different here and says so. The registry's default labels describe a single
@@ -35,6 +35,7 @@ PLOT_IDS = ["oi_pct", "net_pos", "index", "zscore"]
 AVAILABLE_PLOTS = registry.labels_for(PLOT_IDS, overrides={
     "oi_pct": "Net Positions % of OI",
     "net_pos": "Net Positions (Sum)",
+    "open_interest": "Open Interest (Sum)",
     "index": "Positioning Index (Average)",
     "zscore": "Positioning Z-Score (Average)",
 })
@@ -244,8 +245,8 @@ def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, nu
     num_rows = math.ceil(num_selected / num_cols)
     titles = [AVAILABLE_PLOTS[p] for p in selected_plots]
 
-    # No price overlay on this page. Net Positions still takes a secondary axis, because
-    # what rides there is Open Interest rather than price.
+    # No price overlay on this page, so no panel here takes a secondary axis: Open
+    # Interest, which Net Positions used to carry on one, has a panel of its own.
     specs = registry.subplot_specs(selected_plots, show_price=False, num_cols=num_cols)
 
     fig = helpers.get_make_subplots_for_plots(num_rows, num_cols, titles, specs)

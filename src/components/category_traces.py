@@ -31,6 +31,7 @@ from components.plot_traces import (
     PRICE_OVERLAY_VISIBILITY,
     add_legend_lines,
     add_trace_to_all,
+    format_net,
 )
 
 # One drawable category: the cotmetrics spec (which knows the column names), plus the
@@ -289,6 +290,46 @@ def _add_net_bands(fig, df, series, columns, row, col):
                 y=upper[:, i, side], fill="tonexty",
                 fillcolor=hex_to_rgba(s.color, vc.CATEGORY_BAND_ALPHA), **shared),
                 row=row, col=col, secondary_y=False)
+    return fig
+
+
+# Categories per line of the latest-print readout.
+READOUT_PER_LINE = 3
+
+
+def add_latest_net_readout(fig, df, series, row, col):
+    """Each category's name and latest net print, in the panel's top-left corner.
+
+    The category twin of plot_traces._add_latest_net_readout, and for the same reason:
+    on a stack page the legend is figure-wide, so five category entries there would sit
+    beside toggles for panels that draw none of them. Here the names live on the one
+    panel they describe, each in its line's colour, which is also what keys the lines
+    once the legend no longer does.
+
+    Printed as whole contracts. A stitched market (a big contract plus its mini at a
+    fraction) carries fractional nets, and format_net reads a non-integer as a share
+    of open interest and prints three decimals. Broken over two lines past three
+    categories: five on one line run off a narrow panel.
+    """
+    if df.empty or not series:
+        return fig
+    latest = df.iloc[-1]
+    parts = []
+    for s in series:
+        column = categories.net_col(s.spec)
+        value = latest[column] if column in df.columns else None
+        if value is not None and not pd.isna(value):
+            value = round(float(value))
+        parts.append(f'<span style="color:{s.color}">{s.label} {format_net(value)}</span>')
+    gap = "&nbsp;&nbsp;"
+    text = gap.join(parts) if len(parts) <= READOUT_PER_LINE else "<br>".join(
+        gap.join(parts[i:i + READOUT_PER_LINE])
+        for i in range(0, len(parts), READOUT_PER_LINE))
+    fig.add_annotation(
+        row=row, col=col, xref="x domain", yref="y domain", x=0.01, y=0.98,
+        xanchor="left", yanchor="top", showarrow=False, align="left",
+        text=text, font=dict(size=10),
+        name="category_net_latest_readout")
     return fig
 
 

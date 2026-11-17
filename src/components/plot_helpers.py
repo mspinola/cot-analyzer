@@ -54,6 +54,7 @@ from components.plot_traces import (  # noqa: F401
     get_net_pos_plot,
     get_oi_alignment_decorators,
     get_open_interest_percent_plot,
+    get_open_interest_plot,
     get_price_plot,
     get_setup_highlighting,
     get_spearman_plot,

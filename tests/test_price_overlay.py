@@ -172,19 +172,20 @@ def test_a_flat_price_series_still_gets_a_band():
 # assembled figure, in both directions.
 
 
-def test_net_positions_labels_open_interest_and_claims_no_price():
-    """The panel's second axis carries Open Interest, and it draws no price.
+def test_net_positions_draws_and_claims_neither_price_nor_open_interest():
+    """One axis: the bars and nothing behind them.
 
-    Measured before this was fixed: the legend showed a Price entry that controlled
-    nothing, and the white line under it -- the one the reader can actually see --
-    was Open Interest, with no entry of its own.
+    Measured before the first fix here: the legend showed a Price entry that
+    controlled nothing, and the white line under it was Open Interest, with no entry
+    of its own. Open Interest has since moved to a panel of its own, so this panel
+    must not draw it or label it either.
     """
     df = _frame()
     fig = _net_pos(_figure(), df)
 
     assert not _named(fig, "Price")
-    assert _drawn(fig, "Open Interest")
-    assert len(_entry(fig, "Open Interest")) == 1
+    assert not _named(fig, "Open Interest")
+    assert {t.yaxis for t in fig.data if t.type == "bar"} == {"y"}
 
 
 def test_a_stack_led_by_net_positions_keeps_its_price_entry():
@@ -235,12 +236,12 @@ def test_a_price_entry_over_a_figure_drawing_no_price_is_dropped():
 
 
 def test_an_open_interest_entry_is_added_for_a_panel_that_is_not_the_first():
-    """Same stranding, other series: only row 1 draws the legend, so a Net Positions
-    panel further down the stack labelled nothing."""
+    """Same stranding, other series: only row 1 draws the legend, so the Open
+    Interest panel further down the stack labelled nothing."""
     df = _frame()
     fig = _figure(rows=2)
     fig = _index(fig, df, row=1)
-    fig = _net_pos(fig, df, row=2)
+    fig = pt.get_open_interest_plot(fig, df, 2, 1, PALETTE)
 
     assert not _entry(fig, "Open Interest"), "the precondition this guards"
     pt.reconcile_legend_entries(fig, PALETTE)

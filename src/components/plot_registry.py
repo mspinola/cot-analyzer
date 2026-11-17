@@ -86,14 +86,18 @@ class PlotCtx:
     # raw-basis index panel only (the flow is in contracts). None draws the panel
     # exactly as before.
     flow: object = None
+    # `(frame, series)` for the category_net panel: CotIndexer.get_category_data for
+    # this asset and category_traces.category_series over it. Set by the page, since
+    # which report a market has is a store question. None draws an empty-state note.
+    category: object = None
 
 
 # When a panel needs a secondary y-axis.
 #
-# Not a boolean, because two panels put a series on the secondary axis that has
-# nothing to do with the price overlay: Net Positions draws Open Interest there and
-# Max-Pain Premium draws Delta IV. Those stay on a secondary axis even where price is
-# switched off, which is exactly the case on Aggregation.
+# Not a boolean, because a panel can put a series on the secondary axis that has
+# nothing to do with the price overlay: Max-Pain Premium draws Delta IV there, and
+# keeps it where price is switched off. (Net Positions was the other such panel
+# until Open Interest moved to a panel of its own.)
 SECONDARY_NEVER = "never"
 SECONDARY_WITH_PRICE = "price"
 SECONDARY_ALWAYS = "always"
@@ -137,10 +141,15 @@ def _oi_pct(ctx):
 def _net_pos(ctx):
     h = _helpers()
     comm, lrg, sml = ctx.net_cols
-    # No show_price: this panel's second axis is Open Interest, never price.
+    # No show_price: this panel draws no price, and no second axis at all.
     return h.get_net_pos_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
                               ctx.palette, y_title=ctx.y_title,
                               range_weeks=ctx.range_weeks)
+
+
+def _open_interest(ctx):
+    return _helpers().get_open_interest_plot(ctx.fig, ctx.df, ctx.row, ctx.col,
+                                             ctx.palette)
 
 
 def _index(ctx):
@@ -211,6 +220,36 @@ def _max_pain_historical(ctx):
     h = _helpers()
     return h.get_max_pain_historical_plot(ctx.fig, ctx.asset, ctx.row, ctx.col,
                                           showlegend=ctx.showlegend)
+
+
+# Shown in place of the category_net panel for a market in neither report.
+NO_CATEGORY_REPORT_NOTE = "No Disaggregated or TFF report for this market"
+
+
+def _category_net(ctx):
+    """Net positions by Disaggregated / TFF category, the Categories page's own panel.
+
+    The one panel here with more than three trader groups, so it does not go through
+    `net_cols`: the page hands over the category frame and series on `ctx.category`,
+    and the builder is category_traces' unchanged. One axis: no Open Interest and no
+    price, both of which the stack already draws on panels of their own, and a second
+    scale behind five lines and their bands is what made this panel hard to read.
+
+    The categories are named on the panel, with their latest prints, rather than in
+    the legend: the legend is figure-wide and this is the only panel that draws them.
+    """
+    if not ctx.category:
+        ctx.fig.add_annotation(
+            text=NO_CATEGORY_REPORT_NOTE, row=ctx.row, col=ctx.col,
+            xref="x domain", yref="y domain", x=0.5, y=0.5, showarrow=False,
+            font=dict(color=vc.BRIGHTER_TEXT_COLOR))
+        return ctx.fig
+    import components.category_traces as ct
+    frame, series = ctx.category
+    fig = ct.get_category_net_pos_plot(
+        ctx.fig, frame, series, None, ctx.row, ctx.col, ctx.palette,
+        show_price=False, showlegend=False, show_oi=False)
+    return ct.add_latest_net_readout(fig, frame, series, ctx.row, ctx.col)
 
 
 # How to read each panel, shown as a tooltip on its subplot title. Written as
@@ -293,12 +332,32 @@ SPEARMAN_HINT = _hint(
 NET_POS_HINT = _hint(
     "Each group's net position: long minus short contracts, or that as a",
     "fraction of open interest on the % of OI basis.",
-    "Right axis: total open interest. Zero line: net flat.",
+    "Zero line: net flat.",
     "The three groups sum to zero by construction, so a commercial net long is",
     "the speculators' net short.",
     "Shaded band: the commercial rolling range over the lookback, the same window",
     "the COT index is scored on. A bar at the band's top edge is index 100, at",
     "its bottom edge index 0. Top-left: each group's latest print.",
+)
+
+CATEGORY_NET_HINT = _hint(
+    "Net position (long minus short contracts) of each trader category in the",
+    "Disaggregated report (physical commodities) or the Traders in Financial",
+    "Futures report (financials). A market is in one or the other.",
+    "Zero line: net flat.",
+    "Top-left: each category in its line's colour, with its latest print.",
+    "Shading: on each side of zero, the space from one line out to the next takes",
+    "the outer line's colour. A band's thickness is how far that category reaches",
+    "beyond the next one in, not its size; the line's height is the value.",
+    "These categories split the same open interest as the three legacy groups,",
+    "differently, so the two panels do not add up line for line.",
+)
+
+OPEN_INTEREST_HINT = _hint(
+    "Total open interest: every contract outstanding, long and short counted once.",
+    "It is the denominator behind the % of OI panels. Rising with price means new",
+    "money is entering the move; falling means positions are being closed.",
+    "On a panel of its own rather than a second axis behind another panel's marks.",
 )
 
 OI_PCT_HINT = _hint(
@@ -412,10 +471,20 @@ _SPECS = [
              overlay=(const.COMMS_SPEARMAN, "Correlation", [-1, 1], True),
              hint=SPEARMAN_HINT),
     # Basis-aware but cannot overlay: contracts and a fraction of open interest share
-    # no scale. Its secondary axis carries Open Interest, not price, so it holds even
-    # where price is switched off.
-    PlotSpec("net_pos", "Net Positions", _net_pos, secondary_y=SECONDARY_ALWAYS,
+    # no scale. One axis: neither price nor Open Interest rides behind the bars.
+    PlotSpec("net_pos", "Net Positions", _net_pos,
              basis_aware=True, hint=NET_POS_HINT),
+
+    # Five categories rather than three groups; the page supplies them on ctx.category.
+    # One axis: unlike net_pos it draws neither Open Interest nor price.
+    PlotSpec("category_net", "Disaggregated / TFF Net Positions", _category_net,
+             invariant_note="trader categories are in raw contracts",
+             hint=CATEGORY_NET_HINT),
+
+    # Open Interest on a panel of its own; no other panel carries it on a second
+    # axis. Same series on either basis, so the model control does not move it.
+    PlotSpec("open_interest", "Open Interest", _open_interest,
+             invariant_note="not a positioning metric", hint=OPEN_INTEREST_HINT),
 
     PlotSpec("oi_pct", "Net Position % of OI", _oi_pct,
              secondary_y=SECONDARY_WITH_PRICE,
@@ -453,8 +522,11 @@ BASIS_OVERLAY_SPEC = {s.id: s.overlay for s in _SPECS if s.overlay is not None}
 # week, but the stored history before 2026-09-18 is still on the weeklies and
 # the series has yet to accumulate a stretch on one expiry. Until it has, it is
 # a panel the reader opts into, not one the default stack vouches for.
+#
+# The z-score is opt-in for a plainer reason: it restates the Positioning Index on a
+# different scale, and both stacks are long enough without saying it twice.
 # Registry-level so the stack pages cannot disagree about it.
-DEFAULT_OFF_PLOTS = frozenset({"max_pain_historical"})
+DEFAULT_OFF_PLOTS = frozenset({"max_pain_historical", "zscore"})
 
 BASIS_INVARIANT_NOTE = {s.id: s.invariant_note for s in _SPECS
                         if s.invariant_note is not None}
