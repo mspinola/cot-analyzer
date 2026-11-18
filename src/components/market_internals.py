@@ -343,6 +343,7 @@ class EquityPositioning:
     value: float            # commercials' net, contracts, newest week
     series: tuple           # (date strings, commercials' net in contracts), three years
     date: str               # the newest report's date
+    others: tuple = ()      # (large specs' net, small specs' net) on the series' dates
 
 
 @dataclass(frozen=True)
@@ -914,6 +915,15 @@ def equity_positioning(get_positioning=None):
 
         share.index = pd.DatetimeIndex(share.index)
         tail = share.sort_index().tail(POSITIONING_SERIES_WEEKS)
+        # The other two groups on the same weeks; a frame without them draws one group.
+        others = []
+        for group in (const.LARGE_NET, const.SMALL_NET):
+            if group not in frame:
+                others = []
+                break
+            side = pd.to_numeric(frame[group], errors="coerce")
+            side.index = pd.DatetimeIndex(side.index)
+            others.append(tuple(None if v != v else float(v) for v in side.reindex(tail.index)))
         year = board_traces.WINDOW_LABELS[2]
         out.append(EquityPositioning(
             symbol=symbol, name=market,
@@ -924,6 +934,7 @@ def equity_positioning(get_positioning=None):
             value=float(tail.iloc[-1]),
             series=(_dates(tail.index), tuple(float(v) for v in tail)),
             date=_stamp_of(pd.DatetimeIndex(index.index)),
+            others=tuple(others),
         ))
     return tuple(out)
 

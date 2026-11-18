@@ -79,8 +79,8 @@ SENTIMENT_HOW = (
     "page. Context, not counted.")
 POSITIONING_TITLE = "Positioning"
 POSITIONING_SUBTITLE = ("Commercials in equity index futures, from the CFTC's weekly "
-                        "report: the commercial index on four lookbacks, and their net "
-                        "position through time.")
+                        "report: the commercial index on four lookbacks, and each "
+                        "trader group's net position through time.")
 POSITIONING_HOW = (
     "Each cell is the commercial index: where commercials' net position sits between "
     "its low (0) and high (100) of that lookback, three months, six, twelve and the "
@@ -90,8 +90,10 @@ POSITIONING_HOW = (
     "the twelve-month index against six weeks ago, and the path is that index over the "
     "last year around its midline. These are the COT Analyzer's own numbers, the "
     "equities rows of its landing page. The charts under the table are the position "
-    "itself: commercials' net in contracts, a column a week for three years, above "
-    "zero while they are net long and below it while net short. "
+    "itself: each trader group's net in contracts, a column a week for three years, "
+    "above zero while the group is net long and below it while net short, in the COT "
+    "Analyzer's colours (commercials red, large speculators blue, small speculators "
+    "yellow). The figure beside each market's name is commercials' net. "
     "Weekly, as of the Tuesday the report covers. Context, not counted.")
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
@@ -411,15 +413,22 @@ def percentile_blocks(naaim, votes, allocation, date_text):
     return out
 
 
-def positioning_chart(read, colors):
-    """One market's commercials through time: net contracts, a column a week from
-    zero, net long weeks in one colour and net short weeks in the other."""
+#: The three trader groups, in the palette's slot order (`viz_config.PALETTE_SLOTS`).
+POSITIONING_GROUPS = ("Commercials", "Large specs", "Small specs")
+#: The app's own bar opacity (`plot_traces.add_trace_to_all`): the columns of the three
+#: groups share a week, so each has to let the one behind it show.
+POSITIONING_ALPHA = 0.8
+
+
+def positioning_chart(read, groups):
+    """One market's net position by trader group: contracts, a column a week from
+    zero, in the COT Analyzer's own colours (`groups` is the palette's first three
+    slots). Commercials are drawn first and small specs last, the smallest on top."""
+    from components import plot_colors
     dates, values = read.series
-    columns = bars(colors.bull, dates, values)
-    for point in columns["data"]:
-        if point["value"] < 0:
-            point["color"] = colors.bear
-    return chart(150, [columns], levels=((0.0, INK_2),))
+    return chart(150, [bars(plot_colors.hex_to_rgba(color, POSITIONING_ALPHA), dates, series)
+                       for color, series in zip(groups, (values, *read.others))],
+                 levels=((0.0, INK_2),))
 
 
 def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
