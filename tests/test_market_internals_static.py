@@ -11,6 +11,7 @@ import html
 import json
 import re
 
+import pandas as pd
 import pytest
 
 import components.market_internals as mi
@@ -287,3 +288,45 @@ def test_a_page_without_the_history_still_renders():
     snap = _snap(drop=("NYSE_NL52W",))
     assert snap.history is None
     assert view.HISTORY_TITLE not in st.render(snap, COLORS)
+
+
+def test_the_history_card_offers_windows_and_opens_on_everything():
+    """1Y to Max, zooming every row together. Max is pressed as rendered, so the page
+    without its script is the whole history; a window longer than the history is not
+    offered."""
+    snap = _snap()
+    n = len(snap.history.dates)
+    page = st.render(snap, COLORS)
+    card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    offered = re.findall(r'<button type="button" data-sessions="(\d+)" aria-pressed="(\w+)">'
+                         r'(\w+)</button>', card)
+    assert offered == [(str(sessions), "true" if label == "Max" else "false", label)
+                       for label, sessions in view.HISTORY_WINDOWS if sessions < n]
+    assert ("Max" in [label for _, _, label in offered]) and len(offered) >= 2
+    assert f'id="{st.HISTORY_ID}" data-sessions="{n}"' in card
+    # The script zooms by viewBox and refits the price to the window on screen.
+    assert "svg.setAttribute('viewBox'" in page and f"getElementById('{st.HISTORY_ID}')" in page
+
+
+def test_the_axis_carries_every_month_start_for_the_script_to_label_any_window():
+    h = _snap().history
+    months = view.history_month_starts(h)
+    assert months[0] == [0, h.dates[0][:7]]
+    assert [m for _, m in months] == sorted({d[:7] for d in h.dates})
+    assert all(h.dates[i][:7] == m and (i == 0 or h.dates[i - 1][:7] != m) for i, m in months)
+    page = st.render(_snap(), COLORS)
+    raw = re.search(r'data-months="([^"]*)"', page).group(1)
+    assert json.loads(html.unescape(raw)) == months
+
+
+def test_the_price_line_is_daily_where_a_zoom_will_look():
+    """Weekly points are fine at nineteen years across; a one-year window needs the
+    daily line, so the most recent sessions keep every point."""
+    dates = tuple(d.strftime("%Y-%m-%d") for d in pd.bdate_range("2015-01-01", periods=2000))
+    h = mi.HeadwindHistory(dates=dates, price=tuple(100.0 + i for i in range(2000)),
+                           price_symbol="QQQ", rows=(), count=(0,) * 2000, total=5)
+    xs = [int(pt.split(",")[0]) for pt in view.history_price_points(h).split()]
+    recent = 2000 - view.HISTORY_DAILY_SESSIONS
+    assert xs[-view.HISTORY_DAILY_SESSIONS:] == list(range(recent, 2000))
+    older = [x for x in xs if x < recent]
+    assert older == list(range(0, recent, view.HISTORY_PRICE_STEP))
