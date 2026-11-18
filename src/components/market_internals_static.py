@@ -456,8 +456,7 @@ def positioning_section(positioning, colors, groups=None):
     legend = "".join(f'<span class="key" style="color:{color}">■ {_esc(label)}</span>'
                      for label, color in list(zip(view.POSITIONING_GROUPS, groups))[:drawn])
     charts_html = "".join(
-        f'<div class="pchart"><div class="between"><span class="label">{_esc(r.symbol)} '
-        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ",.0f"))}</span></div>'
+        f'<div class="pchart"><div class="label">{_esc(r.symbol)} · {_esc(r.name)}</div>'
         + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r, groups)["height"]) + '</div>'
         for r in positioning)
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)

@@ -94,7 +94,7 @@ POSITIONING_HOW = (
     "above zero while the group is net long and below it while net short, in the COT "
     "Analyzer's colours (commercials red, large speculators blue, small speculators "
     "yellow). Within a week the tallest column is at the back and the shortest in "
-    "front, so none hides another. The figure beside each market's name is commercials' net. "
+    "front, so none hides another. "
     "Weekly, as of the Tuesday the report covers. Context, not counted.")
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
