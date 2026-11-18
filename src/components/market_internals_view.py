@@ -59,9 +59,9 @@ POSITIONING_SUBTITLE = ("Surveys and index futures positioning: each one's own n
                         "its percentile on its full history.")
 POSITIONING_HOW = (
     "NAAIM is active managers' average stock exposure; AAII is individual investors, "
-    "bulls minus bears and their stocks allocation. The futures tiles are large "
-    "speculators' net position in S&P 500 and Nasdaq 100 futures as a percent of open "
-    "interest, from the CFTC's weekly report, with commercials' beside it. The badge is "
+    "bulls minus bears and their stocks allocation. The futures tiles are commercials' "
+    "net position in S&P 500 and Nasdaq 100 futures as a percent of open interest, from "
+    "the CFTC's weekly report, with large speculators' beside it. The badge is "
     "the reading's percentile against every week of its history, and the dot shows the "
     "same thing. Weekly or monthly, so these move slower than the rest of the page. "
     "Context, not counted.")
@@ -255,12 +255,13 @@ def volatility_status(read):
 
 
 def positioning_tiles(reads, date_text):
-    """ES and NQ large speculators as readings tiles, in the surveys tiles' own shape
-    (`sentiment_static._tiles`): the number, its percentile, commercials as context."""
+    """ES and NQ commercials as readings tiles, in the surveys tiles' own shape
+    (`sentiment_static._tiles`): the number, its percentile, large speculators as
+    context."""
     return [{"key": "cot_" + r.label.split()[0].lower().replace("&", ""),
-             "label": f"{r.label}, large speculators",
+             "label": f"{r.label}, commercials",
              "value": f"{r.value:+.1f}%",
-             "context": f"net, % of open interest · commercials {r.commercials:+.1f}%",
+             "context": f"net, % of open interest · large speculators {r.speculators:+.1f}%",
              "pct": sentiment.percentile_phrase(r.rank[1], r.rank[2]),
              "rank": r.rank, "foot": date_text(r.date)}
             for r in reads]

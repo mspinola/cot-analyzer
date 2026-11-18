@@ -358,13 +358,13 @@ def test_the_volatility_card_is_drawn_outside_the_count():
 
 def test_the_sentiment_and_positioning_strip_is_the_surveys_pages_tiles():
     """The survey tiles are `sentiment_static`'s own (number, percentile badge, gauge),
-    with ES and NQ large speculators in the same shape after them."""
+    with ES and NQ commercials in the same shape after them."""
     import components.sentiment as s
     from tests.test_sentiment_static import _reads
     survey = _reads()[s.DEFAULT_LOOKBACK]
-    positioning = (mi.PositioningRead("S&P 500 futures", -6.24, 0.51, (24, "24th", 1986),
+    positioning = (mi.PositioningRead("S&P 500 futures", 0.51, -6.24, (24, "24th", 1986),
                                       "2026-11-10"),
-                   mi.PositioningRead("Nasdaq 100 futures", 11.05, -16.43, (73, "73rd", 1996),
+                   mi.PositioningRead("Nasdaq 100 futures", -16.43, 11.05, (73, "73rd", 1996),
                                       "2026-11-10"))
     page = st.render(_snap(), COLORS, survey=survey, positioning=positioning)
     strip = page.split(f"<h2>{view.POSITIONING_TITLE}</h2>")[1].split('<div class="sec">')[0]
@@ -372,8 +372,9 @@ def test_the_sentiment_and_positioning_strip_is_the_surveys_pages_tiles():
     assert strip.count('<div class="tile ') == len(tiles) == 4
     for t in tiles:
         assert f'<div class="value">{html.escape(t["value"])}</div>' in strip
-    assert '<div class="value">-6.2%</div>' in strip and "24th<small> pctl</small>" in strip
-    assert "commercials +0.5%" in strip and "Nov 10, 2026" in strip
+    assert '<div class="value">+0.5%</div>' in strip and "24th<small> pctl</small>" in strip
+    assert "S&amp;P 500 futures, commercials" in strip
+    assert "large speculators -6.2%" in strip and "Nov 10, 2026" in strip
     assert f'href="{st.SURVEYS_URL}"' in strip and st.SURVEYS_URL.startswith("https://surveys.")
     # Context only: with none of it the section is gone and the page is otherwise whole.
     plain = st.render(_snap(), COLORS)

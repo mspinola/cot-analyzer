@@ -170,10 +170,11 @@ HISTORY_PRICE_SYMBOL = "QQQ"
 VOLATILITY_SYMBOL, VOLATILITY_TERM_SYMBOL, VOLATILITY_NASDAQ_SYMBOL = "VIX", "VIX3M", "VXN"
 VOLATILITY_PATH_SESSIONS = 252
 #: Equity index futures positioning, weekly, from the COT index the app is built on:
-#: (label, the indexer's market name). Large speculators' net as a percent of open
-#: interest is the number; commercials' is the context.
+#: (label, the indexer's market name). Commercials' net as a percent of open interest
+#: is the number, the measure the surveys page draws for the S&P 500 and the one the
+#: app's COT index is built on; large speculators' is the context.
 POSITIONING_MARKETS = (("S&P 500 futures", "S&P 500"), ("Nasdaq 100 futures", "Nasdaq"))
-POSITIONING_COLUMN, POSITIONING_COMM_COLUMN = const.LARGE_PCT_OI, const.COMM_PCT_OI
+POSITIONING_COLUMN, POSITIONING_SPEC_COLUMN = const.COMM_PCT_OI, const.LARGE_PCT_OI
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -291,10 +292,10 @@ class VolatilityRead:
 
 @dataclass(frozen=True)
 class PositioningRead:
-    """Context: one index future's large speculators, weekly, on their own history."""
+    """Context: one index future's commercials, weekly, on their own history."""
     label: str              # "S&P 500 futures"
-    value: float            # large speculators' net, percent of open interest
-    commercials: float      # commercials' net, percent of open interest
+    value: float            # commercials' net, percent of open interest
+    speculators: float      # large speculators' net, percent of open interest
     rank: tuple             # (percentile 1-100, word, first year) of `value`
     date: str               # the report's date
 
@@ -752,7 +753,7 @@ def _indexer_positioning(market):
 
 
 def positioning_reads(get_positioning=None):
-    """ES and NQ large speculators, each against its own history, or () when the COT
+    """ES and NQ commercials, each against its own history, or () when the COT
     store cannot serve them (a market that fails is left out and logged, never raised:
     this is context on a page whose count does not depend on it)."""
     get_positioning = get_positioning or _indexer_positioning
@@ -760,19 +761,19 @@ def positioning_reads(get_positioning=None):
     for label, market in POSITIONING_MARKETS:
         try:
             frame = get_positioning(market)
-            spec = pd.to_numeric(frame[POSITIONING_COLUMN], errors="coerce").dropna()
-            comm = pd.to_numeric(frame[POSITIONING_COMM_COLUMN], errors="coerce").dropna()
+            comm = pd.to_numeric(frame[POSITIONING_COLUMN], errors="coerce").dropna()
+            spec = pd.to_numeric(frame[POSITIONING_SPEC_COLUMN], errors="coerce").dropna()
         except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
             utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
             continue
         if spec.empty or comm.empty:
             continue
-        spec.index = pd.DatetimeIndex(spec.index)
-        spec = spec.sort_index()
-        out.append(PositioningRead(label=label, value=float(spec.iloc[-1]),
-                                   commercials=float(comm.iloc[-1]),
-                                   rank=_rank(spec, float(spec.iloc[-1])),
-                                   date=_stamp_of(spec.index)))
+        comm.index = pd.DatetimeIndex(comm.index)
+        comm = comm.sort_index()
+        out.append(PositioningRead(label=label, value=float(comm.iloc[-1]),
+                                   speculators=float(spec.iloc[-1]),
+                                   rank=_rank(comm, float(comm.iloc[-1])),
+                                   date=_stamp_of(comm.index)))
     return tuple(out)
 
 

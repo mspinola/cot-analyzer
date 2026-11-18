@@ -537,17 +537,18 @@ def test_volatility_is_context_absent_without_its_series_and_never_awaited():
     assert mi.headline(with_vol) == mi.headline(mi.build_snapshot(_bars(_universe())))
 
 
-def test_positioning_reads_large_speculators_against_their_own_history():
+def test_positioning_reads_commercials_against_their_own_history():
     weeks = pd.date_range("2000-01-04", periods=200, freq="W-TUE")
 
     def get(market):
         if market == "Nasdaq":
             raise KeyError(market)
         return pd.DataFrame({mi.POSITIONING_COLUMN: [float(i % 50) for i in range(199)] + [49.0],
-                             mi.POSITIONING_COMM_COLUMN: [-3.0] * 200}, index=weeks)
+                             mi.POSITIONING_SPEC_COLUMN: [-3.0] * 200}, index=weeks)
     reads = mi.positioning_reads(get)
     assert [r.label for r in reads] == ["S&P 500 futures"]         # the failed market is left out
     (r,) = reads
-    assert r.value == 49.0 and r.commercials == -3.0
+    assert r.value == 49.0 and r.speculators == -3.0
+    assert mi.POSITIONING_COLUMN == "Comm Pct OI"
     assert r.rank == (100, "highest", 2000) and r.date == weeks[-1].strftime("%Y-%m-%d")
     assert mi.positioning_reads(lambda market: pd.DataFrame()) == ()
