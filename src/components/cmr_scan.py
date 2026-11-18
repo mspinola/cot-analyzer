@@ -1,0 +1,660 @@
+"""The daily CMR news-failure scan, read from `cmrdata_store` and laid out for reading.
+
+LOCAL ONLY, through the page that draws it (`pages.analytics.cmr_scan`). The scan sorts
+markets by the CMR COT Index, a paid membership product licensed to the operator, so
+the same rule as the sentiment page applies: nothing here may reach the public site.
+
+**What the scanner writes.** Every trading day the scheduled CMR routine runs
+`cmrdata_store/scan.py`, judges the news for each set-up, and writes a dated alert,
+`alerts/<YYYY-MM-DD>.md`. From 2026-11-17 it also writes a sidecar,
+`alerts/<YYYY-MM-DD>.json`, with two halves:
+
+* `scan` is `scan.py`'s own JSON output, verbatim: the watchlist, each row's
+  materiality, peer comparison, eligibility, blockers and FOR/AGAINST evidence. Every
+  number on the page comes from here. Nothing is recomputed.
+* `report` is what the routine decided at report time, which bars cannot give: the
+  news read per symbol (`news[SYM] = {text, type}`), the verdict per symbol
+  (`verdicts[SYM] = {verdict, confidence, reason, against}`), the day's notes, the
+  headline, and the sources.
+
+**Days without a sidecar** (everything before 2026-11-17, or a day the routine wrote
+only the markdown) still show: the page renders that day's markdown as it was written.
+The alert format drifted over the summer, so parsing old prose into rows would invent
+structure the file never had.
+
+**One market over time** (`market_history`). The same files read down instead of
+across: every scan day in a window, newest first, for one symbol. A sidecar day gives
+that symbol's rows; a markdown-only day gives the section under its `(SYM)` heading,
+sliced to the next heading of the same level and shown as written. A day the market was
+not a set-up says so, and a day whose file has no per-market headings says that instead,
+because "absent from the page" and "not a set-up" must not look the same.
+
+**The discipline is the scanner's, and the page keeps it.** "No failure" is the normal
+row. A confidence chip appears only where the routine gave one. A row the routine never
+judged reads "Not judged", never "No failure", so a row nobody checked cannot look like
+a row that was checked and cleared (cmrdata_store CLAUDE.md, the board table rules).
+Educational research only; nothing here is a recommendation to trade.
+"""
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from dash import dcc, html
+
+ENV = "CMRDATA_STORE"
+DEFAULT_STORE = "~/code/cmrdata_store"
+_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(md|json)$")
+
+#: Gate glyph colours: pass, fail, unknown. The app's green and red (plot_colors'
+#: up/down family), and a muted grey for a gate the scanner could not compute.
+PASS, FAIL, UNKNOWN = "#4fc88b", "#f0847a", "#93a39a"
+AMBER = "#e8b94f"
+MUTED = "#ABB8C9"
+BRIGHT = "#E2E8F0"
+PANEL = {"backgroundColor": "rgba(28,28,28,0.55)",
+         "border": "1px solid rgba(255,255,255,0.10)", "borderRadius": "6px"}
+
+DISCLAIMER = ("Educational research only, based on the CMR methodology. Not financial "
+              "advice and not a recommendation to buy or sell any instrument.")
+
+
+def store_root(env=None):
+    env = os.environ if env is None else env
+    return Path(os.path.expanduser(env.get(ENV) or DEFAULT_STORE))
+
+
+def alerts_dir(env=None):
+    return store_root(env) / "alerts"
+
+
+def available_dates(env=None):
+    """Every day with an alert (markdown or sidecar), newest first. GAP-/BLOCKER- notes
+    are not days and are skipped by the name pattern."""
+    d = alerts_dir(env)
+    if not d.is_dir():
+        return []
+    return sorted({m.group(1) for p in d.iterdir() if (m := _DATE.match(p.name))},
+                  reverse=True)
+
+
+@dataclass
+class Day:
+    date: str
+    scan: dict = field(default_factory=dict)
+    report: dict = field(default_factory=dict)
+    markdown: str = ""
+
+    @property
+    def structured(self):
+        return bool(self.scan)
+
+    @property
+    def rows(self):
+        return list(self.scan.get("watchlist") or [])
+
+
+def read_day(date, env=None):
+    d = alerts_dir(env)
+    day = Day(date)
+    side = d / f"{date}.json"
+    if side.is_file():
+        try:
+            blob = json.loads(side.read_text())
+            day.scan, day.report = blob.get("scan") or {}, blob.get("report") or {}
+        except (OSError, ValueError):
+            day.scan, day.report = {}, {}
+    md = d / f"{date}.md"
+    if md.is_file():
+        day.markdown = md.read_text()
+    return day
+
+
+# ── per-row facts, all straight from scan.py's fields ─────────────────────────
+
+def gates(row):
+    """(obvious, idiosyncratic, side): True / False / None (cannot be computed)."""
+    mm = row.get("move_materiality") or {}
+    pdv = row.get("peer_divergence") or {}
+    return mm.get("material"), pdv.get("idiosyncratic"), row.get("price_side_qualifies")
+
+
+def verdict_of(row, report):
+    """The routine's verdict for this row, or 'Not judged' when it gave none."""
+    v = (report.get("verdicts") or {}).get(row.get("symbol")) or {}
+    return v.get("verdict") or "Not judged", v.get("confidence"), v
+
+
+def counts(day):
+    rows = day.rows
+    return {
+        "rows": len(rows),
+        "crowded": sum(1 for r in rows if r.get("confirmed")),
+        "obvious": sum(1 for r in rows if gates(r)[0]),
+        "eligible": sum(1 for r in rows if r.get("failure_eligible")),
+    }
+
+
+def sort_rows(rows):
+    """Crowded first, then eligible, then by the size of the move: the rows worth
+    arguing about lead each group."""
+    def key(r):
+        mm = r.get("move_materiality") or {}
+        return (0 if r.get("confirmed") else 1, 0 if r.get("failure_eligible") else 1,
+                -(mm.get("abs_chg_pctile") or 0))
+    return sorted(rows, key=key)
+
+
+def index_flags(day):
+    """Flags the alert would raise about the data itself, in plain words."""
+    flags = []
+    sync = str(day.scan.get("cmr_index_sync") or "")
+    if sync and ("FAILED" in sync or "not found" in sync):
+        flags.append(("Index sync", sync))
+    m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", str(day.scan.get("cmr_index_file") or ""))
+    if m:
+        idx = f"{m.group(3)}-{m.group(1)}-{m.group(2)}"
+        if idx > day.date:
+            flags.append(("Index date", f"The index is dated {idx}, after the scan day "
+                          f"{day.date}: its positioning does not describe this day."))
+    dropped = day.scan.get("dropped_symbols") or []
+    if dropped:
+        flags.append(("Incomplete", "Dropped symbols: " + ", ".join(dropped)))
+    return flags
+
+
+# ── one market over time ──────────────────────────────────────────────────────
+
+_HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_PAREN = re.compile(r"\(([^()]*)\)")
+_SYM = re.compile(r"^(?=.*[A-Z])[A-Z0-9]{1,4}$")
+#: Book names turn up in brackets too ("close-to-set-up (CMR)"); they are not markets.
+_NOT_SYMBOLS = frozenset({"CMR", "NPF"})
+
+
+def _headings(markdown):
+    """(line index, level, text) for every heading outside a code fence."""
+    out, fenced = [], False
+    for i, line in enumerate(markdown.splitlines()):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and (m := _HEADING.match(line)):
+            out.append((i, len(m.group(1)), m.group(2)))
+    return out
+
+
+def heading_symbol(text):
+    """(symbol, market name) when a heading is a market's, else (None, None).
+
+    A market heading carries its symbol as the FIRST bracket, "NATURAL GAS (NG) ...".
+    That is the one thing every alert format since July kept. Later brackets are
+    status words ("(watch-only)") and a first bracket that is not a symbol
+    ("Confirmed set-ups (7)") marks a heading about something else."""
+    m = _PAREN.search(text)
+    if not m or not _SYM.match(m.group(1)) or m.group(1) in _NOT_SYMBOLS:
+        return None, None
+    return m.group(1), text[:m.start()].strip(" $*_").title()
+
+
+def market_sections(markdown, symbol):
+    """Each section of an alert headed by this market, as written.
+
+    From the market's heading to the next heading of the same level or shallower. More
+    than one comes back when two books hold the market. The prose is not parsed: the
+    wording and the fields drifted for months, and reading fields out of it would
+    invent structure the file never had."""
+    lines, heads, out = markdown.splitlines(), _headings(markdown), []
+    for n, (i, level, text) in enumerate(heads):
+        if heading_symbol(text)[0] != symbol:
+            continue
+        end = next((j for j, lv, _ in heads[n + 1:] if lv <= level), len(lines))
+        out.append("\n".join(lines[i:end]).strip())
+    return out
+
+
+def _has_market_headings(markdown):
+    return any(heading_symbol(t)[0] for _, _, t in _headings(markdown))
+
+
+def markets(env=None):
+    """Every market that was ever a set-up, as [(symbol, name)], sorted by name. The
+    name is the one the newest day used."""
+    names = {}
+    for date in available_dates(env):          # newest first, so the first name wins
+        day = read_day(date, env)
+        for r in day.rows:
+            if r.get("symbol"):
+                names.setdefault(r["symbol"], str(r.get("market") or "").title())
+        for _, _, text in _headings(day.markdown):
+            sym, name = heading_symbol(text)
+            if sym:
+                names.setdefault(sym, name)
+    return sorted(names.items(), key=lambda kv: (kv[1].lower(), kv[0]))
+
+
+#: What a day holds for one market.
+ROWS, SECTIONS, ABSENT, UNSLICED = "rows", "sections", "absent", "unsliced"
+
+
+@dataclass
+class MarketDay:
+    date: str
+    kind: str
+    rows: list = field(default_factory=list)
+    report: dict = field(default_factory=dict)
+    sections: list = field(default_factory=list)
+    mentions: int = 0
+
+    @property
+    def set_up(self):
+        return self.kind in (ROWS, SECTIONS)
+
+
+def market_day(day, symbol):
+    """One day's record for one market. The four outcomes are kept apart on purpose:
+    structured rows, markdown sections, a day the market was not a set-up, and a day
+    whose file cannot answer the question (no per-market headings at all)."""
+    if day.structured:
+        rows = [r for r in day.rows if r.get("symbol") == symbol]
+        return MarketDay(day.date, ROWS if rows else ABSENT, rows=rows, report=day.report)
+    sections = market_sections(day.markdown, symbol)
+    if sections:
+        return MarketDay(day.date, SECTIONS, sections=sections)
+    if _has_market_headings(day.markdown):
+        return MarketDay(day.date, ABSENT)
+    return MarketDay(day.date, UNSLICED, mentions=len(
+        re.findall(rf"(?<![A-Za-z0-9]){re.escape(symbol)}(?![A-Za-z0-9])", day.markdown)))
+
+
+def market_history(symbol, days=None, env=None):
+    """The newest `days` scan days (all of them when None) for one market, newest
+    first. Scan days, not calendar days: a day with no alert file is not in the store
+    and so is not in the window."""
+    dates = available_dates(env)
+    return [market_day(read_day(d, env), symbol) for d in (dates[:days] if days else dates)]
+
+
+# ── rendering ─────────────────────────────────────────────────────────────────
+
+def _ord(n):
+    n = int(round(n))
+    suf = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf}"
+
+
+def _chip(text, color, filled=False):
+    style = {"display": "inline-block", "padding": "1px 8px", "borderRadius": "3px",
+             "fontSize": "0.75rem", "fontWeight": 500, "whiteSpace": "nowrap",
+             "border": f"1px solid {color}", "color": color}
+    if filled:
+        style.update({"backgroundColor": color, "color": "#111"})
+    return html.Span(text, style=style)
+
+
+def _gate_pill(label, ok, title):
+    color = UNKNOWN if ok is None else (PASS if ok else FAIL)
+    # Words, not ticks: a gate passes or fails, it does not "confirm" anything.
+    mark = "n/a" if ok is None else ("pass" if ok else "fail")
+    return html.Span(f"{label} {mark}", title=title, style={
+        "display": "inline-block", "minWidth": "2.6rem", "textAlign": "center",
+        "padding": "1px 6px", "marginRight": "4px", "borderRadius": "3px",
+        "fontSize": "0.72rem", "fontFamily": "monospace", "color": color,
+        "border": f"1px solid {color}"})
+
+
+def gate_strip(row):
+    o, i, s = gates(row)
+    return html.Div([
+        _gate_pill("Size", o, "Obvious: 70th percentile AND 0.75x ATR(20)"),
+        _gate_pill("Peers", i, "Idiosyncratic: no uncrowded bloc peer made the same move"
+                   + (" (no peers to compare)" if i is None else "")),
+        _gate_pill("Side", s, "Close on the side the set-up needs"),
+    ], style={"whiteSpace": "nowrap"})
+
+
+def size_cell(row):
+    mm = row.get("move_materiality") or {}
+    pct, atr = mm.get("abs_chg_pctile"), mm.get("move_vs_atr20")
+    if pct is None or atr is None:
+        return html.Span("–", style={"color": MUTED})
+    fill = min(atr / 2.0, 1.0) * 100
+    return html.Div([
+        html.Span(f"{_ord(pct)} pct · {atr:.2f}x ATR",
+                  style={"fontFamily": "monospace", "fontSize": "0.8rem", "color": BRIGHT}),
+        html.Div([
+            html.Div(style={"position": "absolute", "left": 0, "top": 0, "bottom": 0,
+                            "width": f"{fill}%", "borderRadius": "3px",
+                            "backgroundColor": PASS if mm.get("material") else MUTED}),
+            html.Div(style={"position": "absolute", "left": "37.5%", "top": "-3px",
+                            "bottom": "-3px", "width": "2px", "backgroundColor": BRIGHT,
+                            "opacity": 0.6}),
+        ], title="Fill: move in ATR(20). Tick: 0.75x, the minimum for an obvious move.",
+           style={"position": "relative", "height": "6px", "width": "110px",
+                  "marginTop": "5px", "borderRadius": "3px",
+                  "backgroundColor": "rgba(255,255,255,0.08)"}),
+    ])
+
+
+def change_cell(row):
+    lc = row.get("latest_candle") or {}
+    chg, close = lc.get("vs_prev_close_pct"), lc.get("close")
+    color = PASS if (chg or 0) > 0 else (FAIL if (chg or 0) < 0 else MUTED)
+    return html.Div([
+        html.Div(f"{close:,}" if isinstance(close, (int, float)) else "–",
+                 style={"fontFamily": "monospace", "color": BRIGHT}),
+        html.Div(f"{chg:+.2f}%" if chg is not None else "–",
+                 style={"fontFamily": "monospace", "color": color}),
+    ], style={"textAlign": "right"})
+
+
+def verdict_chip(verdict, confidence):
+    v = verdict.upper()
+    if "CONFIRMED" in v:
+        chip = _chip(verdict, PASS, filled=True)
+    elif "WATCH" in v or "EARLY" in v:
+        chip = _chip(verdict, AMBER)
+    elif v == "NOT JUDGED":
+        chip = _chip(verdict, FAIL)
+    else:
+        chip = _chip(verdict, MUTED)
+    parts = [chip]
+    if confidence:
+        parts.append(html.Span(f"confidence {confidence}", style={
+            "display": "block", "marginTop": "3px", "fontSize": "0.72rem", "color": AMBER}))
+    return html.Div(parts)
+
+
+def evidence_table(row):
+    ev = row.get("evidence") or {}
+    fors, againsts = ev.get("evidence_for") or [], ev.get("evidence_against") or []
+
+    def col(title, items, color, empty):
+        body = [html.Div([html.B(it.get("factor", ""), style={"color": BRIGHT}),
+                          html.Span(" — " + it.get("detail", ""))],
+                         style={"marginBottom": "4px"}) for it in items]
+        return html.Div([html.Div(title, style={"color": color, "fontWeight": 600,
+                                                "marginBottom": "4px"}),
+                         *(body or [html.Div(empty, style={"fontStyle": "italic"})])],
+                        style={"flex": "1 1 280px", "minWidth": 0})
+
+    score, tier = ev.get("mechanical_score"), ev.get("confidence_tier")
+    head = f"Price evidence {score:.1f}/100 · {tier}" if score is not None else ""
+    return html.Div([
+        html.Div(head, style={"color": MUTED, "fontSize": "0.75rem", "marginBottom": "6px"}),
+        html.Div([col("Case FOR a news failure", fors, PASS, "Nothing for it."),
+                  col("Case AGAINST", againsts, FAIL, "Empty: nothing argues against.")],
+                 style={"display": "flex", "flexWrap": "wrap", "gap": "16px"}),
+    ], style={"fontSize": "0.8rem", "color": MUTED, "padding": "8px 4px"})
+
+
+def news_cell(row, report):
+    n = (report.get("news") or {}).get(row.get("symbol")) or {}
+    need = (row.get("expected") or {}).get("news_needed")
+    text = n.get("text") or "Not researched"
+    return html.Div([
+        html.Div(text, style={"color": BRIGHT if n else FAIL}),
+        html.Div(" · ".join(x for x in (n.get("type"), f"needs {need}" if need else None) if x),
+                 style={"fontSize": "0.7rem", "textTransform": "uppercase",
+                        "letterSpacing": "0.04em", "color": MUTED, "marginTop": "3px"}),
+    ], style={"fontSize": "0.78rem", "maxWidth": "38ch"})
+
+
+def why_cell(row, vinfo):
+    reasons = [vinfo["reason"]] if vinfo.get("reason") and not row.get("failure_blockers") \
+        else list(row.get("failure_blockers") or [])
+    if vinfo.get("against"):
+        reasons.append("Against: " + vinfo["against"])
+    return html.Div([html.Div(r, style={"marginBottom": "2px"}) for r in reasons] or "–",
+                    style={"fontSize": "0.75rem", "color": MUTED, "maxWidth": "34ch"})
+
+
+TH = {"color": MUTED, "fontSize": "0.7rem", "textTransform": "uppercase",
+      "letterSpacing": "0.06em", "fontWeight": 500, "padding": "6px 10px",
+      "backgroundColor": "rgba(255,255,255,0.04)", "whiteSpace": "nowrap"}
+TD = {"padding": "8px 10px", "borderTop": "1px solid rgba(255,255,255,0.08)",
+      "verticalAlign": "top"}
+COLS = ("Market", "Close", "Size vs own history", "Gates", "News read", "Verdict", "Why")
+
+
+def set_up_rows(r, report):
+    """One set-up as two table rows: its facts, then its evidence folded underneath."""
+    verdict, conf, vinfo = verdict_of(r, report)
+    dim = {} if r.get("confirmed") else {"opacity": 0.8}
+    market = html.Div([
+        html.B(r.get("market", "").title(), style={"color": BRIGHT}),
+        html.Div(f"{r.get('symbol')} · {r.get('book')} · {r.get('direction')}",
+                 style={"fontFamily": "monospace", "fontSize": "0.7rem", "color": MUTED}),
+    ])
+    return [
+        html.Tr([
+            html.Td(market, style=TD), html.Td(change_cell(r), style=TD),
+            html.Td(size_cell(r), style=TD), html.Td(gate_strip(r), style=TD),
+            html.Td(news_cell(r, report), style=TD),
+            html.Td(verdict_chip(verdict, conf), style=TD),
+            html.Td(why_cell(r, vinfo), style=TD),
+        ], style=dim),
+        # The evidence row sits right under its market, closed by default.
+        html.Tr(html.Td(html.Details([
+            html.Summary(f"Case for and against · {r.get('symbol')} {r.get('book')}",
+                         style={"cursor": "pointer", "fontSize": "0.72rem", "color": MUTED}),
+            evidence_table(r)]), colSpan=len(COLS), style={"padding": "0 10px 6px 10px"})),
+    ]
+
+
+def _table(body_rows):
+    return html.Div(html.Table([
+        html.Thead(html.Tr([html.Th(c, style=TH) for c in COLS])),
+        html.Tbody(body_rows),
+    ], style={"width": "100%", "minWidth": "980px", "borderCollapse": "collapse",
+              "color": MUTED, "fontSize": "0.85rem"}), style={"overflowX": "auto"})
+
+
+def board_rows(day):
+    out = []
+    for group, rows in (("Crowded now", [r for r in day.rows if r.get("confirmed")]),
+                        ("Close to set-up (watch only)",
+                         [r for r in day.rows if not r.get("confirmed")])):
+        if not rows:
+            continue
+        out.append(html.Tr(html.Td(f"{group} · {len(rows)}", colSpan=len(COLS), style={
+            **TD, "color": MUTED, "fontSize": "0.72rem", "letterSpacing": "0.08em",
+            "textTransform": "uppercase", "backgroundColor": "rgba(255,255,255,0.03)"})))
+        for r in sort_rows(rows):
+            out += set_up_rows(r, day.report)
+    return out
+
+
+def board_table(day):
+    return _table(board_rows(day))
+
+
+def stat_tiles(day):
+    c = counts(day)
+    tiles = (("Set-up rows", c["rows"]), ("Crowded now", c["crowded"]),
+             ("Obvious moves", c["obvious"]), ("Failure-eligible", c["eligible"]))
+    return html.Div([html.Div([
+        html.Div(str(v), style={"fontFamily": "monospace", "fontSize": "1.4rem",
+                                "color": BRIGHT}),
+        html.Div(k, style={"fontSize": "0.7rem", "textTransform": "uppercase",
+                           "letterSpacing": "0.06em", "color": MUTED})])
+        for k, v in tiles], style={"display": "flex", "flexWrap": "wrap", "gap": "10px 28px"})
+
+
+def highlight_cards(day):
+    """One card per row the routine flagged (a confirmed failure or a watch item), with
+    its whole argument visible: the reader should not have to open a fold to see why the
+    one interesting row is or is not a signal."""
+    flagged = [r for r in sort_rows(day.rows)
+               if verdict_of(r, day.report)[0].upper() not in ("NO FAILURE", "NOT JUDGED")]
+    seen, cards = set(), []
+    for r in flagged:
+        if r.get("symbol") in seen:
+            continue
+        seen.add(r.get("symbol"))
+        verdict, conf, vinfo = verdict_of(r, day.report)
+        cards.append(html.Div([
+            html.Div([
+                html.Div([html.Span(f"{r.get('market', '').title()} ({r.get('symbol')})",
+                                    style={"color": BRIGHT, "fontSize": "1.05rem",
+                                           "fontWeight": 600, "marginRight": "10px"}),
+                          html.Span(f"{r.get('direction')} · "
+                                    + ("crowded" if r.get("confirmed") else "close to set-up"),
+                                    style={"color": MUTED, "fontSize": "0.8rem"})]),
+                verdict_chip(verdict, conf),
+            ], style={"display": "flex", "justifyContent": "space-between",
+                      "alignItems": "flex-start", "gap": "12px", "flexWrap": "wrap"}),
+            html.Div([change_cell(r), size_cell(r), gate_strip(r)],
+                     style={"display": "flex", "gap": "24px", "alignItems": "center",
+                            "flexWrap": "wrap", "margin": "10px 0"}),
+            news_cell(r, day.report),
+            html.Div(vinfo.get("reason", ""), style={"color": BRIGHT, "fontSize": "0.82rem",
+                                                    "marginTop": "8px"}),
+            html.Div(("Strongest argument against: " + vinfo["against"])
+                     if vinfo.get("against") else "",
+                     style={"color": FAIL, "fontSize": "0.8rem", "marginTop": "4px"}),
+            evidence_table(r),
+        ], style={**PANEL, "padding": "14px 16px", "borderLeft": f"4px solid {AMBER}",
+                  "marginBottom": "12px"}))
+    return cards
+
+
+def flag_bar(label, text):
+    return html.Div([html.B(label.upper(), style={"color": AMBER, "marginRight": "10px",
+                                                 "fontSize": "0.75rem"}),
+                     html.Span(text)],
+                    style={"borderLeft": f"4px solid {AMBER}", "padding": "8px 12px",
+                           "backgroundColor": "rgba(232,185,79,0.10)", "fontSize": "0.82rem",
+                           "color": BRIGHT, "borderRadius": "3px", "marginBottom": "8px"})
+
+
+def render_day(day):
+    """Everything below the date picker for one day."""
+    if not day.structured:
+        if not day.markdown:
+            return html.Div(f"No alert found for {day.date}.", style={"color": MUTED})
+        return html.Div([
+            flag_bar("Archive", "This day predates the structured feed, so it is shown "
+                     "as the alert file was written."),
+            html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+                     style={**PANEL, "padding": "16px", "overflowX": "auto"}),
+        ])
+    rep, scan = day.report, day.scan
+    eligible = counts(day)["eligible"]
+    headline = rep.get("headline") or ("Not judged yet" if eligible else
+                                       "No confirmed news failures")
+    banner = html.Div([
+        html.Div([html.Div(headline, style={"color": BRIGHT, "fontSize": "1.4rem",
+                                            "fontWeight": 600}),
+                  html.Div(f"Prices as of {scan.get('prices_newest_data')} · index "
+                           f"{scan.get('cmr_index_file')}",
+                           style={"color": MUTED, "fontSize": "0.8rem",
+                                  "fontFamily": "monospace"})],
+                 style={"minWidth": 0}),
+        stat_tiles(day),
+    ], style={**PANEL, "padding": "14px 16px", "display": "flex", "flexWrap": "wrap",
+              "justifyContent": "space-between", "alignItems": "center", "gap": "14px",
+              "marginBottom": "12px"})
+    parts = [banner, *[flag_bar(k, v) for k, v in index_flags(day)]]
+    cards = highlight_cards(day)
+    if cards:
+        parts += [html.H6("Worth a look", style={"color": MUTED, "letterSpacing": "0.08em",
+                                                 "textTransform": "uppercase",
+                                                 "fontSize": "0.75rem", "margin": "6px 0"}),
+                  *cards]
+    parts += [
+        html.Div([html.H6("Every set-up", style={
+            "color": MUTED, "letterSpacing": "0.08em", "textTransform": "uppercase",
+            "fontSize": "0.75rem", "padding": "10px 12px 0 12px"}),
+            html.Div("Gates: Size = 70th percentile and 0.75x ATR(20); Peers = no "
+                     "uncrowded bloc peer made the same move; Side = the close the set-up "
+                     "needs. All three are required, and a failure also needs crowded "
+                     "positioning and news the close went against.",
+                     style={"color": MUTED, "fontSize": "0.75rem", "padding": "0 12px 8px"}),
+            board_table(day)], style={**PANEL, "marginBottom": "12px"}),
+    ]
+    notes = rep.get("notes") or []
+    if notes:
+        parts.append(html.Div([html.H6("The day", style={
+            "color": MUTED, "letterSpacing": "0.08em", "textTransform": "uppercase",
+            "fontSize": "0.75rem"}),
+            html.Ul([html.Li(n) for n in notes], style={"marginBottom": 0})],
+            style={**PANEL, "padding": "12px 16px", "color": MUTED, "fontSize": "0.82rem",
+                   "marginBottom": "12px"}))
+    srcs = rep.get("sources") or []
+    if srcs:
+        parts.append(html.Div(["Sources: ", *[
+            html.Span([html.A(s.get("title", s.get("url")), href=s.get("url"),
+                              target="_blank", rel="noopener"),
+                       "" if i == len(srcs) - 1 else " · "])
+            for i, s in enumerate(srcs)]], style={"fontSize": "0.75rem", "color": MUTED}))
+    if day.markdown:
+        parts.append(html.Details([
+            html.Summary("The full alert file", style={"cursor": "pointer",
+                                                       "color": MUTED, "fontSize": "0.8rem"}),
+            html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+                     style={**PANEL, "padding": "16px", "overflowX": "auto",
+                            "marginTop": "8px"})], style={"marginTop": "12px"}))
+    return html.Div(parts)
+
+
+def _day_card(entry, symbol):
+    head_style = {"display": "flex", "justifyContent": "space-between",
+                  "alignItems": "center", "gap": "12px", "flexWrap": "wrap"}
+    date = html.Span(entry.date, style={"color": BRIGHT, "fontFamily": "monospace",
+                                        "fontWeight": 600})
+    if entry.kind == ABSENT:
+        return html.Div([date, html.Span(f"{symbol} was not a set-up on this day.",
+                                         style={"color": MUTED, "fontSize": "0.82rem"})],
+                        style={**PANEL, **head_style, "padding": "8px 16px",
+                               "marginBottom": "8px", "opacity": 0.75})
+    if entry.kind == UNSLICED:
+        said = (f"It mentions {symbol} {entry.mentions} time"
+                f"{'' if entry.mentions == 1 else 's'}; pick the day to read it."
+                if entry.mentions else f"It does not mention {symbol}.")
+        return html.Div([date, html.Span(
+            "This day's alert has no per-market sections, so whether the market was a "
+            "set-up cannot be read from it. " + said,
+            style={"color": MUTED, "fontSize": "0.82rem"})],
+            style={**PANEL, **head_style, "padding": "8px 16px", "marginBottom": "8px",
+                   "borderLeft": f"4px solid {UNKNOWN}"})
+    if entry.kind == ROWS:
+        verdicts = {verdict_of(r, entry.report)[0].upper() for r in entry.rows}
+        flagged = bool(verdicts - {"NO FAILURE", "NOT JUDGED"})
+        body = _table([tr for r in entry.rows for tr in set_up_rows(r, entry.report)])
+        return html.Div([html.Div(date, style={"padding": "10px 16px 6px"}), body],
+                        style={**PANEL, "marginBottom": "8px",
+                               "borderLeft": f"4px solid {AMBER if flagged else PASS}"})
+    return html.Div([
+        html.Div([date, html.Span("as the alert was written",
+                                  style={"color": MUTED, "fontSize": "0.72rem"})],
+                 style=head_style),
+        dcc.Markdown("\n\n".join(entry.sections), className="cmr-md cmr-md-slice"),
+    ], style={**PANEL, "padding": "10px 16px", "marginBottom": "8px", "overflowX": "auto",
+              "borderLeft": f"4px solid {MUTED}"})
+
+
+def render_history(symbol, entries, name=""):
+    """Everything below the pickers for one market over a window of scan days."""
+    if not entries:
+        return html.Div("No alerts found.", style={"color": MUTED})
+    c = {k: sum(1 for e in entries if e.kind == k) for k in (ROWS, SECTIONS, ABSENT, UNSLICED)}
+    tiles = (("Scan days", len(entries)), ("Set-up on", c[ROWS] + c[SECTIONS]),
+             ("Not a set-up", c[ABSENT]), ("Cannot tell", c[UNSLICED]))
+    banner = html.Div([
+        html.Div([html.Div(f"{name} ({symbol})" if name else symbol,
+                           style={"color": BRIGHT, "fontSize": "1.4rem", "fontWeight": 600}),
+                  html.Div(f"{entries[-1].date} to {entries[0].date}, newest first",
+                           style={"color": MUTED, "fontSize": "0.8rem",
+                                  "fontFamily": "monospace"})]),
+        html.Div([html.Div([
+            html.Div(str(v), style={"fontFamily": "monospace", "fontSize": "1.4rem",
+                                    "color": BRIGHT}),
+            html.Div(k, style={"fontSize": "0.7rem", "textTransform": "uppercase",
+                               "letterSpacing": "0.06em", "color": MUTED})])
+            for k, v in tiles if v or k != "Cannot tell"],
+            style={"display": "flex", "flexWrap": "wrap", "gap": "10px 28px"}),
+    ], style={**PANEL, "padding": "14px 16px", "display": "flex", "flexWrap": "wrap",
+              "justifyContent": "space-between", "alignItems": "center", "gap": "14px",
+              "marginBottom": "12px"})
+    return html.Div([banner, *[_day_card(e, symbol) for e in entries]])

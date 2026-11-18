@@ -5,6 +5,10 @@ sentiment page: NAAIM's Exposure Index history is a paid subscription file and A
 sentiment history is a member download, both licensed to the operator, and a page on
 the public site would hand them to every visitor, so in THIS app the page is local-only.
 
+The second is the CMR scan (`/cmr`, 2026-11-18): it sorts markets by the CMR COT
+Index, a paid membership licensed to the operator, and reads `cmrdata_store`, which
+only the operator's machine has. It is not published anywhere.
+
 The operator has since cleared publishing them (2026-11-09), and they are published,
 but not from here: `components.sentiment_static` renders the page as one static file
 that goes to surveys.bluemagicai.com through the dbmf-tracker publisher
@@ -31,7 +35,7 @@ _TRUE = ("1", "true", "yes", "on")
 #: Navbar entries for gated pages, appended to the Monitors menu when the flag is on.
 #: The label says "local" so a screenshot of a local run cannot be mistaken for the
 #: public site.
-MONITOR_ENTRIES = (("Sentiment (local)", "/sentiment"),)
+MONITOR_ENTRIES = (("Sentiment (local)", "/sentiment"), ("CMR Scan (local)", "/cmr"))
 
 
 def enabled(env=None):
