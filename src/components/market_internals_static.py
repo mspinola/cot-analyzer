@@ -104,9 +104,21 @@ def _date(stamp):
     return surveys._date(datetime.strptime(stamp, "%Y-%m-%d"))
 
 
-def charts(snap, colors, positioning=()):
+def group_colors(palette=None):
+    """The three trader groups' colours: the app palette's first three slots
+    (`viz_config.PALETTE_SLOTS`), so a commercial is the red it is on every chart of
+    the COT Analyzer."""
+    if palette is None:
+        import viz_config
+        palette = viz_config.get_palette()
+    return tuple(palette[:len(view.POSITIONING_GROUPS)])
+
+
+def charts(snap, colors, positioning=(), groups=None):
     """Every chart the page draws, keyed by the `data-chart` of its element."""
-    out = {POSITIONING_PREFIX + r.symbol: view.positioning_chart(r) for r in positioning or ()}
+    groups = groups or (group_colors() if positioning else ())
+    out = {POSITIONING_PREFIX + r.symbol: view.positioning_chart(r, groups)
+           for r in positioning or ()}
     if snap.fomo is not None:
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
@@ -427,8 +439,8 @@ def _cot_row(read, colors):
             + f'<td class="num">{change}</td><td class="num">{spark}</td></tr>')
 
 
-def positioning_section(positioning, colors):
-    """Commercials in the four equity index futures: the crowd board's lookback rows,
+def positioning_section(positioning, colors, groups=None):
+    """Commercials in the equity index futures: the crowd board's lookback rows,
     then each market's net position through time. No section without the COT store."""
     if not positioning:
         return ""
@@ -439,14 +451,19 @@ def positioning_section(positioning, colors):
              + "".join(_cot_row(r, colors) for r in positioning) + '</tbody></table></div>')
     asof = _detail(f"Commercial index, 0 to 100 · report of {_date(positioning[0].date)}",
                    "detail small")
+    groups = groups or group_colors()
+    drawn = len(positioning[0].others) + 1
+    legend = "".join(f'<span class="key" style="color:{color}">■ {_esc(label)}</span>'
+                     for label, color in list(zip(view.POSITIONING_GROUPS, groups))[:drawn])
     charts_html = "".join(
         f'<div class="pchart"><div class="between"><span class="label">{_esc(r.symbol)} '
-        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ".1f"))}%</span></div>'
-        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r)["height"]) + '</div>'
+        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ",.0f"))}</span></div>'
+        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r, groups)["height"]) + '</div>'
         for r in positioning)
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
             + f'<section class="card" id="{POSITIONING_ID}">{table}{asof}'
-            '<h3>Commercials&rsquo; net position, % of open interest · weekly, three years</h3>'
+            '<h3>Net position by trader group, contracts · weekly, three years</h3>'
+            f'<div class="detail">{legend}</div>'
             f'<div class="pcharts">{charts_html}</div></section>\n')
 
 
@@ -568,14 +585,15 @@ def _headline(snap, colors):
 
 
 def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=None,
-           positioning=None):
+           positioning=None, palette=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
     palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
 
     `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
     (`aaii_allocation.read()`) fill the sentiment section; `positioning`
     (`market_internals.equity_positioning()`) the positioning section. Each is
-    optional, and a section is left out with nothing to show.
+    optional, and a section is left out with nothing to show. `palette` is the app
+    palette the trader groups take their colours from, the configured one when None.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
     be read never replaces the published page with a row of "awaiting data" cards. A
@@ -586,6 +604,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
         raise ValueError("the snapshot holds no reads"
                          + (f" (awaiting {', '.join(snap.awaiting)})" if snap.awaiting else ""))
     colors = page_colors(colors)
+    groups = group_colors(palette) if positioning else ()
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
                  + f'<div class="cards{" three" if snap.volatility else ""}">\n'
@@ -593,7 +612,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
                  + appetite_card(snap.appetite, snap.credit, colors)
                  + volatility_card(snap.volatility, colors) + '</div>\n'
                  + sentiment_section(naaim, votes, allocation)
-                 + positioning_section(positioning, colors))
+                 + positioning_section(positioning, colors, groups))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + breadth_charts(snap, colors)
               + '<div class="cards">\n' + breadth_card(snap, colors)
@@ -736,7 +755,7 @@ footer a {{ color: var(--ink-2); }}
 <footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
-<script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors, positioning))}</script>
+<script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors, positioning, groups))}</script>
 <script>
 (function () {{
   var LC = window.LightweightCharts;

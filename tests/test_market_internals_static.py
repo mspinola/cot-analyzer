@@ -17,6 +17,7 @@ import pytest
 import components.market_internals as mi
 import components.market_internals_view as view
 from components import market_internals_static as st
+from components import plot_colors
 from components import sentiment_static as surveys
 from routing import external_page_path
 from tests.test_market_internals import _bars, _universe
@@ -374,10 +375,11 @@ def _positioning():
                                                               freq="W-TUE"))
     path = tuple(float(40 + i % 30) for i in range(52))
     series = (dates, tuple(float(i % 20 - 10) for i in range(156)))
+    others = (tuple(-v for v in series[1]), tuple(v / 4 for v in series[1]))
     return (mi.EquityPositioning("ES", "S&P 500", (81.0, 59.0, 59.0, 58.0), -10.9, path,
-                                 "1986-01-15", 0.51, series, "2026-11-10"),
+                                 "1986-01-15", 51234.0, series, "2026-11-10", others),
             mi.EquityPositioning("RTY", "Russell", (0.0, 1.0, 26.0, None), 0.4,
-                                 path[:-1] + (20.0,), "2002-08-13", -0.33, series, "2026-11-10"))
+                                 path[:-1] + (20.0,), "2002-08-13", -3300.0, series, "2026-11-10", others))
 
 
 def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles():
@@ -441,13 +443,33 @@ def test_each_market_has_its_commercials_through_time():
     reads = _positioning()
     page = st.render(_snap(), COLORS, positioning=reads)
     data = _payload(page)
+    palette = ["#F87171", "#60A5FA", "#FBBF24", "#34D399"]
+    page = st.render(_snap(), COLORS, positioning=reads, palette=palette)
+    data = _payload(page)
+    groups = st.group_colors(palette)
+    assert groups == ("#F87171", "#60A5FA", "#FBBF24")     # commercial, large, small
     for r in reads:
         spec = data[st.POSITIONING_PREFIX + r.symbol]
-        assert spec == view.positioning_chart(r)
-        assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 156
+        assert spec == view.positioning_chart(r, groups)
+        # A column a week from zero for each group, in the app palette's colours. A
+        # series is a rank within the week, tallest first (drawn at the back), so no
+        # group's column hides a shorter one; each point carries its group's colour.
+        assert [s["type"] for s in spec["series"]] == ["histogram"] * 3
+        tones = [plot_colors.hex_to_rgba(c, view.POSITIONING_ALPHA) for c in groups]
+        assert all(len(s["data"]) == 156 for s in spec["series"])
+        back, middle, front = (s["data"] for s in spec["series"])
+        for i, value in enumerate(r.series[1]):
+            assert abs(back[i]["value"]) >= abs(middle[i]["value"]) >= abs(front[i]["value"])
+            week = {(p["value"], p["color"]) for p in (back[i], middle[i], front[i])}
+            assert week == {(value, tones[0]), (r.others[0][i], tones[1]),
+                            (r.others[1][i], tones[2])}
+        # Small specs are a quarter of commercials on the fixture: in front, in yellow.
+        assert front[0] == {"time": r.series[0][0], "value": r.others[1][0], "color": tones[2]}
         assert [lv["value"] for lv in spec["levels"]] == [0.0]
         assert f'data-chart="{st.POSITIONING_PREFIX}{r.symbol}"' in page
-    assert ">+0.5%</span>" in page and ">-0.3%</span>" in page
+    for label, color in zip(view.POSITIONING_GROUPS, groups):
+        assert f'style="color:{color}">■ {label}</span>' in page
+    assert ">+51,234</span>" in page and ">-3,300</span>" in page
     points, end = view.positioning_spark(reads[0])
     assert len(points.split()) == 52 and end is not None
     assert view.positioning_spark(mi.EquityPositioning(

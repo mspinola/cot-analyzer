@@ -190,7 +190,9 @@ VOLATILITY_BOND_SYMBOL = "MOVE"
 #: numbers. Positioning is read against its recent range, which is why the row leads
 #: with three months and ends on the full history, and why no percentile of forty
 #: years appears here.
-EQUITY_MARKETS = (("ES", "S&P 500"), ("YM", "DOW"), ("NQ", "Nasdaq"), ("RTY", "Russell"))
+#: The two the page's reads are about (SPY and QQQ). YM and RTY were shown until
+#: 2026-11-18 and dropped as more than the page needs.
+EQUITY_MARKETS = (("ES", "S&P 500"), ("NQ", "Nasdaq"))
 #: Weeks of commercials' net the time series draws: three years.
 POSITIONING_SERIES_WEEKS = 156
 #: Weeks of the 12-month index the sparkline draws, the board's.
@@ -340,9 +342,10 @@ class EquityPositioning:
     move: Optional[float]   # the 12-month index's change over const.MOMENTUM_PERIOD weeks
     path: tuple             # the 12-month index, the last year, oldest first
     start: Optional[str]    # first report date
-    value: float            # commercials' net, percent of open interest, newest week
-    series: tuple           # (date strings, commercials' net % of open interest), three years
+    value: float            # commercials' net, contracts, newest week
+    series: tuple           # (date strings, commercials' net in contracts), three years
     date: str               # the newest report's date
+    others: tuple = ()      # (large specs' net, small specs' net) on the series' dates
 
 
 @dataclass(frozen=True)
@@ -885,7 +888,7 @@ def _indexer_positioning(market):
 
 
 def equity_positioning(get_positioning=None):
-    """The four equity index futures as the crowd board reads them, plus commercials'
+    """The equity index futures of EQUITY_MARKETS as the crowd board reads them, plus commercials'
     net as a series. A market the COT store cannot serve is left out and logged, never
     raised: this is context on a page whose count does not depend on it."""
     import cotmetrics.models as models
@@ -899,7 +902,8 @@ def equity_positioning(get_positioning=None):
         try:
             frame = get_positioning(market)
             net = frame[column].astype(float)
-            share = pd.to_numeric(frame[const.COMM_PCT_OI], errors="coerce").dropna()
+            # The position itself, in contracts, whatever basis the index is read on.
+            share = pd.to_numeric(frame[const.COMM_NET], errors="coerce").dropna()
         except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
             utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
             continue
@@ -913,6 +917,15 @@ def equity_positioning(get_positioning=None):
 
         share.index = pd.DatetimeIndex(share.index)
         tail = share.sort_index().tail(POSITIONING_SERIES_WEEKS)
+        # The other two groups on the same weeks; a frame without them draws one group.
+        others = []
+        for group in (const.LARGE_NET, const.SMALL_NET):
+            if group not in frame:
+                others = []
+                break
+            side = pd.to_numeric(frame[group], errors="coerce")
+            side.index = pd.DatetimeIndex(side.index)
+            others.append(tuple(None if v != v else float(v) for v in side.reindex(tail.index)))
         year = board_traces.WINDOW_LABELS[2]
         out.append(EquityPositioning(
             symbol=symbol, name=market,
@@ -923,6 +936,7 @@ def equity_positioning(get_positioning=None):
             value=float(tail.iloc[-1]),
             series=(_dates(tail.index), tuple(float(v) for v in tail)),
             date=_stamp_of(pd.DatetimeIndex(index.index)),
+            others=tuple(others),
         ))
     return tuple(out)
 

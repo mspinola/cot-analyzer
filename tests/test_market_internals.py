@@ -540,8 +540,9 @@ def _cot_frame(net, weeks=300):
     import cotmetrics.constants as const
     index = pd.date_range("2021-01-05", periods=weeks, freq="W-TUE")
     values = [float(v) for v in net]
-    return pd.DataFrame({const.COMM_NET: values, const.COMM_NET_NORM: [v / 100 for v in values],
-                         const.COMM_PCT_OI: values}, index=index)
+    return pd.DataFrame({const.COMM_NET: values, const.LARGE_NET: [-v for v in values],
+                         const.SMALL_NET: [v / 2 for v in values], const.COMM_NET_NORM: [v / 100 for v in values],
+                         const.COMM_PCT_OI: [v / 7 for v in values]}, index=index)
 
 
 def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
@@ -552,7 +553,7 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
               "Nasdaq": _cot_frame([300 - i for i in range(300)])}
 
     def get(market):
-        return frames[market]                      # DOW and Russell raise KeyError
+        return frames[market]                      # any other market raises KeyError
     reads = mi.equity_positioning(get)
     assert [(r.symbol, r.name) for r in reads] == [("ES", "S&P 500"), ("NQ", "Nasdaq")]
     es, nq = reads
@@ -566,12 +567,16 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
     assert es.path == tuple(float(v) for v in board[board_traces.WINDOW_LABELS[2]].tail(52))
     # A market falling every week sits at the bottom of every lookback.
     assert nq.windows == (0.0, 0.0, 0.0, 0.0)
-    # The series is commercials' net, percent of open interest, three years of it.
+    # The series is commercials' net in contracts (not the share of open interest),
+    # three years of it.
     assert es.value == 19.0 and len(es.series[0]) == len(es.series[1]) == 156
     assert es.series[1][-1] == 19.0 and es.date == es.series[0][-1] == "2026-09-29"
     assert es.start == "2021-01-05"
+    # The other two groups ride the same weeks: large specs, then small.
+    large, small = es.others
+    assert len(large) == len(small) == 156 and (large[-1], small[-1]) == (-19.0, 9.5)
     assert mi.equity_positioning(lambda market: pd.DataFrame()) == ()
-    assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "YM", "NQ", "RTY"]
+    assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "NQ"]
 
 
 def test_bond_volatility_is_the_move_index_on_its_own_history():
