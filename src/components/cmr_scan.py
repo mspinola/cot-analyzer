@@ -17,15 +17,26 @@ the same rule as the sentiment page applies: nothing here may reach the public s
   (`verdicts[SYM] = {verdict, confidence, reason, against}`), the day's notes, the
   headline, and the sources.
 
-**Days without a sidecar** (everything before 2026-11-17, or a day the routine wrote
-only the markdown) still show: the page renders that day's markdown as it was written.
+**Backfilled days** (everything before 2026-11-17). `cmrdata_store/backfill.py` re-ran
+the scanner for each older day against the bars as they stood that day and wrote a
+sidecar with a `backfill` block and an EMPTY `report`. So those days have the numbers
+(candle, size, peers, gates, evidence) and no judgments: the news read and the verdict
+exist only in the alert's prose, and nothing reads them back out of it. The page shows
+the numbers beside the alert as written and leaves the News and Verdict columns off,
+because a blank verdict there means "not recorded in this form", not "not judged".
+The gates are TODAY's scanner's reading of that day, and the rules changed over those
+months, so where a backfilled gate and the alert disagree the alert is the record.
+
+**Days with no sidecar at all** (a day the backfill skipped, or one the routine wrote
+only the markdown for) still show: the page renders that day's markdown as written.
 The alert format drifted over the summer, so parsing old prose into rows would invent
 structure the file never had.
 
 **One market over time** (`market_history`). The same files read down instead of
 across: every scan day in a window, newest first, for one symbol. A sidecar day gives
-that symbol's rows; a markdown-only day gives the section under its `(SYM)` heading,
-sliced to the next heading of the same level and shown as written. A day the market was
+that symbol's rows; a backfilled day gives its rows and, under them, the section the
+alert wrote for it; a markdown-only day gives just that section, found by its `(SYM)`
+heading, sliced to the next heading of the same level and shown as written. A day the market was
 not a set-up says so, and a day whose file has no per-market headings says that instead,
 because "absent from the page" and "not a set-up" must not look the same.
 
@@ -85,10 +96,17 @@ class Day:
     scan: dict = field(default_factory=dict)
     report: dict = field(default_factory=dict)
     markdown: str = ""
+    backfill: dict = field(default_factory=dict)
 
     @property
     def structured(self):
         return bool(self.scan)
+
+    @property
+    def judged(self):
+        """True when the routine's own judgments came with the numbers. A backfilled
+        day has numbers only; its verdicts are prose in the alert."""
+        return self.structured and not self.backfill
 
     @property
     def rows(self):
@@ -103,8 +121,9 @@ def read_day(date, env=None):
         try:
             blob = json.loads(side.read_text())
             day.scan, day.report = blob.get("scan") or {}, blob.get("report") or {}
+            day.backfill = blob.get("backfill") or {}
         except (OSError, ValueError):
-            day.scan, day.report = {}, {}
+            day.scan, day.report, day.backfill = {}, {}, {}
     md = d / f"{date}.md"
     if md.is_file():
         day.markdown = md.read_text()
@@ -245,6 +264,7 @@ class MarketDay:
     report: dict = field(default_factory=dict)
     sections: list = field(default_factory=list)
     mentions: int = 0
+    backfilled: bool = False
 
     @property
     def set_up(self):
@@ -255,10 +275,18 @@ def market_day(day, symbol):
     """One day's record for one market. The four outcomes are kept apart on purpose:
     structured rows, markdown sections, a day the market was not a set-up, and a day
     whose file cannot answer the question (no per-market headings at all)."""
+    sections = market_sections(day.markdown, symbol)
     if day.structured:
         rows = [r for r in day.rows if r.get("symbol") == symbol]
+        if not day.judged:
+            # Backfilled: the numbers, plus what the alert wrote. A section with no
+            # row means the alert covered a market today's scanner does not set up
+            # for that day; show the prose rather than call it absent.
+            if rows or sections:
+                return MarketDay(day.date, ROWS if rows else SECTIONS, rows=rows,
+                                 sections=sections, backfilled=True)
+            return MarketDay(day.date, ABSENT, backfilled=True)
         return MarketDay(day.date, ROWS if rows else ABSENT, rows=rows, report=day.report)
-    sections = market_sections(day.markdown, symbol)
     if sections:
         return MarketDay(day.date, SECTIONS, sections=sections)
     if _has_market_headings(day.markdown):
@@ -400,13 +428,17 @@ def news_cell(row, report):
     ], style={"fontSize": "0.78rem", "maxWidth": "38ch"})
 
 
-def why_cell(row, vinfo):
+def why_cell(row, vinfo, wide=False):
     reasons = [vinfo["reason"]] if vinfo.get("reason") and not row.get("failure_blockers") \
         else list(row.get("failure_blockers") or [])
     if vinfo.get("against"):
         reasons.append("Against: " + vinfo["against"])
+    if wide and not reasons:
+        reasons = ["Passes all three price gates. Whether it was a failure turned on "
+                   "the news, which is in the alert."]
     return html.Div([html.Div(r, style={"marginBottom": "2px"}) for r in reasons] or "–",
-                    style={"fontSize": "0.75rem", "color": MUTED, "maxWidth": "34ch"})
+                    style={"fontSize": "0.75rem", "color": MUTED,
+                           "maxWidth": "70ch" if wide else "34ch"})
 
 
 TH = {"color": MUTED, "fontSize": "0.7rem", "textTransform": "uppercase",
@@ -415,11 +447,15 @@ TH = {"color": MUTED, "fontSize": "0.7rem", "textTransform": "uppercase",
 TD = {"padding": "8px 10px", "borderTop": "1px solid rgba(255,255,255,0.08)",
       "verticalAlign": "top"}
 COLS = ("Market", "Close", "Size vs own history", "Gates", "News read", "Verdict", "Why")
+#: A backfilled day: the same board without the two columns nobody recorded.
+NUMERIC_COLS = ("Market", "Close", "Size vs own history", "Gates", "Price gates say")
 
 
-def set_up_rows(r, report):
-    """One set-up as two table rows: its facts, then its evidence folded underneath."""
+def set_up_rows(r, report, judged=True):
+    """One set-up as two table rows: its facts, then its evidence folded underneath.
+    With `judged` off (a backfilled day) the News and Verdict cells are left out."""
     verdict, conf, vinfo = verdict_of(r, report)
+    cols = COLS if judged else NUMERIC_COLS
     dim = {} if r.get("confirmed") else {"opacity": 0.8}
     market = html.Div([
         html.B(r.get("market", "").title(), style={"color": BRIGHT}),
@@ -430,23 +466,24 @@ def set_up_rows(r, report):
         html.Tr([
             html.Td(market, style=TD), html.Td(change_cell(r), style=TD),
             html.Td(size_cell(r), style=TD), html.Td(gate_strip(r), style=TD),
-            html.Td(news_cell(r, report), style=TD),
-            html.Td(verdict_chip(verdict, conf), style=TD),
-            html.Td(why_cell(r, vinfo), style=TD),
+            *([html.Td(news_cell(r, report), style=TD),
+               html.Td(verdict_chip(verdict, conf), style=TD)] if judged else []),
+            html.Td(why_cell(r, vinfo, wide=not judged), style=TD),
         ], style=dim),
         # The evidence row sits right under its market, closed by default.
         html.Tr(html.Td(html.Details([
             html.Summary(f"Case for and against · {r.get('symbol')} {r.get('book')}",
                          style={"cursor": "pointer", "fontSize": "0.72rem", "color": MUTED}),
-            evidence_table(r)]), colSpan=len(COLS), style={"padding": "0 10px 6px 10px"})),
+            evidence_table(r)]), colSpan=len(cols), style={"padding": "0 10px 6px 10px"})),
     ]
 
 
-def _table(body_rows):
+def _table(body_rows, judged=True):
+    cols = COLS if judged else NUMERIC_COLS
     return html.Div(html.Table([
-        html.Thead(html.Tr([html.Th(c, style=TH) for c in COLS])),
+        html.Thead(html.Tr([html.Th(c, style=TH) for c in cols])),
         html.Tbody(body_rows),
-    ], style={"width": "100%", "minWidth": "980px", "borderCollapse": "collapse",
+    ], style={"width": "100%", "minWidth": "980px" if judged else "720px", "borderCollapse": "collapse",
               "color": MUTED, "fontSize": "0.85rem"}), style={"overflowX": "auto"})
 
 
@@ -457,16 +494,17 @@ def board_rows(day):
                          [r for r in day.rows if not r.get("confirmed")])):
         if not rows:
             continue
-        out.append(html.Tr(html.Td(f"{group} · {len(rows)}", colSpan=len(COLS), style={
+        out.append(html.Tr(html.Td(f"{group} · {len(rows)}", colSpan=len(
+            COLS if day.judged else NUMERIC_COLS), style={
             **TD, "color": MUTED, "fontSize": "0.72rem", "letterSpacing": "0.08em",
             "textTransform": "uppercase", "backgroundColor": "rgba(255,255,255,0.03)"})))
         for r in sort_rows(rows):
-            out += set_up_rows(r, day.report)
+            out += set_up_rows(r, day.report, day.judged)
     return out
 
 
 def board_table(day):
-    return _table(board_rows(day))
+    return _table(board_rows(day), day.judged)
 
 
 def stat_tiles(day):
@@ -528,6 +566,40 @@ def flag_bar(label, text):
                            "color": BRIGHT, "borderRadius": "3px", "marginBottom": "8px"})
 
 
+def backfill_note(day):
+    b = day.backfill
+    return flag_bar("Recomputed", (
+        f"These numbers were recomputed on {b.get('computed_on', 'a later date')} by "
+        "today's scanner, from the bars as they stood on the day. The news read and the "
+        "verdict were judged at the time and are in the alert below, as written. The "
+        "scanner's rules changed over these months, so where a gate here and the alert "
+        "disagree, the alert is the record."))
+
+
+def backfilled_body(day):
+    """A backfilled day below its banner: the note, the numeric board, then the alert
+    open rather than folded, because on these days the alert IS the verdict."""
+    unnamed = day.backfill.get("symbols_never_named_in_alert") or []
+    parts = [backfill_note(day)]
+    if unnamed:
+        parts.append(flag_bar("Check", "The alert never names " + ", ".join(unnamed)
+                              + ". The watchlist rebuilt for this day may not be the "
+                              "one the scan saw."))
+    parts.append(html.Div([
+        html.H6("Every set-up, price side only", style={
+            "color": MUTED, "letterSpacing": "0.08em", "textTransform": "uppercase",
+            "fontSize": "0.75rem", "padding": "10px 12px 0 12px"}),
+        html.Div("Gates: Size = 70th percentile and 0.75x ATR(20); Peers = no uncrowded "
+                 "bloc peer made the same move; Side = the close the set-up needs. "
+                 "Passing all three made a row worth judging, nothing more.",
+                 style={"color": MUTED, "fontSize": "0.75rem", "padding": "0 12px 8px"}),
+        board_table(day)], style={**PANEL, "marginBottom": "12px"}))
+    if day.markdown:
+        parts.append(html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+                              style={**PANEL, "padding": "16px", "overflowX": "auto"}))
+    return parts
+
+
 def render_day(day):
     """Everything below the date picker for one day."""
     if not day.structured:
@@ -541,8 +613,11 @@ def render_day(day):
         ])
     rep, scan = day.report, day.scan
     eligible = counts(day)["eligible"]
-    headline = rep.get("headline") or ("Not judged yet" if eligible else
-                                       "No confirmed news failures")
+    if day.judged:
+        headline = rep.get("headline") or ("Not judged yet" if eligible else
+                                           "No confirmed news failures")
+    else:
+        headline = "Numbers recomputed. The verdict is in the alert below."
     banner = html.Div([
         html.Div([html.Div(headline, style={"color": BRIGHT, "fontSize": "1.4rem",
                                             "fontWeight": 600}),
@@ -556,6 +631,8 @@ def render_day(day):
               "justifyContent": "space-between", "alignItems": "center", "gap": "14px",
               "marginBottom": "12px"})
     parts = [banner, *[flag_bar(k, v) for k, v in index_flags(day)]]
+    if not day.judged:
+        return html.Div([*parts, *backfilled_body(day)])
     cards = highlight_cards(day)
     if cards:
         parts += [html.H6("Worth a look", style={"color": MUTED, "letterSpacing": "0.08em",
@@ -618,6 +695,18 @@ def _day_card(entry, symbol):
             style={"color": MUTED, "fontSize": "0.82rem"})],
             style={**PANEL, **head_style, "padding": "8px 16px", "marginBottom": "8px",
                    "borderLeft": f"4px solid {UNKNOWN}"})
+    if entry.kind == ROWS and entry.backfilled:
+        body = _table([tr for r in entry.rows for tr in set_up_rows(r, {}, False)], False)
+        prose = dcc.Markdown("\n\n".join(entry.sections), className="cmr-md cmr-md-slice") \
+            if entry.sections else html.Div(
+                "The alert gave this market no section of its own that day; its row is "
+                "in that day's board.", style={"color": MUTED, "fontSize": "0.8rem"})
+        return html.Div([
+            html.Div([date, html.Span("numbers recomputed · verdict as the alert was written",
+                                      style={"color": MUTED, "fontSize": "0.72rem"})],
+                     style={**head_style, "padding": "10px 16px 6px"}),
+            body, html.Div(prose, style={"padding": "6px 16px 10px", "overflowX": "auto"}),
+        ], style={**PANEL, "marginBottom": "8px", "borderLeft": f"4px solid {MUTED}"})
     if entry.kind == ROWS:
         verdicts = {verdict_of(r, entry.report)[0].upper() for r in entry.rows}
         flagged = bool(verdicts - {"NO FAILURE", "NOT JUDGED"})
