@@ -506,9 +506,9 @@ def net_highs_read(exchange, highs, lows):
     regime = indicators.net_highs_regime(net).iloc[-1]
     streak = signed_streak(net)
     if regime == "up":
-        label, verdict = f"Positive {streak} days", POSITIVE
+        label, verdict = f"Positive {streak} consecutive days", POSITIVE
     elif regime == "down":
-        label, verdict = f"Negative {-streak} days", NEGATIVE
+        label, verdict = f"Negative {-streak} consecutive days", NEGATIVE
     else:
         label, verdict = "Mixed", NEUTRAL
     last = net.index[-1]
