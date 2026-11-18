@@ -469,7 +469,8 @@ def test_each_market_has_its_commercials_through_time():
         assert f'data-chart="{st.POSITIONING_PREFIX}{r.symbol}"' in page
     for label, color in zip(view.POSITIONING_GROUPS, groups):
         assert f'style="color:{color}">■ {label}</span>' in page
-    assert ">+51,234</span>" in page and ">-3,300</span>" in page
+    # No figure beside a market's name: the charts are read for their shape.
+    assert "51,234" not in page and "3,300" not in page
     points, end = view.positioning_spark(reads[0])
     assert len(points.split()) == 52 and end is not None
     assert view.positioning_spark(mi.EquityPositioning(
