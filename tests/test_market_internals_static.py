@@ -330,3 +330,63 @@ def test_the_price_line_is_daily_where_a_zoom_will_look():
     assert xs[-view.HISTORY_DAILY_SESSIONS:] == list(range(recent, 2000))
     older = [x for x in xs if x < recent]
     assert older == list(range(0, recent, view.HISTORY_PRICE_STEP))
+
+
+def _with_volatility(inverted=False):
+    frames = _universe(N)
+    idx = frames["QQQ"].index
+    frames[mi.VOLATILITY_SYMBOL] = pd.DataFrame({"Close": 24.0 if inverted else 18.0}, index=idx)
+    frames[mi.VOLATILITY_TERM_SYMBOL] = pd.DataFrame({"Close": 21.0}, index=idx)
+    return mi.build_snapshot(_bars(frames))
+
+
+def test_the_volatility_card_is_drawn_outside_the_count():
+    snap = _with_volatility(inverted=True)
+    page = st.render(snap, COLORS)
+    uncounted = page.split(f"<h2>{view.UNCOUNTED_TITLE}</h2>")[1].split('<div class="sec">')[0]
+    assert f"<h2>{html.escape(view.VOLATILITY_TITLE)}</h2>" in uncounted
+    assert '<span class="big">24.0</span>' in uncounted and ">Inverted</span>" in uncounted
+    assert html.escape(view.volatility_status(snap.volatility)) in uncounted
+    spec = _payload(page)[st.VOLATILITY_KEY]
+    assert len(spec["series"]) == 2 and spec["levels"] == []
+    assert mi.headline(snap) == mi.headline(_snap())
+    assert ">Normal</span>" in st.render(_with_volatility(), COLORS)
+    # Without the series there is no card and no chart, not an "awaiting" one.
+    plain = st.render(_snap(), COLORS)
+    assert view.VOLATILITY_TITLE not in plain and st.VOLATILITY_KEY not in _payload(plain)
+
+
+def test_the_sentiment_and_positioning_strip_is_the_surveys_pages_tiles():
+    """The survey tiles are `sentiment_static`'s own (number, percentile badge, gauge),
+    with ES and NQ commercials in the same shape after them."""
+    import components.sentiment as s
+    from tests.test_sentiment_static import _reads
+    survey = _reads()[s.DEFAULT_LOOKBACK]
+    positioning = (mi.PositioningRead("S&P 500 futures", 0.51, -6.24, (24, "24th", 1986),
+                                      "2026-11-10"),
+                   mi.PositioningRead("Nasdaq 100 futures", -16.43, 11.05, (73, "73rd", 1996),
+                                      "2026-11-10"))
+    page = st.render(_snap(), COLORS, survey=survey, positioning=positioning)
+    strip = page.split(f"<h2>{view.POSITIONING_TITLE}</h2>")[1].split('<div class="sec">')[0]
+    tiles = surveys.survey_tiles(survey) + view.positioning_tiles(positioning, st._date)
+    assert strip.count('<div class="tile ') == len(tiles) == 4
+    for t in tiles:
+        assert f'<div class="value">{html.escape(t["value"])}</div>' in strip
+    assert '<div class="value">+0.5%</div>' in strip and "24th<small> pctl</small>" in strip
+    assert "S&amp;P 500 futures, commercials" in strip
+    assert "large speculators -6.2%" in strip and "Nov 10, 2026" in strip
+    assert f'href="{st.SURVEYS_URL}"' in strip and st.SURVEYS_URL.startswith("https://surveys.")
+    # Context only: with none of it the section is gone and the page is otherwise whole.
+    plain = st.render(_snap(), COLORS)
+    assert view.POSITIONING_TITLE not in plain
+    assert mi.headline(_snap())[0].partition(" ")[2] in plain
+
+
+def test_the_history_marks_are_the_headwind_cards_red():
+    """A mark on the strips and a card's "Headwind" are one thing, so one colour: the
+    page's toned red, not the amber the strips were first drawn in."""
+    page = st.render(_snap(), COLORS)
+    red = st.page_colors(COLORS).bear
+    card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    assert f'fill="{red}"' in card and surveys.TONE_HIGH not in card
+    assert f".hl.all {{ color: {red};" in page

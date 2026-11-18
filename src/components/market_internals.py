@@ -75,10 +75,13 @@ never a blank card and never an error. The tape_context rule.
 from dataclasses import dataclass
 from typing import Optional
 
+import cotmetrics.constants as const
 import cotmetrics.utils as utils
 import numpy as np
 import pandas as pd
 from cotmetrics import indicators
+
+from components import sentiment
 
 # ── what is read ──────────────────────────────────────────────────────────────
 
@@ -156,6 +159,22 @@ HEADWIND_KEYS = ("net_highs", "qqq_updown", "spy_updown", "credit", "rotation")
 #: The price line over the history strips. QQQ, not the Nasdaq Composite the dashboard
 #: draws: the store holds no index series, and QQQ is the Nasdaq this page already reads.
 HISTORY_PRICE_SYMBOL = "QQQ"
+
+# ── context beside the count: volatility and positioning ──────────────────────
+
+#: Volatility: the VIX, its three-month counterpart, and the Nasdaq's own index. The
+#: read is the TERM STRUCTURE, not a level cutoff: the front month above the
+#: three-month is the market paying more for protection now than later, which is the
+#: stress shape. No level is called high or low here; the VIX's percentile on its own
+#: history says how unusual it is and stops there.
+VOLATILITY_SYMBOL, VOLATILITY_TERM_SYMBOL, VOLATILITY_NASDAQ_SYMBOL = "VIX", "VIX3M", "VXN"
+VOLATILITY_PATH_SESSIONS = 252
+#: Equity index futures positioning, weekly, from the COT index the app is built on:
+#: (label, the indexer's market name). Commercials' net as a percent of open interest
+#: is the number, the measure the surveys page draws for the S&P 500 and the one the
+#: app's COT index is built on; large speculators' is the context.
+POSITIONING_MARKETS = (("S&P 500 futures", "S&P 500"), ("Nasdaq 100 futures", "Nasdaq"))
+POSITIONING_COLUMN, POSITIONING_SPEC_COLUMN = const.COMM_PCT_OI, const.LARGE_PCT_OI
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -257,6 +276,31 @@ class Headwind:
 
 
 @dataclass(frozen=True)
+class VolatilityRead:
+    """Context: the VIX against its three-month counterpart. Never counted."""
+    value: float            # VIX close
+    change: float           # on the day, points
+    term: float             # VIX3M close
+    ratio: float            # VIX / VIX3M
+    inverted: bool          # the front above the three-month
+    streak: int             # sessions in today's shape
+    rank: tuple             # (percentile 1-100, word, first year) of the VIX's history
+    nasdaq: Optional[float]  # VXN close, when the store has it
+    path: tuple             # (date strings, VIX, VIX3M), the last year
+    date: str
+
+
+@dataclass(frozen=True)
+class PositioningRead:
+    """Context: one index future's commercials, weekly, on their own history."""
+    label: str              # "S&P 500 futures"
+    value: float            # commercials' net, percent of open interest
+    speculators: float      # large speculators' net, percent of open interest
+    rank: tuple             # (percentile 1-100, word, first year) of `value`
+    date: str               # the report's date
+
+
+@dataclass(frozen=True)
 class CreditAppetiteRead:
     """Context beside the reads: junk against Treasuries, ranked on its own year."""
     value: float            # 0 to 100
@@ -304,6 +348,7 @@ class Snapshot:
     assets: tuple
     headwinds: tuple       # the Headwinds the store could serve, in HEADWIND_KEYS order
     history: Optional["HeadwindHistory"]   # the strips; None unless all five are served
+    volatility: Optional[VolatilityRead]
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
@@ -671,6 +716,67 @@ def rotation_headwind(ratio):
         _versus(gap, higher_is_better=False), ratio, second=average)
 
 
+def _rank(history, value):
+    """`(percentile, word, first year)`, the surveys tiles' tuple, by their own rule."""
+    h = history.to_numpy()
+    return (sentiment.percentile_of(h, value), sentiment.percentile_word(h, value),
+            history.index[0].year)
+
+
+def volatility_read(vix, term, nasdaq=None):
+    """The VIX against VIX3M on their shared sessions, or None without both."""
+    if vix is None or term is None:
+        return None
+    both = pd.concat([vix, term], axis=1, join="inner", keys=["vix", "term"]).dropna()
+    if len(both) < 2:
+        return None
+    ratio = both["vix"] / both["term"]
+    tail = both.tail(VOLATILITY_PATH_SESSIONS)
+    return VolatilityRead(
+        value=float(both["vix"].iloc[-1]),
+        change=float(both["vix"].iloc[-1] - both["vix"].iloc[-2]),
+        term=float(both["term"].iloc[-1]),
+        ratio=float(ratio.iloc[-1]),
+        inverted=bool(ratio.iloc[-1] > 1),
+        streak=_run_length(ratio > 1),
+        rank=_rank(vix, float(both["vix"].iloc[-1])),   # the VIX's own, longer history
+        nasdaq=None if nasdaq is None else float(nasdaq.iloc[-1]),
+        path=(_dates(tail.index), tuple(float(v) for v in tail["vix"]),
+              tuple(float(v) for v in tail["term"])),
+        date=_stamp_of(both.index),
+    )
+
+
+def _indexer_positioning(market):
+    from cotmetrics.indexer import get_indexer
+    return get_indexer().get_symbols_data(market, "52")
+
+
+def positioning_reads(get_positioning=None):
+    """ES and NQ commercials, each against its own history, or () when the COT
+    store cannot serve them (a market that fails is left out and logged, never raised:
+    this is context on a page whose count does not depend on it)."""
+    get_positioning = get_positioning or _indexer_positioning
+    out = []
+    for label, market in POSITIONING_MARKETS:
+        try:
+            frame = get_positioning(market)
+            comm = pd.to_numeric(frame[POSITIONING_COLUMN], errors="coerce").dropna()
+            spec = pd.to_numeric(frame[POSITIONING_SPEC_COLUMN], errors="coerce").dropna()
+        except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
+            utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
+            continue
+        if spec.empty or comm.empty:
+            continue
+        comm.index = pd.DatetimeIndex(comm.index)
+        comm = comm.sort_index()
+        out.append(PositioningRead(label=label, value=float(comm.iloc[-1]),
+                                   speculators=float(spec.iloc[-1]),
+                                   rank=_rank(comm, float(comm.iloc[-1])),
+                                   date=_stamp_of(comm.index)))
+    return tuple(out)
+
+
 def credit_appetite_read(junk, treasuries):
     """The credit x-ray's Glance reading and its divergence days, or None before the
     history exists (the gauge needs its 20-day average and a year of ranks)."""
@@ -916,6 +1022,16 @@ def build_snapshot(get_bars=None):
     appetite = credit_appetite_read(_closes(get_bars, APPETITE_JUNK, APPETITE_TIER),
                                     _closes(get_bars, APPETITE_TREASURY, APPETITE_TIER))
 
+    def quiet(symbol):
+        # Context only: a miss here is no card, not a symbol the count is waiting for.
+        try:
+            return _closes(get_bars, symbol)
+        except Exception:  # noqa: BLE001
+            return None
+
+    volatility = volatility_read(quiet(VOLATILITY_SYMBOL), quiet(VOLATILITY_TERM_SYMBOL),
+                                 quiet(VOLATILITY_NASDAQ_SYMBOL))
+
     dates = [r.date for r in [fomo, advance_decline, credit, rotation, appetite,
                               *net_highs, *updown, *assets, *headwinds] if r is not None]
     return Snapshot(
@@ -928,6 +1044,7 @@ def build_snapshot(get_bars=None):
         assets=tuple(assets),
         headwinds=headwinds,
         history=history,
+        volatility=volatility,
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
@@ -953,7 +1070,8 @@ def stale_notes(snap, max_days=3):
     for label, read in (("FOMO", snap.fomo),
                         ("advancing / declining", snap.advance_decline),
                         ("credit", snap.credit), ("rotation", snap.rotation),
-                        ("credit appetite", snap.appetite)):
+                        ("credit appetite", snap.appetite),
+                        ("volatility", snap.volatility)):
         if read is not None and pd.Timestamp(read.date) < cutoff:
             named.append(f"{label} last read {read.date}")
     for read in snap.net_highs:
