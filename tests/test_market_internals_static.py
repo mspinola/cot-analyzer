@@ -42,8 +42,8 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     page = st.render(snap, COLORS)
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
-    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.CREDIT_KEY,
-                                   st.ROTATION_KEY}
+    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY,
+                                   *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
         # Lightweight Charts wants ascending yyyy-mm-dd times and no missing values.
@@ -58,14 +58,46 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     colors = st.page_colors(COLORS)
     data = _payload(st.render(snap, COLORS))
     assert data[st.FOMO_KEY] == view.fomo_chart(snap.fomo, colors)
-    assert data[st.CREDIT_KEY] == view.trend_chart(snap.credit)
     assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [80.0, 25.0]
     assert [lv["value"] for lv in data[st.APPETITE_KEY]["levels"]] == [80.0, 20.0]
     assert data[st.FOMO_KEY]["range"] == data[st.APPETITE_KEY]["range"] == [0, 100]
-    # The trend charts draw the line and its average; an average before its window
-    # fills is dropped, never drawn at zero.
-    line, average = data[st.ROTATION_KEY]["series"]
-    assert len(average["data"]) <= len(line["data"])
+    by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
+    # A level read draws one line against the level it turns on; a read against its
+    # own average draws the two lines and no level.
+    assert [lv["value"] for lv in by_key["net_highs"]["levels"]] == [0.0]
+    assert [lv["value"] for lv in by_key["qqq_updown"]["levels"]] == [1.0]
+    assert len(by_key["net_highs"]["series"]) == 1
+    for key in ("credit", "rotation"):
+        assert len(by_key[key]["series"]) == 2 and by_key[key]["levels"] == []
+
+
+def test_each_headwind_card_says_its_state_what_flips_it_and_for_how_long():
+    snap = _snap()
+    page = st.render(snap, COLORS)
+    section = page.split(f'id="{st.HEADWINDS_ID}"')[1].split('<div class="sec">')[0]
+    assert section.count('<section class="card hw ') == len(snap.headwinds) == 5
+    for h in snap.headwinds:
+        card = section.split(f'data-key="{h.key}"')[1].split("</section>")[0]
+        assert f'<span class="big">{html.escape(h.display)}</span>' in card
+        assert f">{view.headwind_badge(h)}</span>" in card
+        assert html.escape(h.flip) in card
+        assert view.headwind_streak(h) in card
+        if h.versus:
+            assert view.headwind_versus(h) in card
+    count, lean = mi.headline(snap)
+    number, _, rest = count.partition(" ")
+    assert f">{number}</b> {rest}</p>" in page and lean in page
+
+
+def test_fomo_is_on_the_page_but_outside_the_count():
+    snap = _snap()
+    page = st.render(snap, COLORS)
+    uncounted = page.split(f"<h2>{view.UNCOUNTED_TITLE}</h2>")[1].split(
+        f"<h2>{view.DETAIL_TITLE}</h2>")[0]
+    assert f"<h2>{html.escape(view.FOMO_TITLE)}</h2>" in uncounted
+    assert f"<h2>{html.escape(view.APPETITE_TITLE)}</h2>" in uncounted
+    assert view.fomo_recent(snap.fomo) in uncounted
+    assert view.fomo_recent(snap.fomo).count("→") == 4
 
 
 def test_the_sparklines_are_inline_svg_one_per_table_row():
@@ -78,29 +110,13 @@ def test_the_sparklines_are_inline_svg_one_per_table_row():
     assert min(ys) >= 0 and max(ys) <= view.SPARK_HEIGHT
 
 
-def test_the_readings_strip_has_a_tile_per_read_and_one_for_credit_appetite():
-    snap = _snap()
-    tiles = view.tiles(snap)
-    assert [t["key"] for t in tiles] == ["fomo", "net_highs", "advance", "credit",
-                                         "rotation", "updown", "appetite"]
-    page = st.render(snap, COLORS)
-    strip = page.split(f'id="{st.READINGS_ID}"')[1].split('<div class="cards">')[0]
-    assert strip.count('class="tile ') == 7
-    for t in tiles:
-        assert f'<div class="value">{html.escape(t["value"])}</div>' in strip
-        assert f'<div class="tier">{html.escape(t["state"])}</div>' in strip
-    # Only the two 0-100 reads carry the gauge.
-    assert strip.count('class="gauge"') == 2
-    assert tiles[-1]["context"] == "context, not counted"
-
-
 def test_credit_appetite_is_drawn_and_described_but_not_counted():
     snap = _snap()
     assert snap.appetite is not None
     page = st.render(snap, COLORS)
     assert f"<h2>{html.escape(view.APPETITE_TITLE)}</h2>" in page
     assert html.escape(view.appetite_status(snap.appetite, snap.credit)) in page
-    assert len(mi.read_verdicts(snap)) == 6          # the count is still of six reads
+    assert "appetite" not in mi.HEADWIND_KEYS
     without = mi.build_snapshot(_bars({k: v for k, v in _universe(N).items()
                                        if k != mi.APPETITE_TREASURY}))
     assert without.appetite is None
@@ -114,7 +130,7 @@ def test_the_page_opens_with_the_surveys_stylesheet():
     assert surveys.base_css() in page
     assert f"--page: {surveys.PAGE_COLOR}" in page
     assert f"max-width: {surveys.PAGE_MAX_WIDTH_PX}px" in page
-    assert page.count("How to read this") >= 6
+    assert page.count("How to read this") >= 4
 
 
 def test_the_chart_library_is_pinned_and_attributed():
@@ -135,20 +151,13 @@ def test_the_chart_library_is_pinned_and_attributed():
 def test_the_page_says_what_the_snapshot_says():
     snap = _snap()
     page = st.render(snap, COLORS)
-    lean, count = mi.headline(snap)
-    assert lean in page and count in page
     assert f'<span class="big">{snap.fomo.value:.1f}</span>' in page
-    assert f'<span class="big">{snap.credit.value:.2f}</span>' in page
-    assert f'<span class="big">{snap.rotation.value:.4f}</span>' in page
-    assert view.credit_detail(snap.credit) in page
     for read in snap.net_highs:
         assert f"{read.highs} highs, {read.lows} lows" in page
-    for read in snap.updown:
-        assert f">{read.ratio:.2f}</span>" in page
     for row in snap.assets:
         assert f'<td class="name num">{row.last:,.2f}</td>' in page
-    for title in (view.FOMO_TITLE, view.APPETITE_TITLE, view.NET_HIGHS_TITLE,
-                  view.CREDIT_TITLE, view.ROTATION_TITLE, view.UPDOWN_TITLE,
+    for title in (view.HEADWINDS_TITLE, view.UNCOUNTED_TITLE, view.DETAIL_TITLE,
+                  view.FOMO_TITLE, view.APPETITE_TITLE, view.NET_HIGHS_TITLE,
                   view.ASSETS_TITLE):
         assert f"<h2>{html.escape(title)}</h2>" in page
     assert f"<h3>{view.ADVANCE_DECLINE_TITLE}</h3>" in page

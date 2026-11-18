@@ -8,6 +8,8 @@ not hold is named as awaiting rather than drawn or raised.
 
 Store-free: `get_bars` is injected; `_get_bars` is stood in for.
 """
+import types
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -253,26 +255,6 @@ def test_asset_row_carries_the_day_change_and_a_quarter_of_closes():
 
 # ── the headline ──────────────────────────────────────────────────────────────
 
-def _headline_for(verdicts, monkeypatch):
-    monkeypatch.setattr(mi, "read_verdicts", lambda snap: verdicts)
-    return mi.headline(None)
-
-
-def test_headline_counts_positive_reads_of_those_available(monkeypatch):
-    P, N, Z = mi.POSITIVE, mi.NEGATIVE, mi.NEUTRAL
-    assert _headline_for((Z, N, P, N, P, Z), monkeypatch) == (
-        "Internals lean defensive.", "Two of six positive.")
-    assert _headline_for((P, N, P, N, P, Z), monkeypatch) == (
-        "Internals are mixed.", "Three of six positive.")
-    assert _headline_for((P, P, P, P, N, Z), monkeypatch) == (
-        "Internals lean constructive.", "Four of six positive.")
-    # A read awaiting data counts on neither side, and the count says so.
-    assert _headline_for((P, None, None, None, None, None), monkeypatch) == (
-        "Internals lean defensive.", "One of one positive.")
-    assert _headline_for((None,) * 6, monkeypatch) == (
-        "Internals awaiting data.", "No reads available.")
-
-
 def test_volume_verdict_needs_both_etfs_to_agree():
     frame = pd.DataFrame({"Close": QQQ_CLOSES, "Volume": QQQ_VOLUMES},
                          index=pd.DatetimeIndex(QQQ_DATES, name="Date"))
@@ -296,8 +278,9 @@ def test_a_full_store_yields_every_card_and_awaits_nothing():
     assert snap.awaiting == ()
     assert snap.date == "2026-09-15"   # 120 business days from 2026-04-01
     assert len(mi.summary_sentences(snap)) == 8
-    lean, count = mi.headline(snap)
-    assert lean.startswith("Internals") and count.endswith("positive.")
+    assert [h.key for h in snap.headwinds] == list(mi.HEADWIND_KEYS)
+    count, lean = mi.headline(snap)
+    assert count.endswith("of 5 headwinds on") and lean.endswith(".")
 
 
 def test_a_symbol_the_store_does_not_hold_is_awaited_not_drawn():
@@ -310,9 +293,10 @@ def test_a_symbol_the_store_does_not_hold_is_awaited_not_drawn():
     assert [r.exchange for r in snap.net_highs] == ["Nasdaq"]
     assert "DIA" not in [r.symbol for r in snap.assets]
     assert set(snap.awaiting) == {mi.FOMO_SYMBOL, "DIA", "NYSE_NL52W"}
-    # The other five reads still draw, and the headline counts what was read.
-    assert snap.credit is not None and snap.rotation is not None
-    assert mi.headline(snap)[1].endswith("of five positive.")
+    # Half a net-highs sum is a different number, so that headwind is not read; the
+    # other four are, and the count says four.
+    assert [h.key for h in snap.headwinds] == [k for k in mi.HEADWIND_KEYS if k != "net_highs"]
+    assert mi.headline(snap)[0].endswith("of 4 headwinds on")
 
 
 def test_an_unset_store_awaits_everything_and_raises_nothing(monkeypatch):
@@ -322,7 +306,8 @@ def test_an_unset_store_awaits_everything_and_raises_nothing(monkeypatch):
     snap = mi.build_snapshot()
     assert snap.fomo is None and snap.net_highs == () and snap.assets == ()
     assert set(mi._all_symbols()) <= set(snap.awaiting)
-    assert mi.headline(snap) == ("Internals awaiting data.", "No reads available.")
+    assert snap.headwinds == () and not mi.has_reads(snap)
+    assert mi.headline(snap) == ("Headwinds awaiting data", "No trend measure could be read.")
     assert mi.stale_notes(snap) == []
 
 
@@ -361,7 +346,7 @@ def test_credit_appetite_is_cotmetrics_gauge_with_its_divergence_days():
 
 def test_credit_appetite_waits_for_its_history_and_never_joins_the_count():
     """Under 20 + 252 + 1 sessions there is nothing to rank against: no read, no error.
-    With one, the six verdicts and the headline are exactly what they were."""
+    With one, the old verdicts and the headline are exactly what they were."""
     short = mi.build_snapshot(_bars(_universe(120)))
     assert short.appetite is None
     assert mi.APPETITE_TREASURY not in short.awaiting      # the bars are there
@@ -380,3 +365,102 @@ def test_a_stale_credit_appetite_is_named():
     frames[mi.APPETITE_TREASURY] = frames[mi.APPETITE_TREASURY].iloc[:-10]
     snap = mi.build_snapshot(_bars(frames))
     assert any(n.startswith("credit appetite last read") for n in mi.stale_notes(snap))
+
+
+# ── the five headwinds (the Caruso dashboard's definitions) ───────────────────
+
+def _days(values, start="2026-04-01"):
+    return pd.Series([float(v) for v in values],
+                     index=pd.bdate_range(start, periods=len(values), name="Date"))
+
+
+def test_net_highs_headwind_is_both_exchanges_summed_as_a_five_day_average():
+    highs = _days([50] * 10)
+    nasdaq_lows = _days([10, 10, 10, 10, 10, 60, 60, 60, 60, 90])
+    nyse_lows = _days([10] * 10)
+    h = mi.net_highs_headwind([(highs, nasdaq_lows), (highs, nyse_lows)])
+    # Daily nets: 80 x5, then 30 x4, then 0. Five-day averages end 40, 30, 24.
+    assert h.display == "+24" and not h.on
+    assert h.flip == "Flips at 0 · needs -24"
+    assert h.streak == 6                      # every averaged session was above zero
+    assert h.versus == "worse"                # 24 against 80 five sessions ago
+    assert h.level == 0.0 and h.path[2] is None
+    worse = mi.net_highs_headwind([(highs, _days([200] * 10)), (highs, nyse_lows)])
+    assert worse.on and worse.display == "-110" and worse.flip.endswith("needs +110")
+    # One leg missing: no read, never half a sum.
+    assert mi.net_highs_headwind([(highs, nasdaq_lows), (highs, None)]) is None
+
+
+def test_updown_headwind_is_the_reads_own_ratio_under_one():
+    frame = pd.DataFrame({"Close": QQQ_CLOSES, "Volume": QQQ_VOLUMES},
+                         index=pd.DatetimeIndex(QQQ_DATES, name="Date"))
+    long = _walk(120, seed=5, with_volume=True)
+    series = mi.updown_ratio_series(long)
+    assert series.iloc[-1] == pytest.approx(mi.updown_read("X", long).ratio)
+    # Every point is the 20-session read as of that day.
+    assert series.iloc[-8] == pytest.approx(mi.updown_read("X", long.iloc[:-7]).ratio)
+    h = mi.updown_headwind("QQQ", long)
+    assert h.key == "qqq_updown" and h.on == (series.iloc[-1] < 1.0)
+    assert h.display == f"{series.iloc[-1]:.2f}" and h.level == 1.0
+    assert h.flip == f"Flips at 1.00 · needs {1.0 - series.iloc[-1]:+.2f}"
+    assert 1 <= h.streak <= len(series)
+    # A frame with only the 21 bars of one read has one ratio and no history to chart.
+    assert mi.updown_headwind("QQQ", frame) is None
+
+
+def test_credit_headwind_reads_the_emas_direction_and_names_the_turning_close():
+    falling = mi.credit_headwind(_days([100 - 0.1 * i for i in range(60)]))
+    assert falling.on and falling.display == "Falling" and falling.streak == 40
+    ema = _days([100 - 0.1 * i for i in range(60)]).ewm(span=20, adjust=False).mean()
+    assert falling.flip == f"Turns up on a close above {ema.iloc[-1]:.2f} (now 94.10)"
+    assert falling.versus == "worse" and falling.path[2] is not None
+    # Three closes back above the EMA turn it up: the price, not a threshold, decides.
+    turned = mi.credit_headwind(_days([100 - 0.1 * i for i in range(57)] + [99, 99, 99]))
+    assert not turned.on and turned.display == "Rising" and turned.streak == 3
+    assert turned.flip.startswith("Turns down on a close below ")
+    assert mi.credit_headwind(_days([100] * 10)) is None
+
+
+def test_rotation_headwind_is_the_ratio_above_its_fifty_day_average():
+    ratio = _days([0.10] * 60 + [0.12] * 5)
+    h = mi.rotation_headwind(ratio)
+    average = ratio.rolling(50).mean().iloc[-1]
+    assert h.on and h.streak == 5
+    assert h.display == f"{(0.12 / average - 1) * 100:+.1f}%"
+    assert h.flip == f"Flips on a ratio below {average:.4f}"
+    assert h.versus == "worse"                # a wider gap is worse, not better
+    off = mi.rotation_headwind(_days([0.10] * 60 + [0.08] * 5))
+    assert not off.on and off.flip.startswith("Flips on a ratio above ")
+    assert mi.rotation_headwind(_days([0.1] * 30)) is None
+
+
+def test_the_headline_counts_headwinds_and_fomo_is_not_one_of_them():
+    snap = mi.build_snapshot(_bars(_universe()))
+    on = sum(h.on for h in snap.headwinds)
+    assert mi.headline(snap)[0] == f"{on} of 5 headwinds on"
+    # FOMO, the advancing share and credit appetite cannot move the count.
+    frames = _universe()
+    frames[mi.FOMO_SYMBOL] = frames[mi.FOMO_SYMBOL] * 0 + 5.0       # deeply washed out
+    frames[mi.ADVANCING_SYMBOL] = frames[mi.ADVANCING_SYMBOL] * 0 + 1.0
+    assert mi.headline(mi.build_snapshot(_bars(frames))) == mi.headline(snap)
+    assert "fomo" not in mi.HEADWIND_KEYS and len(mi.HEADWIND_KEYS) == 5
+
+
+def test_the_headlines_sentence_follows_the_count():
+    def snap_with(states):
+        h = mi.build_snapshot(_bars(_universe())).headwinds[0]
+        import dataclasses
+        return types.SimpleNamespace(headwinds=tuple(dataclasses.replace(h, on=s) for s in states))
+    assert mi.headline(snap_with([True] * 5)) == ("5 of 5 headwinds on", "Every headwind is on.")
+    assert mi.headline(snap_with([False] * 5)) == ("0 of 5 headwinds on", "No headwind is on.")
+    assert mi.headline(snap_with([True] * 3 + [False] * 2))[1] == "Most headwinds are on."
+    assert mi.headline(snap_with([True] * 2 + [False] * 3))[1] == "Most headwinds are off."
+
+
+def test_run_length_and_versus_are_what_the_cards_say():
+    assert mi._run_length([False, True, True, True]) == 3
+    assert mi._run_length([True, True, False]) == 1
+    assert mi._versus(_days([1, 2, 3, 4, 5, 6]), higher_is_better=True) == "better"
+    assert mi._versus(_days([1, 2, 3, 4, 5, 6]), higher_is_better=False) == "worse"
+    assert mi._versus(_days([3, 2, 3, 4, 5, 3]), higher_is_better=True) is None
+    assert mi._versus(_days([1, 2, 3]), higher_is_better=True) is None

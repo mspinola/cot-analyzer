@@ -43,11 +43,10 @@ from components import sentiment_static as surveys
 TITLE = "Market Internals"
 EYEBROW = "Breadth · credit · rotation · volume · daily"
 H1_TICKER, H1_REST = "Market", "internals"
-DESCRIPTION = ("Six daily reads of the tape on one page: Nasdaq FOMO, net new 52-week "
-               "highs, advancing against declining issues, high-yield credit against its "
-               "20-day average, staples over Nasdaq against its 50-day, and 20-session "
-               "up/down volume, with a junk-against-Treasuries credit gauge and an ETF "
-               "table.")
+DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY up/down "
+               "volume, high-yield credit's 20-day EMA, and staples over Nasdaq against "
+               "its 50-day, each with what would flip it. Beside them, Nasdaq FOMO, a "
+               "junk-against-Treasuries credit gauge, the day's breadth and an ETF table.")
 #: This page's name in the monitors row (`sentiment_static.SITES`, the one list).
 CURRENT = "Market"
 SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE), "
@@ -60,9 +59,11 @@ ATTRIBUTION = "TradingView Lightweight Charts™ Copyright (с) 2025 TradingView
 ATTRIBUTION_URL = "https://www.tradingview.com/"
 
 DATA_ID = "internals-data"
-READINGS_ID = "readings"
-#: Payload keys of the four charts, each the `data-chart` of the element it draws in.
-FOMO_KEY, APPETITE_KEY, CREDIT_KEY, ROTATION_KEY = "fomo", "appetite", "credit", "rotation"
+HEADWINDS_ID = "headwinds"
+#: Payload keys of the charts, each the `data-chart` of the element it draws in. A
+#: headwind's is HEADWIND_PREFIX + its key.
+FOMO_KEY, APPETITE_KEY = "fomo", "appetite"
+HEADWIND_PREFIX = "headwind:"
 
 _esc = html.escape
 
@@ -91,10 +92,8 @@ def charts(snap, colors):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
-    if snap.credit is not None:
-        out[CREDIT_KEY] = view.trend_chart(snap.credit)
-    if snap.rotation is not None:
-        out[ROTATION_KEY] = view.trend_chart(snap.rotation)
+    for h in snap.headwinds:
+        out[HEADWIND_PREFIX + h.key] = view.headwind_chart(h, colors)
     return out
 
 
@@ -118,6 +117,12 @@ def _card(title, subtitle, how, *body):
             + "\n".join(body) + '</section>\n')
 
 
+def _section(title, subtitle, how=None):
+    """A section heading over a group of cards: a title, one sentence, the rest closed."""
+    return (f'<div class="sec"><h2>{_esc(title)}</h2>\n'
+            + surveys._sub(subtitle, how) + '</div>\n')
+
+
 def _detail(text, cls="detail"):
     return f'<div class="{cls}">{_esc(text)}</div>'
 
@@ -132,25 +137,36 @@ def _split_bar(left_pct, colors, cls="bar"):
             f'<i style="width:{100 - left_pct:.1f}%;background:{colors.bear}"></i></div>')
 
 
-def _tiles(tiles):
-    """The readings strip, in the surveys tiles' markup (label, value, gauge where the
-    read is a 0-100 scale, the read's word, context, date). The word and the left edge
-    take the tile's tone; values stay in the page's ink."""
-    out = []
-    for t in tiles:
-        gauge = (f'<div class="gauge" aria-hidden="true"><i style="left:{t["gauge"]:.0f}%">'
-                 '</i></div>' if t["gauge"] is not None else "")
-        out.append(f'<div class="tile {t["tone"]}" data-key="{_esc(t["key"])}">'
-                   f'<div class="head"><div class="label">{_esc(t["label"])}</div></div>'
-                   f'<div class="value">{_esc(t["value"])}</div>{gauge}'
-                   f'<div class="tier">{_esc(t["state"])}</div>'
-                   f'<div class="ctx">{_esc(t["context"])}</div>'
-                   f'<div class="foot">{_esc(_date(t["date"]))}</div></div>')
-    return (f'<div class="tiles" id="{READINGS_ID}" role="group" aria-label="Latest readings">'
-            + "".join(out) + '</div>\n')
-
-
 # ── cards ─────────────────────────────────────────────────────────────────────
+
+def headwind_card(h, colors):
+    """One headwind: its name and state, the number, the quarter behind it, what would
+    flip it and how long it has stood. The tile's left edge takes the state's colour."""
+    tone = colors.bear if h.on else colors.bull
+    versus = view.headwind_versus(h)
+    versus_tone = colors.bull if h.versus == "better" else colors.bear
+    return (
+        f'<section class="card hw {"on" if h.on else "off"}" data-key="{_esc(h.key)}">'
+        f'<div class="between"><span class="eyebrow">{_esc(h.title)}</span>'
+        f'{_badge(view.headwind_badge(h), mi.NEGATIVE if h.on else mi.POSITIVE, colors)}</div>'
+        f'<div class="row"><span class="big">{_esc(h.display)}</span>'
+        + (f'<span class="detail" style="color:{versus_tone}">{_esc(versus)}</span>'
+           if versus else "")
+        + f'</div>{_detail(h.subtitle)}'
+        + _chart(HEADWIND_PREFIX + h.key, view.headwind_chart(h, colors)["height"])
+        + _detail(h.flip)
+        + f'<div class="detail" style="color:{tone}">{_esc(view.headwind_streak(h))}</div>'
+        '</section>\n')
+
+
+def headwinds_section(snap, colors):
+    missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
+    note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
+            if missing else "")
+    return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
+            + f'<div class="cards three" id="{HEADWINDS_ID}">\n'
+            + "".join(headwind_card(h, colors) for h in snap.headwinds) + f'</div>\n{note}')
+
 
 def fomo_card(read, colors):
     if read is None:
@@ -163,7 +179,7 @@ def fomo_card(read, colors):
         f'<span class="detail push" style="color:{change}">'
         f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
         _chart(FOMO_KEY, view.fomo_chart(read, colors)["height"]),
-        _detail(view.FOMO_ZONES),
+        _detail(f"{view.FOMO_ZONES} · {view.fomo_recent(read)}"),
     )
 
 
@@ -180,21 +196,6 @@ def appetite_card(read, credit, colors):
         f'{_esc(view.signed(read.change, ".0f"))} on the day</span></div>',
         _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
         _detail(view.appetite_status(read, credit)),
-    )
-
-
-def trend_card(read, title, subtitle, how, key, value_fmt, detail, awaiting_symbols, colors):
-    if read is None:
-        return _card(title, None, None, _awaiting(awaiting_symbols))
-    line, average = view.trend_key(read)
-    return _card(
-        title, subtitle, how,
-        f'<div class="row"><span class="big">{format(read.value, value_fmt)}</span>'
-        f'<span class="push">{_badge(read.label, read.verdict, colors)}</span></div>',
-        _detail(detail(read)),
-        _chart(key, view.trend_chart(read)["height"]),
-        f'<div class="detail"><span class="key">{_esc(line)}</span>'
-        f'<span style="color:{view.AVERAGE_COLOR}">{_esc(average)}</span></div>',
     )
 
 
@@ -236,27 +237,6 @@ def breadth_card(snap, colors):
             _detail(f"{read.advancing:,} up, {read.declining:,} down"),
         ]
     return _card(view.NET_HIGHS_TITLE, view.NET_HIGHS_SUBTITLE, view.NET_HIGHS_HOW, *rows)
-
-
-def _updown_row(read, colors):
-    color = view.verdict_color(read.verdict, colors)
-    total = read.up_days + read.down_days
-    up_share = read.up_days / total * 100 if total else 50
-    return (f'<div class="ud"><div class="between"><span class="name">{_esc(read.symbol)}</span>'
-            f'<span class="big mid" style="color:{color}">{read.ratio:.2f}</span></div>'
-            f'{_split_bar(up_share, colors, "bar thin")}'
-            f'<div class="detail between"><span>{read.up_days} up days vs '
-            f'{read.down_days} down</span>{_badge(read.label, read.verdict, colors)}</div></div>')
-
-
-def updown_card(reads, awaiting, colors):
-    rows = [_updown_row(r, colors) for r in reads]
-    missing = [s for s in mi.UPDOWN_SYMBOLS if s in awaiting]
-    if missing:
-        rows.append(_awaiting(missing))
-    if reads:
-        rows.append(_detail(view.updown_foot(reads), "detail small"))
-    return _card(view.UPDOWN_TITLE, view.UPDOWN_SUBTITLE, view.UPDOWN_HOW, *rows)
 
 
 def _spark(row, colors):
@@ -308,9 +288,12 @@ def _header(snap):
 
 
 def _headline(snap, colors):
-    lean, count = mi.headline(snap)
-    return (f'<p class="lean">{_esc(lean)} '
-            f'<b style="color:{view.headline_color(lean, colors)}">{_esc(count)}</b></p>')
+    count, lean = mi.headline(snap)
+    number, _, rest = count.partition(" ")
+    if not number.isdigit():
+        return f'<p class="count">{_esc(count)}</p><p class="lean">{_esc(lean)}</p>'
+    return (f'<p class="count"><b style="color:{view.count_color(snap, colors)}">'
+            f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
 
 def render(snap, colors, generated_at=None):
@@ -322,21 +305,17 @@ def render(snap, colors, generated_at=None):
     snapshot missing SOME reads still renders, with the missing ones named: the page's
     rule for a series that has not been delivered yet.
     """
-    if snap.date is None or not any(v is not None for v in mi.read_verdicts(snap)):
+    if snap.date is None or not mi.has_reads(snap):
         raise ValueError("the snapshot holds no reads"
                          + (f" (awaiting {', '.join(snap.awaiting)})" if snap.awaiting else ""))
     colors = page_colors(colors)
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-    gauges = fomo_card(snap.fomo, colors) + appetite_card(snap.appetite, snap.credit, colors)
-    trends = (trend_card(snap.credit, view.CREDIT_TITLE, view.CREDIT_SUBTITLE,
-                         view.CREDIT_HOW, CREDIT_KEY, ".2f", view.credit_detail,
-                         [mi.CREDIT_SYMBOL], colors)
-              + trend_card(snap.rotation, view.ROTATION_TITLE, view.ROTATION_SUBTITLE,
-                           view.ROTATION_HOW, ROTATION_KEY, ".4f", view.rotation_detail,
-                           [mi.ROTATION_NUMER, mi.ROTATION_DENOM], colors))
-    counts = (breadth_card(snap, colors)
-              + updown_card(snap.updown, snap.awaiting, colors)
-              + asset_table(snap.assets, snap.awaiting, colors))
+    uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
+                 + '<div class="cards">\n' + fomo_card(snap.fomo, colors)
+                 + appetite_card(snap.appetite, snap.credit, colors) + '</div>\n')
+    detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
+              + '<div class="cards">\n' + breadth_card(snap, colors)
+              + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -348,17 +327,25 @@ def render(snap, colors, generated_at=None):
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
-{surveys.base_css()}/* This page's own rules, on the shared tokens above. A tile's tone is its read's side:
-   the constructive green, the defensive red (the surveys cards' toned pair), or none. */
-.tile.pos {{ --tone: {colors.bull}; }}
-.tile.neg {{ --tone: {colors.bear}; }}
-.tile.mid {{ border-left-color: var(--line); }}
-.tile.mid .tier {{ color: var(--ink); }}
-.tile.mid .gauge i {{ background: var(--ink-2); }}
-.lean {{ color: var(--ink); font-size: 1.05rem; font-weight: 500; margin: 0 0 10px; }}
-.lean b {{ font-weight: 600; }}
-/* Cards two across from 900px (the two gauges, then the two trend charts), and the
-   three without a time axis three across from 1100px; one column on a phone. */
+{surveys.base_css()}/* This page's own rules, on the shared tokens above. The count leads, as the surveys
+   page's tiles do; a headwind card's left edge is its state, the defensive red when it
+   is on and the constructive green when it is not (the surveys cards' toned pair). */
+.count {{ color: var(--ink); font-size: 1.05rem; font-weight: 500; margin: 0; }}
+.count b {{ font-size: 2.4rem; font-weight: 700; line-height: 1; margin-right: 4px; }}
+.lean {{ font-size: 0.9rem; margin: 2px 0 16px; }}
+.sec {{ margin: 18px 0 8px; }}
+.sec h2 {{ color: var(--ink); font-size: 1.05rem; font-weight: 600; margin: 0 0 2px; }}
+.sec .sub {{ font-size: 0.8rem; display: inline; margin-right: 10px; }}
+.sec .how {{ font-size: 0.8rem; display: inline-block; }}
+.sec .how[open] {{ display: block; margin-top: 2px; }}
+.sec .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
+.sec .how p {{ margin: 4px 0 0; }}
+.card.hw {{ border-left: 3px solid var(--line); }}
+.card.hw.on {{ border-left-color: {colors.bear}; }}
+.card.hw.off {{ border-left-color: {colors.bull}; }}
+.card.hw .big {{ font-size: 1.6rem; }}
+/* Cards two across from 900px, the five headwinds three across from 1100px; one
+   column on a phone. */
 .cards {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }}
 @media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 @media (min-width: 1100px) {{ .cards.three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
@@ -401,13 +388,7 @@ footer a {{ color: var(--ink-2); }}
 {_nav()}
 {_header(snap)}
 {_headline(snap, colors)}
-{_tiles(view.tiles(snap))}<div class="cards">
-{gauges}</div>
-<div class="cards">
-{trends}</div>
-<div class="cards three">
-{counts}</div>
-<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
+{headwinds_section(snap, colors)}{uncounted}{detail}<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
 <footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>

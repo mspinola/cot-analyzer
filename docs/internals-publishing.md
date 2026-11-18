@@ -32,9 +32,26 @@ divergence days from the same module), and every title, text, tile and chart ser
   newer release, change the constant, build locally and look at the page: nothing else
   pins it. The table's sparklines are inline SVG.
 - **Credit appetite** (JNK against TLT, npf's `credit_xray.pine`) is a seventh card and
-  tile, drawn and described but not counted among the six reads: a stress reading was
+  card, drawn and described but not counted among the headwinds: a stress reading was
   not followed by a worse month when tested. The arithmetic was checked against the
   TradingView pane on 2026-11-15 (cotmetrics #58 has the comparison).
+
+## What it counts (since 2026-11-18)
+
+Five HEADWINDS, on the Caruso Insights member dashboard's definitions ("Market
+Conditions", compared against its page for 2026-11-17): Nasdaq plus NYSE net new highs
+as a 5-day average below zero, QQQ and SPY up/down volume each below 1, JNK's 20-day EMA
+falling, and XLP/QQQ above its 50-day average. Each card says what would flip it, how
+many sessions it has stood, and whether it is better or worse than five sessions ago.
+FOMO, the advancing share and credit appetite are on the page and outside the count.
+
+Before that the page counted six "reads" on definitions restated from agi, three of
+which differed from the dashboard (JNK as price under a simple average, net highs as
+the Nasdaq alone on a three-day rule, and FOMO counted, washed-out as a positive).
+On the day of the comparison the two pages' numbers agreed where the data did: QQQ
+0.64 and 23 sessions, SPY 0.57 and 13, JNK "turns up on a close above 92.41 (now
+91.93)" and 4 sessions, XLP/QQQ +15.6% against +15.5% and 25 sessions. Net new highs
+could not be compared on the same day (the store was a session behind).
 
 ## Build it locally
 

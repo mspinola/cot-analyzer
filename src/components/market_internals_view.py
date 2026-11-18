@@ -18,15 +18,33 @@ from components.sentiment_static import INK, INK_2
 
 AVERAGE_COLOR = "#5B8DD6"
 
+HEADWINDS_TITLE = "Market headwinds"
+HEADWINDS_SUBTITLE = ("Five trend measures, each a headwind or not. The count is how many "
+                      "are on.")
+HEADWINDS_HOW = (
+    "Net new highs: Nasdaq plus NYSE 52-week highs minus lows, as a 5-day average; below "
+    "zero is a headwind. Up/down volume: over the last 20 sessions, volume on up-close "
+    "days over volume on down-close days, for QQQ and for SPY; below 1 is net selling. "
+    "JNK: the 20-day EMA of dividend-adjusted high-yield credit; falling is a headwind. "
+    "XLP/QQQ: staples over Nasdaq above the ratio's 50-day average is defensives "
+    "leading. The definitions are the Caruso Insights member dashboard's. Each card "
+    "says what would flip it, how long it has been in its state, and whether it is "
+    "better or worse than five sessions ago.")
+UNCOUNTED_TITLE = "Not in the count"
+UNCOUNTED_SUBTITLE = ("A short-term extreme check and a credit gauge. Neither is a trend "
+                      "measure.")
+DETAIL_TITLE = "Detail"
+DETAIL_SUBTITLE = "The day's breadth by exchange, and the index and asset table."
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
-FOMO_SUBTITLE = "The share of Nasdaq Composite stocks above their own 5-day average, past year."
+FOMO_SUBTITLE = ("The share of Nasdaq Composite stocks above their own 5-day average, past "
+                 "year. Not a trend signal.")
 FOMO_HOW = (f"Above {indicators.FOMO_EXHAUSTION_MIN:.0f} is stretched: buying exhaustion, "
             f"the end to sell into. Below {indicators.FOMO_FEAR_MAX:.0f} is washed out: "
             "broad pessimism, the buyable end, and a reading climbing back out of it is "
             "recovering. Between the named zones the reading offers no edge either way.")
 APPETITE_TITLE = (f"Credit appetite · {mi.APPETITE_JUNK} against {mi.APPETITE_TREASURY}")
 APPETITE_SUBTITLE = ("Junk bonds against Treasuries, ranked on their own past year. "
-                     "Context: not one of the six reads.")
+                     "Context: not one of the headwinds.")
 APPETITE_HOW = (
     f"The {mi.APPETITE_JUNK}/{mi.APPETITE_TREASURY} ratio's distance from its "
     f"{indicators.CREDIT_AVERAGE_DAYS}-day average, ranked against the previous "
@@ -40,24 +58,11 @@ APPETITE_HOW = (
     "why it is drawn here and not counted.")
 NET_HIGHS_TITLE = "Net new highs minus new lows"
 NET_HIGHS_SUBTITLE = "New 52-week highs less new lows, with the last three sessions."
-NET_HIGHS_HOW = (f"{indicators.NET_HIGHS_CONFIRM_DAYS} sessions in a row on one side is a "
-                 "confirmed trend, marked by the bar at the row's left; anything else is "
-                 "mixed. The Nasdaq row is the one counted among the six reads.")
+NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS} sessions in "
+                 "a row on one side is marked by the bar at the row's left, anything else "
+                 "is mixed. The headwind above is a different cut of the same counts: both "
+                 "exchanges summed, as a 5-day average.")
 ADVANCE_DECLINE_TITLE = "Nasdaq issues advancing vs declining"
-CREDIT_TITLE = (f"High-yield credit · {mi.CREDIT_SYMBOL} against its "
-                f"{mi.CREDIT_AVERAGE}-day average")
-CREDIT_SUBTITLE = "Junk bonds below their average is risk off. Past quarter."
-CREDIT_HOW = ("Dividend-adjusted, because the fund's monthly payout notches the raw "
-              "price on each ex-date and a notch reads as a break of the average.")
-ROTATION_TITLE = f"Defensive rotation · {mi.ROTATION_NUMER} against {mi.ROTATION_DENOM}"
-ROTATION_SUBTITLE = (f"Staples over Nasdaq against the ratio's {mi.ROTATION_AVERAGE}-day "
-                     "average. Past quarter.")
-ROTATION_HOW = ("The ratio above its average is defensives leading, risk off; below it, "
-                "growth is leading. Dividend-adjusted on both legs.")
-UPDOWN_TITLE = f"Up / down volume ratio · {mi.UPDOWN_SESSIONS} sessions"
-UPDOWN_SUBTITLE = "Volume on up-close days over volume on down-close days."
-UPDOWN_HOW = ("Above 1 is net buying (accumulation), below 1 net selling. Both funds on "
-              "the same side is the read; a split counts on neither side.")
 ASSETS_TITLE = "Index and asset overview"
 ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo")
 FOMO_ZONES = (f"{indicators.FOMO_EXHAUSTION_MIN:.0f} stretched · "
@@ -74,11 +79,6 @@ FOOTER = ("Breadth counts and shares are TradingView's published daily series, "
 
 #: Sparkline box, px.
 SPARK_WIDTH, SPARK_HEIGHT = 110, 30
-#: Tile tones, the classes the page's stylesheet colours: a read on the constructive
-#: side, on the defensive side, or neither.
-TONE_CLASS = {mi.POSITIVE: "pos", mi.NEGATIVE: "neg", mi.NEUTRAL: "mid"}
-
-
 # ── words and numbers ─────────────────────────────────────────────────────────
 
 def signed(value, fmt):
@@ -93,25 +93,38 @@ def verdict_color(verdict, colors):
     return {mi.POSITIVE: colors.bull, mi.NEGATIVE: colors.bear}.get(verdict, INK_2)
 
 
-def headline_color(lean, colors):
-    """The colour of the count beside the headline, from which way it leans."""
-    if lean.endswith("constructive."):
-        return colors.bull
-    if lean.endswith("defensive."):
+def count_color(snap, colors):
+    """The colour of the headline's number: the defensive red when most of the
+    headwinds are on, the constructive green when none is, the page's grey between."""
+    total = len(snap.headwinds)
+    on = sum(h.on for h in snap.headwinds)
+    if total and on * 2 > total:
         return colors.bear
+    if total and on == 0:
+        return colors.bull
     return INK_2
 
 
-def credit_detail(read):
-    return (f"{read.average_sessions}-day avg {read.average:.2f} "
-            f"{'rising' if read.rising else 'falling'} · price {pct(read.change)} "
-            f"· price only")
+def headwind_badge(headwind):
+    return "Headwind" if headwind.on else "Clear"
 
 
-def rotation_detail(read):
-    side = "above" if read.above else "below"
-    return (f"{read.average_sessions}-day avg {read.average:.4f} · ratio {side} by "
-            f"{pct(read.gap)}")
+def headwind_versus(headwind):
+    """"Better vs 5d" / "Worse vs 5d", or nothing when it has not moved."""
+    if headwind.versus is None:
+        return ""
+    return f"{headwind.versus.capitalize()} vs {mi.COMPARE_SESSIONS}d"
+
+
+def headwind_streak(headwind):
+    n = headwind.streak
+    return f"{headwind_badge(headwind)} for {n} session{'' if n == 1 else 's'}"
+
+
+def fomo_recent(read, sessions=5):
+    """"Last 5 sessions: 70 → 45 → 33 → 24 → 10", the dashboard's line under the gauge."""
+    values = read.path[1][-sessions:]
+    return (f"Last {len(values)} sessions: " + " → ".join(f"{v:.0f}" for v in values) + ".")
 
 
 def appetite_status(read, credit=None):
@@ -128,18 +141,8 @@ def appetite_status(read, credit=None):
     return " · ".join(parts)
 
 
-def trend_key(read):
-    """The two legend words under a trend chart: the line, then its average."""
-    return ("— Price" if read.key == "credit" else "— Ratio",
-            f"— {read.average_sessions}-day average")
-
-
 def net_highs_awaiting(awaiting):
     return [s for _, hi, lo in mi.NET_HIGHS_SYMBOLS for s in (hi, lo) if s in awaiting]
-
-
-def updown_foot(reads):
-    return f"Final · {mi.UPDOWN_SESSIONS} sessions to {reads[-1].date}"
 
 
 def awaiting_text(symbols):
@@ -155,56 +158,6 @@ def caption(snap):
     if stale:
         parts.append(f"Trailing the newest read: {'; '.join(stale)}.")
     return " ".join(parts)
-
-
-# ── the readings strip ────────────────────────────────────────────────────────
-
-def _tile(key, label, value, state, verdict, context, date, gauge=None):
-    return {"key": key, "label": label, "value": value, "state": state,
-            "tone": TONE_CLASS[verdict], "context": context, "date": date, "gauge": gauge}
-
-
-def tiles(snap):
-    """One tile per read the snapshot holds, in card order, then credit appetite. Each:
-    the read's own number, the word its cutoff gives it, and one line of context. A
-    read awaiting data has no tile; the notes name it."""
-    out = []
-    if snap.fomo:
-        r = snap.fomo
-        out.append(_tile("fomo", "Nasdaq FOMO, 5-day", f"{r.value:.1f}", r.label, r.verdict,
-                         f"{signed(r.change, '.1f')} on the day", r.date, gauge=r.value))
-    nasdaq = next((r for r in snap.net_highs if r.exchange == "Nasdaq"), None)
-    if nasdaq:
-        out.append(_tile("net_highs", "Nasdaq net new highs", signed(nasdaq.net, "d"),
-                         nasdaq.label, nasdaq.verdict,
-                         f"{nasdaq.highs} highs, {nasdaq.lows} lows", nasdaq.date))
-    if snap.advance_decline:
-        r = snap.advance_decline
-        out.append(_tile("advance", "Nasdaq issues advancing", f"{r.share:.0%}", r.label,
-                         r.verdict, f"{r.advancing:,} up, {r.declining:,} down", r.date))
-    if snap.credit:
-        r = snap.credit
-        out.append(_tile("credit", f"{r.symbol} vs its {r.average_sessions}-day",
-                         f"{r.value:.2f}", r.label, r.verdict,
-                         f"{abs(r.gap):.2%} {'above' if r.above else 'below'}, average "
-                         f"{'rising' if r.rising else 'falling'}", r.date))
-    if snap.rotation:
-        r = snap.rotation
-        out.append(_tile("rotation", f"{r.symbol} vs its {r.average_sessions}-day",
-                         f"{r.value:.4f}", r.label, r.verdict,
-                         f"{abs(r.gap):.2%} {'above' if r.above else 'below'}, "
-                         f"{'defensives' if r.above else 'growth'} leading", r.date))
-    if snap.updown:
-        first, rest = snap.updown[0], snap.updown[1:]
-        others = "".join(f"{r.symbol} {r.ratio:.2f}, " for r in rest)
-        out.append(_tile("updown", f"{first.symbol} up/down volume", f"{first.ratio:.2f}",
-                         first.label, first.verdict,
-                         f"{others}{mi.UPDOWN_SESSIONS} sessions", first.date))
-    if snap.appetite:
-        r = snap.appetite
-        out.append(_tile("appetite", "Credit appetite", f"{r.value:.0f}", r.label, r.tone,
-                         "context, not counted", r.date, gauge=r.value))
-    return out
 
 
 # ── charts, as data for Lightweight Charts ────────────────────────────────────
@@ -245,11 +198,17 @@ def appetite_chart(read, colors):
                       value_range=(0, 100), decimals=0)
 
 
-def trend_chart(read):
-    dates, values, averages = read.path
-    return line_chart(240, [(INK, 1.5, dates, values),
-                            (AVERAGE_COLOR, 2, dates, averages)],
-                      decimals=2 if read.key == "credit" else 4)
+def headwind_chart(headwind, colors):
+    """A headwind's quarter: its series against the level it turns on, or, where the
+    read is a series against its own average, the two lines."""
+    dates, values, second = headwind.path
+    tone = colors.bear if headwind.on else colors.bull
+    decimals = 4 if headwind.key == "rotation" else 2 if headwind.key != "net_highs" else 0
+    if second is None:
+        return line_chart(120, [(INK, 1.5, dates, values)],
+                          levels=((headwind.level, tone),), decimals=decimals)
+    return line_chart(120, [(INK_2, 1, dates, values), (tone, 2, dates, second)],
+                      decimals=decimals)
 
 
 def spark_points(row, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=2):

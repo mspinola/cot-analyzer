@@ -43,8 +43,8 @@ def main(argv=None) -> int:
     except ValueError as e:
         print(f"export-internals: not written: {e}", file=sys.stderr)
         return 1
-    lean, count = market_internals.headline(snap)
-    print(f"export-internals: wrote {args.out} (through {snap.date}; {lean} {count})")
+    count, _ = market_internals.headline(snap)
+    print(f"export-internals: wrote {args.out} (through {snap.date}; {count})")
     return 0
 
 
