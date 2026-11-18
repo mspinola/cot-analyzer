@@ -14,6 +14,7 @@ under it for about a hundredth of Plotly's download. No Dash and no Plotly impor
 from cotmetrics import indicators
 
 import components.market_internals as mi
+from components import sentiment
 from components.sentiment_static import INK, INK_2
 
 AVERAGE_COLOR = "#5B8DD6"
@@ -40,8 +41,30 @@ HISTORY_HOW = (
     "up and nothing more: no claim is made here about what followed, and none has been "
     "tested.")
 UNCOUNTED_TITLE = "Not in the count"
-UNCOUNTED_SUBTITLE = ("A short-term extreme check and a credit gauge. Neither is a trend "
-                      "measure.")
+UNCOUNTED_SUBTITLE = ("A short-term extreme check, a credit gauge and the volatility term "
+                      "structure. None is a trend measure.")
+VOLATILITY_TITLE = (f"Volatility · {mi.VOLATILITY_SYMBOL} against "
+                    f"{mi.VOLATILITY_TERM_SYMBOL}")
+VOLATILITY_SUBTITLE = ("Implied volatility one month out against three months out, past "
+                       "year. Context: not one of the headwinds.")
+VOLATILITY_HOW = (
+    "The VIX prices S&P 500 options about a month out, VIX3M about three. Normally the "
+    "longer one is higher. When the VIX rises above it (inverted), the market is paying "
+    "more for protection now than later, the shape it takes under stress. The percentile "
+    "places today's VIX in its own history since 1990: how unusual the level is, not "
+    "whether it is good or bad. Nothing here has been tested as a signal, so it is "
+    "drawn and not counted.")
+POSITIONING_TITLE = "Sentiment and positioning"
+POSITIONING_SUBTITLE = ("Surveys and index futures positioning: each one's own number, and "
+                        "its percentile on its full history.")
+POSITIONING_HOW = (
+    "NAAIM is active managers' average stock exposure; AAII is individual investors, "
+    "bulls minus bears and their stocks allocation. The futures tiles are large "
+    "speculators' net position in S&P 500 and Nasdaq 100 futures as a percent of open "
+    "interest, from the CFTC's weekly report, with commercials' beside it. The badge is "
+    "the reading's percentile against every week of its history, and the dot shows the "
+    "same thing. Weekly or monthly, so these move slower than the rest of the page. "
+    "Context, not counted.")
 DETAIL_TITLE = "Detail"
 DETAIL_SUBTITLE = "The day's breadth by exchange, and the index and asset table."
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
@@ -205,6 +228,42 @@ def appetite_chart(read, colors):
                               (indicators.CREDIT_STRESS_MAX, colors.bear)),
                       markers=[(d, dot[kind]) for d, kind in read.markers],
                       value_range=(0, 100), decimals=0)
+
+
+def volatility_chart(read, colors):
+    dates, vix, term = read.path
+    return line_chart(220, [(INK, 1.5, dates, vix), (AVERAGE_COLOR, 1.5, dates, term)],
+                      decimals=1)
+
+
+def volatility_label(read):
+    return "Inverted" if read.inverted else "Normal"
+
+
+def volatility_status(read):
+    """The line under the chart: the two indexes, the shape and how long, the VIX's
+    place in its history, and the Nasdaq's own index when the store has it."""
+    n = read.streak
+    parts = [f"{mi.VOLATILITY_SYMBOL} {read.value:.1f} · "
+             f"{mi.VOLATILITY_TERM_SYMBOL} {read.term:.1f} · ratio {read.ratio:.2f}",
+             f"{volatility_label(read).lower()} for {n} session{'' if n == 1 else 's'}",
+             f"{mi.VOLATILITY_SYMBOL} at its "
+             f"{sentiment.percentile_phrase(read.rank[1], read.rank[2])}"]
+    if read.nasdaq is not None:
+        parts.append(f"{mi.VOLATILITY_NASDAQ_SYMBOL} {read.nasdaq:.1f}")
+    return " · ".join(parts)
+
+
+def positioning_tiles(reads, date_text):
+    """ES and NQ large speculators as readings tiles, in the surveys tiles' own shape
+    (`sentiment_static._tiles`): the number, its percentile, commercials as context."""
+    return [{"key": "cot_" + r.label.split()[0].lower().replace("&", ""),
+             "label": f"{r.label}, large speculators",
+             "value": f"{r.value:+.1f}%",
+             "context": f"net, % of open interest · commercials {r.commercials:+.1f}%",
+             "pct": sentiment.percentile_phrase(r.rank[1], r.rank[2]),
+             "rank": r.rank, "foot": date_text(r.date)}
+            for r in reads]
 
 
 def headwind_chart(headwind, colors):

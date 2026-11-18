@@ -58,6 +58,15 @@ every session since 2008 (where JNK starts) under QQQ, and the sessions all five
 on. It is inline SVG, about 130 KB of the page. It counts occurrences and stretches and
 makes no claim about what followed; none has been tested.
 
+Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
+(inverted or normal, with the VIX's percentile since 1990), and a "Sentiment and
+positioning" strip of the surveys page's own tiles (NAAIM, AAII bulls minus bears, AAII
+stocks allocation) followed by large speculators' net position in S&P 500 and Nasdaq
+100 futures as a percent of open interest, each with its percentile on its full
+history. The strip needs the COT store and the indexer, which the rest of the page does
+not; when either part cannot be served it is left off and named in the log
+(`no surveys, left out`), and the publish goes ahead.
+
 ## Build it locally
 
     PYTHONPATH=src .venv/bin/python scripts/export_internals_page.py /tmp/internals.html

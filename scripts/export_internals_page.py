@@ -19,7 +19,10 @@ COT_VIZ_CONFIG; publish_internals.sh sets it the same way):
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+
+os.environ.setdefault("COT_SKIP_BOOT_FETCH", "1")   # no options/price fetch at indexer boot
 
 
 def main(argv=None) -> int:
@@ -37,9 +40,28 @@ def main(argv=None) -> int:
         print(f"export-internals: awaiting {', '.join(snap.awaiting)}", file=sys.stderr)
     for note in market_internals.stale_notes(snap):
         print(f"export-internals: trailing: {note}", file=sys.stderr)
+    # The sentiment and positioning strip: context, so a part the stores cannot serve is
+    # left off the page and named here, and never stops the publish.
+    survey = allocation = None
+    positioning = ()
+    try:
+        from components import aaii_allocation, sentiment
+        survey = sentiment.build_read()
+        if survey.frame.empty:
+            survey = None
+        allocation = aaii_allocation.read()
+        positioning = market_internals.positioning_reads()
+    except Exception as e:  # noqa: BLE001
+        print(f"export-internals: sentiment and positioning incomplete: {e}", file=sys.stderr)
+    for name, part in (("surveys", survey), ("AAII allocation", allocation),
+                       ("futures positioning", positioning)):
+        if not part:
+            print(f"export-internals: no {name}, left out", file=sys.stderr)
     try:
         market_internals_static.write(args.out, snap,
-                                      plot_colors.grid_colors(viz_config.get_palette()))
+                                      plot_colors.grid_colors(viz_config.get_palette()),
+                                      survey=survey, allocation=allocation,
+                                      positioning=positioning)
     except ValueError as e:
         print(f"export-internals: not written: {e}", file=sys.stderr)
         return 1

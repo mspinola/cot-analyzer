@@ -506,3 +506,48 @@ def test_stretches_join_runs_that_are_close_and_count_only_all_on_sessions():
     none = mi.HeadwindHistory(dates=dates, price=(1.0,) * len(count), price_symbol="QQQ",
                               rows=(), count=(4,) * len(count), total=5)
     assert mi.all_on_stretches(none) == []
+
+
+# ── context: volatility and futures positioning ───────────────────────────────
+
+def test_volatility_reads_the_term_structure_and_ranks_the_vix_on_its_own_history():
+    vix = _days([15.0] * 300 + [20.0, 30.0, 32.0])
+    term = _days([18.0] * 300 + [22.0, 28.0, 29.0]).iloc[40:]      # a shorter history
+    read = mi.volatility_read(vix, term, nasdaq=_days([25.0] * 303))
+    assert read.value == 32.0 and read.change == 2.0 and read.term == 29.0
+    assert read.ratio == pytest.approx(32 / 29) and read.inverted and read.streak == 2
+    # Ranked against every VIX session, not only those VIX3M shares.
+    assert read.rank == (100, "highest", vix.index[0].year)
+    assert read.nasdaq == 25.0
+    assert len(read.path[0]) == len(read.path[1]) == len(read.path[2]) == 252
+    calm = mi.volatility_read(vix.iloc[:300], term.iloc[:260])
+    assert not calm.inverted and calm.streak == 260 and calm.nasdaq is None
+    assert mi.volatility_read(vix, None) is None
+
+
+def test_volatility_is_context_absent_without_its_series_and_never_awaited():
+    frames = _universe()
+    assert mi.build_snapshot(_bars(frames)).volatility is None
+    assert mi.VOLATILITY_SYMBOL not in mi.build_snapshot(_bars(frames)).awaiting
+    idx = frames["QQQ"].index
+    frames[mi.VOLATILITY_SYMBOL] = pd.DataFrame({"Close": 20.0}, index=idx)
+    frames[mi.VOLATILITY_TERM_SYMBOL] = pd.DataFrame({"Close": 22.0}, index=idx)
+    with_vol = mi.build_snapshot(_bars(frames))
+    assert with_vol.volatility.value == 20.0 and not with_vol.volatility.inverted
+    assert mi.headline(with_vol) == mi.headline(mi.build_snapshot(_bars(_universe())))
+
+
+def test_positioning_reads_large_speculators_against_their_own_history():
+    weeks = pd.date_range("2000-01-04", periods=200, freq="W-TUE")
+
+    def get(market):
+        if market == "Nasdaq":
+            raise KeyError(market)
+        return pd.DataFrame({mi.POSITIONING_COLUMN: [float(i % 50) for i in range(199)] + [49.0],
+                             mi.POSITIONING_COMM_COLUMN: [-3.0] * 200}, index=weeks)
+    reads = mi.positioning_reads(get)
+    assert [r.label for r in reads] == ["S&P 500 futures"]         # the failed market is left out
+    (r,) = reads
+    assert r.value == 49.0 and r.commercials == -3.0
+    assert r.rank == (100, "highest", 2000) and r.date == weeks[-1].strftime("%Y-%m-%d")
+    assert mi.positioning_reads(lambda market: pd.DataFrame()) == ()

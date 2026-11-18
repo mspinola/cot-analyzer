@@ -49,6 +49,7 @@ DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY
                "junk-against-Treasuries credit gauge, the day's breadth and an ETF table.")
 #: This page's name in the monitors row (`sentiment_static.SITES`, the one list).
 CURRENT = "Market"
+SURVEYS_URL = dict(surveys.SITES)["Surveys"]
 SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE), "
            "ETF daily bars from Yahoo Finance.")
 #: The chart library, pinned: an exact release, never `latest`, so a publish cannot
@@ -63,7 +64,7 @@ HEADWINDS_ID = "headwinds"
 HISTORY_ID = "history"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
-FOMO_KEY, APPETITE_KEY = "fomo", "appetite"
+FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
 HEADWIND_PREFIX = "headwind:"
 
 _esc = html.escape
@@ -93,6 +94,8 @@ def charts(snap, colors):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
+    if snap.volatility is not None:
+        out[VOLATILITY_KEY] = view.volatility_chart(snap.volatility, colors)
     for h in snap.headwinds:
         out[HEADWIND_PREFIX + h.key] = view.headwind_chart(h, colors)
     return out
@@ -166,7 +169,7 @@ def _marks(flags, height, fill, opacity=1.0, y=0):
                    for start, length in view.runs(flags))
 
 
-def history_card(history):
+def history_card(history, colors):
     """The headwinds through time: the price, a strip per headwind, and the sessions
     all of them were on. Inline SVG stretched to the column (rectangles and one line,
     so stretching distorts nothing); the labels and years are HTML, so they stay
@@ -174,7 +177,8 @@ def history_card(history):
     if history is None:
         return ""
     n = len(history.dates)
-    mark = surveys.TONE_HIGH
+    # The headwind cards' own red: a mark here and a card's "Headwind" are one thing.
+    mark = colors.bear
     units = view.HISTORY_PRICE_UNITS
     most = [c == history.total - 1 for c in history.count]
     every = [c == history.total for c in history.count]
@@ -223,7 +227,7 @@ def headwinds_section(snap, colors):
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards three" id="{HEADWINDS_ID}">\n'
             + "".join(headwind_card(h, colors) for h in snap.headwinds) + f'</div>\n{note}'
-            + history_card(snap.history))
+            + history_card(snap.history, colors))
 
 
 def fomo_card(read, colors):
@@ -255,6 +259,42 @@ def appetite_card(read, credit, colors):
         _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
         _detail(view.appetite_status(read, credit)),
     )
+
+
+def volatility_card(read, colors):
+    """The VIX against VIX3M. No card at all without the data: this is context, and an
+    "awaiting" card for it would outrank what it is."""
+    if read is None:
+        return ""
+    change = view.verdict_color(mi.NEGATIVE if read.change >= 0 else mi.POSITIVE, colors)
+    return _card(
+        view.VOLATILITY_TITLE, view.VOLATILITY_SUBTITLE, view.VOLATILITY_HOW,
+        f'<div class="row"><span class="big">{read.value:.1f}</span>'
+        f'{_badge(view.volatility_label(read), mi.NEGATIVE if read.inverted else mi.NEUTRAL, colors)}'
+        f'<span class="detail push" style="color:{change}">'
+        f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
+        _chart(VOLATILITY_KEY, view.volatility_chart(read, colors)["height"]),
+        f'<div class="detail"><span class="key">— {mi.VOLATILITY_SYMBOL}</span>'
+        f'<span style="color:{view.AVERAGE_COLOR}">— {mi.VOLATILITY_TERM_SYMBOL}</span></div>',
+        _detail(view.volatility_status(read)),
+    )
+
+
+def positioning_section(survey, allocation, positioning):
+    """Surveys and futures positioning as the surveys page's own tiles. Each part is
+    optional and left out when its store could not serve it; with none, no section."""
+    tiles = []
+    if survey is not None:
+        tiles += surveys.survey_tiles(survey)
+    if allocation is not None:
+        tiles.append(surveys.stocks_tile(allocation))
+    tiles += view.positioning_tiles(positioning or (), _date)
+    if not tiles:
+        return ""
+    link = (f'<p class="more"><a href="{SURVEYS_URL}">The surveys in full, with their '
+            'history &rarr;</a></p>\n' if survey is not None or allocation is not None else "")
+    return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
+            + surveys._tiles(tiles) + link)
 
 
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
@@ -354,9 +394,13 @@ def _headline(snap, colors):
             f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
 
-def render(snap, colors, generated_at=None):
+def render(snap, colors, generated_at=None, survey=None, allocation=None, positioning=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
     palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
+
+    `survey` (`sentiment.build_read()`), `allocation` (`aaii_allocation.read()`) and
+    `positioning` (`market_internals.positioning_reads()`) fill the sentiment and
+    positioning strip; each is optional, and the strip is left out with none.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
     be read never replaces the published page with a row of "awaiting data" cards. A
@@ -369,8 +413,11 @@ def render(snap, colors, generated_at=None):
     colors = page_colors(colors)
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
-                 + '<div class="cards">\n' + fomo_card(snap.fomo, colors)
-                 + appetite_card(snap.appetite, snap.credit, colors) + '</div>\n')
+                 + f'<div class="cards{" three" if snap.volatility else ""}">\n'
+                 + fomo_card(snap.fomo, colors)
+                 + appetite_card(snap.appetite, snap.credit, colors)
+                 + volatility_card(snap.volatility, colors) + '</div>\n'
+                 + positioning_section(survey, allocation, positioning))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + '<div class="cards">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
@@ -402,7 +449,9 @@ def render(snap, colors, generated_at=None):
    strip. Every SVG is one unit a session wide, so the rows line up to the session. */
 .hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}
 .hl {{ font-size: 0.78rem; }}
-.hl.all {{ color: {surveys.TONE_HIGH}; font-weight: 600; }}
+.hl.all {{ color: {colors.bear}; font-weight: 600; }}
+.more {{ font-size: 0.8rem; margin: -4px 0 0; }}
+.more a {{ color: var(--ink-2); }}
 .hp svg {{ display: block; width: 100%; }}
 .hprice {{ height: 190px; }}
 .hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
