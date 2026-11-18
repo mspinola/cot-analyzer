@@ -43,7 +43,8 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     page = st.render(snap, COLORS)
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
-    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY,
+    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
+                                   st.NET_HISTORY_KEY,
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
@@ -475,3 +476,35 @@ def test_the_history_marks_are_the_headwind_cards_red():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     assert f'fill="{red}"' in card and surveys.TONE_HIGH not in card
     assert f".hl.all {{ color: {red};" in page
+
+
+def test_the_detail_section_draws_a_year_of_highs_lows_and_their_net():
+    """The dashboard's two detail charts: highs above the line and lows below it as
+    bars, and the net with the 5-day average the headwind reads, its side below zero
+    shaded."""
+    snap = _snap()
+    b = snap.breadth
+    page = st.render(snap, COLORS)
+    detail = page.split(f"<h2>{view.DETAIL_TITLE}</h2>")[1]
+    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" in detail and f"<h2>{view.NET_HISTORY_TITLE}</h2>" in detail
+    data = _payload(page)
+    up, down = data[st.HIGHS_LOWS_KEY]["series"]
+    assert up["type"] == down["type"] == "histogram"
+    assert [pt["value"] for pt in up["data"]] == list(b.highs)
+    assert [pt["value"] for pt in down["data"]] == [-v for v in b.lows]      # drawn downward
+    daily, average = data[st.NET_HISTORY_KEY]["series"]
+    assert "type" not in daily and [pt["value"] for pt in daily["data"]] == list(b.net)
+    assert average["type"] == "baseline" and average["base"] == mi.NET_HIGHS_LEVEL
+    # An average before its window fills is dropped, not drawn at zero.
+    assert len(average["data"]) == sum(v is not None for v in b.average)
+    assert f"New highs {b.highs[-1]:.0f}" in detail and f"New lows {b.lows[-1]:.0f}" in detail
+    # The script knows the two new series kinds.
+    assert "LC.HistogramSeries" in page and "LC.BaselineSeries" in page
+
+
+def test_no_breadth_charts_without_both_exchanges_counts():
+    snap = _snap(drop=("NYSE_NL52W",))
+    assert snap.breadth is None
+    page = st.render(snap, COLORS)
+    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" not in page
+    assert st.HIGHS_LOWS_KEY not in _payload(page)

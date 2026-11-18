@@ -72,6 +72,11 @@ recent range, so no long-history percentile appears there. Positioning needs the
 not; when either part cannot be served it is left off and named in the log
 (`no surveys, left out`), and the publish goes ahead.
 
+The Detail section opens with a year of the counts behind the net-highs headwind
+(since 2026-11-18): new highs above the line and new lows below it as daily bars, and
+their net with the 5-day average the headwind reads, shaded below zero. Both exchanges
+summed, the dashboard's two detail charts.
+
 ## Build it locally
 
     PYTHONPATH=src .venv/bin/python scripts/export_internals_page.py /tmp/internals.html
