@@ -35,7 +35,12 @@ HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
     "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. The window buttons "
+    "price is the same count: light for four, darker for all five. Click a row's name "
+    "to switch it off or on: the bottom row and the shading then count only the rows "
+    "that are on, so you can ask when any set of them lined up. FOMO is an extra row, "
+    "off to begin with and never in the count: switched on, it marks the sessions the "
+    "reading was washed out (cool) or stretched (warm), on its own row and over the "
+    "price, from late 2018 where its series starts. The window buttons "
     "zoom every row together and refit the price to what is on screen. The history starts "
     "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
     "up and nothing more: no claim is made here about what followed, and none has been "
@@ -409,9 +414,14 @@ def history_month_starts(history):
     return out
 
 
+HISTORY_FOMO_KEY = "fomo"
+HISTORY_FOMO_LABEL = (f"FOMO extremes (under {indicators.FOMO_FEAR_MAX:.0f}, over "
+                      f"{indicators.FOMO_EXHAUSTION_MIN:.0f})")
+
+
 def history_subtitle(history):
     return (f"{history.price_symbol} since {history.dates[0][:4]}, daily. Marks show the "
-            "sessions each headwind was on.")
+            "sessions each headwind was on. Click a row's name to switch it off or on.")
 
 
 def history_summary(history, longest=3):
