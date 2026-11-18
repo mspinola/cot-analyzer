@@ -265,7 +265,15 @@ def history_card(history, colors):
         f'"{"true" if label == view.HISTORY_DEFAULT_WINDOW else "false"}">{label}</button>'
         for label, sessions in view.HISTORY_WINDOWS if sessions < n)
     windows = (f'<div class="lookback hwin" role="group" aria-label="History window">'
-               f'<span>Window</span>{buttons}</div>')
+               f'<span>Window</span>{buttons}</div>'
+               # Which sessions the price is shaded on: every row that is switched on
+               # at once, with or without the lighter "all but one" band.
+               '<div class="lookback hshade" role="group" aria-label="Price shading">'
+               '<span>Shade price</span>'
+               '<button type="button" data-shade="most" aria-pressed="true">'
+               'All on, and one short</button>'
+               '<button type="button" data-shade="every" aria-pressed="false">'
+               'Only all on at once</button></div>')
     return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
                  windows,
                  f'<div class="hgrid" id="{HISTORY_ID}" data-sessions="{n}" '
@@ -670,7 +678,7 @@ table.cot td small {{ color: var(--muted); }}
 .hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
 .hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
-.hwin {{ margin: 8px 0 0; }}
+.hwin, .hshade {{ margin: 8px 0 0; }}
 @media (max-width: 700px) {{
   .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
@@ -904,6 +912,15 @@ footer a {{ color: var(--ink-2); }}
         + sessions.toLocaleString('en-US') + ' of ' + N.toLocaleString('en-US') + ' sessions ('
         + Math.round(sessions / N * 100) + '%).';
   }}
+  // The price's shading: the rows that are on all at once, with or without the
+  // lighter band for all but one of them.
+  var shades = [].slice.call(document.querySelectorAll('.hshade button'));
+  shades.forEach(function (b) {{
+    b.addEventListener('click', function () {{
+      band('most').setAttribute('display', b.dataset.shade === 'most' ? 'inline' : 'none');
+      shades.forEach(function (o) {{ o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); }});
+    }});
+  }});
   grid.querySelectorAll('button.htog').forEach(function (b) {{
     b.addEventListener('click', function () {{
       var on = b.getAttribute('aria-pressed') !== 'true';

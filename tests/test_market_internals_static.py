@@ -553,6 +553,9 @@ def test_every_history_row_is_a_switch_and_fomo_starts_off():
     assert strip.count(f'fill="{surveys.TONE_HIGH}"') == len(view.runs(stretched))
     assert '<g data-band="fomo" display="none">' in card
     assert '<g data-band="most">' in card and '<g data-band="every">' in card
+    # The shading option: both bands by default, or only the all-on one.
+    assert 'data-shade="most" aria-pressed="true"' in card
+    assert 'data-shade="every" aria-pressed="false"' in card
     assert f'data-total="{h.total}"' in card and "data-history-summary" in card
     # The script recounts from the rows that are on, and FOMO is never one of them.
     assert "svg[data-headwind]" in page and "function recount()" in page
