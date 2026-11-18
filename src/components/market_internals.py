@@ -16,7 +16,26 @@ and the ETF bars the equities task fetches nightly. Six reads, each one card:
 6. Up/down volume: over the last 20 sessions, an ETF's volume on up-close days over
    its volume on down-close days, QQQ and SPY.
 
-A seventh card is context, not a read: CREDIT APPETITE, the junk-against-Treasuries
+**The count is of HEADWINDS, five of them, and the definitions are Caruso's own**
+(since 2026-11-18). Until then this page counted six "reads", restated from agi; the
+Caruso Insights member dashboard ("Market Conditions", data through 2026-11-17) is a
+more direct statement of the same measures, and three of ours differed from it. The
+five, each either a headwind or not (`headwinds`):
+
+- net new highs: Nasdaq plus NYSE, highs minus lows, 5-day average below zero (this
+  page had the Nasdaq alone on a three-in-a-row rule);
+- QQQ up/down volume below 1.00, and SPY's, as TWO headwinds (they were one read that
+  needed both to agree);
+- JNK's 20-day EMA falling, dividend-adjusted (this page had price under its 20-day
+  simple average, which is the credit x-ray's status line and still feeds it);
+- XLP/QQQ above its 50-day average (unchanged).
+
+FOMO left the count: the dashboard files it as a tactical check on short-term extremes,
+"not a trend signal", and counting a washed-out reading as a positive let a selloff
+ADD to this page's tally. The advancing share was never on the dashboard and is
+context now. The older reads below (1 to 6) still exist as the cards' detail.
+
+A further card is context, not a read: CREDIT APPETITE, the junk-against-Treasuries
 gauge of npf's `credit_xray.pine` (`cotmetrics.indicators.credit_appetite`, checked
 against the TradingView pane on 2026-11-15). It is drawn and described but stays OUT
 of the count of reads, on the evidence in that module's header: a stress reading was
@@ -125,6 +144,16 @@ UPDOWN_CENTRE = 1.0
 #: pair is symmetric in log terms (1.5 and 1/1.5) and moves no verdict.
 UPDOWN_HEAVY_ACCUMULATION, UPDOWN_HEAVY_DISTRIBUTION = 1.5, 1 / 1.5
 
+# ── the five headwinds (the Caruso dashboard's definitions; see the docstring) ──
+
+#: Sessions the net-highs average runs over, and the level under which it is a headwind.
+NET_HIGHS_AVERAGE, NET_HIGHS_LEVEL = 5, 0.0
+#: JNK's average for the headwind: an EMA whose DIRECTION is the read.
+CREDIT_EMA_SPAN = 20
+#: "Better / worse vs 5d": the comparison every headwind card carries.
+COMPARE_SESSIONS = 5
+HEADWIND_KEYS = ("net_highs", "qqq_updown", "spy_updown", "credit", "rotation")
+
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
 FOMO_LABELS = {
@@ -208,6 +237,23 @@ class TrendRead:
 
 
 @dataclass(frozen=True)
+class Headwind:
+    """One of the five trend measures: a headwind today or not, how far from flipping,
+    for how long, and whether it is better or worse than five sessions ago."""
+    key: str
+    title: str             # "Net new highs"
+    subtitle: str          # "Nasdaq + NYSE · 5-day average"
+    display: str           # the value as the card prints it: "-131", "0.64", "Falling"
+    on: bool               # a headwind today
+    flip: str              # what turns it: "Flips at 0 · needs +131"
+    streak: int            # sessions in today's state, today included
+    versus: Optional[str]  # "better", "worse" or None against COMPARE_SESSIONS ago
+    path: tuple            # (date strings, values, second line or None), a quarter
+    level: Optional[float]  # the horizontal line a single-series chart turns on
+    date: str
+
+
+@dataclass(frozen=True)
 class CreditAppetiteRead:
     """Context beside the reads: junk against Treasuries, ranked on its own year."""
     value: float            # 0 to 100
@@ -253,6 +299,7 @@ class Snapshot:
     rotation: Optional[TrendRead]
     updown: tuple
     assets: tuple
+    headwinds: tuple       # the Headwinds the store could serve, in HEADWIND_KEYS order
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
@@ -405,6 +452,125 @@ def trend_read(key, symbol, series, sessions, risk_on_above):
     )
 
 
+# ── the headwinds ─────────────────────────────────────────────────────────────
+
+def _run_length(flags):
+    """Sessions, ending at the last, that share the last session's state."""
+    values = [bool(v) for v in flags]
+    n = 0
+    for v in reversed(values):
+        if v != values[-1]:
+            break
+        n += 1
+    return n
+
+
+def _versus(series, higher_is_better):
+    """The last value against COMPARE_SESSIONS ago: "better", "worse", or None when
+    there is no such session or nothing moved."""
+    if len(series) <= COMPARE_SESSIONS:
+        return None
+    now, then = float(series.iloc[-1]), float(series.iloc[-1 - COMPARE_SESSIONS])
+    if now == then or now != now or then != then:
+        return None
+    return "better" if (now > then) == higher_is_better else "worse"
+
+
+def _headwind(key, title, subtitle, display, flags, flip, versus, line, second=None,
+              level=None):
+    tail = line.tail(PATH_SESSIONS)
+    other = None if second is None else tuple(
+        None if v != v else float(v) for v in second.reindex(tail.index))
+    return Headwind(key=key, title=title, subtitle=subtitle, display=display,
+                    on=bool(flags.iloc[-1]), flip=flip, streak=_run_length(flags),
+                    versus=versus,
+                    path=(_dates(tail.index), tuple(float(v) for v in tail), other),
+                    level=level, date=_stamp_of(line.index))
+
+
+def _needs(value, fmt):
+    return ("+" if value >= 0 else "") + format(value, fmt)
+
+
+def net_highs_headwind(pairs):
+    """Both exchanges' highs minus lows, summed, as a 5-day average: below zero is the
+    headwind. `pairs` is [(highs, lows), ...]; any missing leg and there is no read,
+    because half the sum is a different number, not an approximation of it."""
+    if not pairs or any(h is None or lo is None for h, lo in pairs):
+        return None
+    net = sum((h - lo) for h, lo in pairs).dropna()
+    average = net.rolling(NET_HIGHS_AVERAGE).mean().dropna()
+    if len(average) < 2:
+        return None
+    value = float(average.iloc[-1])
+    return _headwind(
+        "net_highs", "Net new highs",
+        f"Nasdaq + NYSE · {NET_HIGHS_AVERAGE}-day average", f"{value:+.0f}",
+        average < NET_HIGHS_LEVEL,
+        f"Flips at {NET_HIGHS_LEVEL:.0f} · needs {_needs(NET_HIGHS_LEVEL - value, '.0f')}",
+        _versus(average, higher_is_better=True), average, level=NET_HIGHS_LEVEL)
+
+
+def updown_ratio_series(frame, sessions=UPDOWN_SESSIONS):
+    """`updown_read`'s ratio at every session: volume on up-close days over volume on
+    down-close days across the trailing `sessions`. NaN where no day closed down."""
+    f = frame.sort_index()
+    close, volume = f["Close"].astype(float), f["Volume"].astype(float)
+    direction = np.sign(close.diff())
+    up = volume.where(direction > 0, 0.0).rolling(sessions).sum()
+    down = volume.where(direction < 0, 0.0).rolling(sessions).sum()
+    # The first row has no prior close to compare with, so the first full window is one
+    # session later than the rolling sum's own.
+    return (up / down.where(down > 0)).iloc[sessions:].dropna()
+
+
+def updown_headwind(symbol, frame):
+    """Up/down volume under UPDOWN_CENTRE: net selling over the last 20 sessions."""
+    if frame is None or frame.empty or "Volume" not in frame:
+        return None
+    ratio = updown_ratio_series(frame)
+    if len(ratio) < 2:
+        return None
+    value = float(ratio.iloc[-1])
+    return _headwind(
+        f"{symbol.lower()}_updown", f"{symbol} up/down volume",
+        f"{UPDOWN_SESSIONS}-day ratio", f"{value:.2f}", ratio < UPDOWN_CENTRE,
+        f"Flips at {UPDOWN_CENTRE:.2f} · needs {_needs(UPDOWN_CENTRE - value, '.2f')}",
+        _versus(ratio, higher_is_better=True), ratio, level=UPDOWN_CENTRE)
+
+
+def credit_headwind(series):
+    """JNK's 20-day EMA falling. The EMA turns the session the close crosses it, so the
+    level that flips the read is the EMA itself."""
+    if series is None or len(series) < CREDIT_EMA_SPAN + 2:
+        return None
+    ema = series.ewm(span=CREDIT_EMA_SPAN, adjust=False).mean()
+    # The seed sessions are the EMA settling, not a direction: read from the span on.
+    falling = (ema.diff() < 0).iloc[CREDIT_EMA_SPAN:]
+    on = bool(falling.iloc[-1])
+    side = "above" if on else "below"
+    return _headwind(
+        "credit", f"{CREDIT_SYMBOL} {CREDIT_EMA_SPAN} EMA", "Dividend-adjusted",
+        "Falling" if on else "Rising", falling,
+        f"Turns {'up' if on else 'down'} on a close {side} {ema.iloc[-1]:.2f} "
+        f"(now {series.iloc[-1]:.2f})",
+        _versus(ema, higher_is_better=True), series, second=ema)
+
+
+def rotation_headwind(ratio):
+    """Staples over Nasdaq above the ratio's 50-day average: defensives leading."""
+    if ratio is None or len(ratio) < ROTATION_AVERAGE + 1:
+        return None
+    average = ratio.rolling(ROTATION_AVERAGE).mean()
+    gap = ((ratio / average - 1) * 100).dropna()
+    on = bool(gap.iloc[-1] > 0)
+    return _headwind(
+        "rotation", f"{ROTATION_NUMER}/{ROTATION_DENOM} vs {ROTATION_AVERAGE}-day",
+        f"Ratio vs its {ROTATION_AVERAGE}-day average", f"{gap.iloc[-1]:+.1f}%", gap > 0,
+        f"Flips on a ratio {'below' if on else 'above'} {average.iloc[-1]:.4f}",
+        _versus(gap, higher_is_better=False), ratio, second=average)
+
+
 def credit_appetite_read(junk, treasuries):
     """The credit x-ray's Glance reading and its divergence days, or None before the
     history exists (the gauge needs its 20-day average and a year of ranks)."""
@@ -483,9 +649,6 @@ def asset_row(symbol, series):
 
 # ── the headline ──────────────────────────────────────────────────────────────
 
-WORDS = {0: "None", 1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
-
-
 def volume_verdict(updown):
     """QQQ and SPY as one read: positive when both accumulate, negative when both
     distribute, neutral when they disagree or either is missing."""
@@ -499,7 +662,8 @@ def volume_verdict(updown):
 
 
 def read_verdicts(snapshot):
-    """The six reads' verdicts, in card order, None for a read awaiting data."""
+    """The six OLD reads' verdicts, in card order, None for a read awaiting data. No
+    longer the count (see `headline`); kept because the cards still colour by them."""
     nasdaq = next((r for r in snapshot.net_highs if r.exchange == "Nasdaq"), None)
     return (
         snapshot.fomo.verdict if snapshot.fomo else None,
@@ -511,24 +675,29 @@ def read_verdicts(snapshot):
     )
 
 
+def has_reads(snapshot):
+    """True when the store served anything at all: a headwind, or FOMO."""
+    return bool(snapshot.headwinds) or snapshot.fomo is not None
+
+
 def headline(snapshot):
-    """`(lean, count)`: "Internals lean defensive." and "Two of six positive.".
-    Four or more positive reads lean constructive, two or fewer lean defensive,
-    three is mixed; a read awaiting data counts on neither side and the count
-    says how many were read."""
-    verdicts = read_verdicts(snapshot)
-    read = [v for v in verdicts if v is not None]
-    positives = sum(v == POSITIVE for v in read)
-    if not read:
-        return "Internals awaiting data.", "No reads available."
-    if positives >= 4:
-        lean = "Internals lean constructive."
-    elif positives <= 2:
-        lean = "Internals lean defensive."
+    """`(count, lean)`: "4 of 5 headwinds on" and one sentence. The count is of the
+    headwinds the store could serve; one awaiting data is named in the count's
+    denominator shrinking, never guessed at."""
+    total = len(snapshot.headwinds)
+    if not total:
+        return "Headwinds awaiting data", "No trend measure could be read."
+    on = sum(h.on for h in snapshot.headwinds)
+    count = f"{on} of {total} headwinds on"
+    if on == total:
+        lean = "Every headwind is on."
+    elif on == 0:
+        lean = "No headwind is on."
+    elif on * 2 > total:
+        lean = "Most headwinds are on."
     else:
-        lean = "Internals are mixed."
-    count = f"{WORDS[positives]} of {WORDS[len(read)].lower()} positive."
-    return lean, count
+        lean = "Most headwinds are off."
+    return count, lean
 
 
 def summary_sentences(snapshot):
@@ -625,13 +794,27 @@ def build_snapshot(get_bars=None):
         if row is not None:
             assets.append(row)
 
+    frames = {}
+    for symbol in UPDOWN_SYMBOLS:
+        try:
+            frames[symbol] = get_bars(symbol, ASSET_TIER)
+        except Exception:  # noqa: BLE001 -- already named as awaiting by the loop above
+            frames[symbol] = None
+    pairs = [(_closes(get_bars, hi), _closes(get_bars, lo)) for _, hi, lo in NET_HIGHS_SYMBOLS]
+    built = {"net_highs": net_highs_headwind(pairs),
+             "credit": credit_headwind(_closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER)),
+             "rotation": rotation_headwind(ratio)}
+    for symbol in UPDOWN_SYMBOLS:
+        built[f"{symbol.lower()}_updown"] = updown_headwind(symbol, frames[symbol])
+    headwinds = tuple(built[k] for k in HEADWIND_KEYS if built.get(k) is not None)
+
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.
     appetite = credit_appetite_read(_closes(get_bars, APPETITE_JUNK, APPETITE_TIER),
                                     _closes(get_bars, APPETITE_TREASURY, APPETITE_TIER))
 
     dates = [r.date for r in [fomo, advance_decline, credit, rotation, appetite,
-                              *net_highs, *updown, *assets] if r is not None]
+                              *net_highs, *updown, *assets, *headwinds] if r is not None]
     return Snapshot(
         fomo=fomo,
         net_highs=tuple(net_highs),
@@ -640,6 +823,7 @@ def build_snapshot(get_bars=None):
         rotation=rotation,
         updown=tuple(updown),
         assets=tuple(assets),
+        headwinds=headwinds,
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
