@@ -440,7 +440,7 @@ def _cot_row(read, colors):
 
 
 def positioning_section(positioning, colors, groups=None):
-    """Commercials in the four equity index futures: the crowd board's lookback rows,
+    """Commercials in the equity index futures: the crowd board's lookback rows,
     then each market's net position through time. No section without the COT store."""
     if not positioning:
         return ""

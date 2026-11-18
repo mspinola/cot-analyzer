@@ -190,7 +190,9 @@ VOLATILITY_BOND_SYMBOL = "MOVE"
 #: numbers. Positioning is read against its recent range, which is why the row leads
 #: with three months and ends on the full history, and why no percentile of forty
 #: years appears here.
-EQUITY_MARKETS = (("ES", "S&P 500"), ("YM", "DOW"), ("NQ", "Nasdaq"), ("RTY", "Russell"))
+#: The two the page's reads are about (SPY and QQQ). YM and RTY were shown until
+#: 2026-11-18 and dropped as more than the page needs.
+EQUITY_MARKETS = (("ES", "S&P 500"), ("NQ", "Nasdaq"))
 #: Weeks of commercials' net the time series draws: three years.
 POSITIONING_SERIES_WEEKS = 156
 #: Weeks of the 12-month index the sparkline draws, the board's.
@@ -886,7 +888,7 @@ def _indexer_positioning(market):
 
 
 def equity_positioning(get_positioning=None):
-    """The four equity index futures as the crowd board reads them, plus commercials'
+    """The equity index futures of EQUITY_MARKETS as the crowd board reads them, plus commercials'
     net as a series. A market the COT store cannot serve is left out and logged, never
     raised: this is context on a page whose count does not depend on it."""
     import cotmetrics.models as models
