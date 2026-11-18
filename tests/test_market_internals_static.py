@@ -475,3 +475,23 @@ def test_the_history_marks_are_the_headwind_cards_red():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     assert f'fill="{red}"' in card and surveys.TONE_HIGH not in card
     assert f".hl.all {{ color: {red};" in page
+
+
+def test_the_volatility_card_carries_the_move_index_when_the_store_has_it():
+    frames = _universe(N)
+    idx = frames["QQQ"].index
+    frames[mi.VOLATILITY_SYMBOL] = pd.DataFrame({"Close": 18.0}, index=idx)
+    frames[mi.VOLATILITY_TERM_SYMBOL] = pd.DataFrame({"Close": 21.0}, index=idx)
+    without = st.render(mi.build_snapshot(_bars(frames)), COLORS)
+    assert view.BOND_VOLATILITY_TITLE not in without
+    assert st.BOND_VOLATILITY_KEY not in _payload(without)
+    frames[mi.VOLATILITY_BOND_SYMBOL] = pd.DataFrame(
+        {"Close": [80.0] * (N - 1) + [98.6]}, index=idx)
+    snap = mi.build_snapshot(_bars(frames))
+    page = st.render(snap, COLORS)
+    card = page.split(f"<h2>{html.escape(view.VOLATILITY_TITLE)}</h2>")[1].split("</section>")[0]
+    assert f"<h3>{html.escape(view.BOND_VOLATILITY_TITLE)}</h3>" in card
+    assert '<span class="big mid">98.6</span>' in card
+    assert html.escape(view.bond_volatility_status(snap.volatility.bonds)) in card
+    spec = _payload(page)[st.BOND_VOLATILITY_KEY]
+    assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 252
