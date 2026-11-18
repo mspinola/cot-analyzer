@@ -246,10 +246,10 @@ def test_the_history_card_draws_a_strip_per_headwind_aligned_to_the_session():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     n = len(h.dates)
     # Every SVG is one unit a session wide, so a mark's x is its session index.
-    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 1
+    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 2   # + all, + FOMO
     assert f'viewBox="0 0 {n} {view.HISTORY_PRICE_UNITS:g}"' in card
     for key, label, flags in h.rows:
-        strip = card.split(f'data-row="{key}"')[1].split("</svg>")[0]
+        strip = card.split(f'data-strip="{key}"')[1].split("</svg>")[0]
         assert strip.count("<rect") == len(view.runs(flags))
         assert html.escape(label) in card
     every = [c == h.total for c in h.count]
@@ -475,3 +475,38 @@ def test_the_history_marks_are_the_headwind_cards_red():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     assert f'fill="{red}"' in card and surveys.TONE_HIGH not in card
     assert f".hl.all {{ color: {red};" in page
+
+
+def test_every_history_row_is_a_switch_and_fomo_starts_off():
+    """A row's name is a button. The five headwinds start on and are what the count is
+    made of (`data-headwind`); FOMO is a sixth row that starts off, drawn in the tiles'
+    cool and warm tones, with its marks over the price hidden until it is switched on."""
+    snap = _snap()
+    h = snap.history
+    assert h.fomo is not None
+    page = st.render(snap, COLORS)
+    card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    switches = re.findall(r'<button type="button" class="hl htog" data-row="(\w+)" '
+                          r'aria-pressed="(\w+)">', card)
+    assert switches == [(k, "true") for k in mi.HEADWIND_KEYS] + [(view.HISTORY_FOMO_KEY, "false")]
+    assert card.count("data-headwind") == len(mi.HEADWIND_KEYS)
+    assert f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">' in card
+    assert card.count('class="hp off"') == 1
+    washed, stretched, _ = h.fomo
+    strip = card.split(f'data-strip="{view.HISTORY_FOMO_KEY}"')[1].split("</svg>")[0]
+    assert strip.count(f'fill="{surveys.TONE_LOW}"') == len(view.runs(washed))
+    assert strip.count(f'fill="{surveys.TONE_HIGH}"') == len(view.runs(stretched))
+    assert '<g data-band="fomo" display="none">' in card
+    assert '<g data-band="most">' in card and '<g data-band="every">' in card
+    assert f'data-total="{h.total}"' in card and "data-history-summary" in card
+    # The script recounts from the rows that are on, and FOMO is never one of them.
+    assert "svg[data-headwind]" in page and "function recount()" in page
+    assert html.escape(view.HISTORY_FOMO_LABEL) in card
+
+
+def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
+    snap = _snap(drop=(mi.FOMO_SYMBOL,))
+    assert snap.history is not None and snap.history.fomo is None
+    card = st.render(snap, COLORS).split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    assert view.HISTORY_FOMO_KEY not in re.findall(r'data-row="(\w+)"', card)
+    assert 'data-band="fomo"' not in card
