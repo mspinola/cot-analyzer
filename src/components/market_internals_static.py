@@ -159,13 +159,58 @@ def headwind_card(h, colors):
         '</section>\n')
 
 
+def _marks(flags, height, fill, opacity=1.0):
+    return "".join(f'<rect x="{start}" y="0" width="{length}" height="{height}" '
+                   f'fill="{fill}" fill-opacity="{opacity}"/>'
+                   for start, length in view.runs(flags))
+
+
+def history_card(history):
+    """The headwinds through time: the price, a strip per headwind, and the sessions
+    all of them were on. Inline SVG stretched to the column (rectangles and one line,
+    so stretching distorts nothing); the labels and years are HTML, so they stay
+    legible on a phone where a scaled SVG's text would not."""
+    if history is None:
+        return ""
+    n = len(history.dates)
+    mark = surveys.TONE_HIGH
+    units = view.HISTORY_PRICE_UNITS
+    most = [c == history.total - 1 for c in history.count]
+    every = [c == history.total for c in history.count]
+    rows = [
+        f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
+        f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
+        f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
+        f'price with the sessions four or five headwinds were on shaded">'
+        f'{_marks(most, f"{units:g}", mark, 0.18)}{_marks(every, f"{units:g}", mark, 0.45)}'
+        f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
+        f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
+        '</svg></div>']
+    for key, label, flags in history.rows:
+        rows.append(f'<div class="hl">{_esc(label)}</div><div class="hp">'
+                    f'<svg class="hstrip" data-row="{_esc(key)}" viewBox="0 0 {n} 1" '
+                    f'preserveAspectRatio="none" aria-hidden="true">{_marks(flags, 1, mark)}'
+                    '</svg></div>')
+    rows.append(f'<div class="hl all">All {history.total} at once</div><div class="hp">'
+                f'<svg class="hstrip" data-row="all" viewBox="0 0 {n} 1" '
+                f'preserveAspectRatio="none" aria-hidden="true">{_marks(every, 1, mark)}'
+                '</svg></div>')
+    years = "".join(f'<span style="left:{fraction * 100:.2f}%">{year}</span>'
+                    for fraction, year in view.history_year_ticks(history))
+    rows.append(f'<div class="hl"></div><div class="hp hyears">{years}</div>')
+    return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
+                 f'<div class="hgrid">{"".join(rows)}</div>',
+                 _detail(view.history_summary(history)))
+
+
 def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards three" id="{HEADWINDS_ID}">\n'
-            + "".join(headwind_card(h, colors) for h in snap.headwinds) + f'</div>\n{note}')
+            + "".join(headwind_card(h, colors) for h in snap.headwinds) + f'</div>\n{note}'
+            + history_card(snap.history))
 
 
 def fomo_card(read, colors):
@@ -340,6 +385,21 @@ def render(snap, colors, generated_at=None):
 .sec .how[open] {{ display: block; margin-top: 2px; }}
 .sec .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
 .sec .how p {{ margin: 4px 0 0; }}
+/* The history: a label column and a plot column; on a phone the label sits over its
+   strip. Every SVG is one unit a session wide, so the rows line up to the session. */
+.hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}
+.hl {{ font-size: 0.78rem; }}
+.hl.all {{ color: {surveys.TONE_HIGH}; font-weight: 600; }}
+.hp svg {{ display: block; width: 100%; }}
+.hprice {{ height: 190px; }}
+.hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
+.hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
+.hyears span {{ position: absolute; transform: translateX(-50%); }}
+@media (max-width: 700px) {{
+  .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
+  .hl {{ margin-top: 5px; font-size: 0.72rem; }}
+  .hprice {{ height: 150px; }}
+}}
 .card.hw {{ border-left: 3px solid var(--line); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}

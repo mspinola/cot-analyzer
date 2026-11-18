@@ -153,6 +153,9 @@ CREDIT_EMA_SPAN = 20
 #: "Better / worse vs 5d": the comparison every headwind card carries.
 COMPARE_SESSIONS = 5
 HEADWIND_KEYS = ("net_highs", "qqq_updown", "spy_updown", "credit", "rotation")
+#: The price line over the history strips. QQQ, not the Nasdaq Composite the dashboard
+#: draws: the store holds no index series, and QQQ is the Nasdaq this page already reads.
+HISTORY_PRICE_SYMBOL = "QQQ"
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -300,6 +303,7 @@ class Snapshot:
     updown: tuple
     assets: tuple
     headwinds: tuple       # the Headwinds the store could serve, in HEADWIND_KEYS order
+    history: Optional["HeadwindHistory"]   # the strips; None unless all five are served
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
@@ -492,15 +496,111 @@ def _needs(value, fmt):
     return ("+" if value >= 0 else "") + format(value, fmt)
 
 
+def _net_highs_average(pairs):
+    if not pairs or any(h is None or lo is None for h, lo in pairs):
+        return None
+    net = sum((h - lo) for h, lo in pairs).dropna()
+    return net.rolling(NET_HIGHS_AVERAGE).mean().dropna()
+
+
+def _credit_ema(series):
+    return series.ewm(span=CREDIT_EMA_SPAN, adjust=False).mean()
+
+
+def _rotation_gap(ratio):
+    return ((ratio / ratio.rolling(ROTATION_AVERAGE).mean() - 1) * 100).dropna()
+
+
+def headwind_flags(pairs, frames, credit, ratio):
+    """Each headwind's on/off at every session it can be read, keyed as HEADWIND_KEYS:
+    the SAME expressions the cards read their last value from, so the history strip and
+    today's card cannot disagree. A headwind the store cannot serve is absent."""
+    out = {}
+    average = _net_highs_average(pairs)
+    if average is not None and len(average):
+        out["net_highs"] = average < NET_HIGHS_LEVEL
+    for symbol, frame in frames.items():
+        if frame is not None and not frame.empty and "Volume" in frame:
+            series = updown_ratio_series(frame)
+            if len(series):
+                out[f"{symbol.lower()}_updown"] = series < UPDOWN_CENTRE
+    if credit is not None and len(credit) > CREDIT_EMA_SPAN + 1:
+        # The seed sessions are the EMA settling, not a direction: read from the span on.
+        out["credit"] = (_credit_ema(credit).diff() < 0).iloc[CREDIT_EMA_SPAN:]
+    if ratio is not None and len(ratio) > ROTATION_AVERAGE:
+        out["rotation"] = _rotation_gap(ratio) > 0
+    return out
+
+
+#: The history's row labels: each headwind as the condition that turns it on.
+HEADWIND_CONDITIONS = {
+    "net_highs": "Net new highs below 0",
+    "qqq_updown": "QQQ up/down volume below 1",
+    "spy_updown": "SPY up/down volume below 1",
+    "credit": f"{CREDIT_SYMBOL} {CREDIT_EMA_SPAN} EMA falling",
+    "rotation": f"{ROTATION_NUMER}/{ROTATION_DENOM} above its {ROTATION_AVERAGE}-day",
+}
+#: Sessions of quiet that end a stretch of all-on days: about a month. A stretch is a
+#: run of all-on sessions with no gap longer than this, so one selloff that flickers
+#: counts once rather than once per flicker.
+STRETCH_GAP_SESSIONS = 21
+
+
+@dataclass(frozen=True)
+class HeadwindHistory:
+    """Every session ALL the headwinds can be read on, from the first to the last."""
+    dates: tuple           # date strings
+    price: tuple           # the price line's closes on those sessions
+    price_symbol: str
+    rows: tuple            # ((key, condition label, tuple of bools), ...)
+    count: tuple           # headwinds on, per session
+    total: int             # how many headwinds a session can have on
+
+
+def headwind_history(flags, price, price_symbol):
+    """The strips under the price: None unless every headwind in HEADWIND_KEYS has a
+    state series, because a count of four possible is not a shorter count of five."""
+    if price is None or any(k not in flags for k in HEADWIND_KEYS):
+        return None
+    table = pd.concat([flags[k].rename(k) for k in HEADWIND_KEYS], axis=1, join="inner")
+    table = table.join(price.rename("price"), how="inner").dropna()
+    if table.empty:
+        return None
+    states = table[list(HEADWIND_KEYS)].astype(bool)
+    return HeadwindHistory(
+        dates=_dates(table.index),
+        price=tuple(float(v) for v in table["price"]),
+        price_symbol=price_symbol,
+        rows=tuple((k, HEADWIND_CONDITIONS[k], tuple(bool(v) for v in states[k]))
+                   for k in HEADWIND_KEYS),
+        count=tuple(int(v) for v in states.sum(axis=1)),
+        total=len(HEADWIND_KEYS),
+    )
+
+
+def all_on_stretches(history, gap=STRETCH_GAP_SESSIONS):
+    """Stretches when every headwind was on: `(first date, last date, sessions on)`,
+    oldest first. Runs closer together than `gap` sessions are one stretch."""
+    out = []
+    last_index = None
+    for i, n in enumerate(history.count):
+        if n < history.total:
+            continue
+        if last_index is not None and i - last_index <= gap:
+            first, _, sessions = out[-1]
+            out[-1] = (first, history.dates[i], sessions + 1)
+        else:
+            out.append((history.dates[i], history.dates[i], 1))
+        last_index = i
+    return out
+
+
 def net_highs_headwind(pairs):
     """Both exchanges' highs minus lows, summed, as a 5-day average: below zero is the
     headwind. `pairs` is [(highs, lows), ...]; any missing leg and there is no read,
     because half the sum is a different number, not an approximation of it."""
-    if not pairs or any(h is None or lo is None for h, lo in pairs):
-        return None
-    net = sum((h - lo) for h, lo in pairs).dropna()
-    average = net.rolling(NET_HIGHS_AVERAGE).mean().dropna()
-    if len(average) < 2:
+    average = _net_highs_average(pairs)
+    if average is None or len(average) < 2:
         return None
     value = float(average.iloc[-1])
     return _headwind(
@@ -544,7 +644,7 @@ def credit_headwind(series):
     level that flips the read is the EMA itself."""
     if series is None or len(series) < CREDIT_EMA_SPAN + 2:
         return None
-    ema = series.ewm(span=CREDIT_EMA_SPAN, adjust=False).mean()
+    ema = _credit_ema(series)
     # The seed sessions are the EMA settling, not a direction: read from the span on.
     falling = (ema.diff() < 0).iloc[CREDIT_EMA_SPAN:]
     on = bool(falling.iloc[-1])
@@ -562,7 +662,7 @@ def rotation_headwind(ratio):
     if ratio is None or len(ratio) < ROTATION_AVERAGE + 1:
         return None
     average = ratio.rolling(ROTATION_AVERAGE).mean()
-    gap = ((ratio / average - 1) * 100).dropna()
+    gap = _rotation_gap(ratio)
     on = bool(gap.iloc[-1] > 0)
     return _headwind(
         "rotation", f"{ROTATION_NUMER}/{ROTATION_DENOM} vs {ROTATION_AVERAGE}-day",
@@ -807,6 +907,9 @@ def build_snapshot(get_bars=None):
     for symbol in UPDOWN_SYMBOLS:
         built[f"{symbol.lower()}_updown"] = updown_headwind(symbol, frames[symbol])
     headwinds = tuple(built[k] for k in HEADWIND_KEYS if built.get(k) is not None)
+    history = headwind_history(
+        headwind_flags(pairs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
+        _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL)
 
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.
@@ -824,6 +927,7 @@ def build_snapshot(get_bars=None):
         updown=tuple(updown),
         assets=tuple(assets),
         headwinds=headwinds,
+        history=history,
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,

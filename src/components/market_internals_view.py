@@ -30,6 +30,14 @@ HEADWINDS_HOW = (
     "leading. The definitions are the Caruso Insights member dashboard's. Each card "
     "says what would flip it, how long it has been in its state, and whether it is "
     "better or worse than five sessions ago.")
+HISTORY_TITLE = "When the headwinds lined up"
+HISTORY_HOW = (
+    "One row per headwind, marked on every session it was on, under the price. The "
+    "bottom row marks the sessions all five were on at once, and the shading behind the "
+    "price is the same count: light for four, darker for all five. The history starts "
+    "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
+    "up and nothing more: no claim is made here about what followed, and none has been "
+    "tested.")
 UNCOUNTED_TITLE = "Not in the count"
 UNCOUNTED_SUBTITLE = ("A short-term extreme check and a credit gauge. Neither is a trend "
                       "measure.")
@@ -209,6 +217,78 @@ def headwind_chart(headwind, colors):
                           levels=((headwind.level, tone),), decimals=decimals)
     return line_chart(120, [(INK_2, 1, dates, values), (tone, 2, dates, second)],
                       decimals=decimals)
+
+
+# ── the history strips, as SVG geometry ───────────────────────────────────────
+
+#: Height of the price panel in its own SVG units (the width is one unit a session).
+HISTORY_PRICE_UNITS = 100.0
+#: Every how many sessions the price line takes a point: a week. Daily points on a
+#: plot a few hundred pixels wide are five to a pixel.
+HISTORY_PRICE_STEP = 5
+HISTORY_TICK_YEARS = 2
+
+
+def runs(flags):
+    """`[(start index, length)]` of each run of true values."""
+    out, start = [], None
+    for i, flag in enumerate(flags):
+        if flag and start is None:
+            start = i
+        elif not flag and start is not None:
+            out.append((start, i - start))
+            start = None
+    if start is not None:
+        out.append((start, len(flags) - start))
+    return out
+
+
+def history_price_points(history):
+    """The price as polyline points on a log scale: x a session index, y down from the
+    top of HISTORY_PRICE_UNITS."""
+    import math
+    logs = [math.log(v) for v in history.price]
+    low, high = min(logs), max(logs)
+    span = (high - low) or 1.0
+    picks = list(range(0, len(logs), HISTORY_PRICE_STEP))
+    if picks[-1] != len(logs) - 1:
+        picks.append(len(logs) - 1)
+    return " ".join(f"{i},{(high - logs[i]) / span * HISTORY_PRICE_UNITS:.2f}" for i in picks)
+
+
+def history_year_ticks(history, every=HISTORY_TICK_YEARS):
+    """`[(fraction across, "2010")]` at the first session of every `every`th year."""
+    out, seen = [], None
+    n = len(history.dates)
+    for i, date in enumerate(history.dates):
+        year = int(date[:4])
+        if year != seen:
+            seen = year
+            if i and year % every == 0:
+                out.append((i / n, str(year)))
+    return out
+
+
+def history_subtitle(history):
+    return (f"{history.price_symbol} since {history.dates[0][:4]}, daily. Marks show the "
+            "sessions each headwind was on.")
+
+
+def history_summary(history, longest=3):
+    """What the bottom row adds up to: how many sessions, in how many stretches, and
+    the longest of them. A count of occurrences, not of outcomes."""
+    stretches = mi.all_on_stretches(history)
+    on = sum(n == history.total for n in history.count)
+    total = len(history.count)
+    if not on:
+        return f"All {history.total} have never been on at once since {history.dates[0][:4]}."
+    top = sorted(stretches, key=lambda s: -s[2])[:longest]
+    listed = "; ".join(f"{first[:7]} to {last[:7]} ({sessions} sessions)"
+                       for first, last, sessions in top)
+    return (f"All {history.total} were on at once on {on:,} of {total:,} sessions since "
+            f"{history.dates[0][:4]} ({on / total:.0%}), in {len(stretches)} stretches "
+            f"(runs within {mi.STRETCH_GAP_SESSIONS} sessions of each other counted as one). "
+            f"Longest: {listed}.")
 
 
 def spark_points(row, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=2):
