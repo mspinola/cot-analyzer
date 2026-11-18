@@ -340,8 +340,8 @@ class EquityPositioning:
     move: Optional[float]   # the 12-month index's change over const.MOMENTUM_PERIOD weeks
     path: tuple             # the 12-month index, the last year, oldest first
     start: Optional[str]    # first report date
-    value: float            # commercials' net, percent of open interest, newest week
-    series: tuple           # (date strings, commercials' net % of open interest), three years
+    value: float            # commercials' net, contracts, newest week
+    series: tuple           # (date strings, commercials' net in contracts), three years
     date: str               # the newest report's date
 
 
@@ -899,7 +899,8 @@ def equity_positioning(get_positioning=None):
         try:
             frame = get_positioning(market)
             net = frame[column].astype(float)
-            share = pd.to_numeric(frame[const.COMM_PCT_OI], errors="coerce").dropna()
+            # The position itself, in contracts, whatever basis the index is read on.
+            share = pd.to_numeric(frame[const.COMM_NET], errors="coerce").dropna()
         except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
             utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
             continue

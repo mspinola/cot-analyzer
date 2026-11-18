@@ -90,7 +90,8 @@ POSITIONING_HOW = (
     "the twelve-month index against six weeks ago, and the path is that index over the "
     "last year around its midline. These are the COT Analyzer's own numbers, the "
     "equities rows of its landing page. The charts under the table are the position "
-    "itself: commercials' net as a percent of open interest, weekly, three years. "
+    "itself: commercials' net in contracts, a column a week for three years, above "
+    "zero while they are net long and below it while net short. "
     "Weekly, as of the Tuesday the report covers. Context, not counted.")
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
@@ -410,11 +411,15 @@ def percentile_blocks(naaim, votes, allocation, date_text):
     return out
 
 
-def positioning_chart(read):
-    """One market's commercials through time: net, percent of open interest, against
-    zero."""
+def positioning_chart(read, colors):
+    """One market's commercials through time: net contracts, a column a week from
+    zero, net long weeks in one colour and net short weeks in the other."""
     dates, values = read.series
-    return line_chart(150, [(INK, 1.5, dates, values)], levels=((0.0, INK_2),), decimals=1)
+    columns = bars(colors.bull, dates, values)
+    for point in columns["data"]:
+        if point["value"] < 0:
+            point["color"] = colors.bear
+    return chart(150, [columns], levels=((0.0, INK_2),))
 
 
 def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):

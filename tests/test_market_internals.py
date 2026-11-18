@@ -541,7 +541,7 @@ def _cot_frame(net, weeks=300):
     index = pd.date_range("2021-01-05", periods=weeks, freq="W-TUE")
     values = [float(v) for v in net]
     return pd.DataFrame({const.COMM_NET: values, const.COMM_NET_NORM: [v / 100 for v in values],
-                         const.COMM_PCT_OI: values}, index=index)
+                         const.COMM_PCT_OI: [v / 7 for v in values]}, index=index)
 
 
 def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
@@ -566,7 +566,8 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
     assert es.path == tuple(float(v) for v in board[board_traces.WINDOW_LABELS[2]].tail(52))
     # A market falling every week sits at the bottom of every lookback.
     assert nq.windows == (0.0, 0.0, 0.0, 0.0)
-    # The series is commercials' net, percent of open interest, three years of it.
+    # The series is commercials' net in contracts (not the share of open interest),
+    # three years of it.
     assert es.value == 19.0 and len(es.series[0]) == len(es.series[1]) == 156
     assert es.series[1][-1] == 19.0 and es.date == es.series[0][-1] == "2026-09-29"
     assert es.start == "2021-01-05"

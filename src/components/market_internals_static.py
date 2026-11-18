@@ -106,7 +106,8 @@ def _date(stamp):
 
 def charts(snap, colors, positioning=()):
     """Every chart the page draws, keyed by the `data-chart` of its element."""
-    out = {POSITIONING_PREFIX + r.symbol: view.positioning_chart(r) for r in positioning or ()}
+    out = {POSITIONING_PREFIX + r.symbol: view.positioning_chart(r, colors)
+           for r in positioning or ()}
     if snap.fomo is not None:
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
@@ -441,12 +442,12 @@ def positioning_section(positioning, colors):
                    "detail small")
     charts_html = "".join(
         f'<div class="pchart"><div class="between"><span class="label">{_esc(r.symbol)} '
-        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ".1f"))}%</span></div>'
-        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r)["height"]) + '</div>'
+        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ",.0f"))}</span></div>'
+        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r, colors)["height"]) + '</div>'
         for r in positioning)
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
             + f'<section class="card" id="{POSITIONING_ID}">{table}{asof}'
-            '<h3>Commercials&rsquo; net position, % of open interest · weekly, three years</h3>'
+            '<h3>Commercials&rsquo; net position, contracts · weekly, three years</h3>'
             f'<div class="pcharts">{charts_html}</div></section>\n')
 
 

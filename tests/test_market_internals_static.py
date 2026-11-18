@@ -375,9 +375,9 @@ def _positioning():
     path = tuple(float(40 + i % 30) for i in range(52))
     series = (dates, tuple(float(i % 20 - 10) for i in range(156)))
     return (mi.EquityPositioning("ES", "S&P 500", (81.0, 59.0, 59.0, 58.0), -10.9, path,
-                                 "1986-01-15", 0.51, series, "2026-11-10"),
+                                 "1986-01-15", 51234.0, series, "2026-11-10"),
             mi.EquityPositioning("RTY", "Russell", (0.0, 1.0, 26.0, None), 0.4,
-                                 path[:-1] + (20.0,), "2002-08-13", -0.33, series, "2026-11-10"))
+                                 path[:-1] + (20.0,), "2002-08-13", -3300.0, series, "2026-11-10"))
 
 
 def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles():
@@ -441,13 +441,19 @@ def test_each_market_has_its_commercials_through_time():
     reads = _positioning()
     page = st.render(_snap(), COLORS, positioning=reads)
     data = _payload(page)
+    tones = st.page_colors(COLORS)          # the page tones the palette once
     for r in reads:
         spec = data[st.POSITIONING_PREFIX + r.symbol]
-        assert spec == view.positioning_chart(r)
+        assert spec == view.positioning_chart(r, tones)
         assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 156
+        # A column a week from zero: net short weeks take the other colour.
+        columns = spec["series"][0]
+        assert columns["type"] == "histogram" and columns["color"] == tones.bull
+        assert all((p.get("color") == tones.bear) == (p["value"] < 0)
+                   for p in columns["data"])
         assert [lv["value"] for lv in spec["levels"]] == [0.0]
         assert f'data-chart="{st.POSITIONING_PREFIX}{r.symbol}"' in page
-    assert ">+0.5%</span>" in page and ">-0.3%</span>" in page
+    assert ">+51,234</span>" in page and ">-3,300</span>" in page
     points, end = view.positioning_spark(reads[0])
     assert len(points.split()) == 52 and end is not None
     assert view.positioning_spark(mi.EquityPositioning(
