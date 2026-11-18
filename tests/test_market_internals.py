@@ -63,8 +63,8 @@ def _universe(n=120):
 @pytest.mark.parametrize("values, label, verdict", [
     ([50, 85], "Stretched", mi.NEGATIVE),
     ([32.23, 46.66], "Middle ground", mi.NEUTRAL),
-    ([30, 20], "Washed out", mi.POSITIVE),
-    ([20, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
+    ([30, 15], "Washed out", mi.POSITIVE),
+    ([15, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
     ([50, 70], "Between zones", mi.NEUTRAL),   # the 60-80 gap the SWG does not name
 ])
 def test_fomo_zone_labels_are_cotmetrics_zones_in_the_views_words(values, label, verdict):
@@ -317,7 +317,6 @@ def test_stale_notes_name_reads_priced_before_the_newest():
     snap = mi.build_snapshot(_bars(frames))
     notes = mi.stale_notes(snap)
     assert notes == ["FOMO last read 2026-09-01"]
-
 
 
 # ── credit appetite: context beside the reads ─────────────────────────────────
@@ -600,3 +599,25 @@ def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
     short = mi.build_snapshot(_bars(_universe(120))).breadth
     assert len(short.dates) == 120 and short.average[:4] == (None,) * 4
     assert short.average[4] is not None
+
+
+def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
+    from cotmetrics import indicators
+    frames = _universe(200)
+    values = [50.0] * 200
+    values[150], values[151], values[180] = 10.0, 12.0, 90.0
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame({"Close": values}, index=frames["QQQ"].index).iloc[100:]
+    h = mi.build_snapshot(_bars(frames)).history
+    washed, stretched, first = h.fomo
+    assert len(washed) == len(stretched) == len(h.dates)
+    # Flags are cotmetrics' zones (fear, exhaustion) on the history's own sessions.
+    offset = 200 - len(h.dates)
+    assert [i + offset for i, v in enumerate(washed) if v] == [150, 151]
+    assert [i + offset for i, v in enumerate(stretched) if v] == [180]
+    assert first == 100 - offset                      # where the FOMO series starts
+    assert values[150] < indicators.FOMO_FEAR_MAX and values[180] >= indicators.FOMO_EXHAUSTION_MIN
+    # It changes nothing the count is made of.
+    plain = _universe(200)
+    del plain[mi.FOMO_SYMBOL]
+    without = mi.build_snapshot(_bars(plain)).history
+    assert without.fomo is None and without.count == h.count and without.total == h.total == 5

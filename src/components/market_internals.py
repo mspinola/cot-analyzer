@@ -648,9 +648,26 @@ class HeadwindHistory:
     rows: tuple            # ((key, condition label, tuple of bools), ...)
     count: tuple           # headwinds on, per session
     total: int             # how many headwinds a session can have on
+    #: FOMO's extremes on the same sessions, an optional row that is NOT a headwind and
+    #: never in `count`: (washed-out flags, stretched flags, index of the first session
+    #: FOMO was read on, or None). The series starts years after the others.
+    fomo: Optional[tuple] = None
 
 
-def headwind_history(flags, price, price_symbol):
+def _fomo_extremes(fomo, index):
+    """FOMO's two extremes (`indicators.fomo_zones`: fear, exhaustion) on `index`."""
+    if fomo is None or fomo.empty:
+        return None
+    zones = indicators.fomo_zones(fomo).reindex(index)
+    read = fomo.reindex(index).notna().to_numpy()
+    if not read.any():
+        return None
+    return (tuple(bool(v) for v in (zones == "fear")),
+            tuple(bool(v) for v in (zones == "exhaustion")),
+            int(read.argmax()))
+
+
+def headwind_history(flags, price, price_symbol, fomo=None):
     """The strips under the price: None unless every headwind in HEADWIND_KEYS has a
     state series, because a count of four possible is not a shorter count of five."""
     if price is None or any(k not in flags for k in HEADWIND_KEYS):
@@ -668,6 +685,7 @@ def headwind_history(flags, price, price_symbol):
                    for k in HEADWIND_KEYS),
         count=tuple(int(v) for v in states.sum(axis=1)),
         total=len(HEADWIND_KEYS),
+        fomo=_fomo_extremes(fomo, table.index),
     )
 
 
@@ -1081,7 +1099,8 @@ def build_snapshot(get_bars=None):
     headwinds = tuple(built[k] for k in HEADWIND_KEYS if built.get(k) is not None)
     history = headwind_history(
         headwind_flags(pairs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
-        _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL)
+        _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
+        fomo=_closes(get_bars, FOMO_SYMBOL))
 
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.

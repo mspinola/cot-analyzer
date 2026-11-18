@@ -14,7 +14,7 @@ there to the AGI rulebook (M-07, M-01); this module draws what they return.
 
 **Orientation keeps the board's colour axis.** On the board a high cell in the bull
 hue is the crowd washed out and a low cell in the bear hue is the crowd crowded. FOMO
-exhaustion (above 80) is the crowd chasing, so it wears the bear hue; fear (below 25)
+exhaustion (above 80) is the crowd chasing, so it wears the bear hue; fear (below 20)
 is the washed-out side and wears the bull hue; recovery, which is a direction rather
 than a level, wears the bull hue's near tier; neutral and the two unnamed gaps are
 dim. Net new highs are a different axis (trend confirmation, the source's own words),
@@ -194,11 +194,12 @@ def warm():
 
 # ── drawing ───────────────────────────────────────────────────────────────────
 ZONE_LABELS = {
-    "exhaustion": "exhaustion, above 80",
-    "neutral": "neutral, 35 to 60",
-    "fear": "fear, below 25",
+    "exhaustion": f"exhaustion, above {ind.FOMO_EXHAUSTION_MIN:.0f}",
+    "neutral": f"neutral, {ind.FOMO_NEUTRAL[0]:.0f} to {ind.FOMO_NEUTRAL[1]:.0f}",
+    "fear": f"fear, below {ind.FOMO_FEAR_MAX:.0f}",
     "recovery": "recovery, turning up from fear",
-    None: "unnamed gap (25 to 35 or 60 to 80)",
+    None: (f"unnamed gap ({ind.FOMO_FEAR_MAX:.0f} to {ind.FOMO_NEUTRAL[0]:.0f} or "
+           f"{ind.FOMO_NEUTRAL[1]:.0f} to {ind.FOMO_EXHAUSTION_MIN:.0f})"),
 }
 
 

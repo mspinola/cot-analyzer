@@ -56,7 +56,9 @@ could not be compared on the same day (the store was a session behind).
 Under the five cards, "When the headwinds lined up" draws each headwind's state on
 every session since 2008 (where JNK starts) under QQQ, and the sessions all five were
 on. It is inline SVG, about 130 KB of the page. It counts occurrences and stretches and
-makes no claim about what followed; none has been tested.
+makes no claim about what followed; none has been tested. Each row's name is a
+switch: the bottom row and the shading count only the headwind rows that are on. FOMO's
+extremes are a sixth row, off as the page loads and never in the count.
 
 Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
 (inverted or normal, with the VIX's percentile since 1990), and two sections. **Sentiment**
