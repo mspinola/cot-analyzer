@@ -53,6 +53,11 @@ On the day of the comparison the two pages' numbers agreed where the data did: Q
 91.93)" and 4 sessions, XLP/QQQ +15.6% against +15.5% and 25 sessions. Net new highs
 could not be compared on the same day (the store was a session behind).
 
+Under the five cards, "When the headwinds lined up" draws each headwind's state on
+every session since 2008 (where JNK starts) under QQQ, and the sessions all five were
+on. It is inline SVG, about 130 KB of the page. It counts occurrences and stretches and
+makes no claim about what followed; none has been tested.
+
 ## Build it locally
 
     PYTHONPATH=src .venv/bin/python scripts/export_internals_page.py /tmp/internals.html

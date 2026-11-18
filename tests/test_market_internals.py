@@ -464,3 +464,45 @@ def test_run_length_and_versus_are_what_the_cards_say():
     assert mi._versus(_days([1, 2, 3, 4, 5, 6]), higher_is_better=False) == "worse"
     assert mi._versus(_days([3, 2, 3, 4, 5, 3]), higher_is_better=True) is None
     assert mi._versus(_days([1, 2, 3]), higher_is_better=True) is None
+
+
+# ── the history under the headwinds ───────────────────────────────────────────
+
+def test_the_history_is_the_cards_own_states_on_the_sessions_all_five_share():
+    frames = _universe(200)
+    snap = mi.build_snapshot(_bars(frames))
+    h = snap.history
+    assert [key for key, _, _ in h.rows] == list(mi.HEADWIND_KEYS) and h.total == 5
+    assert all(len(flags) == len(h.dates) == len(h.price) == len(h.count)
+               for _, _, flags in h.rows)
+    # The last session of every row is what that headwind's card says today.
+    assert {key: flags[-1] for key, _, flags in h.rows} == {x.key: x.on for x in snap.headwinds}
+    assert h.count[-1] == sum(x.on for x in snap.headwinds)
+    assert h.count == tuple(sum(flags[i] for _, _, flags in h.rows)
+                            for i in range(len(h.dates)))
+    # It starts where the slowest headwind does: the 50-day average of the ratio.
+    assert h.dates[0] == frames["QQQ"].index[mi.ROTATION_AVERAGE - 1].strftime("%Y-%m-%d")
+    assert h.price_symbol == mi.HISTORY_PRICE_SYMBOL
+    assert h.price[-1] == frames["QQQ"]["Close"].iloc[-1]
+
+
+def test_no_history_unless_every_headwind_can_be_read():
+    frames = _universe(200)
+    del frames["NYSE_NL52W"]                    # half the net-highs sum
+    snap = mi.build_snapshot(_bars(frames))
+    assert len(snap.headwinds) == 4 and snap.history is None
+
+
+def test_stretches_join_runs_that_are_close_and_count_only_all_on_sessions():
+    count = [5, 5, 4, 5] + [3] * 30 + [5] + [2] * 5 + [5, 5]
+    dates = tuple(d.strftime("%Y-%m-%d") for d in pd.bdate_range("2026-01-01", periods=len(count)))
+    h = mi.HeadwindHistory(dates=dates, price=(1.0,) * len(count), price_symbol="QQQ",
+                           rows=(), count=tuple(count), total=5)
+    assert mi.all_on_stretches(h, gap=21) == [
+        (dates[0], dates[3], 3),                # the one-session dip does not split it
+        (dates[34], dates[41], 3),              # six sessions apart: one stretch
+    ]
+    assert len(mi.all_on_stretches(h, gap=1)) == 4
+    none = mi.HeadwindHistory(dates=dates, price=(1.0,) * len(count), price_symbol="QQQ",
+                              rows=(), count=(4,) * len(count), total=5)
+    assert mi.all_on_stretches(none) == []

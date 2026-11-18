@@ -236,3 +236,54 @@ def test_the_page_and_its_charts_use_the_family_ink():
     data = _payload(page)
     assert data[st.FOMO_KEY]["series"][0]["color"] == surveys.INK
     assert f"var INK = '{surveys.INK_2}'" in page
+
+
+def test_the_history_card_draws_a_strip_per_headwind_aligned_to_the_session():
+    snap = _snap()
+    h = snap.history
+    page = st.render(snap, COLORS)
+    card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    n = len(h.dates)
+    # Every SVG is one unit a session wide, so a mark's x is its session index.
+    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 1
+    assert f'viewBox="0 0 {n} {view.HISTORY_PRICE_UNITS:g}"' in card
+    for key, label, flags in h.rows:
+        strip = card.split(f'data-row="{key}"')[1].split("</svg>")[0]
+        assert strip.count("<rect") == len(view.runs(flags))
+        assert html.escape(label) in card
+    every = [c == h.total for c in h.count]
+    assert card.split('data-row="all"')[1].split("</svg>")[0].count("<rect") == len(view.runs(every))
+    assert html.escape(view.history_summary(h)) in card
+    assert "no claim is made here about what followed" in card
+
+
+def test_history_geometry_runs_points_and_year_ticks():
+    assert view.runs([False, True, True, False, True]) == [(1, 2), (4, 1)]
+    assert view.runs([]) == [] and view.runs([True, True]) == [(0, 2)]
+    h = _snap().history
+    points = [tuple(float(v) for v in pt.split(",")) for pt in
+              view.history_price_points(h).split()]
+    assert points[0][0] == 0 and points[-1][0] == len(h.dates) - 1
+    assert all(0 <= y <= view.HISTORY_PRICE_UNITS for _, y in points)
+    assert min(y for _, y in points) == 0 or max(y for _, y in points) == view.HISTORY_PRICE_UNITS
+    ticks = view.history_year_ticks(h)
+    assert all(0 < fraction < 1 and int(year) % view.HISTORY_TICK_YEARS == 0
+               for fraction, year in ticks)
+
+
+def test_the_history_summary_counts_occurrences_and_names_the_longest():
+    dates = tuple(f"2026-01-{d:02d}" for d in range(1, 11))
+    h = mi.HeadwindHistory(dates=dates, price=(1.0,) * 10, price_symbol="QQQ", rows=(),
+                           count=(5, 5, 5, 1, 1, 1, 1, 1, 1, 5), total=5)
+    text = view.history_summary(h)
+    assert text.startswith("All 5 were on at once on 4 of 10 sessions since 2026 (40%), in 1 ")
+    assert "2026-01 to 2026-01 (4 sessions)" in text
+    quiet = mi.HeadwindHistory(dates=dates, price=(1.0,) * 10, price_symbol="QQQ", rows=(),
+                               count=(2,) * 10, total=5)
+    assert view.history_summary(quiet) == "All 5 have never been on at once since 2026."
+
+
+def test_a_page_without_the_history_still_renders():
+    snap = _snap(drop=("NYSE_NL52W",))
+    assert snap.history is None
+    assert view.HISTORY_TITLE not in st.render(snap, COLORS)
