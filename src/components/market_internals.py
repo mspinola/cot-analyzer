@@ -282,6 +282,16 @@ class Headwind:
 
 
 @dataclass(frozen=True)
+class BreadthHistory:
+    """A year of the counts behind the net-highs headwind, both exchanges summed."""
+    dates: tuple           # date strings
+    highs: tuple           # new 52-week highs, Nasdaq + NYSE
+    lows: tuple            # new 52-week lows, Nasdaq + NYSE
+    net: tuple             # highs minus lows, daily
+    average: tuple         # the headwind's own 5-day average of `net`; None before it fills
+
+
+@dataclass(frozen=True)
 class VolatilityRead:
     """Context: the VIX against its three-month counterpart. Never counted."""
     value: float            # VIX close
@@ -359,6 +369,7 @@ class Snapshot:
     headwinds: tuple       # the Headwinds the store could serve, in HEADWIND_KEYS order
     history: Optional["HeadwindHistory"]   # the strips; None unless all five are served
     volatility: Optional[VolatilityRead]
+    breadth: Optional[BreadthHistory]
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
@@ -564,6 +575,33 @@ def _credit_ema(series):
 
 def _rotation_gap(ratio):
     return ((ratio / ratio.rolling(ROTATION_AVERAGE).mean() - 1) * 100).dropna()
+
+
+#: Sessions the detail charts draw: a year, the dashboard's.
+BREADTH_HISTORY_SESSIONS = 252
+
+
+def breadth_history(pairs):
+    """The daily highs and lows behind the net-highs headwind, summed across the
+    exchanges on their shared sessions, with the net and the headwind's own 5-day
+    average (`_net_highs_average`, so the chart's line and the card's number are one
+    series). None unless every leg is served: half a sum is a different number."""
+    if not pairs or any(h is None or lo is None for h, lo in pairs):
+        return None
+    table = pd.concat([pd.concat([h for h, _ in pairs], axis=1, join="inner").sum(axis=1),
+                       pd.concat([lo for _, lo in pairs], axis=1, join="inner").sum(axis=1)],
+                      axis=1, join="inner", keys=["highs", "lows"]).dropna()
+    if table.empty:
+        return None
+    average = _net_highs_average(pairs).reindex(table.index)
+    tail = table.tail(BREADTH_HISTORY_SESSIONS)
+    return BreadthHistory(
+        dates=_dates(tail.index),
+        highs=tuple(float(v) for v in tail["highs"]),
+        lows=tuple(float(v) for v in tail["lows"]),
+        net=tuple(float(v) for v in tail["highs"] - tail["lows"]),
+        average=tuple(None if v != v else float(v) for v in average.reindex(tail.index)),
+    )
 
 
 def headwind_flags(pairs, frames, credit, ratio):
@@ -1092,6 +1130,7 @@ def build_snapshot(get_bars=None):
         headwinds=headwinds,
         history=history,
         volatility=volatility,
+        breadth=breadth_history(pairs),
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,

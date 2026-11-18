@@ -69,6 +69,7 @@ POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
+HIGHS_LOWS_KEY, NET_HISTORY_KEY = "highs_lows", "net_history"
 HEADWIND_PREFIX = "headwind:"
 
 _esc = html.escape
@@ -100,6 +101,9 @@ def charts(snap, colors, positioning=()):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
+    if snap.breadth is not None:
+        out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
+        out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
     if snap.volatility is not None:
         out[VOLATILITY_KEY] = view.volatility_chart(snap.volatility, colors)
     for h in snap.headwinds:
@@ -403,6 +407,25 @@ def positioning_section(positioning, colors):
             f'<div class="pcharts">{charts_html}</div></section>\n')
 
 
+def breadth_charts(snap, colors):
+    """The year behind the net-highs headwind: the two counts, then their net. No
+    cards without the counts (the headwind card already says it is awaiting them)."""
+    if snap.breadth is None:
+        return ""
+    b = snap.breadth
+    return ('<div class="cards">\n'
+            + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
+                    f'<div class="detail"><span class="key" style="color:{colors.bull}">'
+                    f'▲ New highs {b.highs[-1]:.0f}</span><span style="color:{colors.bear}">'
+                    f'▼ New lows {b.lows[-1]:.0f}</span></div>',
+                    _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
+            + _card(view.NET_HISTORY_TITLE, view.NET_HISTORY_SUBTITLE, view.NET_HISTORY_HOW,
+                    '<div class="detail"><span class="key">— Daily</span>'
+                    f'<span class="name">— {mi.NET_HIGHS_AVERAGE}-day average</span></div>',
+                    _chart(NET_HISTORY_KEY, view.net_highs_chart(b, colors)["height"]))
+            + '</div>\n')
+
+
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
 
 
@@ -528,6 +551,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
                  + sentiment_section(naaim, votes, allocation)
                  + positioning_section(positioning, colors))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
+              + breadth_charts(snap, colors)
               + '<div class="cards">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
     return f"""<!doctype html>
@@ -696,7 +720,22 @@ footer a {{ color: var(--ink-2); }}
           return {{priceRange: {{minValue: spec.range[0], maxValue: spec.range[1]}}}};
         }};
       }}
-      var line = chart.addSeries(LC.LineSeries, options);
+      // A series is a line unless it says otherwise: bars from zero, or a line whose
+      // side below its base is shaded (a headwind's zone).
+      var line;
+      if (s.type === 'histogram') {{
+        line = chart.addSeries(LC.HistogramSeries, {{color: s.color, priceFormat: format,
+          priceLineVisible: false, lastValueVisible: false}});
+      }} else if (s.type === 'baseline') {{
+        line = chart.addSeries(LC.BaselineSeries, {{
+          baseValue: {{type: 'price', price: s.base}}, lineWidth: s.width,
+          topLineColor: s.color, bottomLineColor: s.color,
+          topFillColor1: 'transparent', topFillColor2: 'transparent',
+          bottomFillColor1: s.shade, bottomFillColor2: s.shade,
+          priceFormat: format, priceLineVisible: false, lastValueVisible: false}});
+      }} else {{
+        line = chart.addSeries(LC.LineSeries, options);
+      }}
       line.setData(s.data);
       first = first || line;
     }});

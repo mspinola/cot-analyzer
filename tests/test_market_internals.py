@@ -319,7 +319,6 @@ def test_stale_notes_name_reads_priced_before_the_newest():
     assert notes == ["FOMO last read 2026-09-01"]
 
 
-
 # ── credit appetite: context beside the reads ─────────────────────────────────
 
 def test_credit_appetite_is_cotmetrics_gauge_with_its_divergence_days():
@@ -573,6 +572,33 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
     assert es.start == "2021-01-05"
     assert mi.equity_positioning(lambda market: pd.DataFrame()) == ()
     assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "YM", "NQ", "RTY"]
+
+
+# ── a year of the counts behind the net-highs headwind ────────────────────────
+
+def test_breadth_history_sums_the_exchanges_and_carries_the_headwinds_own_average():
+    frames = _universe(300)
+    snap = mi.build_snapshot(_bars(frames))
+    b = snap.breadth
+    assert len(b.dates) == len(b.highs) == len(b.lows) == len(b.net) == len(b.average) == 252
+    highs = sum(frames[hi]["Close"] for _, hi, _ in mi.NET_HIGHS_SYMBOLS)
+    lows = sum(frames[lo]["Close"] for _, _, lo in mi.NET_HIGHS_SYMBOLS)
+    assert b.highs[-1] == highs.iloc[-1] and b.lows[-1] == lows.iloc[-1]
+    assert b.net == tuple(h - lo for h, lo in zip(b.highs, b.lows))
+    # The chart's heavy line ends on the number the headwind card prints.
+    card = next(h for h in snap.headwinds if h.key == "net_highs")
+    assert f"{b.average[-1]:+.0f}" == card.display
+    assert b.average[-1] == pytest.approx(sum(b.net[-5:]) / 5)
+    assert b.dates[-1] == card.date
+
+
+def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
+    frames = _universe(300)
+    del frames["NYSE_NL52W"]
+    assert mi.build_snapshot(_bars(frames)).breadth is None
+    short = mi.build_snapshot(_bars(_universe(120))).breadth
+    assert len(short.dates) == 120 and short.average[:4] == (None,) * 4
+    assert short.average[4] is not None
 
 
 def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
