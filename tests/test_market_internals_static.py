@@ -451,12 +451,20 @@ def test_each_market_has_its_commercials_through_time():
     for r in reads:
         spec = data[st.POSITIONING_PREFIX + r.symbol]
         assert spec == view.positioning_chart(r, groups)
-        # A column a week from zero for each group, in the app palette's colours.
+        # A column a week from zero for each group, in the app palette's colours. A
+        # series is a rank within the week, tallest first (drawn at the back), so no
+        # group's column hides a shorter one; each point carries its group's colour.
         assert [s["type"] for s in spec["series"]] == ["histogram"] * 3
-        assert [s["color"] for s in spec["series"]] == [
-            plot_colors.hex_to_rgba(c, view.POSITIONING_ALPHA) for c in groups]
+        tones = [plot_colors.hex_to_rgba(c, view.POSITIONING_ALPHA) for c in groups]
         assert all(len(s["data"]) == 156 for s in spec["series"])
-        assert [p["value"] for p in spec["series"][1]["data"]] == list(r.others[0])
+        back, middle, front = (s["data"] for s in spec["series"])
+        for i, value in enumerate(r.series[1]):
+            assert abs(back[i]["value"]) >= abs(middle[i]["value"]) >= abs(front[i]["value"])
+            week = {(p["value"], p["color"]) for p in (back[i], middle[i], front[i])}
+            assert week == {(value, tones[0]), (r.others[0][i], tones[1]),
+                            (r.others[1][i], tones[2])}
+        # Small specs are a quarter of commercials on the fixture: in front, in yellow.
+        assert front[0] == {"time": r.series[0][0], "value": r.others[1][0], "color": tones[2]}
         assert [lv["value"] for lv in spec["levels"]] == [0.0]
         assert f'data-chart="{st.POSITIONING_PREFIX}{r.symbol}"' in page
     for label, color in zip(view.POSITIONING_GROUPS, groups):

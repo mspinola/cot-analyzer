@@ -93,7 +93,8 @@ POSITIONING_HOW = (
     "itself: each trader group's net in contracts, a column a week for three years, "
     "above zero while the group is net long and below it while net short, in the COT "
     "Analyzer's colours (commercials red, large speculators blue, small speculators "
-    "yellow). The figure beside each market's name is commercials' net. "
+    "yellow). Within a week the tallest column is at the back and the shortest in "
+    "front, so none hides another. The figure beside each market's name is commercials' net. "
     "Weekly, as of the Tuesday the report covers. Context, not counted.")
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
@@ -423,12 +424,26 @@ POSITIONING_ALPHA = 0.8
 def positioning_chart(read, groups):
     """One market's net position by trader group: contracts, a column a week from
     zero, in the COT Analyzer's own colours (`groups` is the palette's first three
-    slots). Commercials are drawn first and small specs last, the smallest on top."""
+    slots).
+
+    The groups share a week, so each week's columns are drawn tallest at the back and
+    shortest in front: a series here is a RANK (the week's tallest, its middle, its
+    shortest) and each point carries its group's colour. Drawn a group a series, the
+    one on top hid the others wherever it was the biggest (small specs over
+    commercials on ES)."""
     from components import plot_colors
     dates, values = read.series
-    return chart(150, [bars(plot_colors.hex_to_rgba(color, POSITIONING_ALPHA), dates, series)
-                       for color, series in zip(groups, (values, *read.others))],
-                 levels=((0.0, INK_2),))
+    tones = [plot_colors.hex_to_rgba(color, POSITIONING_ALPHA) for color in groups]
+    columns = list(zip(tones, (values, *read.others)))
+    ranks = [{"type": "histogram", "color": tone, "data": []} for tone, _ in columns]
+    for i, day in enumerate(dates):
+        week = [(series[i], tone) for tone, series in columns
+                if series[i] is not None and series[i] == series[i]]
+        # Stable, so groups level on a week keep the palette's order.
+        week.sort(key=lambda point: -abs(point[0]))
+        for rank, (value, tone) in zip(ranks, week):
+            rank["data"].append({"time": day, "value": value, "color": tone})
+    return chart(150, ranks, levels=((0.0, INK_2),))
 
 
 def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
