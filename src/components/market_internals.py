@@ -171,10 +171,16 @@ VOLATILITY_SYMBOL, VOLATILITY_TERM_SYMBOL, VOLATILITY_NASDAQ_SYMBOL = "VIX", "VI
 VOLATILITY_PATH_SESSIONS = 252
 #: Equity index futures positioning, weekly, from the COT index the app is built on:
 #: (label, the indexer's market name). Commercials' net as a percent of open interest
-#: is the number, the measure the surveys page draws for the S&P 500 and the one the
-#: app's COT index is built on; large speculators' is the context.
+#: is the number, the measure the surveys page draws for the S&P 500; large
+#: speculators' is the context. Where it sits is the 26-WEEK COT INDEX, cotmetrics'
+#: own column (the reading's place between its low and high of the last 26 weeks, on
+#: net over open interest), not a percentile of forty years: positioning is read
+#: against its recent range, and a level that was ordinary in 1995 says nothing about
+#: where the crowd stands this half-year.
 POSITIONING_MARKETS = (("S&P 500 futures", "S&P 500"), ("Nasdaq 100 futures", "Nasdaq"))
 POSITIONING_COLUMN, POSITIONING_SPEC_COLUMN = const.COMM_PCT_OI, const.LARGE_PCT_OI
+POSITIONING_WEEKS = 26
+POSITIONING_INDEX_COLUMN = const.COMM_26_IDX_NORM
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -292,11 +298,11 @@ class VolatilityRead:
 
 @dataclass(frozen=True)
 class PositioningRead:
-    """Context: one index future's commercials, weekly, on their own history."""
+    """Context: one index future's commercials, weekly, on their 26-week range."""
     label: str              # "S&P 500 futures"
     value: float            # commercials' net, percent of open interest
     speculators: float      # large speculators' net, percent of open interest
-    rank: tuple             # (percentile 1-100, word, first year) of `value`
+    index: float            # the 26-week COT index of `value`, 0 to 100
     date: str               # the report's date
 
 
@@ -749,11 +755,11 @@ def volatility_read(vix, term, nasdaq=None):
 
 def _indexer_positioning(market):
     from cotmetrics.indexer import get_indexer
-    return get_indexer().get_symbols_data(market, "52")
+    return get_indexer().get_symbols_data(market, str(POSITIONING_WEEKS))
 
 
 def positioning_reads(get_positioning=None):
-    """ES and NQ commercials, each against its own history, or () when the COT
+    """ES and NQ commercials, each with cotmetrics' 26-week COT index, or () when the COT
     store cannot serve them (a market that fails is left out and logged, never raised:
     this is context on a page whose count does not depend on it)."""
     get_positioning = get_positioning or _indexer_positioning
@@ -763,16 +769,17 @@ def positioning_reads(get_positioning=None):
             frame = get_positioning(market)
             comm = pd.to_numeric(frame[POSITIONING_COLUMN], errors="coerce").dropna()
             spec = pd.to_numeric(frame[POSITIONING_SPEC_COLUMN], errors="coerce").dropna()
+            index = pd.to_numeric(frame[POSITIONING_INDEX_COLUMN], errors="coerce").dropna()
         except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
             utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
             continue
-        if spec.empty or comm.empty:
+        if spec.empty or comm.empty or index.empty:
             continue
         comm.index = pd.DatetimeIndex(comm.index)
         comm = comm.sort_index()
         out.append(PositioningRead(label=label, value=float(comm.iloc[-1]),
                                    speculators=float(spec.iloc[-1]),
-                                   rank=_rank(comm, float(comm.iloc[-1])),
+                                   index=float(index.iloc[-1]),
                                    date=_stamp_of(comm.index)))
     return tuple(out)
 

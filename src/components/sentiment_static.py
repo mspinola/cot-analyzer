@@ -239,11 +239,14 @@ def _tiles(tiles):
         pct, word, since = t["rank"]
         tier, words = sentiment.percentile_tier(pct, word)
         record = word in (sentiment.HIGHEST, sentiment.LOWEST)
+        # A tile whose rank is not a percentile of its history (the internals page's
+        # 26-week COT index) names its own unit and its own tier line.
+        unit = t.get("unit", " pctl")
         badge = (f'<div class="rank" title="{esc(t["pct"])}">'
                  + (esc(word.capitalize()) if record
-                    else f'{esc(word)}<small> pctl</small>') + '</div>')
+                    else f'{esc(word)}<small>{esc(unit)}</small>') + '</div>')
         body = (f'<div class="gauge" aria-hidden="true"><i style="left:{pct}%"></i></div>'
-                f'<div class="tier">{esc(words)} since {since}</div>')
+                f'<div class="tier">{esc(t.get("tier") or f"{words} since {since}")}</div>')
         return badge, body, tier
 
     out = []

@@ -55,15 +55,18 @@ VOLATILITY_HOW = (
     "whether it is good or bad. Nothing here has been tested as a signal, so it is "
     "drawn and not counted.")
 POSITIONING_TITLE = "Sentiment and positioning"
-POSITIONING_SUBTITLE = ("Surveys and index futures positioning: each one's own number, and "
-                        "its percentile on its full history.")
+POSITIONING_SUBTITLE = ("Surveys with their percentile on their full history; index futures "
+                        f"positioning on its {mi.POSITIONING_WEEKS}-week range.")
 POSITIONING_HOW = (
     "NAAIM is active managers' average stock exposure; AAII is individual investors, "
     "bulls minus bears and their stocks allocation. The futures tiles are commercials' "
     "net position in S&P 500 and Nasdaq 100 futures as a percent of open interest, from "
-    "the CFTC's weekly report, with large speculators' beside it. The badge is "
-    "the reading's percentile against every week of its history, and the dot shows the "
-    "same thing. Weekly or monthly, so these move slower than the rest of the page. "
+    "the CFTC's weekly report, with large speculators' beside it. A survey's badge is "
+    "its percentile against every week of its history. A futures tile's badge is the "
+    f"COT index: where the reading sits between its low (0) and high (100) of the last "
+    f"{mi.POSITIONING_WEEKS} weeks, because positioning is read against its recent range. "
+    "The dot shows the same number. Weekly or monthly, so these move slower than the "
+    "rest of the page. "
     "Context, not counted.")
 DETAIL_TITLE = "Detail"
 DETAIL_SUBTITLE = "The day's breadth by exchange, and the index and asset table."
@@ -256,14 +259,25 @@ def volatility_status(read):
 
 def positioning_tiles(reads, date_text):
     """ES and NQ commercials as readings tiles, in the surveys tiles' own shape
-    (`sentiment_static._tiles`): the number, its percentile, large speculators as
-    context."""
+    (`sentiment_static._tiles`): the number, its 26-week COT index in the badge and the
+    gauge, large speculators as context."""
+    weeks = mi.POSITIONING_WEEKS
+
+    def tier(index):
+        if index >= sentiment.HI:
+            return f"Near its {weeks}-week high"
+        if index <= sentiment.LO:
+            return f"Near its {weeks}-week low"
+        return f"Within its {weeks}-week range"
+
     return [{"key": "cot_" + r.label.split()[0].lower().replace("&", ""),
              "label": f"{r.label}, commercials",
              "value": f"{r.value:+.1f}%",
              "context": f"net, % of open interest · large speculators {r.speculators:+.1f}%",
-             "pct": sentiment.percentile_phrase(r.rank[1], r.rank[2]),
-             "rank": r.rank, "foot": date_text(r.date)}
+             "pct": f"COT index {r.index:.0f} of 100 on the last {weeks} weeks",
+             "rank": (max(0, min(100, round(r.index))), f"{r.index:.0f}", None),
+             "unit": f" · {weeks}-wk index", "tier": tier(r.index),
+             "foot": date_text(r.date)}
             for r in reads]
 
 
