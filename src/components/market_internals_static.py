@@ -60,6 +60,7 @@ ATTRIBUTION_URL = "https://www.tradingview.com/"
 
 DATA_ID = "internals-data"
 HEADWINDS_ID = "headwinds"
+HISTORY_ID = "history"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY = "fomo", "appetite"
@@ -159,8 +160,8 @@ def headwind_card(h, colors):
         '</section>\n')
 
 
-def _marks(flags, height, fill, opacity=1.0):
-    return "".join(f'<rect x="{start}" y="0" width="{length}" height="{height}" '
+def _marks(flags, height, fill, opacity=1.0, y=0):
+    return "".join(f'<rect x="{start}" y="{y}" width="{length}" height="{height}" '
                    f'fill="{fill}" fill-opacity="{opacity}"/>'
                    for start, length in view.runs(flags))
 
@@ -182,7 +183,9 @@ def history_card(history):
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
         f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
         f'price with the sessions four or five headwinds were on shaded">'
-        f'{_marks(most, f"{units:g}", mark, 0.18)}{_marks(every, f"{units:g}", mark, 0.45)}'
+        # Taller than the panel: a zoom pads the price's y range past 0 and the units.
+        f'{_marks(most, f"{units * 2:g}", mark, 0.18, y=f"{-units / 2:g}")}'
+        f'{_marks(every, f"{units * 2:g}", mark, 0.45, y=f"{-units / 2:g}")}'
         f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
         f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
         '</svg></div>']
@@ -197,9 +200,19 @@ def history_card(history):
                 '</svg></div>')
     years = "".join(f'<span style="left:{fraction * 100:.2f}%">{year}</span>'
                     for fraction, year in view.history_year_ticks(history))
-    rows.append(f'<div class="hl"></div><div class="hp hyears">{years}</div>')
+    months = _esc(surveys._script_json(view.history_month_starts(history)), quote=True)
+    rows.append(f'<div class="hl"></div><div class="hp hyears" data-months="{months}">'
+                f'{years}</div>')
+    buttons = "".join(
+        f'<button type="button" data-sessions="{sessions}" aria-pressed='
+        f'"{"true" if label == view.HISTORY_DEFAULT_WINDOW else "false"}">{label}</button>'
+        for label, sessions in view.HISTORY_WINDOWS if sessions < n)
+    windows = (f'<div class="lookback hwin" role="group" aria-label="History window">'
+               f'<span>Window</span>{buttons}</div>')
     return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
-                 f'<div class="hgrid">{"".join(rows)}</div>',
+                 windows,
+                 f'<div class="hgrid" id="{HISTORY_ID}" data-sessions="{n}" '
+                 f'data-units="{units:g}">{"".join(rows)}</div>',
                  _detail(view.history_summary(history)))
 
 
@@ -394,7 +407,8 @@ def render(snap, colors, generated_at=None):
 .hprice {{ height: 190px; }}
 .hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
-.hyears span {{ position: absolute; transform: translateX(-50%); }}
+.hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
+.hwin {{ margin: 8px 0 0; }}
 @media (max-width: 700px) {{
   .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
@@ -501,6 +515,64 @@ footer a {{ color: var(--ink-2); }}
       }}));
     }}
     chart.timeScale().fitContent();
+  }});
+}})();
+</script>
+<script>
+// The history card's windows. Every row's SVG is one unit a session wide, so a window
+// is a viewBox: the same x range on all of them, and on the price the y range of what
+// is on screen, so a year of price is not a flat line on nineteen years' scale.
+(function () {{
+  var grid = document.getElementById('{HISTORY_ID}');
+  if (!grid) {{ return; }}
+  var N = +grid.dataset.sessions, UNITS = +grid.dataset.units;
+  var svgs = [].slice.call(grid.querySelectorAll('svg'));
+  var price = grid.querySelector('.hprice');
+  var points = price.querySelector('polyline').getAttribute('points').split(' ')
+    .map(function (p) {{ p = p.split(','); return [+p[0], +p[1]]; }});
+  var axis = grid.querySelector('.hyears');
+  var months = JSON.parse(axis.dataset.months);
+  var NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function ticks(start, len) {{
+    var years = len / 252, out = [];
+    // Months inside a year and a half, quarters inside four years, then whole years
+    // thinned to about ten labels.
+    var every = years <= 1.5 ? 1 : years <= 4 ? 3 : 12;
+    var step = Math.max(1, Math.ceil(years / 10));
+    months.forEach(function (m) {{
+      var i = m[0], year = +m[1].slice(0, 4), month = +m[1].slice(5, 7);
+      if (i <= start || (month - 1) % every) {{ return; }}
+      if (every === 12 && year % step) {{ return; }}
+      var text = every === 12 ? String(year)
+        : month === 1 ? "Jan '" + String(year).slice(2) : NAMES[month - 1];
+      out.push([(i - start) / len, text]);
+    }});
+    return out;
+  }}
+  function show(sessions) {{
+    var len = sessions ? Math.min(sessions, N) : N, start = N - len;
+    var low = Infinity, high = -Infinity;
+    points.forEach(function (p) {{
+      if (p[0] >= start) {{ low = Math.min(low, p[1]); high = Math.max(high, p[1]); }}
+    }});
+    var pad = (high - low || UNITS) * 0.04;
+    svgs.forEach(function (svg) {{
+      var y = svg === price ? [low - pad, high - low + 2 * pad] : [0, 1];
+      svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
+    }});
+    axis.textContent = '';
+    ticks(start, len).forEach(function (t) {{
+      var span = document.createElement('span');
+      span.style.left = (t[0] * 100).toFixed(2) + '%';
+      span.textContent = t[1];
+      axis.appendChild(span);
+    }});
+    document.querySelectorAll('.hwin button').forEach(function (b) {{
+      b.setAttribute('aria-pressed', +b.dataset.sessions === sessions ? 'true' : 'false');
+    }});
+  }}
+  document.querySelectorAll('.hwin button').forEach(function (b) {{
+    b.addEventListener('click', function () {{ show(+b.dataset.sessions); }});
   }});
 }})();
 </script>

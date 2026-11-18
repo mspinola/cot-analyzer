@@ -34,7 +34,8 @@ HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
     "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. The history starts "
+    "price is the same count: light for four, darker for all five. The window buttons "
+    "zoom every row together and refit the price to what is on screen. The history starts "
     "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
     "up and nothing more: no claim is made here about what followed, and none has been "
     "tested.")
@@ -227,6 +228,13 @@ HISTORY_PRICE_UNITS = 100.0
 #: plot a few hundred pixels wide are five to a pixel.
 HISTORY_PRICE_STEP = 5
 HISTORY_TICK_YEARS = 2
+#: The most recent sessions the price line keeps every point for, so a zoom to a year
+#: or three still draws a daily line and not fifty-two weekly segments.
+HISTORY_DAILY_SESSIONS = 3 * 252
+#: The card's windows, (label, sessions back from the newest; 0 is everything). Max is
+#: what the page opens on and what a reader without JavaScript sees.
+HISTORY_WINDOWS = (("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
+HISTORY_DEFAULT_WINDOW = "Max"
 
 
 def runs(flags):
@@ -250,9 +258,8 @@ def history_price_points(history):
     logs = [math.log(v) for v in history.price]
     low, high = min(logs), max(logs)
     span = (high - low) or 1.0
-    picks = list(range(0, len(logs), HISTORY_PRICE_STEP))
-    if picks[-1] != len(logs) - 1:
-        picks.append(len(logs) - 1)
+    recent = max(len(logs) - HISTORY_DAILY_SESSIONS, 0)
+    picks = list(range(0, recent, HISTORY_PRICE_STEP)) + list(range(recent, len(logs)))
     return " ".join(f"{i},{(high - logs[i]) / span * HISTORY_PRICE_UNITS:.2f}" for i in picks)
 
 
@@ -266,6 +273,17 @@ def history_year_ticks(history, every=HISTORY_TICK_YEARS):
             seen = year
             if i and year % every == 0:
                 out.append((i / n, str(year)))
+    return out
+
+
+def history_month_starts(history):
+    """`[[session index, "2026-03"], ...]`: the first session of every month, which is
+    all the page's script needs to label any window (months, quarters or years)."""
+    out, seen = [], None
+    for i, date in enumerate(history.dates):
+        if date[:7] != seen:
+            seen = date[:7]
+            out.append([i, seen])
     return out
 
 
