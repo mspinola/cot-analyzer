@@ -644,3 +644,59 @@ def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
     del plain[mi.FOMO_SYMBOL]
     without = mi.build_snapshot(_bars(plain)).history
     assert without.fomo is None and without.count == h.count and without.total == h.total == 5
+
+
+# ── provisional breadth: the evening's unconfirmed bar ────────────────────────
+
+def _with_siblings(frames, values):
+    """`frames` plus a one-bar provisional sibling, dated the next session, for each
+    symbol in `values`."""
+    out = dict(frames)
+    nxt = frames["QQQ"].index[-1] + pd.offsets.BDay(1)
+    for symbol, value in values.items():
+        out[symbol + mi.PROVISIONAL_SUFFIX] = pd.DataFrame(
+            {"Close": [float(value)]}, index=pd.DatetimeIndex([nxt], name="Date"))
+    return out, nxt.strftime("%Y-%m-%d")
+
+
+def test_a_provisional_bar_is_spliced_after_the_official_series_and_named():
+    frames = _universe(200)
+    plain = mi.build_snapshot(_bars(frames))
+    assert plain.provisional == ()
+    legs = {s: 500 for _, hi, lo in mi.NET_HIGHS_SYMBOLS for s in (hi, lo)}
+    with_bars, day = _with_siblings(frames, {mi.FOMO_SYMBOL: 9.5, **legs,
+                                             "NASDAQ_NL52W": 900, "NYSE_NL52W": 900})
+    snap = mi.build_snapshot(_bars(with_bars))
+    assert snap.fomo.value == 9.5 and snap.fomo.date == day
+    assert snap.fomo.change == 9.5 - plain.fomo.value
+    assert set(snap.provisional) == {"fomo", "net_highs", "Nasdaq", "NYSE"}
+    card = next(h for h in snap.headwinds if h.key == "net_highs")
+    assert card.date == day and snap.breadth.dates[-1] == day
+    assert snap.breadth.net[-1] == (500 - 900) * 2
+    # The advancing share has no sibling here, so it is as it was and not named.
+    assert snap.advance_decline == plain.advance_decline
+    assert snap.date == day and mi.stale_notes(snap) == []
+
+
+def test_a_sibling_at_or_before_the_official_end_is_ignored():
+    """The session has settled: the official bar wins, and nothing is provisional."""
+    frames = _universe(200)
+    plain = mi.build_snapshot(_bars(frames))
+    stale = dict(frames)
+    stale[mi.FOMO_SYMBOL + mi.PROVISIONAL_SUFFIX] = frames[mi.FOMO_SYMBOL].iloc[[-1]] * 0 + 1.0
+    empty = dict(frames)
+    empty[mi.FOMO_SYMBOL + mi.PROVISIONAL_SUFFIX] = frames[mi.FOMO_SYMBOL].iloc[:0]
+    for case in (stale, empty):
+        snap = mi.build_snapshot(_bars(case))
+        assert snap.fomo == plain.fomo and snap.provisional == ()
+
+
+def test_a_provisional_bar_is_never_awaited_and_one_leg_alone_does_not_move_the_net():
+    frames = _universe(200)
+    plain = mi.build_snapshot(_bars(frames))
+    assert not any(s.endswith(mi.PROVISIONAL_SUFFIX) for s in plain.awaiting)
+    one_leg, _ = _with_siblings(frames, {"NASDAQ_NH52W": 500})
+    snap = mi.build_snapshot(_bars(one_leg))
+    # Highs without lows for the new session is no net for it: nothing changes.
+    assert snap.net_highs == plain.net_highs and snap.breadth == plain.breadth
+    assert "net_highs" not in snap.provisional and "Nasdaq" not in snap.provisional
