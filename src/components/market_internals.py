@@ -169,12 +169,18 @@ HISTORY_PRICE_SYMBOL = "QQQ"
 #: history says how unusual it is and stops there.
 VOLATILITY_SYMBOL, VOLATILITY_TERM_SYMBOL, VOLATILITY_NASDAQ_SYMBOL = "VIX", "VIX3M", "VXN"
 VOLATILITY_PATH_SESSIONS = 252
-#: Equity index futures positioning, weekly, from the COT index the app is built on:
-#: (label, the indexer's market name). Commercials' net as a percent of open interest
-#: is the number, the measure the surveys page draws for the S&P 500 and the one the
-#: app's COT index is built on; large speculators' is the context.
-POSITIONING_MARKETS = (("S&P 500 futures", "S&P 500"), ("Nasdaq 100 futures", "Nasdaq"))
-POSITIONING_COLUMN, POSITIONING_SPEC_COLUMN = const.COMM_PCT_OI, const.LARGE_PCT_OI
+#: Equity index futures positioning, weekly: (symbol, the indexer's market name), the
+#: crowd board's EQUITIES rows in its order. The reading is the board's own, the
+#: COMMERCIAL INDEX over four lookbacks (`tape_context.window_index_frame`, on the
+#: default model's basis), so this page and the app's landing page print one set of
+#: numbers. Positioning is read against its recent range, which is why the row leads
+#: with three months and ends on the full history, and why no percentile of forty
+#: years appears here.
+EQUITY_MARKETS = (("ES", "S&P 500"), ("YM", "DOW"), ("NQ", "Nasdaq"), ("RTY", "Russell"))
+#: Weeks of commercials' net the time series draws: three years.
+POSITIONING_SERIES_WEEKS = 156
+#: Weeks of the 12-month index the sparkline draws, the board's.
+POSITIONING_PATH_WEEKS = 52
 
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
@@ -291,13 +297,17 @@ class VolatilityRead:
 
 
 @dataclass(frozen=True)
-class PositioningRead:
-    """Context: one index future's commercials, weekly, on their own history."""
-    label: str              # "S&P 500 futures"
-    value: float            # commercials' net, percent of open interest
-    speculators: float      # large speculators' net, percent of open interest
-    rank: tuple             # (percentile 1-100, word, first year) of `value`
-    date: str               # the report's date
+class EquityPositioning:
+    """Context: one index future's commercials, as the crowd board reads them."""
+    symbol: str             # "ES"
+    name: str               # "S&P 500"
+    windows: tuple          # the commercial index on board_traces.WINDOW_LABELS; None unfilled
+    move: Optional[float]   # the 12-month index's change over const.MOMENTUM_PERIOD weeks
+    path: tuple             # the 12-month index, the last year, oldest first
+    start: Optional[str]    # first report date
+    value: float            # commercials' net, percent of open interest, newest week
+    series: tuple           # (date strings, commercials' net % of open interest), three years
+    date: str               # the newest report's date
 
 
 @dataclass(frozen=True)
@@ -752,28 +762,46 @@ def _indexer_positioning(market):
     return get_indexer().get_symbols_data(market, "52")
 
 
-def positioning_reads(get_positioning=None):
-    """ES and NQ commercials, each against its own history, or () when the COT
-    store cannot serve them (a market that fails is left out and logged, never raised:
-    this is context on a page whose count does not depend on it)."""
+def equity_positioning(get_positioning=None):
+    """The four equity index futures as the crowd board reads them, plus commercials'
+    net as a series. A market the COT store cannot serve is left out and logged, never
+    raised: this is context on a page whose count does not depend on it."""
+    import cotmetrics.models as models
+
+    from components import board_traces, tape_context
     get_positioning = get_positioning or _indexer_positioning
+    column = (const.COMM_NET_NORM if models.DEFAULT_MODEL.basis == const.BASIS_OI_NORM
+              else const.COMM_NET)
     out = []
-    for label, market in POSITIONING_MARKETS:
+    for symbol, market in EQUITY_MARKETS:
         try:
             frame = get_positioning(market)
-            comm = pd.to_numeric(frame[POSITIONING_COLUMN], errors="coerce").dropna()
-            spec = pd.to_numeric(frame[POSITIONING_SPEC_COLUMN], errors="coerce").dropna()
+            net = frame[column].astype(float)
+            share = pd.to_numeric(frame[const.COMM_PCT_OI], errors="coerce").dropna()
         except Exception as e:  # noqa: BLE001 -- unset store, unknown market, old cache
             utils.cot_logger.warning(f"market internals: no positioning for {market}: {e}")
             continue
-        if spec.empty or comm.empty:
+        if net.notna().sum() < 2 or share.empty:
             continue
-        comm.index = pd.DatetimeIndex(comm.index)
-        comm = comm.sort_index()
-        out.append(PositioningRead(label=label, value=float(comm.iloc[-1]),
-                                   speculators=float(spec.iloc[-1]),
-                                   rank=_rank(comm, float(comm.iloc[-1])),
-                                   date=_stamp_of(comm.index)))
+        index = tape_context.window_index_frame(net)
+        latest = index.iloc[-1]
+
+        def clean(v):
+            return None if v is None or v != v else float(v)
+
+        share.index = pd.DatetimeIndex(share.index)
+        tail = share.sort_index().tail(POSITIONING_SERIES_WEEKS)
+        year = board_traces.WINDOW_LABELS[2]
+        out.append(EquityPositioning(
+            symbol=symbol, name=market,
+            windows=tuple(clean(latest[label]) for label in board_traces.WINDOW_LABELS),
+            move=clean(latest["move"]),
+            path=tuple(clean(v) for v in index[year].tail(POSITIONING_PATH_WEEKS)),
+            start=index.attrs.get("start"),
+            value=float(tail.iloc[-1]),
+            series=(_dates(tail.index), tuple(float(v) for v in tail)),
+            date=_stamp_of(pd.DatetimeIndex(index.index)),
+        ))
     return tuple(out)
 
 

@@ -37,7 +37,7 @@ from pathlib import Path
 
 import components.market_internals as mi
 import components.market_internals_view as view
-from components import plot_colors, sentiment
+from components import board_traces, plot_colors, sentiment
 from components import sentiment_static as surveys
 
 TITLE = "Market Internals"
@@ -62,6 +62,10 @@ ATTRIBUTION_URL = "https://www.tradingview.com/"
 DATA_ID = "internals-data"
 HEADWINDS_ID = "headwinds"
 HISTORY_ID = "history"
+POSITIONING_ID = "positioning"
+SENTIMENT_ID = "sentiment"
+#: A market's commercials chart is POSITIONING_PREFIX + its symbol in the payload.
+POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
@@ -84,12 +88,14 @@ def page_colors(colors):
 
 def _date(stamp):
     """Nov 6, 2026 from the snapshot's 2026-11-06, the monitors' date spelling."""
+    if not isinstance(stamp, str):          # a survey's date is already a date
+        return surveys._date(stamp)
     return surveys._date(datetime.strptime(stamp, "%Y-%m-%d"))
 
 
-def charts(snap, colors):
+def charts(snap, colors, positioning=()):
     """Every chart the page draws, keyed by the `data-chart` of its element."""
-    out = {}
+    out = {POSITIONING_PREFIX + r.symbol: view.positioning_chart(r) for r in positioning or ()}
     if snap.fomo is not None:
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
@@ -280,21 +286,95 @@ def volatility_card(read, colors):
     )
 
 
-def positioning_section(survey, allocation, positioning):
-    """Surveys and futures positioning as the surveys page's own tiles. Each part is
+def _block(block):
+    """One block: label, current reading, date, then a rail per history with the
+    reading's place as a numbered dot. The dot's colour is the tier's tone (warm toward
+    a high, cool toward a low), as on the surveys page's tiles."""
+    rails = "".join(
+        f'<div class="rl">{_esc(label)}</div>'
+        f'<div class="rail"><i class="tier-{tier}" style="left:{position}%">{_esc(text)}</i></div>'
+        for label, position, text, tier in block["rows"])
+    note = _detail(block["note"]) if block.get("note") else ""
+    return (f'<div class="pblock" data-key="{_esc(block["key"])}">'
+            f'<div class="between"><span class="label">{_esc(block["label"])}</span>'
+            f'<span class="foot">{_esc(block["foot"])}</span></div>'
+            f'<div class="value">{_esc(block["value"])}</div>{note}'
+            f'<div class="rails">{rails}</div></div>')
+
+
+def sentiment_section(naaim, votes, allocation):
+    """The surveys: each one's current reading over its percentile bars. Each is
     optional and left out when its store could not serve it; with none, no section."""
-    tiles = []
-    if survey is not None:
-        tiles += surveys.survey_tiles(survey)
-    if allocation is not None:
-        tiles.append(surveys.stocks_tile(allocation))
-    tiles += view.positioning_tiles(positioning or (), _date)
-    if not tiles:
+    blocks = view.percentile_blocks(naaim, votes, allocation, _date)
+    if not blocks:
         return ""
-    link = (f'<p class="more"><a href="{SURVEYS_URL}">The surveys in full, with their '
-            'history &rarr;</a></p>\n' if survey is not None or allocation is not None else "")
+    return (_section(view.SENTIMENT_TITLE, view.SENTIMENT_SUBTITLE, view.SENTIMENT_HOW)
+            + f'<div class="pblocks" id="{SENTIMENT_ID}">'
+            + "".join(_block(b) for b in blocks) + '</div>\n'
+            + f'<p class="more"><a href="{SURVEYS_URL}">The surveys in full, with their '
+            'history &rarr;</a></p>\n')
+
+
+def _cot_cell(value, colors):
+    """One lookback's commercial index, filled as the crowd board fills it: the pole's
+    colour, stronger the further from 50 (`board_traces.cell_fill`)."""
+    if value is None:
+        return '<td class="num"><span class="cell none">&ndash;</span></td>'
+    fill = board_traces.cell_fill(value, colors, background=surveys.SURFACE_COLOR)
+    return (f'<td class="num"><span class="cell" style="background:{fill};'
+            f'color:{plot_colors.cell_text_colour(fill)}">{value:.0f}</span></td>')
+
+
+def _cot_row(read, colors):
+    move = read.move
+    if move is None:
+        change = "&ndash;"
+    else:
+        flat = abs(move) <= board_traces.DELTA_FLAT
+        tone = surveys.MUTED if flat else colors.bull if move > 0 else colors.bear
+        change = (f'<span style="color:{tone}">{"•" if flat else "▲" if move > 0 else "▼"}</span> '
+                  f'{_esc(view.signed(move, ".0f"))}')
+    points, end = view.positioning_spark(read)
+    spark = ""
+    if end is not None:
+        last = read.path[-1]
+        dot = colors.bull if last >= 50 else colors.bear
+        w, h = view.SPARK_WIDTH, view.SPARK_HEIGHT
+        spark = (f'<svg class="spark" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" '
+                 f'aria-label="{_esc(read.name)} 12-month commercial index over the last year">'
+                 f'<line x1="0" x2="{w}" y1="{h / 2:g}" y2="{h / 2:g}" stroke="{surveys.MUTED}" '
+                 'stroke-width="1" stroke-dasharray="2 3"/>'
+                 f'<polyline fill="none" stroke="{surveys.INK_2}" stroke-width="1.2" '
+                 f'points="{points}"/><circle cx="{end[0]:.1f}" cy="{end[1]:.1f}" r="2.5" '
+                 f'fill="{dot}"/></svg>')
+    since = f" <small>'{read.start[2:4]}</small>" if read.start else ""
+    return (f'<tr data-key="{_esc(read.symbol)}"><td class="sym mono">{_esc(read.symbol)}</td>'
+            f'<td class="name">{_esc(read.name)}{since}</td>'
+            + "".join(_cot_cell(v, colors) for v in read.windows)
+            + f'<td class="num">{change}</td><td class="num">{spark}</td></tr>')
+
+
+def positioning_section(positioning, colors):
+    """Commercials in the four equity index futures: the crowd board's lookback rows,
+    then each market's net position through time. No section without the COT store."""
+    if not positioning:
+        return ""
+    head = ("<th></th><th></th>"
+            + "".join(f"<th>{_esc(c)}</th>" for c in view.POSITIONING_COLUMNS)
+            + f"<th>{_esc(view.POSITIONING_CHANGE)}</th><th>{_esc(view.POSITIONING_PATH)}</th>")
+    table = ('<div class="scroll"><table class="cot"><thead><tr>' + head + '</tr></thead><tbody>'
+             + "".join(_cot_row(r, colors) for r in positioning) + '</tbody></table></div>')
+    asof = _detail(f"Commercial index, 0 to 100 · report of {_date(positioning[0].date)}",
+                   "detail small")
+    charts_html = "".join(
+        f'<div class="pchart"><div class="between"><span class="label">{_esc(r.symbol)} '
+        f'· {_esc(r.name)}</span><span class="name">{_esc(view.signed(r.value, ".1f"))}%</span></div>'
+        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r)["height"]) + '</div>'
+        for r in positioning)
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
-            + surveys._tiles(tiles) + link)
+            + f'<section class="card" id="{POSITIONING_ID}">{table}{asof}'
+            '<h3>Commercials&rsquo; net position, % of open interest · weekly, three years</h3>'
+            f'<div class="pcharts">{charts_html}</div></section>\n')
 
 
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
@@ -394,13 +474,15 @@ def _headline(snap, colors):
             f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
 
-def render(snap, colors, generated_at=None, survey=None, allocation=None, positioning=None):
+def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=None,
+           positioning=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
     palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
 
-    `survey` (`sentiment.build_read()`), `allocation` (`aaii_allocation.read()`) and
-    `positioning` (`market_internals.positioning_reads()`) fill the sentiment and
-    positioning strip; each is optional, and the strip is left out with none.
+    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
+    (`aaii_allocation.read()`) fill the sentiment section; `positioning`
+    (`market_internals.equity_positioning()`) the positioning section. Each is
+    optional, and a section is left out with nothing to show.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
     be read never replaces the published page with a row of "awaiting data" cards. A
@@ -417,7 +499,8 @@ def render(snap, colors, generated_at=None, survey=None, allocation=None, positi
                  + fomo_card(snap.fomo, colors)
                  + appetite_card(snap.appetite, snap.credit, colors)
                  + volatility_card(snap.volatility, colors) + '</div>\n'
-                 + positioning_section(survey, allocation, positioning))
+                 + sentiment_section(naaim, votes, allocation)
+                 + positioning_section(positioning, colors))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + '<div class="cards">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
@@ -450,7 +533,37 @@ def render(snap, colors, generated_at=None, survey=None, allocation=None, positi
 .hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}
 .hl {{ font-size: 0.78rem; }}
 .hl.all {{ color: {colors.bear}; font-weight: 600; }}
+/* Sentiment and positioning: a block per series, its reading over its percentile
+   rails. A rail is the 0-100 scale with a tick at the median and the reading as a
+   numbered dot. */
+.pblocks {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 12px; }}
+.pblock {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
+.pblock .label {{ font-size: 0.8rem; color: var(--ink-2); }}
+.pblock .foot {{ font-size: 0.75rem; color: var(--muted); }}
+.pblock .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
+.rails {{ display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 12px; align-items: center; margin: 10px 11px 4px 0; }}
+.rl {{ font-size: 0.75rem; }}
+.rail {{ position: relative; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); }}
+.rail::after {{ content: ""; position: absolute; left: 50%; top: -4px; width: 1px; height: 14px; background: var(--muted); }}
+.rail i {{ position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+  background: var(--ink-2); color: var(--page); font-size: 0.68rem; font-weight: 700; font-style: normal;
+  line-height: 22px; text-align: center; box-shadow: 0 0 0 2px var(--surface); z-index: 1; }}
+.rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}
+.rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
+/* Positioning: the crowd board's row, as a table. A cell is a pill filled toward its
+   pole; the table scrolls sideways on a phone rather than dropping a lookback. */
+.scroll {{ overflow-x: auto; }}
+table.cot {{ min-width: 520px; }}
+table.cot th {{ text-align: center; border-bottom: none; padding: 2px 6px; }}
+table.cot td {{ border-bottom: none; padding: 3px 6px; white-space: nowrap; }}
+table.cot td.num {{ text-align: center; }}
+table.cot td small {{ color: var(--muted); }}
+.mono {{ font-family: var(--mono); }}
+.cell {{ display: inline-block; min-width: 64px; padding: 2px 0; border-radius: 4px; font-size: 0.82rem; font-weight: 600; text-align: center; }}
+.cell.none {{ background: var(--wash); color: var(--muted); }}
+.pcharts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; }}
+.pchart .label {{ font-size: 0.8rem; }}
 .more a {{ color: var(--ink-2); }}
 .hp svg {{ display: block; width: 100%; }}
 .hprice {{ height: 190px; }}
@@ -515,7 +628,7 @@ footer a {{ color: var(--ink-2); }}
 <footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
-<script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors))}</script>
+<script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors, positioning))}</script>
 <script>
 (function () {{
   var LC = window.LightweightCharts;

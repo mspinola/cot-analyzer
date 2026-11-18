@@ -537,18 +537,39 @@ def test_volatility_is_context_absent_without_its_series_and_never_awaited():
     assert mi.headline(with_vol) == mi.headline(mi.build_snapshot(_bars(_universe())))
 
 
-def test_positioning_reads_commercials_against_their_own_history():
-    weeks = pd.date_range("2000-01-04", periods=200, freq="W-TUE")
+def _cot_frame(net, weeks=300):
+    import cotmetrics.constants as const
+    index = pd.date_range("2021-01-05", periods=weeks, freq="W-TUE")
+    values = [float(v) for v in net]
+    return pd.DataFrame({const.COMM_NET: values, const.COMM_NET_NORM: [v / 100 for v in values],
+                         const.COMM_PCT_OI: values}, index=index)
+
+
+def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
+    """The four window indexes, the change and the path come from the board's own
+    rule (`tape_context.window_index_frame`), so the two pages print one set."""
+    from components import board_traces, tape_context
+    frames = {"S&P 500": _cot_frame([i % 40 for i in range(300)]),
+              "Nasdaq": _cot_frame([300 - i for i in range(300)])}
 
     def get(market):
-        if market == "Nasdaq":
-            raise KeyError(market)
-        return pd.DataFrame({mi.POSITIONING_COLUMN: [float(i % 50) for i in range(199)] + [49.0],
-                             mi.POSITIONING_SPEC_COLUMN: [-3.0] * 200}, index=weeks)
-    reads = mi.positioning_reads(get)
-    assert [r.label for r in reads] == ["S&P 500 futures"]         # the failed market is left out
-    (r,) = reads
-    assert r.value == 49.0 and r.speculators == -3.0
-    assert mi.POSITIONING_COLUMN == "Comm Pct OI"
-    assert r.rank == (100, "highest", 2000) and r.date == weeks[-1].strftime("%Y-%m-%d")
-    assert mi.positioning_reads(lambda market: pd.DataFrame()) == ()
+        return frames[market]                      # DOW and Russell raise KeyError
+    reads = mi.equity_positioning(get)
+    assert [(r.symbol, r.name) for r in reads] == [("ES", "S&P 500"), ("NQ", "Nasdaq")]
+    es, nq = reads
+    import cotmetrics.constants as const
+    import cotmetrics.models as models
+    column = (const.COMM_NET_NORM if models.DEFAULT_MODEL.basis == const.BASIS_OI_NORM
+              else const.COMM_NET)
+    board = tape_context.window_index_frame(frames["S&P 500"][column].astype(float))
+    assert es.windows == tuple(float(board.iloc[-1][label]) for label in board_traces.WINDOW_LABELS)
+    assert es.move == float(board.iloc[-1]["move"])
+    assert es.path == tuple(float(v) for v in board[board_traces.WINDOW_LABELS[2]].tail(52))
+    # A market falling every week sits at the bottom of every lookback.
+    assert nq.windows == (0.0, 0.0, 0.0, 0.0)
+    # The series is commercials' net, percent of open interest, three years of it.
+    assert es.value == 19.0 and len(es.series[0]) == len(es.series[1]) == 156
+    assert es.series[1][-1] == 19.0 and es.date == es.series[0][-1] == "2026-09-29"
+    assert es.start == "2021-01-05"
+    assert mi.equity_positioning(lambda market: pd.DataFrame()) == ()
+    assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "YM", "NQ", "RTY"]
