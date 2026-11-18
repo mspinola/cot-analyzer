@@ -589,3 +589,25 @@ def test_numbers_on_a_fill_never_take_the_apps_cream():
     assert st.ink_on("#ffffff") == plot_colors.INK_DARK
     page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts()).lower()
     assert vc.TEXT_COLOR.lower() not in page and vc.BRIGHTER_TEXT_COLOR.lower() not in page
+
+
+def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
+    from tests.test_market_internals import _with_siblings
+    frames = _universe(N)
+    legs = {s: 400 for _, hi, lo in mi.NET_HIGHS_SYMBOLS for s in (hi, lo)}
+    with_bars, _ = _with_siblings(frames, {mi.FOMO_SYMBOL: 9.5, **legs})
+    snap = mi.build_snapshot(_bars(with_bars))
+    page = st.render(snap, COLORS)
+    chip = '<span class="prov"'
+    fomo = page.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
+    assert chip in fomo and ">provisional</span>" in fomo
+    net = page.split('data-key="net_highs"')[1].split("</section>")[0]
+    assert chip in net
+    for key in ("qqq_updown", "credit", "rotation"):       # prices, never provisional
+        assert chip not in page.split(f'data-key="{key}"')[1].split("</section>")[0]
+    assert html.escape(view.provisional_note(snap)) in page
+    assert view.provisional_note(snap).startswith("Provisional: the newest FOMO, net new highs")
+    # Settled: no chip anywhere and no sentence.
+    plain = st.render(_snap(), COLORS)
+    assert chip not in plain and "Provisional:" not in plain
+    assert view.provisional_note(_snap()) == ""

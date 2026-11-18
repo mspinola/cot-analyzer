@@ -149,6 +149,13 @@ def _section(title, subtitle, how=None):
             + surveys._sub(subtitle, how) + '</div>\n')
 
 
+def _prov(snap, key):
+    """The "provisional" chip beside a number that rests on an unconfirmed bar."""
+    tag = view.provisional_tag(snap, key)
+    return (f'<span class="prov" title="The evening\'s reading, not yet confirmed by the '
+            f'vendor; replaced when it settles.">{_esc(tag)}</span>' if tag else "")
+
+
 def _detail(text, cls="detail"):
     return f'<div class="{cls}">{_esc(text)}</div>'
 
@@ -165,7 +172,7 @@ def _split_bar(left_pct, colors, cls="bar"):
 
 # ── cards ─────────────────────────────────────────────────────────────────────
 
-def headwind_card(h, colors):
+def headwind_card(h, colors, chip=""):
     """One headwind: its name and state, the number, the quarter behind it, what would
     flip it and how long it has stood. The tile's left edge takes the state's colour."""
     tone = colors.bear if h.on else colors.bull
@@ -175,7 +182,7 @@ def headwind_card(h, colors):
         f'<section class="card hw {"on" if h.on else "off"}" data-key="{_esc(h.key)}">'
         f'<div class="between"><span class="eyebrow">{_esc(h.title)}</span>'
         f'{_badge(view.headwind_badge(h), mi.NEGATIVE if h.on else mi.POSITIVE, colors)}</div>'
-        f'<div class="row"><span class="big">{_esc(h.display)}</span>'
+        f'<div class="row"><span class="big">{_esc(h.display)}</span>{chip}'
         + (f'<span class="detail" style="color:{versus_tone}">{_esc(versus)}</span>'
            if versus else "")
         + f'</div>{_detail(h.subtitle)}'
@@ -274,18 +281,18 @@ def headwinds_section(snap, colors):
             if missing else "")
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards three" id="{HEADWINDS_ID}">\n'
-            + "".join(headwind_card(h, colors) for h in snap.headwinds) + f'</div>\n{note}'
+            + "".join(headwind_card(h, colors, _prov(snap, h.key)) for h in snap.headwinds) + f'</div>\n{note}'
             + history_card(snap.history, colors))
 
 
-def fomo_card(read, colors):
+def fomo_card(read, colors, chip=""):
     if read is None:
         return _card(view.FOMO_TITLE, None, None, _awaiting([mi.FOMO_SYMBOL]))
     change = view.verdict_color(mi.POSITIVE if read.change >= 0 else mi.NEGATIVE, colors)
     return _card(
         view.FOMO_TITLE, view.FOMO_SUBTITLE, view.FOMO_HOW,
         f'<div class="row"><span class="big">{read.value:.1f}</span>'
-        f'{_badge(read.label, read.verdict, colors)}'
+        f'{_badge(read.label, read.verdict, colors)}{chip}'
         f'<span class="detail push" style="color:{change}">'
         f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
         _chart(FOMO_KEY, view.fomo_chart(read, colors)["height"]),
@@ -445,7 +452,7 @@ def breadth_charts(snap, colors):
             + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
                     f'<div class="detail"><span class="key" style="color:{colors.bull}">'
                     f'▲ New highs {b.highs[-1]:.0f}</span><span style="color:{colors.bear}">'
-                    f'▼ New lows {b.lows[-1]:.0f}</span></div>',
+                    f'▼ New lows {b.lows[-1]:.0f}</span> {_prov(snap, "net_highs")}</div>',
                     _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
             + _card(view.NET_HISTORY_TITLE, view.NET_HISTORY_SUBTITLE, view.NET_HISTORY_HOW,
                     '<div class="detail"><span class="key">— Daily</span>'
@@ -457,14 +464,14 @@ def breadth_charts(snap, colors):
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
 
 
-def _net_highs_row(read, colors):
+def _net_highs_row(read, colors, chip=""):
     color = view.verdict_color(read.verdict, colors)
     ink = {1: colors.bull, -1: colors.bear, 0: surveys.INK_2}
     arrows = "".join(f'<span style="color:{ink[s]}">{_ARROWS[s]}</span> '
                      for s in read.last_three)
     edge = color if read.regime else "transparent"
     return (f'<div class="between nh" style="border-left-color:{edge}"><div>'
-            f'<div class="name">{_esc(read.exchange)}</div>'
+            f'<div class="name">{_esc(read.exchange)} {chip}</div>'
             f'{_detail(f"{read.highs} highs, {read.lows} lows")}'
             f'<div>{arrows}</div></div>'
             f'<div class="right"><div class="big" style="color:{color}">'
@@ -474,7 +481,7 @@ def _net_highs_row(read, colors):
 
 def breadth_card(snap, colors):
     """Net new highs on both exchanges, and the session's advancing share under them."""
-    rows = [_net_highs_row(r, colors) for r in snap.net_highs]
+    rows = [_net_highs_row(r, colors, _prov(snap, r.exchange)) for r in snap.net_highs]
     missing = view.net_highs_awaiting(snap.awaiting)
     if missing:
         rows.append(_awaiting(missing))
@@ -489,7 +496,8 @@ def breadth_card(snap, colors):
             f'<div class="between"><span style="color:{colors.bull}">{share:.0f}% advancing'
             f'</span>{_badge(read.label, read.verdict, colors)}'
             f'<span style="color:{colors.bear}">{100 - share:.0f}% declining</span></div>',
-            _detail(f"{read.advancing:,} up, {read.declining:,} down"),
+            f'<div class="detail">{read.advancing:,} up, {read.declining:,} down '
+            f'{_prov(snap, "advance_decline")}</div>',
         ]
     return _card(view.NET_HIGHS_TITLE, view.NET_HIGHS_SUBTITLE, view.NET_HIGHS_HOW, *rows)
 
@@ -573,7 +581,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
                  + f'<div class="cards{" three" if snap.volatility else ""}">\n'
-                 + fomo_card(snap.fomo, colors)
+                 + fomo_card(snap.fomo, colors, _prov(snap, "fomo"))
                  + appetite_card(snap.appetite, snap.credit, colors)
                  + volatility_card(snap.volatility, colors) + '</div>\n'
                  + sentiment_section(naaim, votes, allocation)
@@ -640,6 +648,8 @@ button.htog:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 2
    which are opposite readings of the same dot, and the second is untested. */
 .rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}
 .rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}
+.prov {{ font-size: 0.65rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  border: 1px dashed var(--muted); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
 /* Positioning: the crowd board's row, as a table. A cell is a pill filled toward its
    pole; the table scrolls sideways on a phone rather than dropping a lookback. */

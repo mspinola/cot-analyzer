@@ -42,6 +42,16 @@ of the count of reads, on the evidence in that module's header: a stress reading
 not followed by a worse month in any era tested, so counting it as a negative would
 claim something the measurement refused. Its JNK-against-20-day half is read 4.
 
+**The newest breadth reading may be PROVISIONAL.** marketdata holds an evening's
+newest TradingView bar out of the official series until a later pull confirms it (the
+vendor revises it about one evening in four), so the official series trail the prices
+by a session. Each has a `<SYMBOL>_PROVISIONAL` sibling carrying that held-back bar,
+and this page reads the two spliced (`_with_provisional`): the official series, then
+the provisional bar if it is newer. A read whose newest session came from a sibling is
+named in `Snapshot.provisional`, and the page marks it; it is replaced by the settled
+value the next time the store has it. Until 2026-11-18 the page read the official
+series alone, and showed yesterday's FOMO and net new highs under today's date.
+
 **Daily, not the board's Tuesday.** Every one of these moves session to session
 (`docs/analysis/2026-09-16-fomo-weekly-sampling.md` measured why FOMO cannot be a
 weekly row), so this module reads the daily frames and never goes through
@@ -388,6 +398,10 @@ class Snapshot:
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
+    #: The reads whose newest session is a provisional bar, by key: "fomo",
+    #: "net_highs" (the headwind and the year of counts), an exchange's name for its
+    #: row, "advance_decline". Empty when every breadth series has settled.
+    provisional: tuple = ()
 
 
 # ── store access (stood in for by tests) ──────────────────────────────────────
@@ -395,6 +409,30 @@ class Snapshot:
 def _get_bars(symbol, tier=None):
     import marketdata
     return marketdata.get_bars(symbol) if tier is None else marketdata.get_bars(symbol, tier)
+
+
+PROVISIONAL_SUFFIX = "_PROVISIONAL"
+
+
+def _with_provisional(get_bars, symbol):
+    """`(closes, provisional date or None)` for a breadth series: the official closes
+    with the sibling's bar appended when it is newer than the official end. A sibling
+    the store does not hold, or an empty one, is no provisional bar and no warning: it
+    is empty by design whenever the newest session has settled."""
+    official = _closes(get_bars, symbol)
+    try:
+        frame = get_bars(symbol + PROVISIONAL_SUFFIX)
+    except Exception:  # noqa: BLE001 -- not built yet, unset store
+        frame = None
+    if frame is None or frame.empty or "Close" not in frame:
+        return official, None
+    held = frame["Close"].astype(float).dropna().sort_index()
+    if official is not None:
+        held = held[held.index > official.index[-1]]
+    if held.empty:
+        return official, None
+    spliced = held if official is None else pd.concat([official, held])
+    return spliced, _stamp_of(held.index)
 
 
 def _dates(index):
@@ -1072,15 +1110,29 @@ def build_snapshot(get_bars=None):
             awaiting.append(symbol)
         return s
 
-    fomo = fomo_read(closes(FOMO_SYMBOL))
+    spliced, held = {}, {}
+
+    def series(symbol):
+        # A breadth series with its provisional bar, read once: the reads, the
+        # headwind, the year of counts and the history all see the same closes.
+        if symbol not in spliced:
+            spliced[symbol], held[symbol] = _with_provisional(get_bars, symbol)
+            if spliced[symbol] is None:
+                awaiting.append(symbol)
+        return spliced[symbol]
+
+    def rests_on_provisional(read, *symbols):
+        return read is not None and any(held.get(s) == read.date for s in symbols)
+
+    fomo = fomo_read(series(FOMO_SYMBOL))
 
     net_highs = []
     for exchange, hi, lo in NET_HIGHS_SYMBOLS:
-        read = net_highs_read(exchange, closes(hi), closes(lo))
+        read = net_highs_read(exchange, series(hi), series(lo))
         if read is not None:
             net_highs.append(read)
 
-    advance_decline = advance_decline_read(closes(ADVANCING_SYMBOL), closes(DECLINING_SYMBOL))
+    advance_decline = advance_decline_read(series(ADVANCING_SYMBOL), series(DECLINING_SYMBOL))
 
     credit = trend_read("credit", CREDIT_SYMBOL, closes(CREDIT_SYMBOL, CREDIT_TIER),
                         CREDIT_AVERAGE, risk_on_above=True)
@@ -1118,7 +1170,7 @@ def build_snapshot(get_bars=None):
             frames[symbol] = get_bars(symbol, ASSET_TIER)
         except Exception:  # noqa: BLE001 -- already named as awaiting by the loop above
             frames[symbol] = None
-    pairs = [(_closes(get_bars, hi), _closes(get_bars, lo)) for _, hi, lo in NET_HIGHS_SYMBOLS]
+    pairs = [(series(hi), series(lo)) for _, hi, lo in NET_HIGHS_SYMBOLS]
     built = {"net_highs": net_highs_headwind(pairs),
              "credit": credit_headwind(_closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER)),
              "rotation": rotation_headwind(ratio)}
@@ -1128,7 +1180,7 @@ def build_snapshot(get_bars=None):
     history = headwind_history(
         headwind_flags(pairs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
-        fomo=_closes(get_bars, FOMO_SYMBOL))
+        fomo=series(FOMO_SYMBOL))
 
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.
@@ -1145,6 +1197,15 @@ def build_snapshot(get_bars=None):
     volatility = volatility_read(quiet(VOLATILITY_SYMBOL), quiet(VOLATILITY_TERM_SYMBOL),
                                  quiet(VOLATILITY_NASDAQ_SYMBOL),
                                  quiet(VOLATILITY_BOND_SYMBOL))
+
+    exchanges = {exchange: (hi, lo) for exchange, hi, lo in NET_HIGHS_SYMBOLS}
+    every_leg = [s for legs in exchanges.values() for s in legs]
+    provisional = [key for key, read, symbols in (
+        ("fomo", fomo, (FOMO_SYMBOL,)),
+        ("net_highs", built["net_highs"], every_leg),
+        *((r.exchange, r, exchanges[r.exchange]) for r in net_highs),
+        ("advance_decline", advance_decline, (ADVANCING_SYMBOL, DECLINING_SYMBOL)),
+    ) if rests_on_provisional(read, *symbols)]
 
     dates = [r.date for r in [fomo, advance_decline, credit, rotation, appetite,
                               *net_highs, *updown, *assets, *headwinds] if r is not None]
@@ -1163,6 +1224,7 @@ def build_snapshot(get_bars=None):
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
+        provisional=tuple(provisional),
     )
 
 

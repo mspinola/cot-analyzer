@@ -220,9 +220,33 @@ def awaiting_text(symbols):
     return f"Awaiting data for {', '.join(symbols)}."
 
 
+PROVISIONAL_TAG = "provisional"
+PROVISIONAL_NAMES = {"fomo": "FOMO", "net_highs": "net new highs",
+                     "advance_decline": "advancing and declining issues"}
+
+
+def provisional_tag(snap, key):
+    """The word a card prints beside a number that rests on a provisional bar."""
+    return PROVISIONAL_TAG if key in snap.provisional else ""
+
+
+def provisional_note(snap):
+    """One sentence naming what is provisional, or nothing."""
+    named = [PROVISIONAL_NAMES[k] for k in PROVISIONAL_NAMES if k in snap.provisional]
+    if not named:
+        return ""
+    return ("Provisional: the newest " + ", ".join(named) + " reading"
+            + ("s are" if len(named) > 1 else " is")
+            + " the evening's value before the vendor has confirmed it. About one in "
+            "four is revised, and each is replaced by the settled value when it lands.")
+
+
 def caption(snap):
-    """The paragraph under the cards: the footer, then what is missing or trailing."""
+    """The paragraph under the cards: the footer, then what is provisional, missing
+    or trailing."""
     parts = [FOOTER]
+    if provisional_note(snap):
+        parts.append(provisional_note(snap))
     if snap.awaiting:
         parts.append(f"Awaiting data for: {', '.join(snap.awaiting)}.")
     stale = mi.stale_notes(snap)

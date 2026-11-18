@@ -81,6 +81,15 @@ The Detail section opens with a year of the counts behind the net-highs headwind
 their net with the 5-day average the headwind reads, shaded below zero. Both exchanges
 summed, the dashboard's two detail charts.
 
+**Provisional breadth (since 2026-11-18).** marketdata holds an evening's newest
+breadth bar out of the official series until a later pull confirms it, so those series
+trail the prices by a session. The page reads each one spliced with its
+`<SYMBOL>_PROVISIONAL` sibling (marketdata #51), so FOMO, net new highs and the
+advancing share show the session just closed. A number resting on such a bar carries a
+"provisional" chip, and the notes say so; it is replaced by the settled value on the
+next publish after the store has it. With no sibling in the store the page is as it
+was, a session behind.
+
 ## Build it locally
 
     PYTHONPATH=src .venv/bin/python scripts/export_internals_page.py /tmp/internals.html
