@@ -88,6 +88,15 @@ def page_colors(colors):
                                  bear=sentiment.card_red(colors))
 
 
+def ink_on(fill):
+    """Text colour for a number printed on `fill`: `plot_colors.cell_text_colour`'s
+    choice (dark on a light fill, bright on a dark one), with the bright one the
+    family's white, not the app's cream it returns. The lookback cells printed the
+    cream until 2026-11-18: the page's ink test had no positioning on its fixture."""
+    ink = plot_colors.cell_text_colour(fill)
+    return surveys.INK if ink == plot_colors.INK_BRIGHT else ink
+
+
 def _date(stamp):
     """Nov 6, 2026 from the snapshot's 2026-11-06, the monitors' date spelling."""
     if not isinstance(stamp, str):          # a survey's date is already a date
@@ -337,8 +346,8 @@ def _bond_volatility(bonds, colors):
 
 def _block(block):
     """One block: label, current reading, date, then a rail per history with the
-    reading's place as a numbered dot. The dot's colour is the tier's tone (warm toward
-    a high, cool toward a low), as on the surveys page's tiles."""
+    reading's place as a numbered dot. The dot is green toward a high (the crowd
+    bullish) and red toward a low (bearish), grey between."""
     rails = "".join(
         f'<div class="rl">{_esc(label)}</div>'
         f'<div class="rail"><i class="tier-{tier}" style="left:{position}%">{_esc(text)}</i></div>'
@@ -371,7 +380,7 @@ def _cot_cell(value, colors):
         return '<td class="num"><span class="cell none">&ndash;</span></td>'
     fill = board_traces.cell_fill(value, colors, background=surveys.SURFACE_COLOR)
     return (f'<td class="num"><span class="cell" style="background:{fill};'
-            f'color:{plot_colors.cell_text_colour(fill)}">{value:.0f}</span></td>')
+            f'color:{ink_on(fill)}">{value:.0f}</span></td>')
 
 
 def _cot_row(read, colors):
@@ -625,8 +634,11 @@ button.htog:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 2
 .rail i {{ position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
   background: var(--ink-2); color: var(--page); font-size: 0.68rem; font-weight: 700; font-style: normal;
   line-height: 22px; text-align: center; box-shadow: 0 0 0 2px var(--surface); z-index: 1; }}
-.rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}
-.rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}
+/* Sentiment's own direction: a reading high in its history is the crowd bullish
+   (green), low is the crowd bearish (red), the page's verdict pair. Not the surveys
+   tiles' warm and cool, which say only how unusual a reading is. */
+.rail i.tier-top, .rail i.tier-high {{ background: {colors.bull}; color: {ink_on(colors.bull)}; }}
+.rail i.tier-bottom, .rail i.tier-low {{ background: {colors.bear}; color: {ink_on(colors.bear)}; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
 /* Positioning: the crowd board's row, as a table. A cell is a pill filled toward its
    pole; the table scrolls sideways on a phone rather than dropping a lookback. */

@@ -565,3 +565,30 @@ def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
     card = st.render(snap, COLORS).split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     assert view.HISTORY_FOMO_KEY not in re.findall(r'data-row="(\w+)"', card)
     assert 'data-band="fomo"' not in card
+
+
+def test_sentiment_dots_are_green_for_a_bullish_reading_and_red_for_a_bearish_one():
+    """High in its history is the crowd bullish, low is bearish: the page's verdict
+    pair, not the surveys tiles' warm and cool. Mid readings stay grey."""
+    page = st.render(_snap(), COLORS, **_survey_parts())
+    colors = st.page_colors(COLORS)
+    assert (f".rail i.tier-top, .rail i.tier-high {{ background: {colors.bull}; "
+            f"color: {st.ink_on(colors.bull)}; }}") in page
+    assert (f".rail i.tier-bottom, .rail i.tier-low {{ background: {colors.bear}; "
+            f"color: {st.ink_on(colors.bear)}; }}") in page
+    rail_rules = [line for line in page.splitlines() if line.startswith(".rail i.tier-")]
+    assert len(rail_rules) == 2
+    assert not any(surveys.TONE_HIGH in line or surveys.TONE_LOW in line for line in rail_rules)
+    assert "green toward a high, where the crowd is bullish" in page
+
+
+def test_numbers_on_a_fill_never_take_the_apps_cream():
+    """`plot_colors.cell_text_colour` hands back the app's bright ink for a dark fill;
+    on this page that is the family's white. With positioning and the surveys on the
+    page, neither app text colour appears anywhere."""
+    import viz_constants as vc
+    from components import plot_colors
+    assert st.ink_on("#000000") == surveys.INK
+    assert st.ink_on("#ffffff") == plot_colors.INK_DARK
+    page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts()).lower()
+    assert vc.TEXT_COLOR.lower() not in page and vc.BRIGHTER_TEXT_COLOR.lower() not in page
