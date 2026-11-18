@@ -45,9 +45,10 @@ def test_unset_is_off():
     assert not local_pages.enabled({})
 
 
-def test_the_menu_entry_says_local():
-    (label, href), = local_pages.monitor_entries({local_pages.ENV: "1"})
-    assert href == "/sentiment" and "local" in label.lower()
+def test_the_menu_entries_say_local():
+    entries = local_pages.monitor_entries({local_pages.ENV: "1"})
+    assert [href for _, href in entries] == ["/sentiment", "/cmr"]
+    assert all("local" in label.lower() for label, _ in entries)
 
 
 def _sentiment_paths():

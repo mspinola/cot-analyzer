@@ -73,6 +73,7 @@ check "install icon serves"            "$BASE/assets/icon-512.png"  200
 # Local-only pages draw licensed data (src/local_pages.py). A 200 here means
 # COT_ANALYZER_LOCAL_PAGES is set on the server, which publishes that data.
 check "local-only sentiment page is absent" "$BASE/sentiment"  404
+check "local-only CMR scan page is absent"  "$BASE/cmr"        404
 
 # The subscription endpoints exist and refuse garbage; nothing here subscribes,
 # confirms or sends anything.
