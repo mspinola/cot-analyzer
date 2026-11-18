@@ -67,8 +67,7 @@ drawn only once the store holds it), and two sections. **Sentiment**
 is a block per survey (NAAIM, AAII bulls minus bears, AAII stocks allocation): the
 current reading over three bars, its percentile on its full history, the last three
 years and the last year, which are the surveys page's own Percentiles numbers drawn
-here in HTML. A dot is green toward a high (the crowd bullish) and red toward a low
-(bearish). **Positioning** is commercials in the four equity index futures (ES, YM,
+here in HTML. **Positioning** is commercials in the four equity index futures (ES, YM,
 NQ, RTY) as the crowd board draws them, the commercial index on 3M, 6M, 12M and full
 history with the six-week change and the 52-week path
 (`tape_context.window_index_frame`, the board's rule), then each market's net position

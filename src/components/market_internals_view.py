@@ -71,12 +71,10 @@ SENTIMENT_HOW = (
     "bulls minus bears and their stocks allocation. Each has three bars: the newest "
     "reading as a percentile (the number in the dot) of its full history, of the last "
     "three years and of the last year, against a tick at the median. A reading that is "
-    "extreme on all three is extreme now, not only against a different era. A dot is "
-    "green toward a high, where the crowd is bullish (the top fifth of the history), and "
-    "red toward a low, where it is bearish (the bottom fifth); grey between. The colour "
-    "is the crowd's mood as read, not a call: sentiment at an extreme is often read the "
-    "other way. Weekly or monthly, so these move slower than the rest of the page. "
-    "Context, not counted.")
+    "extreme on all three is extreme now, not only against a different era. A dot turns "
+    "warm toward a high and cool toward a low: how unusual the reading is, not whether "
+    "it is good or bad. Weekly or monthly, so these move slower than the rest of the "
+    "page. Context, not counted.")
 POSITIONING_TITLE = "Positioning"
 POSITIONING_SUBTITLE = ("Commercials in equity index futures, from the CFTC's weekly "
                         "report: the commercial index on four lookbacks, and their net "

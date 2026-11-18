@@ -346,8 +346,8 @@ def _bond_volatility(bonds, colors):
 
 def _block(block):
     """One block: label, current reading, date, then a rail per history with the
-    reading's place as a numbered dot. The dot is green toward a high (the crowd
-    bullish) and red toward a low (bearish), grey between."""
+    reading's place as a numbered dot. The dot's colour is the tier's tone (warm toward
+    a high, cool toward a low), as on the surveys page's tiles."""
     rails = "".join(
         f'<div class="rl">{_esc(label)}</div>'
         f'<div class="rail"><i class="tier-{tier}" style="left:{position}%">{_esc(text)}</i></div>'
@@ -634,11 +634,12 @@ button.htog:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 2
 .rail i {{ position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
   background: var(--ink-2); color: var(--page); font-size: 0.68rem; font-weight: 700; font-style: normal;
   line-height: 22px; text-align: center; box-shadow: 0 0 0 2px var(--surface); z-index: 1; }}
-/* Sentiment's own direction: a reading high in its history is the crowd bullish
-   (green), low is the crowd bearish (red), the page's verdict pair. Not the surveys
-   tiles' warm and cool, which say only how unusual a reading is. */
-.rail i.tier-top, .rail i.tier-high {{ background: {colors.bull}; color: {ink_on(colors.bull)}; }}
-.rail i.tier-bottom, .rail i.tier-low {{ background: {colors.bear}; color: {ink_on(colors.bear)}; }}
+/* Warm toward a high, cool toward a low: how unusual a reading is, the surveys
+   tiles' tones. Deliberately not green and red (tried and dropped 2026-11-18): green
+   would have to mean either "the crowd is bullish" or "this is a bullish signal",
+   which are opposite readings of the same dot, and the second is untested. */
+.rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}
+.rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
 /* Positioning: the crowd board's row, as a table. A cell is a pill filled toward its
    pole; the table scrolls sideways on a phone rather than dropping a lookback. */

@@ -567,19 +567,16 @@ def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
     assert 'data-band="fomo"' not in card
 
 
-def test_sentiment_dots_are_green_for_a_bullish_reading_and_red_for_a_bearish_one():
-    """High in its history is the crowd bullish, low is bearish: the page's verdict
-    pair, not the surveys tiles' warm and cool. Mid readings stay grey."""
+def test_sentiment_dots_are_warm_and_cool_not_green_and_red():
+    """How unusual a reading is, in the surveys tiles' tones. Green and red would have
+    to mean either the crowd's mood or a signal, which are opposite readings."""
     page = st.render(_snap(), COLORS, **_survey_parts())
     colors = st.page_colors(COLORS)
-    assert (f".rail i.tier-top, .rail i.tier-high {{ background: {colors.bull}; "
-            f"color: {st.ink_on(colors.bull)}; }}") in page
-    assert (f".rail i.tier-bottom, .rail i.tier-low {{ background: {colors.bear}; "
-            f"color: {st.ink_on(colors.bear)}; }}") in page
     rail_rules = [line for line in page.splitlines() if line.startswith(".rail i.tier-")]
-    assert len(rail_rules) == 2
-    assert not any(surveys.TONE_HIGH in line or surveys.TONE_LOW in line for line in rail_rules)
-    assert "green toward a high, where the crowd is bullish" in page
+    assert rail_rules == [
+        f".rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}",
+        f".rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}"]
+    assert not any(colors.bull in line or colors.bear in line for line in rail_rules)
 
 
 def test_numbers_on_a_fill_never_take_the_apps_cream():
