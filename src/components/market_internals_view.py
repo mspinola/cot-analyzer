@@ -54,22 +54,35 @@ VOLATILITY_HOW = (
     "places today's VIX in its own history since 1990: how unusual the level is, not "
     "whether it is good or bad. Nothing here has been tested as a signal, so it is "
     "drawn and not counted.")
-POSITIONING_TITLE = "Sentiment and positioning"
-POSITIONING_SUBTITLE = ("Each one's current reading, and where it sits: a survey as a "
-                        "percentile of three histories, futures positioning on its "
-                        f"{mi.POSITIONING_WEEKS}-week range.")
-POSITIONING_HOW = (
+SENTIMENT_TITLE = "Sentiment"
+SENTIMENT_SUBTITLE = ("Each survey's current reading, and its percentile on three "
+                      "histories.")
+SENTIMENT_HOW = (
     "NAAIM is active managers' average stock exposure; AAII is individual investors, "
-    "bulls minus bears and their stocks allocation. Each survey has three bars: the "
-    "newest reading as a percentile (the number in the dot) of its full history, of the "
-    "last three years and of the last year, against a tick at the median. A reading "
-    "that is extreme on all three is extreme now, not only against a different era. "
-    "The futures blocks are commercials' net position in S&P 500 and Nasdaq 100 futures "
-    "as a percent of open interest, from the CFTC's weekly report, with large "
-    f"speculators' beside it. Their one bar is the COT index: where the reading sits "
-    f"between its low (0) and high (100) of the last {mi.POSITIONING_WEEKS} weeks. A "
-    "dot turns warm toward a high and cool toward a low. Weekly or monthly, so these "
-    "move slower than the rest of the page. Context, not counted.")
+    "bulls minus bears and their stocks allocation. Each has three bars: the newest "
+    "reading as a percentile (the number in the dot) of its full history, of the last "
+    "three years and of the last year, against a tick at the median. A reading that is "
+    "extreme on all three is extreme now, not only against a different era. A dot turns "
+    "warm toward a high and cool toward a low. Weekly or monthly, so these move slower "
+    "than the rest of the page. Context, not counted.")
+POSITIONING_TITLE = "Positioning"
+POSITIONING_SUBTITLE = ("Commercials in equity index futures, from the CFTC's weekly "
+                        "report: the commercial index on four lookbacks, and their net "
+                        "position through time.")
+POSITIONING_HOW = (
+    "Each cell is the commercial index: where commercials' net position sits between "
+    "its low (0) and high (100) of that lookback, three months, six, twelve and the "
+    "full history (the year beside each name is where it starts). High is commercials "
+    "at the long end of their range, low at the short end; reading across a row shows "
+    "whether the position is extreme only lately or on every horizon. The change is "
+    "the twelve-month index against six weeks ago, and the path is that index over the "
+    "last year around its midline. These are the COT Analyzer's own numbers, the "
+    "equities rows of its landing page. The charts under the table are the position "
+    "itself: commercials' net as a percent of open interest, weekly, three years. "
+    "Weekly, as of the Tuesday the report covers. Context, not counted.")
+POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
+POSITIONING_CHANGE = "6W change"
+POSITIONING_PATH = "52w path"
 DETAIL_TITLE = "Detail"
 DETAIL_SUBTITLE = "The day's breadth by exchange, and the index and asset table."
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
@@ -267,12 +280,11 @@ def _rail(label, position, word):
     return (label, position, shown, tier)
 
 
-def percentile_blocks(naaim, votes, allocation, positioning, date_text):
-    """The sentiment and positioning blocks: each a label, its current reading and
-    date, and its rails. A survey has three rails, the surveys page's own percentile
-    rows (full history, last three years, last year: `naaim_card`, `aaii_votes`,
-    `aaii_allocation`), so the two pages show one set of numbers. A futures block has
-    one rail, cotmetrics' 26-week COT index. A part that is None is left out."""
+def percentile_blocks(naaim, votes, allocation, date_text):
+    """The sentiment blocks: each a label, its current reading and date, and three
+    rails, the surveys page's own percentile rows (full history, last three years,
+    last year: `naaim_card`, `aaii_votes`, `aaii_allocation`), so the two pages show
+    one set of numbers. A part that is None is left out."""
     from components import aaii_votes
     out = []
     if naaim is not None:
@@ -295,16 +307,26 @@ def percentile_blocks(naaim, votes, allocation, positioning, date_text):
                     "foot": f"{allocation.last:%b %Y}",
                     "rows": [_rail(label, *pcts["stocks"]) for label, pcts in rows
                              if "stocks" in pcts]})
-    weeks = mi.POSITIONING_WEEKS
-    for r in positioning or ():
-        position = max(0, min(100, round(r.index)))
-        out.append({"key": "cot_" + r.label.split()[0].lower().replace("&", ""),
-                    "label": f"{r.label}, commercials",
-                    "value": f"{r.value:+.1f}%",
-                    "note": f"net, % of open interest · large speculators {r.speculators:+.1f}%",
-                    "foot": date_text(r.date),
-                    "rows": [_rail(f"Last {weeks} weeks", position, f"{r.index:.0f}")]})
     return out
+
+
+def positioning_chart(read):
+    """One market's commercials through time: net, percent of open interest, against
+    zero."""
+    dates, values = read.series
+    return line_chart(150, [(INK, 1.5, dates, values)], levels=((0.0, INK_2),), decimals=1)
+
+
+def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
+    """The 52-week path as polyline points on a fixed 0-100 scale (the midline is the
+    box's middle), and the end point for its dot."""
+    values = [v for v in read.path if v is not None]
+    if len(values) < 2:
+        return "", None
+    step = (width - 2 * pad) / (len(values) - 1)
+    pts = [(pad + i * step, pad + (100 - min(100.0, max(0.0, v))) / 100 * (height - 2 * pad))
+           for i, v in enumerate(values)]
+    return " ".join(f"{x:.1f},{y:.1f}" for x, y in pts), pts[-1]
 
 
 def headwind_chart(headwind, colors):

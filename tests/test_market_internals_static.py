@@ -366,8 +366,15 @@ def _survey_parts():
             "allocation": aaii_allocation.read(_alloc_bars()[1])}
 
 
-POSITIONING = (mi.PositioningRead("S&P 500 futures", 0.51, -6.24, 59.0, "2026-11-10"),
-               mi.PositioningRead("Nasdaq 100 futures", -16.43, 11.05, 20.0, "2026-11-10"))
+def _positioning():
+    dates = tuple(d.strftime("%Y-%m-%d") for d in pd.date_range("2023-11-21", periods=156,
+                                                              freq="W-TUE"))
+    path = tuple(float(40 + i % 30) for i in range(52))
+    series = (dates, tuple(float(i % 20 - 10) for i in range(156)))
+    return (mi.EquityPositioning("ES", "S&P 500", (81.0, 59.0, 59.0, 58.0), -10.9, path,
+                                 "1986-01-15", 0.51, series, "2026-11-10"),
+            mi.EquityPositioning("RTY", "Russell", (0.0, 1.0, 26.0, None), 0.4,
+                                 path[:-1] + (20.0,), "2002-08-13", -0.33, series, "2026-11-10"))
 
 
 def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles():
@@ -376,12 +383,11 @@ def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles
     objects (`naaim.latest`, the votes' spread percentiles, the allocation's)."""
     parts = _survey_parts()
     assert all(part is not None for part in parts.values())
-    page = st.render(_snap(), COLORS, positioning=POSITIONING, **parts)
-    section = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</div>\n")[0]
-    blocks = view.percentile_blocks(positioning=POSITIONING, date_text=st._date, **parts)
-    assert [b["key"] for b in blocks] == ["naaim", "aaii", "stocks", "cot_s&p".replace("&", ""),
-                                          "cot_nasdaq"]
-    assert section.count('<div class="pblock"') == 5
+    page = st.render(_snap(), COLORS, **parts)
+    section = page.split(f'id="{st.SENTIMENT_ID}"')[1].split("</div>\n")[0]
+    blocks = view.percentile_blocks(date_text=st._date, **parts)
+    assert [b["key"] for b in blocks] == ["naaim", "aaii", "stocks"]
+    assert section.count('<div class="pblock"') == 3
     for b in blocks:
         card = section.split(f'data-key="{b["key"]}"')[1].split('<div class="pblock"')[0]
         assert f'<div class="value">{html.escape(b["value"])}</div>' in card
@@ -401,20 +407,48 @@ def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles
     assert f'href="{st.SURVEYS_URL}"' in page and st.SURVEYS_URL.startswith("https://surveys.")
 
 
-def test_a_futures_block_is_commercials_on_the_26_week_cot_index():
-    """Positioning sits on its recent range (cotmetrics' 26-week index), one bar, not a
-    percentile of forty years."""
-    page = st.render(_snap(), COLORS, positioning=POSITIONING)
-    section = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</div>\n")[0]
-    assert section.count('<div class="pblock"') == 2 and section.count('<div class="rail">') == 2
-    assert "S&amp;P 500 futures, commercials" in section
-    assert '<div class="value">+0.5%</div>' in section and "large speculators -6.2%" in section
-    assert '<div class="rl">Last 26 weeks</div>' in section
-    assert '<i class="tier-mid" style="left:59%">59</i>' in section
-    assert '<i class="tier-low" style="left:20%">20</i>' in section
-    assert "Nov 10, 2026" in section
-    # No survey on the page, so no link to the surveys page.
-    assert f'href="{st.SURVEYS_URL}"' not in page.split("<main>")[1].split("<nav")[0] + section
+def test_positioning_is_its_own_section_with_the_boards_row_per_market():
+    """ES, YM, NQ and RTY as the crowd board draws them: the commercial index on four
+    lookbacks in filled cells, the six-week change, and the 52-week path."""
+    from components import board_traces
+    reads = _positioning()
+    page = st.render(_snap(), COLORS, positioning=reads)
+    assert f"<h2>{view.POSITIONING_TITLE}</h2>" in page
+    card = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</section>")[0]
+    head = re.findall(r"<th>([^<]*)</th>", card)
+    assert head == ["", "", *board_traces.WINDOW_LABELS, view.POSITIONING_CHANGE,
+                    view.POSITIONING_PATH]
+    colors = st.page_colors(COLORS)
+    es = card.split('data-key="ES"')[1].split("</tr>")[0]
+    assert "S&amp;P 500 <small>&#x27;86</small>" in es or "S&amp;P 500 <small>'86</small>" in es
+    assert re.findall(r'<span class="cell"[^>]*>(\d+)</span>', es) == ["81", "59", "59", "58"]
+    fill = board_traces.cell_fill(81.0, colors, background=surveys.SURFACE_COLOR)
+    assert f"background:{fill};" in es
+    assert f'<span style="color:{colors.bear}">▼</span> -11' in es
+    assert "<polyline" in es and "<circle" in es
+    rty = card.split('data-key="RTY"')[1].split("</tr>")[0]
+    # A lookback the history cannot fill is a dash, not a zero; a flat change is a dot.
+    assert rty.count('class="cell none"') == 1 and ">0</span>" in rty
+    assert f'<span style="color:{surveys.MUTED}">•</span> +0' in rty
+    assert f'fill="{colors.bear}"' in rty                 # the path ends under 50
+    assert "report of Nov 10, 2026" in card
+
+
+def test_each_market_has_its_commercials_through_time():
+    reads = _positioning()
+    page = st.render(_snap(), COLORS, positioning=reads)
+    data = _payload(page)
+    for r in reads:
+        spec = data[st.POSITIONING_PREFIX + r.symbol]
+        assert spec == view.positioning_chart(r)
+        assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 156
+        assert [lv["value"] for lv in spec["levels"]] == [0.0]
+        assert f'data-chart="{st.POSITIONING_PREFIX}{r.symbol}"' in page
+    assert ">+0.5%</span>" in page and ">-0.3%</span>" in page
+    points, end = view.positioning_spark(reads[0])
+    assert len(points.split()) == 52 and end is not None
+    assert view.positioning_spark(mi.EquityPositioning(
+        "X", "X", (None,) * 4, None, (None, 50.0), None, 0.0, ((), ()), "2026-11-10")) == ("", None)
 
 
 def test_the_rail_dot_prints_the_number_and_takes_the_tiers_tone():
@@ -428,7 +462,8 @@ def test_the_rail_dot_prints_the_number_and_takes_the_tiers_tone():
 def test_sentiment_and_positioning_is_context_and_optional():
     plain = st.render(_snap(), COLORS)
     assert f"<h2>{view.POSITIONING_TITLE}</h2>" not in plain
-    assert f'id="{st.POSITIONING_ID}"' not in plain
+    assert f"<h2>{view.SENTIMENT_TITLE}</h2>" not in plain
+    assert f'id="{st.POSITIONING_ID}"' not in plain and f'id="{st.SENTIMENT_ID}"' not in plain
     assert mi.headline(_snap())[0].partition(" ")[2] in plain
 
 

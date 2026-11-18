@@ -48,7 +48,7 @@ def main(argv=None) -> int:
         parts["naaim"] = naaim_card.read()
         parts["votes"] = aaii_votes.read()
         parts["allocation"] = aaii_allocation.read()
-        parts["positioning"] = market_internals.positioning_reads()
+        parts["positioning"] = market_internals.equity_positioning()
     except Exception as e:  # noqa: BLE001
         print(f"export-internals: sentiment and positioning incomplete: {e}", file=sys.stderr)
     for name, part in parts.items():
