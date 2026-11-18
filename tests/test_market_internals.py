@@ -63,8 +63,8 @@ def _universe(n=120):
 @pytest.mark.parametrize("values, label, verdict", [
     ([50, 85], "Stretched", mi.NEGATIVE),
     ([32.23, 46.66], "Middle ground", mi.NEUTRAL),
-    ([30, 20], "Washed out", mi.POSITIVE),
-    ([20, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
+    ([30, 15], "Washed out", mi.POSITIVE),
+    ([15, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
     ([50, 70], "Between zones", mi.NEUTRAL),   # the 60-80 gap the SWG does not name
 ])
 def test_fomo_zone_labels_are_cotmetrics_zones_in_the_views_words(values, label, verdict):
@@ -317,7 +317,6 @@ def test_stale_notes_name_reads_priced_before_the_newest():
     snap = mi.build_snapshot(_bars(frames))
     notes = mi.stale_notes(snap)
     assert notes == ["FOMO last read 2026-09-01"]
-
 
 
 # ── credit appetite: context beside the reads ─────────────────────────────────
@@ -596,3 +595,52 @@ def test_bond_volatility_is_the_move_index_on_its_own_history():
     assert without.volatility.bonds is None and with_move.volatility.bonds.value == 95.0
     assert mi.VOLATILITY_BOND_SYMBOL not in without.awaiting
     assert mi.headline(with_move) == mi.headline(without)
+
+
+# ── a year of the counts behind the net-highs headwind ────────────────────────
+
+def test_breadth_history_sums_the_exchanges_and_carries_the_headwinds_own_average():
+    frames = _universe(300)
+    snap = mi.build_snapshot(_bars(frames))
+    b = snap.breadth
+    assert len(b.dates) == len(b.highs) == len(b.lows) == len(b.net) == len(b.average) == 252
+    highs = sum(frames[hi]["Close"] for _, hi, _ in mi.NET_HIGHS_SYMBOLS)
+    lows = sum(frames[lo]["Close"] for _, _, lo in mi.NET_HIGHS_SYMBOLS)
+    assert b.highs[-1] == highs.iloc[-1] and b.lows[-1] == lows.iloc[-1]
+    assert b.net == tuple(h - lo for h, lo in zip(b.highs, b.lows))
+    # The chart's heavy line ends on the number the headwind card prints.
+    card = next(h for h in snap.headwinds if h.key == "net_highs")
+    assert f"{b.average[-1]:+.0f}" == card.display
+    assert b.average[-1] == pytest.approx(sum(b.net[-5:]) / 5)
+    assert b.dates[-1] == card.date
+
+
+def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
+    frames = _universe(300)
+    del frames["NYSE_NL52W"]
+    assert mi.build_snapshot(_bars(frames)).breadth is None
+    short = mi.build_snapshot(_bars(_universe(120))).breadth
+    assert len(short.dates) == 120 and short.average[:4] == (None,) * 4
+    assert short.average[4] is not None
+
+
+def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
+    from cotmetrics import indicators
+    frames = _universe(200)
+    values = [50.0] * 200
+    values[150], values[151], values[180] = 10.0, 12.0, 90.0
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame({"Close": values}, index=frames["QQQ"].index).iloc[100:]
+    h = mi.build_snapshot(_bars(frames)).history
+    washed, stretched, first = h.fomo
+    assert len(washed) == len(stretched) == len(h.dates)
+    # Flags are cotmetrics' zones (fear, exhaustion) on the history's own sessions.
+    offset = 200 - len(h.dates)
+    assert [i + offset for i, v in enumerate(washed) if v] == [150, 151]
+    assert [i + offset for i, v in enumerate(stretched) if v] == [180]
+    assert first == 100 - offset                      # where the FOMO series starts
+    assert values[150] < indicators.FOMO_FEAR_MAX and values[180] >= indicators.FOMO_EXHAUSTION_MIN
+    # It changes nothing the count is made of.
+    plain = _universe(200)
+    del plain[mi.FOMO_SYMBOL]
+    without = mi.build_snapshot(_bars(plain)).history
+    assert without.fomo is None and without.count == h.count and without.total == h.total == 5

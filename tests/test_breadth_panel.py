@@ -188,7 +188,7 @@ def test_caption_says_when_the_panel_trails_the_board():
 
 def test_help_names_every_published_edge_and_no_composite():
     text = bp.help_text()
-    for edge in ("80", "35", "60", "25"):
+    for edge in ("80", "35", "60", f"{ind.FOMO_FEAR_MAX:.0f}"):
         assert edge in text
     assert "recovery" in text and "three sessions" in text
     assert "not a signal" in text or "not crowding" in text

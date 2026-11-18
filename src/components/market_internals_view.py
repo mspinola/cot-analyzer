@@ -35,7 +35,12 @@ HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
     "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. The window buttons "
+    "price is the same count: light for four, darker for all five. Click a row's name "
+    "to switch it off or on: the bottom row and the shading then count only the rows "
+    "that are on, so you can ask when any set of them lined up. FOMO is an extra row, "
+    "off to begin with and never in the count: switched on, it marks the sessions the "
+    "reading was washed out (cool) or stretched (warm), on its own row and over the "
+    "price, from late 2018 where its series starts. The window buttons "
     "zoom every row together and refit the price to what is on screen. The history starts "
     "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
     "up and nothing more: no claim is made here about what followed, and none has been "
@@ -88,7 +93,8 @@ POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
 POSITIONING_PATH = "52w path"
 DETAIL_TITLE = "Detail"
-DETAIL_SUBTITLE = "The day's breadth by exchange, and the index and asset table."
+DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange, and the "
+                   "index and asset table.")
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
 FOMO_SUBTITLE = ("The share of Nasdaq Composite stocks above their own 5-day average, past "
                  "year. Not a trend signal.")
@@ -116,6 +122,16 @@ NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS}
                  "a row on one side is marked by the bar at the row's left, anything else "
                  "is mixed. The headwind above is a different cut of the same counts: both "
                  "exchanges summed, as a 5-day average.")
+HIGHS_LOWS_TITLE = "New highs vs. new lows"
+HIGHS_LOWS_SUBTITLE = ("Nasdaq plus NYSE 52-week highs above the line, lows below it. "
+                       "Daily counts, past year.")
+NET_HISTORY_TITLE = "Net new highs"
+NET_HISTORY_SUBTITLE = (f"Highs minus lows, daily and as the {mi.NET_HIGHS_AVERAGE}-day "
+                        "average the headwind reads. Below zero is the headwind's zone.")
+NET_HISTORY_HOW = ("The thin line is each session's highs minus lows; the heavy line is "
+                   f"its {mi.NET_HIGHS_AVERAGE}-day average, the number on the Net new "
+                   "highs card above. The headwind is on while the average is below "
+                   "zero, the shaded side.")
 ADVANCE_DECLINE_TITLE = "Nasdaq issues advancing vs declining"
 ASSETS_TITLE = "Index and asset overview"
 ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo")
@@ -230,6 +246,44 @@ def line_chart(height, series, levels=(), markers=(), value_range=None, decimals
         "levels": [{"value": v, "color": c} for v, c in levels],
         "markers": [{"time": d, "color": c} for d, c in markers],
     }
+
+
+def bars(color, dates, values):
+    """A histogram series for `chart`: a bar a session, from zero."""
+    return {"type": "histogram", "color": color,
+            "data": [{"time": d, "value": v} for d, v in zip(dates, values)
+                     if v is not None and v == v]}
+
+
+def zone(color, shade, dates, values, base=0.0):
+    """A line for `chart` whose side BELOW `base` is shaded: the headwind's zone."""
+    return {"type": "baseline", "color": color, "shade": shade, "base": base, "width": 2,
+            "data": [{"time": d, "value": v} for d, v in zip(dates, values)
+                     if v is not None and v == v]}
+
+
+def chart(height, series, levels=(), decimals=0):
+    """A chart of mixed series (`bars`, `zone`, or a line_chart series dict)."""
+    return {"height": height, "range": None, "decimals": decimals, "series": list(series),
+            "levels": [{"value": v, "color": c} for v, c in levels], "markers": []}
+
+
+def highs_lows_chart(breadth, colors):
+    """New highs above the line, new lows below it, a bar a session."""
+    return chart(240, [bars(colors.bull, breadth.dates, breadth.highs),
+                       bars(colors.bear, breadth.dates, [-v for v in breadth.lows])],
+                 levels=((0.0, INK_2),))
+
+
+def net_highs_chart(breadth, colors):
+    """The daily net, thin, under its 5-day average; under zero the average is in the
+    headwind's zone, shaded."""
+    from components import plot_colors
+    daily = {"color": plot_colors.hex_to_rgba(INK_2, 0.55), "width": 1,
+             "data": [{"time": d, "value": v} for d, v in zip(breadth.dates, breadth.net)]}
+    return chart(240, [daily, zone(INK, plot_colors.hex_to_rgba(colors.bear, 0.22),
+                                   breadth.dates, breadth.average)],
+                 levels=((mi.NET_HIGHS_LEVEL, colors.bear),))
 
 
 def fomo_chart(read, colors):
@@ -428,9 +482,14 @@ def history_month_starts(history):
     return out
 
 
+HISTORY_FOMO_KEY = "fomo"
+HISTORY_FOMO_LABEL = (f"FOMO extremes (under {indicators.FOMO_FEAR_MAX:.0f}, over "
+                      f"{indicators.FOMO_EXHAUSTION_MIN:.0f})")
+
+
 def history_subtitle(history):
     return (f"{history.price_symbol} since {history.dates[0][:4]}, daily. Marks show the "
-            "sessions each headwind was on.")
+            "sessions each headwind was on. Click a row's name to switch it off or on.")
 
 
 def history_summary(history, longest=3):

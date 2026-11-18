@@ -56,7 +56,9 @@ could not be compared on the same day (the store was a session behind).
 Under the five cards, "When the headwinds lined up" draws each headwind's state on
 every session since 2008 (where JNK starts) under QQQ, and the sessions all five were
 on. It is inline SVG, about 130 KB of the page. It counts occurrences and stretches and
-makes no claim about what followed; none has been tested.
+makes no claim about what followed; none has been tested. Each row's name is a
+switch: the bottom row and the shading count only the headwind rows that are on. FOMO's
+extremes are a sixth row, off as the page loads and never in the count.
 
 Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
 (inverted or normal, with the VIX's percentile since 1990) and under it the MOVE index
@@ -73,6 +75,11 @@ as a percent of open interest, weekly, three years. Positioning is read against 
 recent range, so no long-history percentile appears there. Positioning needs the COT store and the indexer, which the rest of the page does
 not; when either part cannot be served it is left off and named in the log
 (`no surveys, left out`), and the publish goes ahead.
+
+The Detail section opens with a year of the counts behind the net-highs headwind
+(since 2026-11-18): new highs above the line and new lows below it as daily bars, and
+their net with the 5-day average the headwind reads, shaded below zero. Both exchanges
+summed, the dashboard's two detail charts.
 
 ## Build it locally
 

@@ -70,6 +70,7 @@ POSITIONING_PREFIX = "cot:"
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
 BOND_VOLATILITY_KEY = "bond_volatility"
+HIGHS_LOWS_KEY, NET_HISTORY_KEY = "highs_lows", "net_history"
 HEADWIND_PREFIX = "headwind:"
 
 _esc = html.escape
@@ -101,6 +102,9 @@ def charts(snap, colors, positioning=()):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
+    if snap.breadth is not None:
+        out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
+        out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
     if snap.volatility is not None:
         out[VOLATILITY_KEY] = view.volatility_chart(snap.volatility, colors)
         if snap.volatility.bonds is not None:
@@ -191,26 +195,50 @@ def history_card(history, colors):
     units = view.HISTORY_PRICE_UNITS
     most = [c == history.total - 1 for c in history.count]
     every = [c == history.total for c in history.count]
+    tall, top = f"{units * 2:g}", f"{-units / 2:g}"
+    fomo_bands = fomo_row = ""
+    if history.fomo is not None:
+        washed, stretched, first = history.fomo
+        cool, warm = surveys.TONE_LOW, surveys.TONE_HIGH
+        # Over the price only while the row is on (the script shows the group).
+        fomo_bands = (f'<g data-band="fomo" display="none">'
+                      f'{_marks(washed, tall, cool, 0.5, y=top)}'
+                      f'{_marks(stretched, tall, warm, 0.5, y=top)}</g>')
+        unread = (f'<rect x="0" y="0" width="{first}" height="1" fill="{surveys.PAGE_COLOR}" '
+                  'fill-opacity="0.75"/>' if first else "")
+        fomo_row = (
+            f'<button type="button" class="hl htog" data-row="{view.HISTORY_FOMO_KEY}" '
+            f'aria-pressed="false">{_esc(view.HISTORY_FOMO_LABEL)}</button>'
+            f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">'
+            f'<svg class="hstrip" viewBox="0 0 {n} 1" preserveAspectRatio="none" '
+            f'aria-hidden="true">{_marks(washed, 1, cool)}{_marks(stretched, 1, warm)}{unread}'
+            '</svg></div>')
     rows = [
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
         f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
         f'price with the sessions four or five headwinds were on shaded">'
         # Taller than the panel: a zoom pads the price's y range past 0 and the units.
-        f'{_marks(most, f"{units * 2:g}", mark, 0.18, y=f"{-units / 2:g}")}'
-        f'{_marks(every, f"{units * 2:g}", mark, 0.45, y=f"{-units / 2:g}")}'
+        f'<g data-band="most">{_marks(most, tall, mark, 0.18, y=top)}</g>'
+        f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>{fomo_bands}'
         f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
         f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
         '</svg></div>']
     for key, label, flags in history.rows:
-        rows.append(f'<div class="hl">{_esc(label)}</div><div class="hp">'
-                    f'<svg class="hstrip" data-row="{_esc(key)}" viewBox="0 0 {n} 1" '
-                    f'preserveAspectRatio="none" aria-hidden="true">{_marks(flags, 1, mark)}'
-                    '</svg></div>')
-    rows.append(f'<div class="hl all">All {history.total} at once</div><div class="hp">'
+        # `data-headwind` marks the rows the count is made of: the script reads each
+        # one's runs back off its own rectangles, so the history is embedded once.
+        rows.append(f'<button type="button" class="hl htog" data-row="{_esc(key)}" '
+                    f'aria-pressed="true">{_esc(label)}</button>'
+                    f'<div class="hp" data-strip="{_esc(key)}">'
+                    f'<svg class="hstrip" data-row="{_esc(key)}" data-headwind '
+                    f'viewBox="0 0 {n} 1" preserveAspectRatio="none" aria-hidden="true">'
+                    f'{_marks(flags, 1, mark)}</svg></div>')
+    rows.append(f'<div class="hl all" data-all-label>All {history.total} at once</div>'
+                '<div class="hp">'
                 f'<svg class="hstrip" data-row="all" viewBox="0 0 {n} 1" '
                 f'preserveAspectRatio="none" aria-hidden="true">{_marks(every, 1, mark)}'
                 '</svg></div>')
+    rows.append(fomo_row)
     years = "".join(f'<span style="left:{fraction * 100:.2f}%">{year}</span>'
                     for fraction, year in view.history_year_ticks(history))
     months = _esc(surveys._script_json(view.history_month_starts(history)), quote=True)
@@ -225,8 +253,10 @@ def history_card(history, colors):
     return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
                  windows,
                  f'<div class="hgrid" id="{HISTORY_ID}" data-sessions="{n}" '
-                 f'data-units="{units:g}">{"".join(rows)}</div>',
-                 _detail(view.history_summary(history)))
+                 f'data-units="{units:g}" data-total="{history.total}" data-mark="{mark}">'
+                 f'{"".join(rows)}</div>',
+                 f'<div class="detail" data-history-summary>'
+                 f'{_esc(view.history_summary(history))}</div>')
 
 
 def headwinds_section(snap, colors):
@@ -396,6 +426,25 @@ def positioning_section(positioning, colors):
             f'<div class="pcharts">{charts_html}</div></section>\n')
 
 
+def breadth_charts(snap, colors):
+    """The year behind the net-highs headwind: the two counts, then their net. No
+    cards without the counts (the headwind card already says it is awaiting them)."""
+    if snap.breadth is None:
+        return ""
+    b = snap.breadth
+    return ('<div class="cards">\n'
+            + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
+                    f'<div class="detail"><span class="key" style="color:{colors.bull}">'
+                    f'▲ New highs {b.highs[-1]:.0f}</span><span style="color:{colors.bear}">'
+                    f'▼ New lows {b.lows[-1]:.0f}</span></div>',
+                    _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
+            + _card(view.NET_HISTORY_TITLE, view.NET_HISTORY_SUBTITLE, view.NET_HISTORY_HOW,
+                    '<div class="detail"><span class="key">— Daily</span>'
+                    f'<span class="name">— {mi.NET_HIGHS_AVERAGE}-day average</span></div>',
+                    _chart(NET_HISTORY_KEY, view.net_highs_chart(b, colors)["height"]))
+            + '</div>\n')
+
+
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
 
 
@@ -521,6 +570,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
                  + sentiment_section(naaim, votes, allocation)
                  + positioning_section(positioning, colors))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
+              + breadth_charts(snap, colors)
               + '<div class="cards">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
     return f"""<!doctype html>
@@ -551,6 +601,14 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
    strip. Every SVG is one unit a session wide, so the rows line up to the session. */
 .hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}
 .hl {{ font-size: 0.78rem; }}
+/* A row's name is its switch: a filled square while the row is on. */
+button.htog {{ background: none; border: 0; padding: 0; margin: 0; color: var(--ink-2); font: inherit; font-size: 0.78rem;
+  text-align: left; cursor: pointer; display: flex; align-items: center; gap: 7px; }}
+button.htog::before {{ content: ""; flex: none; width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--ink-2); background: var(--ink-2); }}
+button.htog[aria-pressed="false"] {{ color: var(--muted); }}
+button.htog[aria-pressed="false"]::before {{ background: transparent; border-color: var(--muted); }}
+button.htog:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 2px; }}
+.hp.off svg {{ display: none; }}
 .hl.all {{ color: {colors.bear}; font-weight: 600; }}
 /* Sentiment and positioning: a block per series, its reading over its percentile
    rails. A rail is the 0-100 scale with a tick at the median and the reading as a
@@ -681,7 +739,22 @@ footer a {{ color: var(--ink-2); }}
           return {{priceRange: {{minValue: spec.range[0], maxValue: spec.range[1]}}}};
         }};
       }}
-      var line = chart.addSeries(LC.LineSeries, options);
+      // A series is a line unless it says otherwise: bars from zero, or a line whose
+      // side below its base is shaded (a headwind's zone).
+      var line;
+      if (s.type === 'histogram') {{
+        line = chart.addSeries(LC.HistogramSeries, {{color: s.color, priceFormat: format,
+          priceLineVisible: false, lastValueVisible: false}});
+      }} else if (s.type === 'baseline') {{
+        line = chart.addSeries(LC.BaselineSeries, {{
+          baseValue: {{type: 'price', price: s.base}}, lineWidth: s.width,
+          topLineColor: s.color, bottomLineColor: s.color,
+          topFillColor1: 'transparent', topFillColor2: 'transparent',
+          bottomFillColor1: s.shade, bottomFillColor2: s.shade,
+          priceFormat: format, priceLineVisible: false, lastValueVisible: false}});
+      }} else {{
+        line = chart.addSeries(LC.LineSeries, options);
+      }}
       line.setData(s.data);
       first = first || line;
     }});
@@ -754,6 +827,69 @@ footer a {{ color: var(--ink-2); }}
   }}
   document.querySelectorAll('.hwin button').forEach(function (b) {{
     b.addEventListener('click', function () {{ show(+b.dataset.sessions); }});
+  }});
+
+  // A row's name switches it. The bottom row and the shading count the headwind rows
+  // that are on, from each row's runs; FOMO is not a headwind and only shows itself.
+  var MARK = grid.dataset.mark, TOTAL = +grid.dataset.total;
+  var runs = {{}};
+  grid.querySelectorAll('svg[data-headwind]').forEach(function (svg) {{
+    runs[svg.dataset.row] = [].map.call(svg.querySelectorAll('rect'), function (r) {{
+      return [+r.getAttribute('x'), +r.getAttribute('width')];
+    }});
+  }});
+  var allStrip = grid.querySelector('svg[data-row="all"]');
+  var allLabel = grid.querySelector('[data-all-label]');
+  var band = function (name) {{ return price.querySelector('[data-band="' + name + '"]'); }};
+  var summary = document.querySelector('[data-history-summary]');
+  var whole = summary ? summary.textContent : '';
+  function rects(list, height, y, opacity) {{
+    return list.map(function (r) {{
+      return '<rect x="' + r[0] + '" y="' + y + '" width="' + r[1] + '" height="' + height
+        + '" fill="' + MARK + '" fill-opacity="' + opacity + '"/>';
+    }}).join('');
+  }}
+  function recount() {{
+    var on = [];
+    grid.querySelectorAll('button.htog[aria-pressed="true"]').forEach(function (b) {{
+      if (runs[b.dataset.row]) {{ on.push(b.dataset.row); }}
+    }});
+    var count = new Uint8Array(N);
+    on.forEach(function (key) {{
+      runs[key].forEach(function (r) {{ for (var i = r[0]; i < r[0] + r[1]; i++) {{ count[i]++; }} }});
+    }});
+    function where(target) {{
+      var out = [], start = -1;
+      for (var i = 0; i <= N; i++) {{
+        var hit = i < N && count[i] === target;
+        if (hit && start < 0) {{ start = i; }}
+        if (!hit && start >= 0) {{ out.push([start, i - start]); start = -1; }}
+      }}
+      return out;
+    }}
+    var n = on.length;
+    var every = n ? where(n) : [], most = n > 1 ? where(n - 1) : [];
+    allStrip.innerHTML = rects(every, 1, 0, 1);
+    band('every').innerHTML = rects(every, UNITS * 2, -UNITS / 2, 0.45);
+    band('most').innerHTML = rects(most, UNITS * 2, -UNITS / 2, 0.18);
+    allLabel.textContent = n === 0 ? 'No row is on' : n === 1 ? 'The 1 row on' : 'All ' + n + ' at once';
+    if (!summary) {{ return; }}
+    if (n === TOTAL) {{ summary.textContent = whole; return; }}
+    var sessions = every.reduce(function (sum, r) {{ return sum + r[1]; }}, 0);
+    summary.textContent = n === 0 ? 'No row is on.'
+      : 'The ' + n + ' selected ' + (n === 1 ? 'row was on' : 'rows were on at once') + ' on '
+        + sessions.toLocaleString('en-US') + ' of ' + N.toLocaleString('en-US') + ' sessions ('
+        + Math.round(sessions / N * 100) + '%).';
+  }}
+  grid.querySelectorAll('button.htog').forEach(function (b) {{
+    b.addEventListener('click', function () {{
+      var on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      grid.querySelector('[data-strip="' + b.dataset.row + '"]').classList.toggle('off', !on);
+      if (runs[b.dataset.row]) {{ recount(); return; }}
+      var over = band(b.dataset.row);
+      if (over) {{ over.setAttribute('display', on ? 'inline' : 'none'); }}
+    }});
   }});
 }})();
 </script>

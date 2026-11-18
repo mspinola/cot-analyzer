@@ -43,7 +43,8 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     page = st.render(snap, COLORS)
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
-    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY,
+    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
+                                   st.NET_HISTORY_KEY,
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
@@ -59,7 +60,9 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     colors = st.page_colors(COLORS)
     data = _payload(st.render(snap, COLORS))
     assert data[st.FOMO_KEY] == view.fomo_chart(snap.fomo, colors)
-    assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [80.0, 25.0]
+    from cotmetrics import indicators
+    assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [
+        indicators.FOMO_EXHAUSTION_MIN, indicators.FOMO_FEAR_MAX]
     assert [lv["value"] for lv in data[st.APPETITE_KEY]["levels"]] == [80.0, 20.0]
     assert data[st.FOMO_KEY]["range"] == data[st.APPETITE_KEY]["range"] == [0, 100]
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
@@ -246,10 +249,10 @@ def test_the_history_card_draws_a_strip_per_headwind_aligned_to_the_session():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     n = len(h.dates)
     # Every SVG is one unit a session wide, so a mark's x is its session index.
-    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 1
+    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 2   # + all, + FOMO
     assert f'viewBox="0 0 {n} {view.HISTORY_PRICE_UNITS:g}"' in card
     for key, label, flags in h.rows:
-        strip = card.split(f'data-row="{key}"')[1].split("</svg>")[0]
+        strip = card.split(f'data-strip="{key}"')[1].split("</svg>")[0]
         assert strip.count("<rect") == len(view.runs(flags))
         assert html.escape(label) in card
     every = [c == h.total for c in h.count]
@@ -495,3 +498,70 @@ def test_the_volatility_card_carries_the_move_index_when_the_store_has_it():
     assert html.escape(view.bond_volatility_status(snap.volatility.bonds)) in card
     spec = _payload(page)[st.BOND_VOLATILITY_KEY]
     assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 252
+
+
+def test_the_detail_section_draws_a_year_of_highs_lows_and_their_net():
+    """The dashboard's two detail charts: highs above the line and lows below it as
+    bars, and the net with the 5-day average the headwind reads, its side below zero
+    shaded."""
+    snap = _snap()
+    b = snap.breadth
+    page = st.render(snap, COLORS)
+    detail = page.split(f"<h2>{view.DETAIL_TITLE}</h2>")[1]
+    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" in detail and f"<h2>{view.NET_HISTORY_TITLE}</h2>" in detail
+    data = _payload(page)
+    up, down = data[st.HIGHS_LOWS_KEY]["series"]
+    assert up["type"] == down["type"] == "histogram"
+    assert [pt["value"] for pt in up["data"]] == list(b.highs)
+    assert [pt["value"] for pt in down["data"]] == [-v for v in b.lows]      # drawn downward
+    daily, average = data[st.NET_HISTORY_KEY]["series"]
+    assert "type" not in daily and [pt["value"] for pt in daily["data"]] == list(b.net)
+    assert average["type"] == "baseline" and average["base"] == mi.NET_HIGHS_LEVEL
+    # An average before its window fills is dropped, not drawn at zero.
+    assert len(average["data"]) == sum(v is not None for v in b.average)
+    assert f"New highs {b.highs[-1]:.0f}" in detail and f"New lows {b.lows[-1]:.0f}" in detail
+    # The script knows the two new series kinds.
+    assert "LC.HistogramSeries" in page and "LC.BaselineSeries" in page
+
+
+def test_no_breadth_charts_without_both_exchanges_counts():
+    snap = _snap(drop=("NYSE_NL52W",))
+    assert snap.breadth is None
+    page = st.render(snap, COLORS)
+    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" not in page
+    assert st.HIGHS_LOWS_KEY not in _payload(page)
+
+
+def test_every_history_row_is_a_switch_and_fomo_starts_off():
+    """A row's name is a button. The five headwinds start on and are what the count is
+    made of (`data-headwind`); FOMO is a sixth row that starts off, drawn in the tiles'
+    cool and warm tones, with its marks over the price hidden until it is switched on."""
+    snap = _snap()
+    h = snap.history
+    assert h.fomo is not None
+    page = st.render(snap, COLORS)
+    card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    switches = re.findall(r'<button type="button" class="hl htog" data-row="(\w+)" '
+                          r'aria-pressed="(\w+)">', card)
+    assert switches == [(k, "true") for k in mi.HEADWIND_KEYS] + [(view.HISTORY_FOMO_KEY, "false")]
+    assert card.count("data-headwind") == len(mi.HEADWIND_KEYS)
+    assert f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">' in card
+    assert card.count('class="hp off"') == 1
+    washed, stretched, _ = h.fomo
+    strip = card.split(f'data-strip="{view.HISTORY_FOMO_KEY}"')[1].split("</svg>")[0]
+    assert strip.count(f'fill="{surveys.TONE_LOW}"') == len(view.runs(washed))
+    assert strip.count(f'fill="{surveys.TONE_HIGH}"') == len(view.runs(stretched))
+    assert '<g data-band="fomo" display="none">' in card
+    assert '<g data-band="most">' in card and '<g data-band="every">' in card
+    assert f'data-total="{h.total}"' in card and "data-history-summary" in card
+    # The script recounts from the rows that are on, and FOMO is never one of them.
+    assert "svg[data-headwind]" in page and "function recount()" in page
+    assert html.escape(view.HISTORY_FOMO_LABEL) in card
+
+
+def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
+    snap = _snap(drop=(mi.FOMO_SYMBOL,))
+    assert snap.history is not None and snap.history.fomo is None
+    card = st.render(snap, COLORS).split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
+    assert view.HISTORY_FOMO_KEY not in re.findall(r'data-row="(\w+)"', card)
+    assert 'data-band="fomo"' not in card
