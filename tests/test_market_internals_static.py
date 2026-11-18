@@ -565,3 +565,27 @@ def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
     card = st.render(snap, COLORS).split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     assert view.HISTORY_FOMO_KEY not in re.findall(r'data-row="(\w+)"', card)
     assert 'data-band="fomo"' not in card
+
+
+def test_sentiment_dots_are_warm_and_cool_not_green_and_red():
+    """How unusual a reading is, in the surveys tiles' tones. Green and red would have
+    to mean either the crowd's mood or a signal, which are opposite readings."""
+    page = st.render(_snap(), COLORS, **_survey_parts())
+    colors = st.page_colors(COLORS)
+    rail_rules = [line for line in page.splitlines() if line.startswith(".rail i.tier-")]
+    assert rail_rules == [
+        f".rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}",
+        f".rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}"]
+    assert not any(colors.bull in line or colors.bear in line for line in rail_rules)
+
+
+def test_numbers_on_a_fill_never_take_the_apps_cream():
+    """`plot_colors.cell_text_colour` hands back the app's bright ink for a dark fill;
+    on this page that is the family's white. With positioning and the surveys on the
+    page, neither app text colour appears anywhere."""
+    import viz_constants as vc
+    from components import plot_colors
+    assert st.ink_on("#000000") == surveys.INK
+    assert st.ink_on("#ffffff") == plot_colors.INK_DARK
+    page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts()).lower()
+    assert vc.TEXT_COLOR.lower() not in page and vc.BRIGHTER_TEXT_COLOR.lower() not in page
