@@ -101,7 +101,7 @@ def test_net_highs_regime_label_streak_and_arrows():
     read = mi.net_highs_read("Nasdaq", _series(highs)["Close"], _series(lows)["Close"])
     assert (read.highs, read.lows, read.net) == (90, 100, -10)
     assert read.regime == "down" and read.streak == -8
-    assert read.label == "Negative 8 days" and read.verdict == mi.NEGATIVE
+    assert read.label == "Negative 8 consecutive days" and read.verdict == mi.NEGATIVE
     assert read.last_three == (-1, -1, -1)
 
 
