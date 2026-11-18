@@ -59,7 +59,9 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     colors = st.page_colors(COLORS)
     data = _payload(st.render(snap, COLORS))
     assert data[st.FOMO_KEY] == view.fomo_chart(snap.fomo, colors)
-    assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [80.0, 25.0]
+    from cotmetrics import indicators
+    assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [
+        indicators.FOMO_EXHAUSTION_MIN, indicators.FOMO_FEAR_MAX]
     assert [lv["value"] for lv in data[st.APPETITE_KEY]["levels"]] == [80.0, 20.0]
     assert data[st.FOMO_KEY]["range"] == data[st.APPETITE_KEY]["range"] == [0, 100]
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}

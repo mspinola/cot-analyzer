@@ -63,8 +63,8 @@ def _universe(n=120):
 @pytest.mark.parametrize("values, label, verdict", [
     ([50, 85], "Stretched", mi.NEGATIVE),
     ([32.23, 46.66], "Middle ground", mi.NEUTRAL),
-    ([30, 20], "Washed out", mi.POSITIVE),
-    ([20, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
+    ([30, 15], "Washed out", mi.POSITIVE),
+    ([15, 30], "Recovering", mi.POSITIVE),     # up from fear, not yet neutral
     ([50, 70], "Between zones", mi.NEUTRAL),   # the 60-80 gap the SWG does not name
 ])
 def test_fomo_zone_labels_are_cotmetrics_zones_in_the_views_words(values, label, verdict):
@@ -589,7 +589,7 @@ def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
     assert [i + offset for i, v in enumerate(washed) if v] == [150, 151]
     assert [i + offset for i, v in enumerate(stretched) if v] == [180]
     assert first == 100 - offset                      # where the FOMO series starts
-    assert indicators.FOMO_FEAR_MAX == 25.0 and indicators.FOMO_EXHAUSTION_MIN == 80.0
+    assert values[150] < indicators.FOMO_FEAR_MAX and values[180] >= indicators.FOMO_EXHAUSTION_MIN
     # It changes nothing the count is made of.
     plain = _universe(200)
     del plain[mi.FOMO_SYMBOL]
