@@ -169,6 +169,10 @@ HISTORY_PRICE_SYMBOL = "QQQ"
 #: history says how unusual it is and stops there.
 VOLATILITY_SYMBOL, VOLATILITY_TERM_SYMBOL, VOLATILITY_NASDAQ_SYMBOL = "VIX", "VIX3M", "VXN"
 VOLATILITY_PATH_SESSIONS = 252
+#: Rates volatility beside it: the ICE BofA MOVE index, implied volatility of
+#: Treasuries. Its own level and its own percentile, on its own scale (it runs about
+#: four times the VIX), and optional: the card draws without it.
+VOLATILITY_BOND_SYMBOL = "MOVE"
 #: Equity index futures positioning, weekly: (symbol, the indexer's market name), the
 #: crowd board's EQUITIES rows in its order. The reading is the board's own, the
 #: COMMERCIAL INDEX over four lookbacks (`tape_context.window_index_frame`, on the
@@ -282,6 +286,16 @@ class Headwind:
 
 
 @dataclass(frozen=True)
+class BondVolatility:
+    """Context: the MOVE index, Treasury implied volatility. Never counted."""
+    value: float
+    change: float           # on the day, points
+    rank: tuple             # (percentile 1-100, word, first year) of its own history
+    path: tuple             # (date strings, values), the last year
+    date: str
+
+
+@dataclass(frozen=True)
 class BreadthHistory:
     """A year of the counts behind the net-highs headwind, both exchanges summed."""
     dates: tuple           # date strings
@@ -302,6 +316,7 @@ class VolatilityRead:
     streak: int             # sessions in today's shape
     rank: tuple             # (percentile 1-100, word, first year) of the VIX's history
     nasdaq: Optional[float]  # VXN close, when the store has it
+    bonds: Optional[BondVolatility]   # the MOVE index, when the store has it
     path: tuple             # (date strings, VIX, VIX3M), the last year
     date: str
 
@@ -789,8 +804,20 @@ def _rank(history, value):
             history.index[0].year)
 
 
-def volatility_read(vix, term, nasdaq=None):
-    """The VIX against VIX3M on their shared sessions, or None without both."""
+def bond_volatility_read(series):
+    if series is None or len(series) < 2:
+        return None
+    tail = series.tail(VOLATILITY_PATH_SESSIONS)
+    return BondVolatility(
+        value=float(series.iloc[-1]), change=float(series.iloc[-1] - series.iloc[-2]),
+        rank=_rank(series, float(series.iloc[-1])),
+        path=(_dates(tail.index), tuple(float(v) for v in tail)),
+        date=_stamp_of(series.index))
+
+
+def volatility_read(vix, term, nasdaq=None, bonds=None):
+    """The VIX against VIX3M on their shared sessions, or None without both. `bonds`
+    is the MOVE index's closes, read on its own beside them."""
     if vix is None or term is None:
         return None
     both = pd.concat([vix, term], axis=1, join="inner", keys=["vix", "term"]).dropna()
@@ -807,6 +834,7 @@ def volatility_read(vix, term, nasdaq=None):
         streak=_run_length(ratio > 1),
         rank=_rank(vix, float(both["vix"].iloc[-1])),   # the VIX's own, longer history
         nasdaq=None if nasdaq is None else float(nasdaq.iloc[-1]),
+        bonds=bond_volatility_read(bonds),
         path=(_dates(tail.index), tuple(float(v) for v in tail["vix"]),
               tuple(float(v) for v in tail["term"])),
         date=_stamp_of(both.index),
@@ -1115,7 +1143,8 @@ def build_snapshot(get_bars=None):
             return None
 
     volatility = volatility_read(quiet(VOLATILITY_SYMBOL), quiet(VOLATILITY_TERM_SYMBOL),
-                                 quiet(VOLATILITY_NASDAQ_SYMBOL))
+                                 quiet(VOLATILITY_NASDAQ_SYMBOL),
+                                 quiet(VOLATILITY_BOND_SYMBOL))
 
     dates = [r.date for r in [fomo, advance_decline, credit, rotation, appetite,
                               *net_highs, *updown, *assets, *headwinds] if r is not None]

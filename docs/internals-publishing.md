@@ -61,7 +61,9 @@ switch: the bottom row and the shading count only the headwind rows that are on.
 extremes are a sixth row, off as the page loads and never in the count.
 
 Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
-(inverted or normal, with the VIX's percentile since 1990), and two sections. **Sentiment**
+(inverted or normal, with the VIX's percentile since 1990) and under it the MOVE index
+(Treasury implied volatility, its level and percentile since 2002; marketdata's `MOVE`,
+drawn only once the store holds it), and two sections. **Sentiment**
 is a block per survey (NAAIM, AAII bulls minus bears, AAII stocks allocation): the
 current reading over three bars, its percentile on its full history, the last three
 years and the last year, which are the surveys page's own Percentiles numbers drawn

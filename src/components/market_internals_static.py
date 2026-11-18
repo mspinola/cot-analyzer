@@ -69,6 +69,7 @@ POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
+BOND_VOLATILITY_KEY = "bond_volatility"
 HIGHS_LOWS_KEY, NET_HISTORY_KEY = "highs_lows", "net_history"
 HEADWIND_PREFIX = "headwind:"
 
@@ -106,6 +107,8 @@ def charts(snap, colors, positioning=()):
         out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
     if snap.volatility is not None:
         out[VOLATILITY_KEY] = view.volatility_chart(snap.volatility, colors)
+        if snap.volatility.bonds is not None:
+            out[BOND_VOLATILITY_KEY] = view.bond_volatility_chart(snap.volatility.bonds)
     for h in snap.headwinds:
         out[HEADWIND_PREFIX + h.key] = view.headwind_chart(h, colors)
     return out
@@ -313,7 +316,23 @@ def volatility_card(read, colors):
         f'<div class="detail"><span class="key">— {mi.VOLATILITY_SYMBOL}</span>'
         f'<span style="color:{view.AVERAGE_COLOR}">— {mi.VOLATILITY_TERM_SYMBOL}</span></div>',
         _detail(view.volatility_status(read)),
+        _bond_volatility(read.bonds, colors),
     )
+
+
+def _bond_volatility(bonds, colors):
+    """The MOVE index under the VIX, in the same card: its level, its year and its
+    place in its own history. Nothing when the store does not hold it."""
+    if bonds is None:
+        return ""
+    change = view.verdict_color(mi.NEGATIVE if bonds.change >= 0 else mi.POSITIVE, colors)
+    return (f'<h3>{_esc(view.BOND_VOLATILITY_TITLE)}</h3>'
+            f'<div class="row"><span class="big mid">{bonds.value:.1f}</span>'
+            f'<span class="detail push" style="color:{change}">'
+            f'{_esc(view.signed(bonds.change, ".1f"))} on the day</span></div>'
+            + _detail(view.BOND_VOLATILITY_NOTE)
+            + _chart(BOND_VOLATILITY_KEY, view.bond_volatility_chart(bonds)["height"])
+            + _detail(view.bond_volatility_status(bonds)))
 
 
 def _block(block):

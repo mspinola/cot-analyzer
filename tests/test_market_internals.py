@@ -574,6 +574,29 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
     assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "YM", "NQ", "RTY"]
 
 
+def test_bond_volatility_is_the_move_index_on_its_own_history():
+    vix, term = _days([15.0] * 300), _days([18.0] * 300)
+    move = _days([80.0] * 298 + [120.0, 110.0])
+    read = mi.volatility_read(vix, term, bonds=move)
+    b = read.bonds
+    assert b.value == 110.0 and b.change == -10.0
+    assert b.rank[0] == 100 and b.rank[2] == move.index[0].year   # only one session higher
+    assert len(b.path[0]) == len(b.path[1]) == 252 and b.date == read.date
+    # Optional: the VIX read stands without it, and it never touches the count.
+    assert mi.volatility_read(vix, term).bonds is None
+    assert mi.bond_volatility_read(_days([80.0])) is None
+    frames = _universe()
+    idx = frames["QQQ"].index
+    frames[mi.VOLATILITY_SYMBOL] = pd.DataFrame({"Close": 20.0}, index=idx)
+    frames[mi.VOLATILITY_TERM_SYMBOL] = pd.DataFrame({"Close": 22.0}, index=idx)
+    without = mi.build_snapshot(_bars(frames))
+    frames[mi.VOLATILITY_BOND_SYMBOL] = pd.DataFrame({"Close": 95.0}, index=idx)
+    with_move = mi.build_snapshot(_bars(frames))
+    assert without.volatility.bonds is None and with_move.volatility.bonds.value == 95.0
+    assert mi.VOLATILITY_BOND_SYMBOL not in without.awaiting
+    assert mi.headline(with_move) == mi.headline(without)
+
+
 # ── a year of the counts behind the net-highs headwind ────────────────────────
 
 def test_breadth_history_sums_the_exchanges_and_carries_the_headwinds_own_average():
