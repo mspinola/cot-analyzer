@@ -60,11 +60,13 @@ makes no claim about what followed; none has been tested.
 
 Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
 (inverted or normal, with the VIX's percentile since 1990), and a "Sentiment and
-positioning" strip of the surveys page's own tiles (NAAIM, AAII bulls minus bears, AAII
-stocks allocation) followed by commercials' net position in S&P 500 and Nasdaq
-100 futures as a percent of open interest. The surveys carry their percentile on their
-full history; the futures carry cotmetrics' 26-week COT index (`Comm 26 Idx Norm`),
-because positioning is read against its recent range. The strip needs the COT store and the indexer, which the rest of the page does
+positioning" section of blocks. Each block is a current reading over its bars. A
+survey (NAAIM, AAII bulls minus bears, AAII stocks allocation) has three bars, its
+percentile on its full history, the last three years and the last year: the surveys
+page's own Percentiles numbers, drawn here in HTML. A futures block (commercials' net in
+S&P 500 and Nasdaq 100 futures, percent of open interest) has one bar, cotmetrics'
+26-week COT index (`Comm 26 Idx Norm`), because positioning is read against its recent
+range. The strip needs the COT store and the indexer, which the rest of the page does
 not; when either part cannot be served it is left off and named in the log
 (`no surveys, left out`), and the publish goes ahead.
 

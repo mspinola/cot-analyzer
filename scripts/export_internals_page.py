@@ -42,26 +42,22 @@ def main(argv=None) -> int:
         print(f"export-internals: trailing: {note}", file=sys.stderr)
     # The sentiment and positioning strip: context, so a part the stores cannot serve is
     # left off the page and named here, and never stops the publish.
-    survey = allocation = None
-    positioning = ()
+    parts = {"naaim": None, "votes": None, "allocation": None, "positioning": ()}
     try:
-        from components import aaii_allocation, sentiment
-        survey = sentiment.build_read()
-        if survey.frame.empty:
-            survey = None
-        allocation = aaii_allocation.read()
-        positioning = market_internals.positioning_reads()
+        from components import aaii_allocation, aaii_votes, naaim_card
+        parts["naaim"] = naaim_card.read()
+        parts["votes"] = aaii_votes.read()
+        parts["allocation"] = aaii_allocation.read()
+        parts["positioning"] = market_internals.positioning_reads()
     except Exception as e:  # noqa: BLE001
         print(f"export-internals: sentiment and positioning incomplete: {e}", file=sys.stderr)
-    for name, part in (("surveys", survey), ("AAII allocation", allocation),
-                       ("futures positioning", positioning)):
+    for name, part in parts.items():
         if not part:
             print(f"export-internals: no {name}, left out", file=sys.stderr)
     try:
         market_internals_static.write(args.out, snap,
                                       plot_colors.grid_colors(viz_config.get_palette()),
-                                      survey=survey, allocation=allocation,
-                                      positioning=positioning)
+                                      **parts)
     except ValueError as e:
         print(f"export-internals: not written: {e}", file=sys.stderr)
         return 1

@@ -62,6 +62,7 @@ ATTRIBUTION_URL = "https://www.tradingview.com/"
 DATA_ID = "internals-data"
 HEADWINDS_ID = "headwinds"
 HISTORY_ID = "history"
+POSITIONING_ID = "positioning"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
@@ -84,6 +85,8 @@ def page_colors(colors):
 
 def _date(stamp):
     """Nov 6, 2026 from the snapshot's 2026-11-06, the monitors' date spelling."""
+    if not isinstance(stamp, str):          # a survey's date is already a date
+        return surveys._date(stamp)
     return surveys._date(datetime.strptime(stamp, "%Y-%m-%d"))
 
 
@@ -280,21 +283,35 @@ def volatility_card(read, colors):
     )
 
 
-def positioning_section(survey, allocation, positioning):
-    """Surveys and futures positioning as the surveys page's own tiles. Each part is
-    optional and left out when its store could not serve it; with none, no section."""
-    tiles = []
-    if survey is not None:
-        tiles += surveys.survey_tiles(survey)
-    if allocation is not None:
-        tiles.append(surveys.stocks_tile(allocation))
-    tiles += view.positioning_tiles(positioning or (), _date)
-    if not tiles:
+def _block(block):
+    """One block: label, current reading, date, then a rail per history with the
+    reading's place as a numbered dot. The dot's colour is the tier's tone (warm toward
+    a high, cool toward a low), as on the surveys page's tiles."""
+    rails = "".join(
+        f'<div class="rl">{_esc(label)}</div>'
+        f'<div class="rail"><i class="tier-{tier}" style="left:{position}%">{_esc(text)}</i></div>'
+        for label, position, text, tier in block["rows"])
+    note = _detail(block["note"]) if block.get("note") else ""
+    return (f'<div class="pblock" data-key="{_esc(block["key"])}">'
+            f'<div class="between"><span class="label">{_esc(block["label"])}</span>'
+            f'<span class="foot">{_esc(block["foot"])}</span></div>'
+            f'<div class="value">{_esc(block["value"])}</div>{note}'
+            f'<div class="rails">{rails}</div></div>')
+
+
+def positioning_section(naaim, votes, allocation, positioning):
+    """Surveys and futures positioning: each one's current reading over its percentile
+    bars. Each part is optional and left out when its store could not serve it; with
+    none, no section."""
+    blocks = view.percentile_blocks(naaim, votes, allocation, positioning, _date)
+    if not blocks:
         return ""
+    has_survey = any(part is not None for part in (naaim, votes, allocation))
     link = (f'<p class="more"><a href="{SURVEYS_URL}">The surveys in full, with their '
-            'history &rarr;</a></p>\n' if survey is not None or allocation is not None else "")
+            'history &rarr;</a></p>\n' if has_survey else "")
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
-            + surveys._tiles(tiles) + link)
+            + f'<div class="pblocks" id="{POSITIONING_ID}">'
+            + "".join(_block(b) for b in blocks) + f'</div>\n{link}')
 
 
 _ARROWS = {1: "▲", -1: "▼", 0: "•"}
@@ -394,13 +411,15 @@ def _headline(snap, colors):
             f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
 
-def render(snap, colors, generated_at=None, survey=None, allocation=None, positioning=None):
+def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=None,
+           positioning=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
     palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
 
-    `survey` (`sentiment.build_read()`), `allocation` (`aaii_allocation.read()`) and
-    `positioning` (`market_internals.positioning_reads()`) fill the sentiment and
-    positioning strip; each is optional, and the strip is left out with none.
+    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`), `allocation`
+    (`aaii_allocation.read()`) and `positioning` (`market_internals.positioning_reads()`)
+    fill the sentiment and positioning blocks; each is optional, and the section is
+    left out with none.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
     be read never replaces the published page with a row of "awaiting data" cards. A
@@ -417,7 +436,7 @@ def render(snap, colors, generated_at=None, survey=None, allocation=None, positi
                  + fomo_card(snap.fomo, colors)
                  + appetite_card(snap.appetite, snap.credit, colors)
                  + volatility_card(snap.volatility, colors) + '</div>\n'
-                 + positioning_section(survey, allocation, positioning))
+                 + positioning_section(naaim, votes, allocation, positioning))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + '<div class="cards">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
@@ -450,6 +469,23 @@ def render(snap, colors, generated_at=None, survey=None, allocation=None, positi
 .hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}
 .hl {{ font-size: 0.78rem; }}
 .hl.all {{ color: {colors.bear}; font-weight: 600; }}
+/* Sentiment and positioning: a block per series, its reading over its percentile
+   rails. A rail is the 0-100 scale with a tick at the median and the reading as a
+   numbered dot. */
+.pblocks {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 12px; }}
+.pblock {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }}
+.pblock .label {{ font-size: 0.8rem; color: var(--ink-2); }}
+.pblock .foot {{ font-size: 0.75rem; color: var(--muted); }}
+.pblock .value {{ font-size: 1.75rem; font-weight: 600; line-height: 1.2; color: var(--ink); }}
+.rails {{ display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 12px; align-items: center; margin: 10px 11px 4px 0; }}
+.rl {{ font-size: 0.75rem; }}
+.rail {{ position: relative; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); }}
+.rail::after {{ content: ""; position: absolute; left: 50%; top: -4px; width: 1px; height: 14px; background: var(--muted); }}
+.rail i {{ position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+  background: var(--ink-2); color: var(--page); font-size: 0.68rem; font-weight: 700; font-style: normal;
+  line-height: 22px; text-align: center; box-shadow: 0 0 0 2px var(--surface); z-index: 1; }}
+.rail i.tier-top, .rail i.tier-high {{ background: {surveys.TONE_HIGH}; }}
+.rail i.tier-bottom, .rail i.tier-low {{ background: {surveys.TONE_LOW}; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
 .more a {{ color: var(--ink-2); }}
 .hp svg {{ display: block; width: 100%; }}
