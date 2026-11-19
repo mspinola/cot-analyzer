@@ -50,8 +50,13 @@ DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY
 #: This page's name in the monitors row (`sentiment_static.SITES`, the one list).
 CURRENT = "Market"
 SURVEYS_URL = dict(surveys.SITES)["Surveys"]
-SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE), "
-           "ETF daily bars from Yahoo Finance.")
+#: Every source a section of the page draws on, not only the breadth and the bars: the
+#: line named two of them until 2026-11-19, after volatility, the surveys and the COT
+#: had joined the page.
+SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE); ETF daily bars "
+           "from Yahoo Finance; volatility indices (VIX, VIX3M, VXN, ICE BofA MOVE) from "
+           "Cboe and Yahoo Finance; NAAIM Exposure Index; AAII sentiment and asset "
+           "allocation surveys; CFTC Commitments of Traders.")
 #: The chart library, pinned: an exact release, never `latest`, so a publish cannot
 #: change how the page draws. 5.2.1 (2026-08-12) is the release before the newest.
 LIGHTWEIGHT_CHARTS_VERSION = "5.2.1"
@@ -765,8 +770,14 @@ footer a {{ color: var(--ink-2); }}
     var spec = DATA[el.dataset.chart];
     if (!spec) {{ return; }}
     var format = {{type: 'price', precision: spec.decimals, minMove: Math.pow(10, -spec.decimals)}};
+    // Thousands separators on the scale: 200,000, not 200000.
+    var print = function (price) {{
+      return price.toLocaleString('en-US', {{minimumFractionDigits: spec.decimals,
+                                             maximumFractionDigits: spec.decimals}});
+    }};
     var chart = LC.createChart(el, {{
       autoSize: true,
+      localization: {{priceFormatter: print}},
       layout: {{background: {{type: 'solid', color: 'transparent'}}, textColor: INK,
                fontSize: 10, fontFamily: getComputedStyle(document.body).fontFamily,
                attributionLogo: false}},

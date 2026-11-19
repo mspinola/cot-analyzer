@@ -11,6 +11,8 @@ figures drawn as static images; a chart is now a small dict (`line_chart`) the p
 script hands to Lightweight Charts, which gives a crosshair with the value and date
 under it for about a hundredth of Plotly's download. No Dash and no Plotly import.
 """
+from datetime import datetime
+
 from cotmetrics import indicators
 
 import components.market_internals as mi
@@ -35,7 +37,7 @@ HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
     "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. Click a row's name "
+    "price is the same count: light for four, darker for all five. Select a row's name "
     "to switch it off or on: the bottom row and the shading then count only the rows "
     "that are on, so you can ask when any set of them lined up. \"Only all on at once\" "
     "drops the lighter band, leaving the price shaded only where every row that is on "
@@ -123,8 +125,9 @@ APPETITE_HOW = (
     "not move junk: the market's view of credit risk did. It describes credit now, not "
     "next month: tested, a stress reading was not followed by a worse month, which is "
     "why it is drawn here and not counted.")
-NET_HIGHS_TITLE = "Net new highs minus new lows"
-NET_HIGHS_SUBTITLE = "New 52-week highs less new lows, with the last three sessions."
+NET_HIGHS_TITLE = "Net new highs by exchange"
+NET_HIGHS_SUBTITLE = ("Each exchange's own daily count of new 52-week highs less new lows. "
+                      "The headwind above reads both summed, as a 5-day average.")
 NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS} sessions in "
                  "a row on one side is marked by the bar at the row's left, anything else "
                  "is mixed. The headwind above is a different cut of the same counts: both "
@@ -132,7 +135,7 @@ NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS}
 HIGHS_LOWS_TITLE = "New highs vs. new lows"
 HIGHS_LOWS_SUBTITLE = ("Nasdaq plus NYSE 52-week highs above the line, lows below it. "
                        "Daily counts, past year.")
-NET_HISTORY_TITLE = "Net new highs"
+NET_HISTORY_TITLE = "Net new highs, past year"
 NET_HISTORY_SUBTITLE = (f"Highs minus lows, daily and as the {mi.NET_HIGHS_AVERAGE}-day "
                         "average the headwind reads. Below zero is the headwind's zone.")
 NET_HISTORY_HOW = ("The thin line is each session's highs minus lows; the heavy line is "
@@ -157,6 +160,17 @@ FOOTER = ("Breadth counts and shares are TradingView's published daily series, "
 #: Sparkline box, px.
 SPARK_WIDTH, SPARK_HEIGHT = 110, 30
 # ── words and numbers ─────────────────────────────────────────────────────────
+
+def day_text(stamp):
+    """Nov 6, 2026 from 2026-11-06: the one date spelling on the page."""
+    day = datetime.strptime(stamp[:10], "%Y-%m-%d")
+    return f"{day:%b} {day.day}, {day:%Y}"
+
+
+def month_text(stamp):
+    """Jan 2022 from 2022-01-14."""
+    return f"{datetime.strptime(stamp[:10], '%Y-%m-%d'):%b %Y}"
+
 
 def signed(value, fmt):
     return ("+" if value >= 0 else "") + format(value, fmt)
@@ -214,7 +228,7 @@ def appetite_status(read, credit=None):
     if read.divergence:
         parts.append(f"{mi.DIVERGENCE_WORDS[read.divergence]} today")
     if read.last_risk_off:
-        parts.append(f"last risk-off divergence {read.last_risk_off}")
+        parts.append(f"last risk-off divergence {day_text(read.last_risk_off)}")
     return " · ".join(parts)
 
 
@@ -545,7 +559,7 @@ HISTORY_FOMO_LABEL = (f"FOMO extremes (under {indicators.FOMO_FEAR_MAX:.0f}, ove
 
 def history_subtitle(history):
     return (f"{history.price_symbol} since {history.dates[0][:4]}, daily. Marks show the "
-            "sessions each headwind was on. Click a row's name to switch it off or on.")
+            "sessions each headwind was on. Select a row's name to switch it off or on.")
 
 
 def history_summary(history, longest=3):
@@ -557,7 +571,7 @@ def history_summary(history, longest=3):
     if not on:
         return f"All {history.total} have never been on at once since {history.dates[0][:4]}."
     top = sorted(stretches, key=lambda s: -s[2])[:longest]
-    listed = "; ".join(f"{first[:7]} to {last[:7]} ({sessions} sessions)"
+    listed = "; ".join(f"{month_text(first)} to {month_text(last)} ({sessions} sessions)"
                        for first, last, sessions in top)
     return (f"All {history.total} were on at once on {on:,} of {total:,} sessions since "
             f"{history.dates[0][:4]} ({on / total:.0%}), in {len(stretches)} stretches "

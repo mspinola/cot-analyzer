@@ -282,7 +282,8 @@ def test_the_history_summary_counts_occurrences_and_names_the_longest():
                            count=(5, 5, 5, 1, 1, 1, 1, 1, 1, 5), total=5)
     text = view.history_summary(h)
     assert text.startswith("All 5 were on at once on 4 of 10 sessions since 2026 (40%), in 1 ")
-    assert "2026-01 to 2026-01 (4 sessions)" in text
+    assert "Jan 2026 to Jan 2026 (4 sessions)" in text
+    assert view.day_text("2026-11-06") == "Nov 6, 2026"
     quiet = mi.HeadwindHistory(dates=dates, price=(1.0,) * 10, price_symbol="QQQ", rows=(),
                                count=(2,) * 10, total=5)
     assert view.history_summary(quiet) == "All 5 have never been on at once since 2026."
