@@ -475,7 +475,7 @@ def _cot_row(read, colors):
     return (f'<tr data-key="{_esc(read.symbol)}"><td class="sym mono">{_esc(read.symbol)}</td>'
             f'<td class="name">{_esc(read.name)}{since}</td>'
             + "".join(_cot_cell(v, colors) for v in read.windows)
-            + f'<td class="num">{change}</td><td class="num">{spark}</td></tr>')
+            + f'<td class="num">{change}</td><td class="num path">{spark}</td></tr>')
 
 
 def positioning_section(positioning, colors, groups=None):
@@ -483,9 +483,10 @@ def positioning_section(positioning, colors, groups=None):
     then each market's net position through time. No section without the COT store."""
     if not positioning:
         return ""
-    head = ("<th></th><th></th>"
+    head = ('<th></th><th class="name"></th>'
             + "".join(f"<th>{_esc(c)}</th>" for c in view.POSITIONING_COLUMNS)
-            + f"<th>{_esc(view.POSITIONING_CHANGE)}</th><th>{_esc(view.POSITIONING_PATH)}</th>")
+            + f'<th>{_esc(view.POSITIONING_CHANGE)}</th>'
+            f'<th class="path">{_esc(view.POSITIONING_PATH)}</th>')
     table = ('<div class="scroll"><table class="cot"><thead><tr>' + head + '</tr></thead><tbody>'
              + "".join(_cot_row(r, colors) for r in positioning) + '</tbody></table></div>')
     asof = _detail(f"Commercial index, 0 to 100 · report of {_date(positioning[0].date)}",
@@ -501,7 +502,7 @@ def positioning_section(positioning, colors, groups=None):
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
             + f'<section class="card" id="{POSITIONING_ID}">{table}{asof}'
             '<h3>Net position by trader group, contracts · weekly, three years</h3>'
-            f'<div class="detail">{legend}</div>'
+            f'<div class="detail legend">{legend}</div>'
             f'<div class="pcharts">{charts_html}</div></section>\n')
 
 
@@ -513,12 +514,12 @@ def breadth_charts(snap, colors):
     b = snap.breadth
     return (f'<div class="cards" id="{BREADTH_ID}">\n'
             + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
-                    f'<div class="detail"><span class="key" style="color:{colors.bull}">'
-                    f'▲ New highs {b.highs[-1]:.0f}</span><span style="color:{colors.bear}">'
+                    f'<div class="detail legend"><span class="key" style="color:{colors.bull}">'
+                    f'▲ New highs {b.highs[-1]:.0f}</span><span class="key" style="color:{colors.bear}">'
                     f'▼ New lows {b.lows[-1]:.0f}</span> {_prov(snap, "net_highs")}</div>',
                     _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
             + _card(view.NET_HISTORY_TITLE, view.NET_HISTORY_SUBTITLE, view.NET_HISTORY_HOW,
-                    '<div class="detail"><span class="key">— Daily</span>'
+                    '<div class="detail legend"><span class="key">— Daily</span>'
                     f'<span class="name">— {mi.NET_HIGHS_AVERAGE}-day average</span></div>',
                     _chart(NET_HISTORY_KEY, view.net_highs_chart(b, colors)["height"]))
             + '</div>\n')
@@ -613,6 +614,20 @@ def _header(snap):
             f'</div><div class="asof">Through <b>{_date(snap.date)}</b></div></header>')
 
 
+#: Days past the snapshot's date before the page says it is old. The nightly publish
+#: lands the same evening, so the longest healthy gap is a holiday weekend read just
+#: before the next publish: Friday's data until Tuesday evening, under five days.
+STALE_AFTER_DAYS = 5
+
+
+def _stale(snap):
+    """A warning the reader's own clock switches on: a page is only as fresh as its
+    last publish, and a failed one leaves yesterday's page up with nothing to say so."""
+    return (f'<p class="stale" role="status" hidden data-stale data-through="{_esc(snap.date)}" '
+            f'data-after="{STALE_AFTER_DAYS}">This page last updated with data through '
+            f'{_date(snap.date)}. Its readings are <b data-stale-days></b> days old.</p>')
+
+
 def _headline(snap, colors):
     count, lean = mi.headline(snap)
     number, _, rest = count.partition(" ")
@@ -683,6 +698,8 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
 {surveys.base_css()}/* This page's own rules, on the shared tokens above. The count leads, as the surveys
    page's tiles do; a headwind card's left edge is its state, the defensive red when it
    is on and the constructive green when it is not (the surveys cards' toned pair). */
+.stale {{ color: var(--ink); font-size: 0.85rem; margin: 0 0 12px; padding: 7px 12px; border: 1px solid {surveys.TONE_HIGH};
+  border-left-width: 3px; border-radius: 6px; background: var(--wash); }}
 .count {{ color: var(--ink); font-size: 1.05rem; font-weight: 500; margin: 0; }}
 .count b {{ font-size: 2.4rem; font-weight: 700; line-height: 1; margin-right: 4px; }}
 .lean {{ font-size: 0.9rem; margin: 2px 0 16px; }}
@@ -731,7 +748,9 @@ button.htog:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 2
   border: 1px dashed var(--muted); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }}
 .more {{ font-size: 0.8rem; margin: -4px 0 0; }}
 /* Positioning: the crowd board's row, as a table. A cell is a pill filled toward its
-   pole; the table scrolls sideways on a phone rather than dropping a lookback. */
+   pole. On a phone the market's name and the year's path step aside (the symbol and
+   the charts under the table say both) so every lookback fits without a sideways
+   scroll nothing pointed at. */
 .scroll {{ overflow-x: auto; }}
 table.cot {{ min-width: 520px; }}
 table.cot th {{ text-align: center; border-bottom: none; padding: 2px 6px; }}
@@ -741,6 +760,12 @@ table.cot td small {{ color: var(--muted); }}
 .mono {{ font-family: var(--mono); }}
 .cell {{ display: inline-block; min-width: 64px; padding: 2px 0; border-radius: 4px; font-size: 0.82rem; font-weight: 600; text-align: center; }}
 .cell.none {{ background: var(--wash); color: var(--muted); }}
+@media (max-width: 700px) {{
+  table.cot {{ min-width: 0; }}
+  table.cot .name, table.cot .path {{ display: none; }}
+  table.cot th, table.cot td {{ padding: 3px 3px; }}
+  .cell {{ min-width: 40px; }}
+}}
 .pcharts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; }}
 .pchart .label {{ font-size: 0.8rem; }}
 .more a {{ color: var(--ink-2); }}
@@ -801,7 +826,10 @@ nav.jumps a:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 1
 .push {{ margin-left: auto; }}
 .right {{ text-align: right; }}
 .gap {{ margin-top: 4px; }}
-.key {{ margin-right: 12px; }}
+.key {{ margin-right: 12px; white-space: nowrap; display: inline-block; }}
+/* A legend over its chart: items wrap whole, and stand clear of the top axis label. */
+.legend {{ display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-bottom: 4px; }}
+.legend .key {{ margin-right: 0; }}
 .badge {{ border: 1px solid; border-radius: 4px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }}
 .nh {{ border-left: 3px solid transparent; padding-left: 8px; margin: 8px 0 14px; align-items: flex-start; }}
 .ud {{ margin: 8px 0 14px; }}
@@ -827,12 +855,24 @@ footer a {{ color: var(--ink-2); }}
 <main>
 {_nav()}
 {_header(snap)}
+{_stale(snap)}
 {_headline(snap, colors)}
 {_jumps(body)}
 {body}<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
 <footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
+<script>
+// Old data says so. The reader's clock against the snapshot's date, in whole days.
+(function () {{
+  var note = document.querySelector('[data-stale]');
+  if (!note) {{ return; }}
+  var days = Math.floor((Date.now() - Date.parse(note.dataset.through + 'T00:00:00Z')) / 86400000);
+  if (!(days > +note.dataset.after)) {{ return; }}
+  note.querySelector('[data-stale-days]').textContent = days;
+  note.hidden = false;
+}})();
+</script>
 <script type="application/json" id="{DATA_ID}">{surveys._script_json(charts(snap, colors, positioning, groups))}</script>
 <script>
 (function () {{
@@ -840,6 +880,7 @@ footer a {{ color: var(--ink-2); }}
   if (!LC) {{ return; }}
   var DATA = JSON.parse(document.getElementById('{DATA_ID}').textContent);
   var INK = '{surveys.INK_2}', GRID = 'rgba(255,255,255,0.06)';
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   document.querySelectorAll('[data-chart]').forEach(function (el) {{
     var spec = DATA[el.dataset.chart];
     if (!spec) {{ return; }}
@@ -857,9 +898,18 @@ footer a {{ color: var(--ink-2); }}
                attributionLogo: false}},
       grid: {{vertLines: {{visible: false}}, horzLines: {{color: GRID}}}},
       // A fixed 0-100 scale keeps thin margins, or the axis runs on to 120.
-      rightPriceScale: {{borderVisible: false,
+      // Whole labels only: one at the very top or bottom edge is cut in half otherwise.
+      rightPriceScale: {{borderVisible: false, entireTextOnly: true,
                         scaleMargins: spec.range ? {{top: 0.04, bottom: 0.04}} : {{top: 0.12, bottom: 0.1}}}},
-      timeScale: {{borderVisible: false, fixLeftEdge: true, fixRightEdge: true}},
+      // Months and years on the time axis, never a day of the month: a wide card fits
+      // more marks than a narrow one, and the extra ones were bare numbers ("15", "14")
+      // that made two cards of the same quarter look like different spans.
+      timeScale: {{borderVisible: false, fixLeftEdge: true, fixRightEdge: true,
+                  tickMarkFormatter: function (time, type) {{
+                    if (type === LC.TickMarkType.Year) {{ return String(time).slice(0, 4); }}
+                    if (type === LC.TickMarkType.Month) {{ return MONTHS[+String(time).slice(5, 7) - 1]; }}
+                    return '';
+                  }}}},
       // The whole series is on screen; panning would only take the page's scroll.
       handleScroll: false, handleScale: false,
       crosshair: {{mode: LC.CrosshairMode.Magnet}}

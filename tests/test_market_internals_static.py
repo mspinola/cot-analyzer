@@ -421,7 +421,7 @@ def test_positioning_is_its_own_section_with_the_boards_row_per_market():
     page = st.render(_snap(), COLORS, positioning=reads)
     assert f"<h2>{view.POSITIONING_TITLE}</h2>" in page
     card = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</section>")[0]
-    head = re.findall(r"<th>([^<]*)</th>", card)
+    head = re.findall(r"<th[^>]*>([^<]*)</th>", card)
     assert head == ["", "", *board_traces.WINDOW_LABELS, view.POSITIONING_CHANGE,
                     view.POSITIONING_PATH]
     colors = st.page_colors(COLORS)
@@ -717,3 +717,41 @@ def test_a_shared_link_has_a_preview_and_the_net_highs_card_points_at_its_year()
     # Without the year of counts there is nothing to point at.
     bare = st.render(_snap(drop=("NASDAQ_NH52W",)), COLORS)
     assert f'href="#{st.BREADTH_ID}"' not in bare
+
+
+def test_an_old_page_says_so_from_the_readers_own_clock():
+    """The warning ships hidden with the snapshot's date; the script shows it once the
+    reader's clock is past the allowance, so a failed publish cannot pass for today."""
+    snap = _snap()
+    page = st.render(snap, COLORS)
+    note = re.search(r'<p class="stale"[^>]*>', page).group(0)
+    assert " hidden " in note
+    assert f'data-through="{snap.date}"' in note
+    assert f'data-after="{st.STALE_AFTER_DAYS}"' in note
+    assert page.index('class="stale"') < page.index('class="count"')
+    assert "note.hidden = false" in page
+    # A holiday weekend read just before the next publish is still a healthy page.
+    assert st.STALE_AFTER_DAYS >= 5
+
+
+def test_the_time_axis_labels_months_and_years_only():
+    """A wide card fits more marks than a narrow one; none of them is a bare day."""
+    page = st.render(_snap(), COLORS)
+    assert "tickMarkFormatter" in page
+    assert "LC.TickMarkType.Month" in page and "LC.TickMarkType.Year" in page
+    assert "entireTextOnly: true" in page
+
+
+def test_the_positioning_table_fits_a_phone_without_its_name_and_path_columns():
+    page = st.render(_snap(), COLORS, positioning=_positioning())
+    card = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</section>")[0]
+    rows = card.count("<tr data-key=")
+    assert card.count('class="name"') == rows + 1          # a cell a row, and the header
+    assert card.count('class="num path"') == rows and card.count('<th class="path">') == 1
+    assert "table.cot .name, table.cot .path { display: none; }" in page
+
+
+def test_a_legend_wraps_whole_items():
+    page = st.render(_snap(), COLORS, positioning=_positioning())
+    assert page.count('class="detail legend"') == 3
+    assert "white-space: nowrap" in page.split(".key {")[1].split("}")[0]
