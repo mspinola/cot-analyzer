@@ -69,6 +69,7 @@ HEADWINDS_ID = "headwinds"
 HISTORY_ID = "history"
 POSITIONING_ID = "positioning"
 SENTIMENT_ID = "sentiment"
+CONTEXT_ID, DETAIL_ID = "context", "detail"
 #: A market's commercials chart is POSITIONING_PREFIX + its symbol in the payload.
 POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
@@ -300,12 +301,31 @@ def history_card(history, colors):
                  f'{_esc(view.history_summary(history))}</div>')
 
 
+def _across(cards):
+    """The grid class for a row of cards, so no count leaves a hole: three across,
+    except five (three, then two sharing the row) and an even count (two across)."""
+    n = len(cards)
+    return " five" if n == 5 else " three" if n % 3 == 0 else ""
+
+
+#: The page's sections in order, (anchor, label): the jump links under the title.
+JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CONTEXT_ID, "Context"),
+         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"), (DETAIL_ID, "Detail"))
+
+
+def _jumps(body):
+    """Links to the sections `body` actually holds: the page is long on a phone."""
+    links = "".join(f'<a href="#{anchor}">{label}</a>' for anchor, label in JUMPS
+                    if f'id="{anchor}"' in body)
+    return f'<nav class="jumps" aria-label="On this page">{links}</nav>' if links else ""
+
+
 def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
-            + f'<div class="cards three" id="{HEADWINDS_ID}">\n'
+            + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
             + "".join(headwind_card(h, colors, _prov(snap, h.key)) for h in snap.headwinds) + f'</div>\n{note}'
             + history_card(snap.history, colors))
 
@@ -357,23 +377,24 @@ def volatility_card(read, colors):
         f'<div class="detail"><span class="key">— {mi.VOLATILITY_SYMBOL}</span>'
         f'<span style="color:{view.AVERAGE_COLOR}">— {mi.VOLATILITY_TERM_SYMBOL}</span></div>',
         _detail(view.volatility_status(read)),
-        _bond_volatility(read.bonds, colors),
     )
 
 
-def _bond_volatility(bonds, colors):
-    """The MOVE index under the VIX, in the same card: its level, its year and its
-    place in its own history. Nothing when the store does not hold it."""
+def bond_volatility_card(read, colors):
+    """The MOVE index, a card beside the VIX's: its level, its year and its place in
+    its own history. No card when the store does not hold it. It sat inside the VIX's
+    card until 2026-11-19, which made that card half again as tall as its neighbours."""
+    bonds = read.bonds if read is not None else None
     if bonds is None:
         return ""
     change = view.verdict_color(mi.NEGATIVE if bonds.change >= 0 else mi.POSITIVE, colors)
-    return (f'<h3>{_esc(view.BOND_VOLATILITY_TITLE)}</h3>'
-            f'<div class="row"><span class="big mid">{bonds.value:.1f}</span>'
-            f'<span class="detail push" style="color:{change}">'
-            f'{_esc(view.signed(bonds.change, ".1f"))} on the day</span></div>'
-            + _detail(view.BOND_VOLATILITY_NOTE)
-            + _chart(BOND_VOLATILITY_KEY, view.bond_volatility_chart(bonds)["height"])
-            + _detail(view.bond_volatility_status(bonds)))
+    return _card(
+        view.BOND_VOLATILITY_TITLE, view.BOND_VOLATILITY_SUBTITLE, view.BOND_VOLATILITY_HOW,
+        f'<div class="row"><span class="big">{bonds.value:.1f}</span>'
+        f'<span class="detail push" style="color:{change}">'
+        f'{_esc(view.signed(bonds.change, ".1f"))} on the day</span></div>',
+        _chart(BOND_VOLATILITY_KEY, view.bond_volatility_chart(bonds)["height"]),
+        _detail(view.bond_volatility_status(bonds)))
 
 
 def _block(block):
@@ -584,6 +605,9 @@ def _headline(snap, colors):
     number, _, rest = count.partition(" ")
     if not number.isdigit():
         return f'<p class="count">{_esc(count)}</p><p class="lean">{_esc(lean)}</p>'
+    since = view.headline_since(snap)
+    if since:
+        lean = f"{lean} {since}"
     return (f'<p class="count"><b style="color:{view.count_color(snap, colors)}">'
             f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
@@ -610,17 +634,21 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
     colors = page_colors(colors)
     groups = group_colors(palette) if positioning else ()
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    context = [card for card in (
+        fomo_card(snap.fomo, colors, _prov(snap, "fomo")),
+        appetite_card(snap.appetite, snap.credit, colors),
+        volatility_card(snap.volatility, colors),
+        bond_volatility_card(snap.volatility, colors)) if card]
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
-                 + f'<div class="cards{" three" if snap.volatility else ""}">\n'
-                 + fomo_card(snap.fomo, colors, _prov(snap, "fomo"))
-                 + appetite_card(snap.appetite, snap.credit, colors)
-                 + volatility_card(snap.volatility, colors) + '</div>\n'
+                 + f'<div class="cards{_across(context)}" id="{CONTEXT_ID}">\n'
+                 + "".join(context) + '</div>\n'
                  + sentiment_section(naaim, votes, allocation)
                  + positioning_section(positioning, colors, groups))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + breadth_charts(snap, colors)
-              + '<div class="cards">\n' + breadth_card(snap, colors)
+              + f'<div class="cards" id="{DETAIL_ID}">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
+    body = headwinds_section(snap, colors) + uncounted + detail
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -715,7 +743,27 @@ table.cot td small {{ color: var(--muted); }}
    column on a phone. */
 .cards {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }}
 @media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
-@media (min-width: 1100px) {{ .cards.three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
+@media (min-width: 1100px) {{
+  .cards.three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+  /* Five: three across, then two sharing the second row, so no slot is left empty. */
+  .cards.five {{ grid-template-columns: repeat(6, minmax(0, 1fr)); }}
+  .cards.five > * {{ grid-column: span 2; }}
+  .cards.five > :nth-child(n+4) {{ grid-column: span 3; }}
+}}
+@media (min-width: 900px) and (max-width: 1099px) {{ .cards.five > :last-child {{ grid-column: 1 / -1; }} }}
+/* Jump links to the sections; a target stops clear of the top edge. */
+nav.jumps {{ display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 12.5px; margin: 10px 0 0; }}
+nav.jumps a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; }}
+nav.jumps a:hover {{ background: var(--wash); color: var(--ink); }}
+nav.jumps a:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 1px; }}
+[id] {{ scroll-margin-top: 64px; }}
+/* A finger needs more than a mouse: the switches and links grow on a phone. */
+@media (max-width: 700px) {{
+  .lookback {{ flex-wrap: wrap; }}
+  .lookback button {{ font-size: 12px; padding: 7px 12px; }}
+  button.htog {{ padding: 7px 0; }}
+  nav.jumps a {{ padding: 7px 11px; }}
+}}
 .card h3 {{ color: var(--ink); font-size: 0.85rem; font-weight: 400; margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }}
 .chart {{ width: 100%; margin: 6px 0 4px; }}
 .big {{ color: var(--ink); font-size: 1.75rem; font-weight: 600; line-height: 1.2; }}
@@ -755,7 +803,8 @@ footer a {{ color: var(--ink-2); }}
 {_nav()}
 {_header(snap)}
 {_headline(snap, colors)}
-{headwinds_section(snap, colors)}{uncounted}{detail}<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
+{_jumps(body)}
+{body}<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
 <footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
