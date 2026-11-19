@@ -419,6 +419,55 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             return window.dash_clientside.no_update;
         },
         /**
+         * After a graph's figure was swapped: put every x axis on the window the reader
+         * kept, then fit the y axes to it.
+         *
+         * A redraw keeps the reader's x zoom (uirevision) only on the axes that were
+         * zoomed. A figure with one more panel than the last (the sentiment price
+         * card's as-read scale) brings an x axis that never was, at the server's opening
+         * range, and the matched group then draws that range under a top axis that
+         * still says the reader's (found 2026-11-19). The top axis is the one the range
+         * buttons write, so its range is the reader's. The y ranges of a redraw come
+         * fitted to the opening window too, hence the fit.
+         */
+        sync_x_then_refit: function(graphId) {
+            var gd = document.querySelector('#' + graphId + ' .js-plotly-plot');
+            var r = gd && gd.layout && gd.layout.xaxis && gd.layout.xaxis.range;
+            if (!r || typeof Plotly === 'undefined') { return; }
+            function ms(v) { return new Date(v).getTime(); }
+            var update = {};
+            Object.keys(gd.layout).forEach(function(k) {
+                var o = /^xaxis\d+$/.test(k) && gd.layout[k] && gd.layout[k].range;
+                if (o && (ms(o[0]) !== ms(r[0]) || ms(o[1]) !== ms(r[1]))) {
+                    update[k + '.range'] = [r[0], r[1]];
+                }
+            });
+            try {
+                // The relayout's own event carries an x range, so the y fit follows it
+                // (the relayoutData callback in the app, the listener on the static page).
+                if (Object.keys(update).length) { Plotly.relayout(gd, update); }
+                else {
+                    window.dash_clientside.clientside.autoscale_y_axes(
+                        {'xaxis.range': [r[0], r[1]]}, graphId);
+                }
+            } catch (e) { console.error(e); }
+        },
+
+        /**
+         * The Dash side of `sync_x_then_refit`: fired by the graph's figure changing,
+         * and deferred so Plotly has the new figure and the kept range before it reads
+         * them.
+         */
+        refit_after_redraw: function(figure, graphId) {
+            var noUpdate = window.dash_clientside.no_update;
+            if (!figure || !graphId) { return noUpdate; }
+            setTimeout(function() {
+                window.dash_clientside.clientside.sync_x_then_refit(graphId);
+            }, 150);
+            return noUpdate;
+        },
+
+        /**
          * Rescale every y-axis to the data actually visible in the current x-window.
          *
          * Shared by every stacked-plot page. `graphId` is the Dash id of the graph to

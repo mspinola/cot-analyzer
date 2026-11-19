@@ -978,3 +978,163 @@ def test_a_provisional_week_is_ranked_against_the_official_weeks_only():
     assert not official.index.isin(late).any()
     word, _ = s.latest_percentile(read, "aaii")
     assert word == s.percentile_word(official.to_numpy(), s.latest_reading(read, "aaii"))
+
+
+# ── the price card's switches: scale and shading ──────────────────────────────
+
+def _bands(fig):
+    shapes = [sh for sh in fig.layout.shapes if (sh.legendgroup or "").startswith("drawdown")]
+    keys = [t for t in fig.data if (t.legendgroup or "").startswith("drawdown")]
+    return shapes, keys
+
+
+@pytest.mark.parametrize("scale", [v for v, _ in s.SCALES])
+def test_the_shading_switch_takes_the_bands_and_their_keys_off(scale):
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    on = s.price_sentiment_figure(read, COLORS, PALETTE, scale=scale)
+    off = s.price_sentiment_figure(read, COLORS, PALETTE, scale=scale, bands=False)
+    shapes, keys = _bands(on)
+    assert shapes and len(keys) == len(s.DRAWDOWN_LEVELS)
+    assert _bands(off) == ([], [])
+    # Nothing else goes with them: the lines, and on the index the two zone lines.
+    assert len(off.data) == len(on.data) - len(keys)
+    assert len(off.layout.shapes) == len(on.layout.shapes) - len(shapes)
+
+
+def test_the_defaults_draw_the_page_as_it_always_was():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    assert (s.price_sentiment_figure(read, COLORS, PALETTE).to_json()
+            == s.price_sentiment_figure(read, COLORS, PALETTE, scale=s.SCALE_INDEX,
+                                        bands=True).to_json())
+
+
+def test_as_read_draws_each_survey_as_published_on_its_own_panel():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE, scale=s.SCALE_RAW)
+    lines = {t.name: t for t in fig.data if t.mode == "lines"}
+    for row, (key, label) in enumerate(s.SERIES, start=2):
+        raw = read.frame[key].dropna()
+        assert lines[label].yaxis == f"y{row}"
+        np.testing.assert_allclose(lines[label].y, raw.to_numpy())
+        avg = lines[f"{label}, {s.RAW_AVERAGE_WEEKS}-week average"]
+        # The faint average: the mean of this week and the ones before it, nothing later.
+        np.testing.assert_allclose(avg.y[-1], raw.iloc[-s.RAW_AVERAGE_WEEKS:].mean())
+        np.testing.assert_allclose(avg.y[0], raw.iloc[:s.RAW_AVERAGE_WEEKS].mean())
+        assert avg.opacity == s.RAW_AVERAGE_OPACITY < 1 and avg.yaxis == f"y{row}"
+    assert fig.layout.height == s.PRICE_RAW_HEIGHT
+    assert fig.layout.uirevision == s.UIREVISION
+    # No 0-100 zones: only AAII's zero line besides the bands.
+    plain = [sh for sh in fig.layout.shapes if not (sh.legendgroup or "").startswith("drawdown")]
+    assert [(sh.y0, sh.yref) for sh in plain] == [(0, "y3")]
+
+
+def test_as_read_bands_run_behind_all_three_panels_and_every_panel_refits():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE, scale=s.SCALE_RAW)
+    shapes, _ = _bands(fig)
+    assert len(shapes) == 3 * len(s.drawdown_runs(read.frame["spy"]))
+    assert {sh.xref for sh in shapes} == {"x", "x2", "x3"}
+    refit = fig.layout.meta[exposure_traces.REFIT_META]
+    assert refit["axes"] == ["yaxis", "yaxis2", "yaxis3"] and refit["price_axis"] == "yaxis"
+
+
+def test_as_read_panels_open_fitted_to_the_opening_window():
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    fig = s.price_sentiment_figure(read, COLORS, PALETTE, scale=s.SCALE_RAW)
+    t0, t1 = s.open_range(read)
+    for axis, key in (("yaxis2", "naaim"), ("yaxis3", "aaii")):
+        raw = read.frame[key].dropna()
+        shown = pd.concat([raw, s.raw_average(raw).dropna()])
+        shown = shown[(shown.index >= t0) & (shown.index <= t1)]
+        lo, hi = fig.layout[axis].range
+        assert lo < shown.min() and hi > shown.max()
+        assert (hi - lo) == pytest.approx((shown.max() - shown.min()) * 1.1)
+
+
+def test_as_read_does_not_follow_the_lookback():
+    _, get_bars = _fixtures()
+    figs = [s.price_sentiment_figure(s.build_read(get_bars, lookback_years=y), COLORS,
+                                     PALETTE, scale=s.SCALE_RAW).to_json()
+            for y in s.LOOKBACK_YEARS]
+    assert figs[0] == figs[1]
+
+
+def test_the_price_cards_switches_default_to_the_index_with_shading(monkeypatch):
+    monkeypatch.delenv(local_pages.ENV, raising=False)
+    page = importlib.import_module("pages.analytics.sentiment")
+    _, scale, _, bands, _, spy = page.price_controls().children
+    assert spy.value == page.BANDS_ON and getattr(spy, "persistence", None) is None
+    assert [o["value"] for o in scale.options] == [v for v, _ in s.SCALES]
+    assert scale.value == s.SCALE_INDEX and bands.value == page.BANDS_ON
+    assert page.scale_value("raw") == s.SCALE_RAW
+    assert page.scale_value(None) == page.scale_value("x") == s.SCALE_INDEX
+    # No persistence, for the lookback toggle's reason: nothing fires on load.
+    assert getattr(scale, "persistence", None) is None
+    assert getattr(bands, "persistence", None) is None
+
+
+def test_one_callback_writes_the_price_chart_for_all_three_controls(monkeypatch):
+    registered = list(dash._callback.GLOBAL_CALLBACK_LIST)
+    monkeypatch.setenv(local_pages.ENV, "1")
+    page = importlib.reload(importlib.import_module("pages.analytics.sentiment"))
+    try:
+        new = dash._callback.GLOBAL_CALLBACK_LIST[len(registered):]
+        writers = [c for c in new if f"{page.PRICE_CHART}.figure" in c["output"]]
+        assert len(writers) == 1 and writers[0]["prevent_initial_call"]
+        assert {i["id"] for i in writers[0]["inputs"]} == {page.LOOKBACK, page.SCALE,
+                                                          page.BANDS, page.SPY}
+        # Both redrawn charts get the fit that follows a redraw, never on load.
+        refits = [c for c in new if any(i["property"] == "figure" for i in c["inputs"])]
+        assert {c["inputs"][0]["id"] for c in refits} == {page.PRICE_CHART,
+                                                         page.COLUMNS_CHART}
+        assert all(c["prevent_initial_call"] for c in refits)
+    finally:
+        dash._callback.GLOBAL_CALLBACK_LIST[:] = registered
+        monkeypatch.delenv(local_pages.ENV)
+        importlib.reload(page)
+        for key in [k for k, v in dash.page_registry.items() if v.get("path") == "/sentiment"]:
+            del dash.page_registry[key]
+
+
+@pytest.mark.parametrize("scale,survey_rows", [(s.SCALE_INDEX, 1), (s.SCALE_RAW, 2)])
+def test_the_spy_switch_takes_the_price_panel_off_and_keeps_the_rest(scale, survey_rows):
+    _, get_bars = _fixtures()
+    read = s.build_read(get_bars)
+    on = s.price_sentiment_figure(read, COLORS, PALETTE, scale=scale)
+    off = s.price_sentiment_figure(read, COLORS, PALETTE, scale=scale, spy=False)
+    names = [t.name for t in off.data]
+    assert "SPY" not in names and [n for n in (t.name for t in on.data) if n != "SPY"] == names
+    # The survey panels move up to the top rows, and nothing is left on a row below.
+    axes = {t.yaxis for t in off.data}
+    assert axes == ({"y"} if survey_rows == 1 else {"y", "y2"})
+    assert off.layout.height < on.layout.height
+    # The shading stays, behind every remaining panel, with its keys.
+    shapes, keys = _bands(off)
+    assert len(shapes) == survey_rows * len(s.drawdown_runs(read.frame["spy"]))
+    assert len(keys) == len(s.DRAWDOWN_LEVELS)
+    assert _bands(s.price_sentiment_figure(read, COLORS, PALETTE, scale=scale, spy=False,
+                                           bands=False)) == ([], [])
+    # No price axis is left to treat as one: the index stays pinned, as-read panels fit.
+    refit = off.layout.meta[exposure_traces.REFIT_META]
+    assert "price_axis" not in refit
+    assert refit["axes"] == ([] if scale == s.SCALE_INDEX else ["yaxis", "yaxis2"])
+    assert off.layout.xaxis.rangeselector.buttons and off.layout.uirevision == s.UIREVISION
+    # The zoom buttons sit above the survey title they would otherwise run over.
+    assert off.layout.xaxis.rangeselector.y > 1 == on.layout.xaxis.rangeselector.y
+    assert off.layout.margin.t == on.layout.margin.t + s.BUTTON_LIFT_PX
+
+
+def test_the_index_panel_stays_pinned_without_the_spy_panel():
+    _, get_bars = _fixtures()
+    fig = s.price_sentiment_figure(s.build_read(get_bars), COLORS, PALETTE, spy=False)
+    assert tuple(fig.layout.yaxis.range) == (-2, 102)
+
+
+def test_the_faint_average_is_four_weeks():
+    assert s.RAW_AVERAGE_WEEKS == 4
+    assert f"{s.RAW_AVERAGE_WEEKS}-week average" in s.PRICE_HOW_TO_READ
