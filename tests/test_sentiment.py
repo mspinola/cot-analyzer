@@ -47,7 +47,7 @@ def test_unset_is_off():
 
 def test_the_menu_entries_say_local():
     entries = local_pages.monitor_entries({local_pages.ENV: "1"})
-    assert [href for _, href in entries] == ["/sentiment", "/cmr"]
+    assert [href for _, href in entries] == ["/sentiment", "/news-failure"]
     assert all("local" in label.lower() for label, _ in entries)
 
 

@@ -1452,24 +1452,24 @@ table.scorecard-card tbody td {
     margin-bottom: 0;
 }
 
-/* CMR scan page (local only): an alert file rendered as written, for days before the
+/* News-failure scan page (local only): an alert file rendered as written, for days before the
    structured sidecar. The alerts carry a fixed-width board in a code fence and one
    markdown table per market; both need to read on the dark theme without wrapping. */
-.cmr-md { color: #ABB8C9; font-size: 0.85rem; }
-.cmr-md h1 { font-size: 1.3rem; color: #E2E8F0; }
-.cmr-md h2 { font-size: 1.05rem; color: #E2E8F0; margin-top: 1.4rem;
+.nf-md { color: #ABB8C9; font-size: 0.85rem; }
+.nf-md h1 { font-size: 1.3rem; color: #E2E8F0; }
+.nf-md h2 { font-size: 1.05rem; color: #E2E8F0; margin-top: 1.4rem;
              padding-top: 0.6rem; border-top: 1px solid rgba(255,255,255,0.08); }
-.cmr-md pre { background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 4px;
+.nf-md pre { background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 4px;
               font-size: 0.75rem; line-height: 1.35; overflow-x: auto; }
-.cmr-md table { border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.8rem; }
-.cmr-md th, .cmr-md td { border-top: 1px solid rgba(255,255,255,0.08);
+.nf-md table { border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.8rem; }
+.nf-md th, .nf-md td { border-top: 1px solid rgba(255,255,255,0.08);
                          padding: 4px 10px; vertical-align: top; }
-.cmr-md th { color: #E2E8F0; background: rgba(255,255,255,0.04); }
-.cmr-md td:first-child { white-space: nowrap; font-weight: 500; }
-.cmr-md strong { color: #E2E8F0; }
-.cmr-md a { color: #7fb8e6; }
+.nf-md th { color: #E2E8F0; background: rgba(255,255,255,0.04); }
+.nf-md td:first-child { white-space: nowrap; font-weight: 500; }
+.nf-md strong { color: #E2E8F0; }
+.nf-md a { color: #7fb8e6; }
 /* One market's section sliced out of an alert (the history view): the heading may be
    h2 or h3 depending on the month, and the first one needs no rule above it. */
-.cmr-md-slice h2, .cmr-md-slice h3 { font-size: 0.95rem; color: #E2E8F0;
+.nf-md-slice h2, .nf-md-slice h3 { font-size: 0.95rem; color: #E2E8F0;
                                      margin-top: 0.9rem; }
-.cmr-md-slice > :first-child { margin-top: 0.5rem; padding-top: 0; border-top: 0; }
+.nf-md-slice > :first-child { margin-top: 0.5rem; padding-top: 0; border-top: 0; }

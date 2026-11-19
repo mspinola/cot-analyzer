@@ -1,7 +1,7 @@
-"""CMR Scan: the daily CMR news-failure scan, one day at a time. LOCAL ONLY.
+"""News Failure Scan: the daily news-failure scan, one day at a time. LOCAL ONLY.
 
-Registered only when `local_pages.enabled()`: the scan is built on the CMR COT Index,
-a paid membership licensed to the operator, and reads `cmrdata_store`, which only the
+Registered only when `local_pages.enabled()`: the scan is built on a third-party
+positioning index licensed to the operator (a paid product), and reads `cmrdata_store`, which only the
 operator's machine has. Unregistered, the path 404s and the navbar omits it
 (`local_pages`).
 
@@ -11,25 +11,36 @@ fixed-width board, then one section and one FOR/AGAINST table per set-up, 25 of 
 a normal day. This page leads with the verdict and the counts, puts any row the routine
 flagged in a card of its own with its whole argument open, and folds every other row's
 evidence under it. Every number and word comes from the day's files through
-`components.cmr_scan`; this file only lays them out.
+`components.news_failure`; this file only lays them out.
 
 The market picker turns the page ninety degrees (2026-11-18, "show me all of natural
 gas recent info"): one market, every scan day in a window, newest first. While a market
 is picked the date picker is disabled, because the day is no longer the thing chosen.
+
+The model picker (2026-11-19) keeps the markets one model holds, and opens on Raw CLS.
+Cleared, it shows every market once whichever models hold it: a market's rows differ
+between models only in positioning, so the board prints the facts once and names the
+models (`components.news_failure.by_market`). The same day the page took its present
+name and path, and the scanner's first book became Raw CLS on screen, the name the rest
+of the app uses.
 """
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, callback, dcc, html
 
-import components.cmr_scan as cmr
+import components.news_failure as nf
 import local_pages
 import viz_constants as vc
 
-DATE = "cmr_scan_date"
-MARKET = "cmr_scan_market"
-WINDOW = "cmr_scan_window"
-WINDOW_WRAP = "cmr_scan_window_wrap"
-BODY = "cmr_scan_body"
+#: `verify-deploy.sh` pins this path as a 404 on the live site.
+PATH = "/news-failure"
+
+DATE = "news_failure_date"
+MODEL = "news_failure_model"
+MARKET = "news_failure_market"
+WINDOW = "news_failure_window"
+WINDOW_WRAP = "news_failure_window_wrap"
+BODY = "news_failure_body"
 
 #: Scan days, not calendar days: the window counts alert files. 0 is all of them.
 WINDOWS = ((10, "Last 10 scan days"), (20, "Last 20"), (40, "Last 40"), (0, "All"))
@@ -38,9 +49,9 @@ DEFAULT_WINDOW = 10
 if local_pages.enabled():
     dash.register_page(
         __name__,
-        path='/cmr',
-        title='CMR Scan (local) | COT Analyzer',
-        description='The daily CMR news-failure scan: every set-up, its gates, the news '
+        path=PATH,
+        title='News Failure Scan (local) | COT Analyzer',
+        description='The daily news-failure scan: every set-up, its gates, the news '
                     'read and the verdict. Local runs only.',
     )
 
@@ -64,31 +75,37 @@ def _labelled(label, control, **div):
 def pickers(dates):
     market = dcc.Dropdown(
         id=MARKET, value=None, clearable=True, placeholder="All markets",
-        options=[{"label": f"{name} ({sym})", "value": sym} for sym, name in cmr.markets()],
+        options=[{"label": f"{name} ({sym})", "value": sym} for sym, name in nf.markets()],
         style={"width": "230px"})
     window = dcc.Dropdown(id=WINDOW, value=DEFAULT_WINDOW, clearable=False,
                           searchable=False, style={"width": "170px"},
                           options=[{"label": lab, "value": n} for n, lab in WINDOWS])
+    model = dcc.Dropdown(id=MODEL, value=nf.DEFAULT_MODEL, clearable=True, searchable=False,
+                         placeholder="All models", style={"width": "150px"},
+                         options=[{"label": lab, "value": book} for book, lab in nf.MODELS])
     return html.Div([
         _labelled("Day", date_picker(dates, dates[0])),
+        _labelled("Model", model),
         _labelled("One market over time", market),
         _labelled("Window", window, id=WINDOW_WRAP, style={"display": "none"}),
     ], className="d-flex align-items-end flex-wrap gap-2")
 
 
-def body_for(date, market, window):
-    """The page body: one market's history when a market is picked, else one day."""
+def body_for(date, market, window, model=None):
+    """The page body: one market's history when a market is picked, else one day.
+    `model` is a scanner book name, or None for every model."""
     if market:
-        name = dict(cmr.markets()).get(market, "")
-        return cmr.render_history(market, cmr.market_history(market, window or None), name)
-    return cmr.render_day(cmr.read_day(date)) if date else html.Div()
+        name = dict(nf.markets()).get(market, "")
+        entries = nf.market_history(market, window or None, book=model)
+        return nf.render_history(market, entries, name, book=model)
+    return nf.render_day(nf.read_day(date, book=model)) if date else html.Div()
 
 
 def layout(**_):
-    dates = cmr.available_dates()
+    dates = nf.available_dates()
     head = html.Div([
         html.Div([
-            html.H4("CMR news-failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR,
+            html.H4("News failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR,
                                                     "marginBottom": "2px"}),
             dbc.Badge("local only", color="warning", className="me-2"),
             html.Span("A crowded market handed news it should obey, visibly refusing it. "
@@ -97,12 +114,12 @@ def layout(**_):
         pickers(dates) if dates else html.Span(),
     ], className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3")
     if not dates:
-        body = html.Div(f"No alerts found under {cmr.alerts_dir()}. Set "
-                        f"{cmr.ENV} to the cmrdata_store checkout.", style=NOTE_STYLE)
+        body = html.Div(f"No alerts found under {nf.alerts_dir()}. Set "
+                        f"{nf.ENV} to the cmrdata_store checkout.", style=NOTE_STYLE)
     else:
-        body = body_for(dates[0], None, DEFAULT_WINDOW)
+        body = body_for(dates[0], None, DEFAULT_WINDOW, nf.DEFAULT_MODEL)
     return dbc.Container([head, html.Div(body, id=BODY),
-                          html.P(cmr.DISCLAIMER, style={**NOTE_STYLE, "marginTop": "16px"})],
+                          html.P(nf.DISCLAIMER, style={**NOTE_STYLE, "marginTop": "16px"})],
                          fluid=True, className="py-3", style={"maxWidth": "1400px"})
 
 
@@ -110,7 +127,7 @@ if local_pages.enabled():
     @callback(Output(BODY, "children"), Output(DATE, "disabled"),
               Output(WINDOW_WRAP, "style"),
               Input(DATE, "value"), Input(MARKET, "value"), Input(WINDOW, "value"),
-              prevent_initial_call=True)
-    def _pick(date, market, window):
-        return (body_for(date, market, window), bool(market),
+              Input(MODEL, "value"), prevent_initial_call=True)
+    def _pick(date, market, window, model):
+        return (body_for(date, market, window, model), bool(market),
                 {} if market else {"display": "none"})
