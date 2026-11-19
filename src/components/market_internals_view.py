@@ -50,22 +50,18 @@ HISTORY_HOW = (
     "up and nothing more: no claim is made here about what followed, and none has been "
     "tested.")
 UNCOUNTED_TITLE = "Not in the count"
-UNCOUNTED_SUBTITLE = ("A short-term extreme check, a credit gauge and the volatility term "
-                      "structure. None is a trend measure.")
+UNCOUNTED_SUBTITLE = ("A short-term extreme check, a credit gauge, and equity and rates "
+                      "volatility. None is a trend measure.")
 VOLATILITY_TITLE = (f"Volatility · {mi.VOLATILITY_SYMBOL} against "
                     f"{mi.VOLATILITY_TERM_SYMBOL}")
 VOLATILITY_SUBTITLE = ("Equity implied volatility one month out against three months out, "
-                       "and rates volatility under it, past year. Context: not one of "
-                       "the headwinds.")
+                       "past year. Context: not one of the headwinds.")
 VOLATILITY_HOW = (
     "The VIX prices S&P 500 options about a month out, VIX3M about three. Normally the "
     "longer one is higher. When the VIX rises above it (inverted), the market is paying "
     "more for protection now than later, the shape it takes under stress. The percentile "
     "places today's VIX in its own history since 1990: how unusual the level is, not "
-    "whether it is good or bad. Under it, the MOVE index is the same idea for "
-    "Treasuries: what the options market is charging for moves in rates, with its own "
-    "percentile since 2002. Equity and rates volatility do not always move together, "
-    "which is the reason to show both. Nothing here has been tested as a signal, so it "
+    "whether it is good or bad. Nothing here has been tested as a signal, so it "
     "is drawn and not counted.")
 SENTIMENT_TITLE = "Sentiment"
 SENTIMENT_SUBTITLE = ("Each survey's current reading, and its percentile on three "
@@ -170,6 +166,28 @@ def day_text(stamp):
 def month_text(stamp):
     """Jan 2022 from 2022-01-14."""
     return f"{datetime.strptime(stamp[:10], '%Y-%m-%d'):%b %Y}"
+
+
+def headline_since(snap):
+    """"5 of 5 since Nov 12, 2026 (4 before).": how long the count has stood and what it was.
+    Read off the history's own count, and only when its newest count is the
+    snapshot's: a headwind awaiting data says nothing, and neither does a history that
+    ends before the snapshot with a different count (the history can trail the cards
+    by a session, and then the day the count moved is not in it). None then, and when
+    the count has never been anything else."""
+    history = snap.history
+    if history is None or not history.count or history.dates[-1] > snap.date:
+        return None
+    on = sum(h.on for h in snap.headwinds)
+    if len(snap.headwinds) != history.total or history.count[-1] != on:
+        return None
+    start = len(history.count) - 1
+    while start and history.count[start - 1] == on:
+        start -= 1
+    if not start:
+        return None
+    return (f"{on} of {history.total} since {day_text(history.dates[start])} "
+            f"({history.count[start - 1]} before).")
 
 
 def signed(value, fmt):
@@ -358,13 +376,22 @@ def volatility_chart(read, colors):
 
 
 BOND_VOLATILITY_TITLE = f"Bond volatility · {mi.VOLATILITY_BOND_SYMBOL}"
+BOND_VOLATILITY_SUBTITLE = ("Implied volatility of Treasuries, past year. Context: not "
+                            "one of the headwinds.")
+BOND_VOLATILITY_HOW = (
+    "The MOVE index is the VIX's idea for Treasuries: what the options market is "
+    "charging for moves in rates, from options on the 2, 5, 10 and 30-year, with its "
+    "own percentile since 2002. It runs on its own scale, about four times the VIX's. "
+    "Equity and rates volatility do not always move together, which is the reason to "
+    "show both. Not tested as a signal, so it is drawn and not counted.")
 BOND_VOLATILITY_NOTE = ("Implied volatility of Treasuries, from options on the 2, 5, 10 and "
                         "30-year. On its own scale, about four times the VIX's.")
 
 
 def bond_volatility_chart(read):
+    """The VIX chart's height: the two sit side by side as cards."""
     dates, values = read.path
-    return line_chart(140, [(INK, 1.5, dates, values)], decimals=0)
+    return line_chart(220, [(INK, 1.5, dates, values)], decimals=0)
 
 
 def bond_volatility_status(read):

@@ -516,9 +516,11 @@ def test_the_volatility_card_carries_the_move_index_when_the_store_has_it():
         {"Close": [80.0] * (N - 1) + [98.6]}, index=idx)
     snap = mi.build_snapshot(_bars(frames))
     page = st.render(snap, COLORS)
-    card = page.split(f"<h2>{html.escape(view.VOLATILITY_TITLE)}</h2>")[1].split("</section>")[0]
-    assert f"<h3>{html.escape(view.BOND_VOLATILITY_TITLE)}</h3>" in card
-    assert '<span class="big mid">98.6</span>' in card
+    # A card of its own beside the VIX's, not a block inside it.
+    vix = page.split(f"<h2>{html.escape(view.VOLATILITY_TITLE)}</h2>")[1].split("</section>")[0]
+    assert view.BOND_VOLATILITY_TITLE not in html.unescape(vix)
+    card = page.split(f"<h2>{html.escape(view.BOND_VOLATILITY_TITLE)}</h2>")[1].split("</section>")[0]
+    assert '<span class="big">98.6</span>' in card
     assert html.escape(view.bond_volatility_status(snap.volatility.bonds)) in card
     spec = _payload(page)[st.BOND_VOLATILITY_KEY]
     assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 252
@@ -638,3 +640,48 @@ def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
     plain = st.render(_snap(), COLORS)
     assert chip not in plain and "Provisional:" not in plain
     assert view.provisional_note(_snap()) == ""
+
+
+def test_a_row_of_cards_never_leaves_a_hole():
+    """Five headwinds are three across and then two sharing the row; the four context
+    cards (with the MOVE) are two across; three are three across."""
+    assert [st._across([0] * n) for n in (2, 3, 4, 5, 6)] == ["", " three", "", " five", " three"]
+    page = st.render(_snap(), COLORS)
+    assert f'<div class="cards five" id="{st.HEADWINDS_ID}">' in page
+    assert ".cards.five > :nth-child(n+4) { grid-column: span 3; }" in page
+
+
+def test_the_headline_says_how_long_the_count_has_stood():
+    snap = _snap()
+    history = snap.history
+    on = sum(h.on for h in snap.headwinds)
+    start = len(history.count) - 1
+    while start and history.count[start - 1] == on:
+        start -= 1
+    since = view.headline_since(snap)
+    if start:
+        assert since == (f"{on} of {history.total} since {view.day_text(history.dates[start])} "
+                         f"({history.count[start - 1]} before).")
+        assert html.escape(since) in st.render(snap, COLORS)
+    else:
+        assert since is None
+    # A history that trails the cards by a session still dates the run, while its
+    # count is the cards'; one that disagrees with them says nothing.
+    import dataclasses
+    trailing = dataclasses.replace(snap, date="2999-01-01")
+    assert view.headline_since(trailing) == since
+    other = (history.count[-1] + 1) % (history.total + 1)
+    moved = dataclasses.replace(snap, history=dataclasses.replace(
+        history, count=history.count[:-1] + (other,)))
+    assert view.headline_since(moved) is None
+    assert view.headline_since(dataclasses.replace(snap, history=None)) is None
+
+
+def test_jump_links_name_only_the_sections_on_the_page():
+    plain = st.render(_snap(), COLORS)
+    links = re.findall(r'<a href="#([a-z]+)">', plain.split('<nav class="jumps"')[1].split("</nav>")[0])
+    assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.DETAIL_ID]
+    assert all(f'id="{anchor}"' in plain for anchor in links)
+    full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
+    assert links == [anchor for anchor, _ in st.JUMPS]
