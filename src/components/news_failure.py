@@ -1,10 +1,10 @@
-"""The daily CMR news-failure scan, read from `cmrdata_store` and laid out for reading.
+"""The daily news-failure scan, read from `cmrdata_store` and laid out for reading.
 
-LOCAL ONLY, through the page that draws it (`pages.analytics.cmr_scan`). The scan sorts
-markets by the CMR COT Index, a paid membership product licensed to the operator, so
+LOCAL ONLY, through the page that draws it (`pages.analytics.news_failure`). The scan sorts
+markets by a third-party positioning index licensed to the operator (a paid product), so
 the same rule as the sentiment page applies: nothing here may reach the public site.
 
-**What the scanner writes.** Every trading day the scheduled CMR routine runs
+**What the scanner writes.** Every trading day the scheduled scan routine runs
 `cmrdata_store/scan.py`, judges the news for each set-up, and writes a dated alert,
 `alerts/<YYYY-MM-DD>.md`. From 2026-11-17 it also writes a sidecar,
 `alerts/<YYYY-MM-DD>.json`, with two halves:
@@ -67,8 +67,52 @@ BRIGHT = "#E2E8F0"
 PANEL = {"backgroundColor": "rgba(28,28,28,0.55)",
          "border": "1px solid rgba(255,255,255,0.10)", "borderRadius": "6px"}
 
-DISCLAIMER = ("Educational research only, based on the CMR methodology. Not financial "
-              "advice and not a recommendation to buy or sell any instrument.")
+DISCLAIMER = ("Educational research only. Not financial advice and not a recommendation "
+              "to buy or sell any instrument.")
+
+
+#: The scanner's book names, in the order the picker lists them, and the names the rest
+#: of this app uses for the same models (2026-11-19). The files keep the scanner's
+#: names, and so do the store, its environment variable and the sidecar keys: those
+#: are the data contract and are renamed upstream or not at all. Only the screen
+#: translates, the alert text included (`relabel`).
+MODELS = (("CMR", "Raw CLS"), ("NPF-CS", "NPF CS"), ("NPF-C-only", "NPF C-only"))
+_MODEL_LABEL = dict(MODELS)
+_MODEL_ORDER = {book: i for i, (book, _) in enumerate(MODELS)}
+#: The page opens on this one (2026-11-19, "default to raw CLS").
+DEFAULT_MODEL = "CMR"
+
+
+#: The first book's name as a word of its own: not inside a file name, and not where it
+#: names the licensed index or its method rather than the model ("... methodology").
+_BOOK_TOKEN = re.compile(r"(?<![\w.])" + re.escape(MODELS[0][0])
+                         + r"(?![\w])(?!\s+(?i:methodology|cot\b|index|membership|thesis))")
+_SCAN_TITLE = re.compile(r"(?im)^(#{1,6}\s+)" + re.escape(MODELS[0][0]) + r"\s+(?=news)")
+
+
+def relabel(markdown):
+    """Alert text with the first book renamed to this app's name for the model.
+
+    The words are otherwise untouched. Inside a code fence the replacement is the
+    three-letter "Raw", because those blocks are fixed-width boards and a longer name
+    would push every later column out of line; elsewhere it is the full label. A
+    mention of the licensed index or its method is not a model name and is left as
+    written, as is a file name. Slice and filter BEFORE calling this: the heading
+    rules read the scanner's names."""
+    full, short = _MODEL_LABEL[MODELS[0][0]], "Raw"
+    out, fenced = [], False
+    for line in _SCAN_TITLE.sub(r"\1", markdown or "").split("\n"):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            continue
+        out.append(_BOOK_TOKEN.sub(short if fenced else full, line))
+    return "\n".join(out)
+
+
+def model_label(book):
+    """The app's name for a scanner book; an unknown book is shown as it is."""
+    return _MODEL_LABEL.get(book, str(book or ""))
 
 
 def store_root(env=None):
@@ -97,6 +141,9 @@ class Day:
     report: dict = field(default_factory=dict)
     markdown: str = ""
     backfill: dict = field(default_factory=dict)
+    #: One scanner book to keep, or None for every model. A market two models hold has
+    #: a row per model, so an unfiltered board lists it twice.
+    book: str = None
 
     @property
     def structured(self):
@@ -109,13 +156,24 @@ class Day:
         return self.structured and not self.backfill
 
     @property
-    def rows(self):
+    def all_rows(self):
+        """Every row the scanner wrote, whatever the model filter."""
         return list(self.scan.get("watchlist") or [])
 
+    @property
+    def rows(self):
+        rows = self.all_rows
+        return [r for r in rows if r.get("book") == self.book] if self.book else rows
 
-def read_day(date, env=None):
+    @property
+    def groups(self):
+        """The filtered rows, one list per market (see `by_market`)."""
+        return by_market(self.rows)
+
+
+def read_day(date, env=None, book=None):
     d = alerts_dir(env)
-    day = Day(date)
+    day = Day(date, book=book or None)
     side = d / f"{date}.json"
     if side.is_file():
         try:
@@ -145,24 +203,65 @@ def verdict_of(row, report):
     return v.get("verdict") or "Not judged", v.get("confidence"), v
 
 
+def by_market(rows):
+    """The rows as one list per market, each list in `MODELS` order.
+
+    A market two models hold has a row per model, and the board used to print it once
+    per row. Measured over the 73 sidecars on 2026-11-19 (230 same-market pairs): the
+    direction, the bar, all three price gates, the blockers and `failure_eligible`
+    never differ between a market's rows. What does differ is positioning: whether
+    the model calls the market crowded or only close (45 pairs), and with it the
+    evidence list and the mechanical score. So the market is shown once, says which
+    models hold it, and keeps one evidence fold per model."""
+    groups = {}
+    for r in rows:
+        groups.setdefault(r.get("symbol"), []).append(r)
+    return [sorted(g, key=lambda r: _MODEL_ORDER.get(r.get("book"), len(MODELS)))
+            for g in groups.values()]
+
+
+def lead(group):
+    """The row that speaks for a market's price facts: a crowded one when there is
+    one, since the board files the market under its strongest reading."""
+    return next((r for r in group if r.get("confirmed")), group[0])
+
+
+def models_of(rows, symbol):
+    """[(book, crowded)] for every model holding `symbol`, in `MODELS` order."""
+    mine = by_market([r for r in rows if r.get("symbol") == symbol])
+    return [(r.get("book"), bool(r.get("confirmed"))) for r in (mine[0] if mine else [])]
+
+
 def counts(day):
-    rows = day.rows
+    leads = [lead(g) for g in day.groups]
     return {
-        "rows": len(rows),
-        "crowded": sum(1 for r in rows if r.get("confirmed")),
-        "obvious": sum(1 for r in rows if gates(r)[0]),
-        "eligible": sum(1 for r in rows if r.get("failure_eligible")),
+        "rows": len(leads),
+        "crowded": sum(1 for r in leads if r.get("confirmed")),
+        "obvious": sum(1 for r in leads if gates(r)[0]),
+        "eligible": sum(1 for r in leads if r.get("failure_eligible")),
     }
 
 
-def sort_rows(rows):
-    """Crowded first, then eligible, then by the size of the move: the rows worth
-    arguing about lead each group."""
-    def key(r):
+def sort_groups(groups):
+    """Crowded first, then eligible, then by the size of the move: the markets worth
+    arguing about lead each section."""
+    def key(g):
+        r = lead(g)
         mm = r.get("move_materiality") or {}
         return (0 if r.get("confirmed") else 1, 0 if r.get("failure_eligible") else 1,
                 -(mm.get("abs_chg_pctile") or 0))
-    return sorted(rows, key=key)
+    return sorted(groups, key=key)
+
+
+def sort_rows(rows):
+    """One row per market (its lead), in board order."""
+    return [lead(g) for g in sort_groups(by_market(rows))]
+
+
+def index_date(day):
+    """The positioning index's own date (ISO), read from its file name, or ''."""
+    m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", str(day.scan.get("cmr_index_file") or ""))
+    return f"{m.group(3)}-{m.group(1)}-{m.group(2)}" if m else ""
 
 
 def index_flags(day):
@@ -171,9 +270,8 @@ def index_flags(day):
     sync = str(day.scan.get("cmr_index_sync") or "")
     if sync and ("FAILED" in sync or "not found" in sync):
         flags.append(("Index sync", sync))
-    m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", str(day.scan.get("cmr_index_file") or ""))
-    if m:
-        idx = f"{m.group(3)}-{m.group(1)}-{m.group(2)}"
+    idx = index_date(day)
+    if idx:
         if idx > day.date:
             flags.append(("Index date", f"The index is dated {idx}, after the scan day "
                           f"{day.date}: its positioning does not describe this day."))
@@ -214,6 +312,26 @@ def heading_symbol(text):
     if not m or not _SYM.match(m.group(1)) or m.group(1) in _NOT_SYMBOLS:
         return None, None
     return m.group(1), text[:m.start()].strip(" $*_").title()
+
+
+def heading_books(text):
+    """The scanner books a heading names. Empty when it names none, which is not the
+    same as naming every one: such a section cannot be assigned to a model."""
+    return {b for b, _ in MODELS
+            if re.search(rf"(?<![\w-]){re.escape(b)}(?![\w-])", text)}
+
+
+def sections_for_book(sections, book):
+    """Keep the sections whose heading names `book`, plus any whose heading names no
+    book at all (dropping those would hide prose the filter cannot place)."""
+    if not book:
+        return sections
+    keep = []
+    for sec in sections:
+        named = heading_books(sec.split("\n", 1)[0])
+        if not named or book in named:
+            keep.append(sec)
+    return keep
 
 
 def market_sections(markdown, symbol):
@@ -265,6 +383,8 @@ class MarketDay:
     sections: list = field(default_factory=list)
     mentions: int = 0
     backfilled: bool = False
+    #: [(book, crowded)] for every model holding the market that day, filter or not.
+    models: list = field(default_factory=list)
 
     @property
     def set_up(self):
@@ -275,18 +395,20 @@ def market_day(day, symbol):
     """One day's record for one market. The four outcomes are kept apart on purpose:
     structured rows, markdown sections, a day the market was not a set-up, and a day
     whose file cannot answer the question (no per-market headings at all)."""
-    sections = market_sections(day.markdown, symbol)
+    sections = sections_for_book(market_sections(day.markdown, symbol), day.book)
     if day.structured:
         rows = [r for r in day.rows if r.get("symbol") == symbol]
+        held = models_of(day.all_rows, symbol)
         if not day.judged:
             # Backfilled: the numbers, plus what the alert wrote. A section with no
             # row means the alert covered a market today's scanner does not set up
             # for that day; show the prose rather than call it absent.
             if rows or sections:
                 return MarketDay(day.date, ROWS if rows else SECTIONS, rows=rows,
-                                 sections=sections, backfilled=True)
+                                 sections=sections, backfilled=True, models=held)
             return MarketDay(day.date, ABSENT, backfilled=True)
-        return MarketDay(day.date, ROWS if rows else ABSENT, rows=rows, report=day.report)
+        return MarketDay(day.date, ROWS if rows else ABSENT, rows=rows, report=day.report,
+                         models=held)
     if sections:
         return MarketDay(day.date, SECTIONS, sections=sections)
     if _has_market_headings(day.markdown):
@@ -295,12 +417,13 @@ def market_day(day, symbol):
         re.findall(rf"(?<![A-Za-z0-9]){re.escape(symbol)}(?![A-Za-z0-9])", day.markdown)))
 
 
-def market_history(symbol, days=None, env=None):
+def market_history(symbol, days=None, env=None, book=None):
     """The newest `days` scan days (all of them when None) for one market, newest
     first. Scan days, not calendar days: a day with no alert file is not in the store
     and so is not in the window."""
     dates = available_dates(env)
-    return [market_day(read_day(d, env), symbol) for d in (dates[:days] if days else dates)]
+    return [market_day(read_day(d, env, book), symbol)
+            for d in (dates[:days] if days else dates)]
 
 
 # ── rendering ─────────────────────────────────────────────────────────────────
@@ -451,16 +574,31 @@ COLS = ("Market", "Close", "Size vs own history", "Gates", "News read", "Verdict
 NUMERIC_COLS = ("Market", "Close", "Size vs own history", "Gates", "Price gates say")
 
 
-def set_up_rows(r, report, judged=True):
-    """One set-up as two table rows: its facts, then its evidence folded underneath.
-    With `judged` off (a backfilled day) the News and Verdict cells are left out."""
+def models_line(models):
+    """"Raw CLS · NPF CS (close)": the models holding a market. A model that only has
+    it close to set-up is marked when another has it crowded; when none has it crowded
+    the board's own section already says so."""
+    mixed = any(crowded for _, crowded in models)
+    return " · ".join(model_label(b) + ("" if crowded or not mixed else " (close)")
+                      for b, crowded in models)
+
+
+def set_up_rows(group, report, judged=True, models=None):
+    """One market as table rows: its facts once, then one folded evidence row per
+    model in `group` (the positioning evidence is the part that differs by model).
+    `models` is every model holding the market, which is more than `group` when a
+    model filter is on. With `judged` off (a backfilled day) the News and Verdict
+    cells are left out."""
+    r = lead(group)
+    models = models or [(g.get("book"), bool(g.get("confirmed"))) for g in group]
     verdict, conf, vinfo = verdict_of(r, report)
     cols = COLS if judged else NUMERIC_COLS
     dim = {} if r.get("confirmed") else {"opacity": 0.8}
+    mono = {"fontFamily": "monospace", "fontSize": "0.7rem", "color": MUTED}
     market = html.Div([
         html.B(r.get("market", "").title(), style={"color": BRIGHT}),
-        html.Div(f"{r.get('symbol')} · {r.get('book')} · {r.get('direction')}",
-                 style={"fontFamily": "monospace", "fontSize": "0.7rem", "color": MUTED}),
+        html.Div(f"{r.get('symbol')} · {r.get('direction')}", style=mono),
+        html.Div(models_line(models), style=mono, title="Models this market is set up under"),
     ])
     return [
         html.Tr([
@@ -470,11 +608,12 @@ def set_up_rows(r, report, judged=True):
                html.Td(verdict_chip(verdict, conf), style=TD)] if judged else []),
             html.Td(why_cell(r, vinfo, wide=not judged), style=TD),
         ], style=dim),
-        # The evidence row sits right under its market, closed by default.
-        html.Tr(html.Td(html.Details([
-            html.Summary(f"Case for and against · {r.get('symbol')} {r.get('book')}",
+        # The evidence rows sit right under their market, closed by default.
+        *[html.Tr(html.Td(html.Details([
+            html.Summary(f"Case for and against · {g.get('symbol')} {model_label(g.get('book'))}",
                          style={"cursor": "pointer", "fontSize": "0.72rem", "color": MUTED}),
-            evidence_table(r)]), colSpan=len(cols), style={"padding": "0 10px 6px 10px"})),
+            evidence_table(g)]), colSpan=len(cols), style={"padding": "0 10px 6px 10px"}))
+          for g in group],
     ]
 
 
@@ -489,17 +628,19 @@ def _table(body_rows, judged=True):
 
 def board_rows(day):
     out = []
-    for group, rows in (("Crowded now", [r for r in day.rows if r.get("confirmed")]),
+    groups = day.groups
+    for title, part in (("Crowded now", [g for g in groups if lead(g).get("confirmed")]),
                         ("Close to set-up (watch only)",
-                         [r for r in day.rows if not r.get("confirmed")])):
-        if not rows:
+                         [g for g in groups if not lead(g).get("confirmed")])):
+        if not part:
             continue
-        out.append(html.Tr(html.Td(f"{group} · {len(rows)}", colSpan=len(
+        out.append(html.Tr(html.Td(f"{title} · {len(part)}", colSpan=len(
             COLS if day.judged else NUMERIC_COLS), style={
             **TD, "color": MUTED, "fontSize": "0.72rem", "letterSpacing": "0.08em",
             "textTransform": "uppercase", "backgroundColor": "rgba(255,255,255,0.03)"})))
-        for r in sort_rows(rows):
-            out += set_up_rows(r, day.report, day.judged)
+        for g in sort_groups(part):
+            out += set_up_rows(g, day.report, day.judged,
+                               models_of(day.all_rows, lead(g).get("symbol")))
     return out
 
 
@@ -509,7 +650,7 @@ def board_table(day):
 
 def stat_tiles(day):
     c = counts(day)
-    tiles = (("Set-up rows", c["rows"]), ("Crowded now", c["crowded"]),
+    tiles = (("Set-up markets", c["rows"]), ("Crowded now", c["crowded"]),
              ("Obvious moves", c["obvious"]), ("Failure-eligible", c["eligible"]))
     return html.Div([html.Div([
         html.Div(str(v), style={"fontFamily": "monospace", "fontSize": "1.4rem",
@@ -537,7 +678,9 @@ def highlight_cards(day):
                                     style={"color": BRIGHT, "fontSize": "1.05rem",
                                            "fontWeight": 600, "marginRight": "10px"}),
                           html.Span(f"{r.get('direction')} · "
-                                    + ("crowded" if r.get("confirmed") else "close to set-up"),
+                                    + ("crowded" if r.get("confirmed") else "close to set-up")
+                                    + " · " + models_line(
+                                        models_of(day.all_rows, r.get("symbol"))),
                                     style={"color": MUTED, "fontSize": "0.8rem"})]),
                 verdict_chip(verdict, conf),
             ], style={"display": "flex", "justifyContent": "space-between",
@@ -571,7 +714,8 @@ def backfill_note(day):
     return flag_bar("Recomputed", (
         f"These numbers were recomputed on {b.get('computed_on', 'a later date')} by "
         "today's scanner, from the bars as they stood on the day. The news read and the "
-        "verdict were judged at the time and are in the alert below, as written. The "
+        "verdict were judged at the time and are in the alert below, as written apart "
+        "from model names, which are this page's. The "
         "scanner's rules changed over these months, so where a gate here and the alert "
         "disagree, the alert is the record."))
 
@@ -595,7 +739,7 @@ def backfilled_body(day):
                  style={"color": MUTED, "fontSize": "0.75rem", "padding": "0 12px 8px"}),
         board_table(day)], style={**PANEL, "marginBottom": "12px"}))
     if day.markdown:
-        parts.append(html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+        parts.append(html.Div(dcc.Markdown(relabel(day.markdown), className="nf-md"),
                               style={**PANEL, "padding": "16px", "overflowX": "auto"}))
     return parts
 
@@ -607,8 +751,8 @@ def render_day(day):
             return html.Div(f"No alert found for {day.date}.", style={"color": MUTED})
         return html.Div([
             flag_bar("Archive", "This day predates the structured feed, so it is shown "
-                     "as the alert file was written."),
-            html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+                     "as the alert file was written, apart from model names."),
+            html.Div(dcc.Markdown(relabel(day.markdown), className="nf-md"),
                      style={**PANEL, "padding": "16px", "overflowX": "auto"}),
         ])
     rep, scan = day.report, day.scan
@@ -622,7 +766,8 @@ def render_day(day):
         html.Div([html.Div(headline, style={"color": BRIGHT, "fontSize": "1.4rem",
                                             "fontWeight": 600}),
                   html.Div(f"Prices as of {scan.get('prices_newest_data')} · index "
-                           f"{scan.get('cmr_index_file')}",
+                           f"dated {index_date(day) or 'unknown'}"
+                           + (f" · {model_label(day.book)} only" if day.book else ""),
                            style={"color": MUTED, "fontSize": "0.8rem",
                                   "fontFamily": "monospace"})],
                  style={"minWidth": 0}),
@@ -667,21 +812,23 @@ def render_day(day):
             for i, s in enumerate(srcs)]], style={"fontSize": "0.75rem", "color": MUTED}))
     if day.markdown:
         parts.append(html.Details([
-            html.Summary("The full alert file", style={"cursor": "pointer",
+            html.Summary("The full alert file, model names as shown above", style={"cursor": "pointer",
                                                        "color": MUTED, "fontSize": "0.8rem"}),
-            html.Div(dcc.Markdown(day.markdown, className="cmr-md"),
+            html.Div(dcc.Markdown(relabel(day.markdown), className="nf-md"),
                      style={**PANEL, "padding": "16px", "overflowX": "auto",
                             "marginTop": "8px"})], style={"marginTop": "12px"}))
     return html.Div(parts)
 
 
-def _day_card(entry, symbol):
+def _day_card(entry, symbol, book=None):
     head_style = {"display": "flex", "justifyContent": "space-between",
                   "alignItems": "center", "gap": "12px", "flexWrap": "wrap"}
     date = html.Span(entry.date, style={"color": BRIGHT, "fontFamily": "monospace",
                                         "fontWeight": 600})
     if entry.kind == ABSENT:
-        return html.Div([date, html.Span(f"{symbol} was not a set-up on this day.",
+        return html.Div([date, html.Span(f"{symbol} was not a set-up"
+                                         + (f" under {model_label(book)}" if book else "")
+                                         + " on this day.",
                                          style={"color": MUTED, "fontSize": "0.82rem"})],
                         style={**PANEL, **head_style, "padding": "8px 16px",
                                "marginBottom": "8px", "opacity": 0.75})
@@ -696,8 +843,8 @@ def _day_card(entry, symbol):
             style={**PANEL, **head_style, "padding": "8px 16px", "marginBottom": "8px",
                    "borderLeft": f"4px solid {UNKNOWN}"})
     if entry.kind == ROWS and entry.backfilled:
-        body = _table([tr for r in entry.rows for tr in set_up_rows(r, {}, False)], False)
-        prose = dcc.Markdown("\n\n".join(entry.sections), className="cmr-md cmr-md-slice") \
+        body = _table(set_up_rows(entry.rows, {}, False, entry.models), False)
+        prose = dcc.Markdown(relabel("\n\n".join(entry.sections)), className="nf-md nf-md-slice") \
             if entry.sections else html.Div(
                 "The alert gave this market no section of its own that day; its row is "
                 "in that day's board.", style={"color": MUTED, "fontSize": "0.8rem"})
@@ -710,7 +857,7 @@ def _day_card(entry, symbol):
     if entry.kind == ROWS:
         verdicts = {verdict_of(r, entry.report)[0].upper() for r in entry.rows}
         flagged = bool(verdicts - {"NO FAILURE", "NOT JUDGED"})
-        body = _table([tr for r in entry.rows for tr in set_up_rows(r, entry.report)])
+        body = _table(set_up_rows(entry.rows, entry.report, True, entry.models))
         return html.Div([html.Div(date, style={"padding": "10px 16px 6px"}), body],
                         style={**PANEL, "marginBottom": "8px",
                                "borderLeft": f"4px solid {AMBER if flagged else PASS}"})
@@ -718,12 +865,12 @@ def _day_card(entry, symbol):
         html.Div([date, html.Span("as the alert was written",
                                   style={"color": MUTED, "fontSize": "0.72rem"})],
                  style=head_style),
-        dcc.Markdown("\n\n".join(entry.sections), className="cmr-md cmr-md-slice"),
+        dcc.Markdown(relabel("\n\n".join(entry.sections)), className="nf-md nf-md-slice"),
     ], style={**PANEL, "padding": "10px 16px", "marginBottom": "8px", "overflowX": "auto",
               "borderLeft": f"4px solid {MUTED}"})
 
 
-def render_history(symbol, entries, name=""):
+def render_history(symbol, entries, name="", book=None):
     """Everything below the pickers for one market over a window of scan days."""
     if not entries:
         return html.Div("No alerts found.", style={"color": MUTED})
@@ -733,7 +880,8 @@ def render_history(symbol, entries, name=""):
     banner = html.Div([
         html.Div([html.Div(f"{name} ({symbol})" if name else symbol,
                            style={"color": BRIGHT, "fontSize": "1.4rem", "fontWeight": 600}),
-                  html.Div(f"{entries[-1].date} to {entries[0].date}, newest first",
+                  html.Div(f"{entries[-1].date} to {entries[0].date}, newest first"
+                           + (f" · {model_label(book)} only" if book else ""),
                            style={"color": MUTED, "fontSize": "0.8rem",
                                   "fontFamily": "monospace"})]),
         html.Div([html.Div([
@@ -746,4 +894,4 @@ def render_history(symbol, entries, name=""):
     ], style={**PANEL, "padding": "14px 16px", "display": "flex", "flexWrap": "wrap",
               "justifyContent": "space-between", "alignItems": "center", "gap": "14px",
               "marginBottom": "12px"})
-    return html.Div([banner, *[_day_card(e, symbol) for e in entries]])
+    return html.Div([banner, *[_day_card(e, symbol, book) for e in entries]])
