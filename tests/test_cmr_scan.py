@@ -220,6 +220,55 @@ def test_the_history_page_says_what_each_day_was(history_store):
     assert "EARLY / WATCH-ONLY" in lbr and "NAHB 25 vs 29" in lbr
 
 
+# ── backfilled days: numbers recomputed, verdicts only in the alert ───────────
+
+@pytest.fixture
+def backfilled_store(history_store):
+    """2026-11-13 gets a backfilled sidecar: NG's row, an empty report."""
+    alerts = cmr.alerts_dir(history_store)
+    scan = {"prices_newest_data": "2026-11-13",
+            "cmr_index_file": "Official_CMR_CoT_Index_11.08.2026.xlsx",
+            "watchlist": [_row("NG", confirmed=False), _row("HG", confirmed=False)]}
+    (alerts / "2026-11-13.json").write_text(json.dumps({
+        "scan": scan, "report": {},
+        "backfill": {"computed_on": "2026-11-18",
+                     "symbols_never_named_in_alert": ["HG"]}}))
+    return history_store
+
+
+def test_a_backfilled_day_has_numbers_but_is_not_judged(backfilled_store):
+    day = cmr.read_day("2026-11-13", backfilled_store)
+    assert day.structured and not day.judged
+    assert cmr.read_day("2026-11-17", backfilled_store).judged
+
+
+def test_a_backfilled_day_never_prints_a_verdict_of_its_own(backfilled_store):
+    """No report came with these numbers. 'Not judged' would be false (the day was
+    judged, in prose) and 'No failure' would be invented, so neither may appear."""
+    text = _text(cmr.render_day(cmr.read_day("2026-11-13", backfilled_store)))
+    assert "recomputed on 2026-11-18" in text and "the alert is the record" in text
+    assert "Not judged" not in text and "Not researched" not in text
+    board = _text(cmr.board_table(cmr.read_day("2026-11-13", backfilled_store)))
+    assert "News read" not in board and "Verdict" not in board
+    assert "Size fail" in text                      # the numbers are there
+    assert "The alert never names HG" in text       # and so is the rebuild's own doubt
+    assert "cmr body" in text                       # with the alert open beneath
+
+
+def test_history_pairs_backfilled_numbers_with_the_alert_as_written(backfilled_store):
+    by_date = {e.date: e for e in cmr.market_history("NG", env=backfilled_store)}
+    e = by_date["2026-11-13"]
+    assert (e.kind, e.backfilled, len(e.rows), len(e.sections)) == (cmr.ROWS, True, 1, 2)
+    text = _text(cmr.render_history("NG", [e]))
+    assert "numbers recomputed" in text and "npf body" in text and "Not judged" not in text
+    # A row with no section says so; a section with no row still shows its prose.
+    hg = cmr.market_day(cmr.read_day("2026-11-13", backfilled_store), "HG")
+    assert "no section of its own" in _text(cmr.render_history("HG", [hg]))
+    dx = cmr.market_day(cmr.read_day("2026-11-13", backfilled_store), "DX")
+    assert (dx.kind, dx.rows, len(dx.sections)) == (cmr.SECTIONS, [], 1)
+    assert cmr.market_day(cmr.read_day("2026-11-13", backfilled_store), "ZW").kind == cmr.ABSENT
+
+
 def _cmr_paths():
     return [p["path"] for p in dash.page_registry.values() if p.get("path") == "/cmr"]
 
