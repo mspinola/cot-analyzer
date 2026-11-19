@@ -5,14 +5,15 @@ operator and must not reach the public site. Unregistered, the path 404s and the
 omits it; see `local_pages` for why that needs no other code.
 
 Rendered per request in `layout()`, like Market Internals, at the default 3-year index;
-the lookback toggle (1Y/3Y) redraws both views, the summary and the caption. Reads are
+the lookback toggle (1Y/3Y) redraws both views, the summary and the caption, and the
+price card's own three switches (scale, SPY drawdown shading, SPY panel) redraw that card alone. Reads are
 cached per lookback on the stores' own dates. There is no COT pairing view: the
 component's docstring says why. Every number, label and cutoff comes from `components.sentiment`;
 this file only lays the views out.
 """
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, clientside_callback, dcc, html
+from dash import Input, Output, State, callback, clientside_callback, ctx, dcc, html, no_update
 
 import components.sentiment as sentiment
 import local_pages
@@ -23,6 +24,14 @@ from components import aaii_allocation, aaii_votes, naaim_card, percentiles_card
 PRICE_CHART = "sentiment_price_chart"
 COLUMNS_CHART = "sentiment_columns_chart"
 LOOKBACK = "sentiment_lookback"
+#: The price card's own switches: index or as-read, the drawdown shading, the SPY panel.
+SCALE = "sentiment_price_scale"
+BANDS = "sentiment_price_bands"
+SPY = "sentiment_price_spy"
+BANDS_ON, BANDS_OFF = "on", "off"   # the two On/Off switches' values
+#: Each redrawn chart's sink for the fit that follows a redraw (see the callbacks).
+REDRAW_SINKS = {PRICE_CHART: "sentiment_price_redraw_sink",
+                COLUMNS_CHART: "sentiment_columns_redraw_sink"}
 SUMMARY = "sentiment_summary"
 CAPTION = "sentiment_caption"
 ZOOM_SINK = "sentiment_zoom_sink"
@@ -71,6 +80,15 @@ def export_button(view):
     ])
 
 
+def graph_style(figure):
+    """A graph's container at its figure's own height. The graphs are responsive, so
+    a redraw at another height (the price card's as-read scale has a third panel)
+    otherwise collapses the container to nothing and the chart draws over the card
+    below it (found 2026-11-19)."""
+    height = figure.layout.height
+    return {"height": f"{height}px"} if height else {}
+
+
 def _card(title, subtitle, figure, graph_id=None, controls=None, export=None, how=None):
     """A card around one figure, or around several: stacked on a phone, two across from
     Bootstrap's md width (768px), all across from xxl (1400px)
@@ -81,7 +99,8 @@ def _card(title, subtitle, figure, graph_id=None, controls=None, export=None, ho
         graph = dbc.Row([dbc.Col(dcc.Graph(figure=f, config=GRAPH_CONFIG), md=6,
                                  xxl=12 // len(figure)) for f in figure], className="gx-4")
     else:
-        graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG) if graph_id
+        graph = (dcc.Graph(id=graph_id, figure=figure, config=GRAPH_CONFIG,
+                           style=graph_style(figure)) if graph_id
                  else dcc.Graph(figure=figure, config=GRAPH_CONFIG))
     head = html.Div(title, style=TITLE_STYLE)
     if export is not None:
@@ -129,6 +148,27 @@ def lookback_buttons():
         [html.Span("Index lookback", style={**NOTE_STYLE, "marginRight": "8px"}),
          _button_radio(LOOKBACK, options, sentiment.DEFAULT_LOOKBACK, "")],
         className="d-flex align-items-center mb-3")
+
+
+def price_controls():
+    """The price card's three switches, in the lookback toggle's dress: the scale (the
+    range index, or each survey as read), SPY's drawdown shading and the SPY panel."""
+    scales = [{"label": label, "value": value} for value, label in sentiment.SCALES]
+    on_off = [{"label": "On", "value": BANDS_ON}, {"label": "Off", "value": BANDS_OFF}]
+    label = {**NOTE_STYLE, "marginRight": "8px"}
+    return html.Div(
+        [html.Span("Scale", style=label),
+         _button_radio(SCALE, scales, sentiment.SCALE_INDEX, "me-3"),
+         html.Span("SPY drawdown shading", style=label),
+         _button_radio(BANDS, on_off, BANDS_ON, "me-3"),
+         html.Span("SPY panel", style=label),
+         _button_radio(SPY, on_off, BANDS_ON, "")],
+        className="d-flex flex-wrap align-items-center mb-1")
+
+
+def scale_value(value):
+    """The radio value as a scale, the index for anything unexpected."""
+    return value if value in dict(sentiment.SCALES) else sentiment.SCALE_INDEX
 
 
 def lookback_value(value):
@@ -190,7 +230,8 @@ def layout(**_):
             lookback_buttons(),
             _card(sentiment.PRICE_TITLE, sentiment.PRICE_SUBTITLE,
                   sentiment.price_sentiment_figure(read, colors, palette), PRICE_CHART,
-                  export="price", how=sentiment.PRICE_HOW_TO_READ),
+                  controls=price_controls(), export="price",
+                  how=sentiment.PRICE_HOW_TO_READ),
             # No subtitle: each row's header carries the sentence that reads it.
             _card(sentiment.COLUMNS_TITLE, None,
                   sentiment.columns_figure(read, colors, palette), COLUMNS_CHART,
@@ -217,6 +258,7 @@ def layout(**_):
     return dbc.Container([*head, *cards, html.Div(_notes(read), id=CAPTION, className="mt-2"),
                           html.Div(extra_notes),
                           dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK),
+                          *[dcc.Store(id=sink) for sink in REDRAW_SINKS.values()],
                           dcc.Store(id=ALLOCATION_ZOOM_SINK)],
                          fluid=True, className="py-3")
 
@@ -233,6 +275,20 @@ if local_pages.enabled():
         State(PRICE_CHART, "id"),
         prevent_initial_call=True,
     )
+    # A redraw keeps the reader's x zoom (uirevision) only on the axes that were
+    # zoomed, and the range buttons write the top axis alone: the panels under it came
+    # back on the opening window, so a lookback flip dropped a zoom on the columns, and
+    # the redrawn y axes arrive fitted to the opening window too. Once the new figure is
+    # in, put every x axis on the reader's window and fit the y axes to it, as the
+    # published page does.
+    for _chart, _sink in REDRAW_SINKS.items():
+        clientside_callback(
+            "window.dash_clientside.clientside.refit_after_redraw",
+            Output(_sink, "data"),
+            Input(_chart, "figure"),
+            State(_chart, "id"),
+            prevent_initial_call=True,
+        )
     # The columns re-fit too, every panel with zero kept in view (the figure's refit).
     clientside_callback(
         "window.dash_clientside.clientside.autoscale_y_axes",
@@ -269,13 +325,22 @@ if local_pages.enabled():
     # too drew each chart twice per page load, the second Plotly.react landing while the
     # first draw was still in flight, which left the page garbled after a refresh until
     # a click redrew it once.
-    @callback(Output(PRICE_CHART, "figure"), Output(COLUMNS_CHART, "figure"),
+    # One callback writes the price chart, whichever control moved: a second writer
+    # to one output does not land. The columns, summary and caption follow only the
+    # lookback, so a price-card switch leaves them alone.
+    @callback(Output(PRICE_CHART, "figure"), Output(PRICE_CHART, "style"),
+              Output(COLUMNS_CHART, "figure"),
               Output(SUMMARY, "children"), Output(CAPTION, "children"),
-              Input(LOOKBACK, "value"), prevent_initial_call=True)
-    def _lookback(value):
-        read = sentiment.read(lookback_value(value))
+              Input(LOOKBACK, "value"), Input(SCALE, "value"), Input(BANDS, "value"),
+              Input(SPY, "value"), prevent_initial_call=True)
+    def _redraw(lookback, scale, bands, spy):
+        read = sentiment.read(lookback_value(lookback))
         palette = viz_config.get_palette()
         colors = plot_colors.grid_colors(palette)
-        return (sentiment.price_sentiment_figure(read, colors, palette),
-                sentiment.columns_figure(read, colors, palette),
+        price = sentiment.price_sentiment_figure(
+            read, colors, palette, scale=scale_value(scale), bands=bands != BANDS_OFF,
+            spy=spy != BANDS_OFF)
+        if ctx.triggered_id != LOOKBACK:
+            return price, graph_style(price), no_update, no_update, no_update
+        return (price, graph_style(price), sentiment.columns_figure(read, colors, palette),
                 sentiment.summary(read), _notes(read))

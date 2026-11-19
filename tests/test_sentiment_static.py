@@ -32,8 +32,9 @@ def test_every_lookback_is_embedded_with_both_figures():
     page = st.render(_reads(), COLORS, PALETTE, generated_at="2026-11-09T12:00Z",
                      clientside_js="")
     data = _payload(page)
-    assert set(data) == {str(y) for y in s.LOOKBACK_YEARS}
-    for entry in data.values():
+    lookbacks = {str(y) for y in s.LOOKBACK_YEARS}
+    assert set(data) == lookbacks | {st.PRICE_RAW_KEY, st.PRICE_RAW_KEY + st.NO_SPY}
+    for entry in (data[y] for y in lookbacks):
         assert entry["price"]["data"] and entry["columns"]["data"]
         assert [t["key"] for t in entry["tiles"]] == ["naaim", "aaii"]
     assert data["1"]["tiles"] != data["3"]["tiles"]
@@ -101,7 +102,15 @@ def test_a_phone_opens_the_weekly_charts_on_fewer_years_and_refits_them():
     # Fitted on a phone's first draw and after every flip, which keeps the reader's x
     # zoom but not the y ranges a zoom had fitted.
     assert "if (PHONE || !first) { Promise.resolve(done).then(function () { refitNow(id); }); }" in page
-    assert "refit({'xaxis.range': [r[0], r[1]]}, id);" in page
+    # The fit is the app's own, which first puts every x axis on the reader's window:
+    # the range buttons write the top axis alone, so the panels under it came back on
+    # the opening window after a redraw (2026-11-19).
+    assert "window.dash_clientside.clientside.sync_x_then_refit(id);" in page
+    js = st.CLIENTSIDE_JS.read_text(encoding="utf-8")
+    assert "sync_x_then_refit: function(graphId)" in js
+    assert "{'xaxis.range': [r[0], r[1]]}, graphId);" in js
+    # Plotly is handed a copy, so the embedded figures never carry a reader's zoom.
+    assert "layout = JSON.parse(JSON.stringify(layout));" in page
     # The figure grows by what the lifted buttons and the wrapped legend take.
     assert (f"var height = (layout.height || 450) + {st.PHONE_BUTTON_LIFT_PX} + (ROOM[id] || 0);"
             in page)
@@ -162,7 +171,7 @@ def test_a_phone_lifts_the_zoom_buttons_above_the_top_panel_title():
     """Level with the title, the seven buttons left on a phone drew over it."""
     html = st.render(_reads(), COLORS, PALETTE)
     assert f"margin.t = (margin.t || 0) + {st.PHONE_BUTTON_LIFT_PX};" in html
-    assert f"y: 1 + {st.PHONE_BUTTON_LIFT_PX} / plotH" in html
+    assert f"y: (rs.y || 1) + {st.PHONE_BUTTON_LIFT_PX} / plotH" in html
 
 
 def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
@@ -322,3 +331,24 @@ def test_page_ink_swaps_solid_and_translucent_forms_and_nothing_else():
     text = f'{vc.TEXT_COLOR} {vc.TEXT_COLOR.upper()} {hex_to_rgba(vc.TEXT_COLOR, 0.3)} #dc322f'
     assert st.page_ink(text) == f'{st.INK_2} {st.INK_2} {hex_to_rgba(st.INK_2, 0.3)} #dc322f'
     assert st.page_ink(vc.BRIGHTER_TEXT_COLOR) == st.INK
+
+
+def test_the_price_card_carries_its_scale_and_shading_switches():
+    """The as-read figure is embedded once (it does not follow the lookback), and the
+    shading is dropped in the browser by legend group, so no figure is embedded twice."""
+    page = st.render(_reads(), COLORS, PALETTE, clientside_js="")
+    raw = _payload(page)[st.PRICE_RAW_KEY]
+    assert raw["layout"]["meta"]["refit"]["axes"] == ["yaxis", "yaxis2", "yaxis3"]
+    for value, label in s.SCALES:
+        assert f'data-scale="{value}"' in page and f">{label}</button>" in page
+    assert f'data-scale="{s.SCALE_INDEX}" aria-pressed="true"' in page
+    assert 'data-bands="on" aria-pressed="true"' in page and 'data-bands="off"' in page
+    assert "indexOf('drawdown') === 0" in page
+    # The SPY panel switch: each price figure once more without the panel.
+    data = _payload(page)
+    assert 'data-spy="on" aria-pressed="true"' in page and 'data-spy="off"' in page
+    for fig in (data[st.PRICE_RAW_KEY + st.NO_SPY],
+                data[str(s.DEFAULT_LOOKBACK)]["price" + st.NO_SPY]):
+        assert "SPY" not in [t.get("name") for t in fig["data"]]
+    # The switches are not lookback buttons: the lookback handler must not take them.
+    assert page.count('class="switches"') == 1

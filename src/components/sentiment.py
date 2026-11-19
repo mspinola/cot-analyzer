@@ -182,6 +182,18 @@ what is shown, not what 0 and 100 mean), and the raw dots with the latest one re
 out in the title, which show a new survey the week it lands rather than half a week
 later through the average.
 
+**Three switches on view 1, added 2026-11-19 at the user's request.** "Scale" swaps the
+index panel for each survey as it is published (`SCALE_RAW`): NAAIM's exposure and AAII
+bulls minus bears in points, a panel each because the units differ, each with a faint
+4-week average behind it (`RAW_AVERAGE_WEEKS`). Four weeks is a display choice (the
+user's, the same day, over a first draft's eight); nothing was ranked on what followed. The as-read view does
+not depend on the lookback, and its two panels are re-fitted to the window on screen
+like the price panel, since nothing pins them to 0-100. "SPY drawdown shading" takes
+the bands and their legend keys off either scale, and "SPY panel" takes the price
+panel itself off, leaving the survey panels at a shorter height (the shading, which
+needs no price line to read, stays unless switched off too). All three default to the
+view the page always drew (index, shading on, SPY on).
+
 **Dating.** Every observation is keyed to the Friday of the week it falls in, because
 each is public by that Friday's close: NAAIM surveys on Wednesday and publishes that
 week, AAII reports on Thursday, SPY closes on Friday.
@@ -254,6 +266,19 @@ OPEN_PAD_DAYS = 7
 #: The raw weekly dots behind each index line: present, but under the line.
 RAW_DOT_SIZE = 4
 RAW_DOT_OPACITY = 0.45
+#: View 1's scale switch: the range index (the default), or each survey as published.
+SCALE_INDEX, SCALE_RAW = "index", "raw"
+SCALES = ((SCALE_INDEX, "Index"), (SCALE_RAW, "As read"))
+#: The faint average behind each as-read line. Display smoothing, the user's choice on
+#: 2026-11-19; nothing was ranked on what followed.
+RAW_AVERAGE_WEEKS = 4
+RAW_AVERAGE_OPACITY = 0.45
+#: The as-read figure has three panels where the index figure has two.
+PRICE_RAW_HEIGHT = 620
+#: Both figures with the SPY panel switched off: the survey panels at about the height
+#: they have under it.
+PRICE_NO_SPY_HEIGHT = 300
+PRICE_RAW_NO_SPY_HEIGHT = 440
 #: SPY drawdown bands, as (depth below the prior high, colour, opacity, legend label),
 #: shallowest first. Each week takes the deepest level it reaches; the bands run behind
 #: both panels. Hue says the depth (amber pullback, orange correction, red bear market)
@@ -367,7 +392,10 @@ PRICE_HOW_TO_READ = (
     "read out above the panel with its index. Shaded weeks: SPY below its high so far, "
     "amber 5-10%, orange 10-20%, red 20% or more. "
     f"Opens on {OPEN_YEARS} years ({PHONE_OPEN_YEARS} on a phone); the buttons zoom "
-    f"down to {RANGE_MONTHS[0]} months without changing the index.")
+    f"down to {RANGE_MONTHS[0]} months without changing the index. "
+    "\"As read\" swaps the index for each survey's own number (NAAIM's exposure, AAII "
+    f"bulls minus bears in points) with a faint {RAW_AVERAGE_WEEKS}-week average, and "
+    "the shading and SPY switches hide the drawdown bands and the price panel.")
 COLUMNS_TITLE = "Weekly columns"
 
 
@@ -658,7 +686,8 @@ def open_range(read):
     return [end - pd.DateOffset(years=OPEN_YEARS), end + pd.Timedelta(days=OPEN_PAD_DAYS)]
 
 
-def autorange_clip(read):
+def autorange_clip(read, columns=("spy", "naaim_idx", "aaii_idx", "naaim_raw_idx",
+                                  "aaii_raw_idx")):
     """Keep an autorange (the Max button, a double-click) to the data's own span.
 
     Plotly pads an autorange by about 5% of the span on each side for any trace drawn
@@ -674,8 +703,7 @@ def autorange_clip(read):
     `clipmin` / `clipmax`, not `minallowed` / `maxallowed`: with date strings the
     latter left Plotly 3.7's autorange at its empty placeholder (2000 to 2001)."""
     f = read.frame
-    drawn = [c for c in ("spy", "naaim_idx", "aaii_idx", "naaim_raw_idx", "aaii_raw_idx")
-             if c in f and f[c].notna().any()]
+    drawn = [c for c in columns if c in f and f[c].notna().any()]
     first = min(f[c].first_valid_index() for c in drawn) if drawn else f.index[0]
     return dict(clipmin=f"{first:%Y-%m-%d}", clipmax=f"{open_range(read)[1]:%Y-%m-%d}")
 
@@ -714,8 +742,8 @@ def drawdown_runs(spy):
             for _, g in level.groupby(run_id) if g.iloc[0] > 0]
 
 
-def _drawdown_bands(fig, read):
-    """SPY's drawdown bands behind both panels, one hue per depth (DRAWDOWN_LEVELS).
+def _drawdown_bands(fig, read, rows=2):
+    """SPY's drawdown bands behind every panel, one hue per depth (DRAWDOWN_LEVELS).
     Each band spans its weeks from mid-week before the first to mid-week after the last.
     Every band of a depth shares one legend group with that depth's key (see
     `_drawdown_keys`), so clicking a key hides or shows that depth on both panels."""
@@ -727,7 +755,8 @@ def _drawdown_bands(fig, read):
     bands = []
     for first, last, level in drawdown_runs(read.frame["spy"]):
         _, color, alpha, _ = DRAWDOWN_LEVELS[level - 1]
-        for xref, yref in (("x", "y domain"), ("x2", "y2 domain")):
+        for n in ("", *range(2, rows + 1)):
+            xref, yref = f"x{n}", f"y{n} domain"
             bands.append(dict(type="rect", xref=xref, yref=yref, x0=first - half,
                               x1=last + half, y0=0, y1=1,
                               fillcolor=hex_to_rgba(color, alpha),
@@ -736,7 +765,7 @@ def _drawdown_bands(fig, read):
     fig.update_layout(shapes=[*fig.layout.shapes, *bands])
 
 
-def _drawdown_keys(fig):
+def _drawdown_keys(fig, row=2):
     """One legend key per depth, as an empty marker trace in the band's colour.
 
     Traces rather than the shapes' own legend entries: a shape with showlegend on, in a
@@ -757,7 +786,7 @@ def _drawdown_keys(fig):
             marker=dict(symbol="square", size=12, color=hex_to_rgba(color, alpha),
                         line=dict(color=color, width=1)),
             legendgroup=f"drawdown{level}", legendrank=1000 + level,
-            hoverinfo="skip"), row=2, col=1)
+            hoverinfo="skip"), row=row, col=1)
 
 
 def _index_line(fig, read, key, label, color, row):
@@ -858,32 +887,170 @@ def spy_panel(fig, spy, start):
                          row=1, col=1)
 
 
-def price_sentiment_figure(read, colors, palette):
-    """View 1: SPY above NAAIM and AAII's range indexes on one panel, opening on five
-    years. `palette` is the viz palette, for the two sentiment colours."""
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-                        row_heights=[0.5, 0.5],
-                        subplot_titles=("SPY, total return", _index_title(read)))
+def _price_refit(spy, survey_axes=()):
+    """The figure's refit rules: the price axis (when the SPY panel is drawn) decides
+    log against linear for the window, and `survey_axes` are fitted to the window too.
+    With neither, nothing is fitted: the index panel is pinned to 0-100."""
+    spec = dict(PRICE_REFIT[exposure_traces.REFIT_META]) if spy else {"axes": []}
+    spec["axes"] = [*spec["axes"], *survey_axes]
+    return {exposure_traces.REFIT_META: spec}
+
+
+#: Without the SPY panel the top panel's title is a survey's reading, long enough to
+#: run under the zoom buttons on a narrow window (found 2026-11-19 at 630px), so the
+#: buttons sit this far above the plot, clear of a two-line title, and the figure
+#: grows by as much to keep its panels' height.
+BUTTON_LIFT_PX = 32
+
+
+def _lift_buttons(fig):
+    """Move the zoom buttons above the top panel's title, on a figure already sized,
+    and keep the legend clear of the date labels."""
+    margin = fig.layout.margin
+    top, height = margin.t + BUTTON_LIFT_PX, fig.layout.height + BUTTON_LIFT_PX
+    plot = height - top - margin.b
+    # The legend's gap under the plot is a fraction of the plot's height (_base), so on
+    # this shorter figure it keeps the gap in pixels the full figure has.
+    full = PRICE_HEIGHT - margin.t - margin.b
+    fig.update_layout(height=height, margin=dict(t=top),
+                      legend=dict(y=fig.layout.legend.y * full / plot))
+    fig.update_xaxes(rangeselector=dict(y=1 + BUTTON_LIFT_PX / plot, yanchor="bottom"),
+                     row=1, col=1)
+
+
+def _axis(row):
+    """A subplot row's y axis key."""
+    return "yaxis" if row == 1 else f"yaxis{row}"
+
+
+def price_sentiment_figure(read, colors, palette, scale=SCALE_INDEX, bands=True, spy=True):
+    """View 1: SPY above NAAIM and AAII, opening on five years. `palette` is the viz
+    palette, for the two sentiment colours. `scale` picks the range indexes on one
+    panel (the default) or each survey as read on its own panel (`SCALE_RAW`);
+    `bands` draws SPY's drawdown shading and its legend keys; `spy` draws the price
+    panel (off, the survey panels stand alone, shading and all)."""
     f = read.frame
-    if "spy" in f:
+    spy = spy and "spy" in f
+    if scale == SCALE_RAW:
+        return _price_raw_figure(read, palette, bands, spy)
+    top = 2 if spy else 1
+    titles = (("SPY, total return",) if spy else ()) + (_index_title(read),)
+    fig = make_subplots(rows=top, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                        subplot_titles=titles)
+    if spy:
         spy_panel(fig, f["spy"], open_range(read)[0])
-    _drawdown_bands(fig, read)
-    _zones(fig, 2)
+    if bands:
+        _drawdown_bands(fig, read, rows=top)
+    _zones(fig, top)
     line_colors = sentiment_colors(palette)
-    _index_line(fig, read, "naaim", "NAAIM exposure", line_colors["naaim"], 2)
-    _index_line(fig, read, "aaii", "AAII bulls minus bears", line_colors["aaii"], 2)
-    if "spy" in f:
-        _drawdown_keys(fig)
+    _index_line(fig, read, "naaim", "NAAIM exposure", line_colors["naaim"], top)
+    _index_line(fig, read, "aaii", "AAII bulls minus bears", line_colors["aaii"], top)
+    if bands and "spy" in f:
+        _drawdown_keys(fig, top)
     fig.update_xaxes(type="date")
     if not f.empty:
-        fig.update_xaxes(range=open_range(read), autorangeoptions=autorange_clip(read))
+        columns = ("naaim_idx", "aaii_idx", "naaim_raw_idx", "aaii_raw_idx")
+        fig.update_xaxes(range=open_range(read), autorangeoptions=autorange_clip(
+            read, (("spy",) if spy else ()) + columns))
     range_buttons(fig)
     _left_titles(fig)
-    _base(fig, PRICE_HEIGHT)
+    _base(fig, PRICE_HEIGHT if spy else PRICE_NO_SPY_HEIGHT)
     fig.update_layout(uirevision=UIREVISION)
     # Only the price axis is re-fitted on a zoom: the index panel is pinned to 0-100,
     # which is the point of an index, and fitting it to a window would undo it.
-    fig.update_layout(margin=dict(t=44), meta=PRICE_REFIT)
+    fig.update_layout(margin=dict(t=44), meta=_price_refit(spy))
+    if not spy:
+        _lift_buttons(fig)
+    return fig
+
+
+#: Each survey's panel title on the as-read figure.
+RAW_TITLE = {"naaim": "NAAIM exposure", "aaii": "AAII bulls minus bears, points"}
+
+
+def raw_average(series):
+    """The RAW_AVERAGE_WEEKS average of THIS series' own weeks, NaN until the window
+    fills. Each value ends on its own week. Display arithmetic."""
+    return series.dropna().rolling(RAW_AVERAGE_WEEKS, min_periods=RAW_AVERAGE_WEEKS).mean()
+
+
+def _raw_title(read, key):
+    value = latest_reading(read, key)
+    if value is None:
+        return RAW_TITLE[key]
+    return f"{RAW_TITLE[key]}: {value:.1f} ({_dated(read, key)})"
+
+
+def _raw_line(fig, read, key, label, color, row, window):
+    """One survey as read: its faint average behind, the weekly line, the latest week's
+    marker, and the panel's axis fitted to `window` as a zoom would leave it."""
+    f = read.frame
+    if key not in f or f[key].dropna().empty:
+        return
+    raw = f[key].dropna()
+    avg = raw_average(raw).dropna()
+    if not avg.empty:
+        fig.add_trace(go.Scatter(
+            x=avg.index, y=avg, mode="lines", line=dict(color=color, width=1.2),
+            opacity=RAW_AVERAGE_OPACITY, name=f"{label}, {RAW_AVERAGE_WEEKS}-week average",
+            legendgroup=key, showlegend=False,
+            hovertemplate="%{y:.1f}<extra>" + f"{RAW_AVERAGE_WEEKS}-wk avg</extra>"),
+            row=row, col=1)
+    fig.add_trace(go.Scatter(
+        x=raw.index, y=raw, mode="lines", line=dict(color=color, width=1.5),
+        name=label, legendgroup=key,
+        hovertemplate="%{y:.1f}<extra>" + label + "</extra>"), row=row, col=1)
+    fig.add_trace(go.Scatter(x=[raw.index[-1]], y=[raw.iloc[-1]], mode="markers",
+                             name=f"{label}, latest",
+                             marker=dict(size=8, color=color,
+                                         line=dict(color=vc.BACKGROUND_COLOR, width=1.5)),
+                             cliponaxis=False, hoverinfo="skip", showlegend=False),
+                  row=row, col=1)
+    shown = pd.concat([raw, avg])
+    shown = shown[(shown.index >= window[0]) & (shown.index <= window[1])]
+    if not shown.empty and shown.max() > shown.min():
+        pad = (shown.max() - shown.min()) * 0.05
+        fig.update_yaxes(range=[shown.min() - pad, shown.max() + pad], row=row, col=1)
+
+
+def _price_raw_figure(read, palette, bands, spy):
+    """View 1 on the as-read scale: SPY (unless switched off), then NAAIM's exposure
+    and AAII bulls minus bears, a panel each (the units differ), each with its faint
+    average. Nothing here moves with the lookback."""
+    first = 2 if spy else 1            # NAAIM's row; AAII's is the one under it
+    rows = first + 1
+    titles = (("SPY, total return",) if spy else ()) + (_raw_title(read, "naaim"),
+                                                        _raw_title(read, "aaii"))
+    fig = make_subplots(rows=rows, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.07 if spy else 0.1,
+                        row_heights=[0.4, 0.3, 0.3] if spy else [0.5, 0.5],
+                        subplot_titles=titles)
+    f = read.frame
+    window = open_range(read) if not f.empty else None
+    if spy:
+        spy_panel(fig, f["spy"], window[0])
+    if bands:
+        _drawdown_bands(fig, read, rows=rows)
+    line_colors = sentiment_colors(palette)
+    for row, (key, label) in enumerate(SERIES, start=first):
+        _raw_line(fig, read, key, label, line_colors[key], row, window)
+    # AAII's spread crosses zero and zero means bulls equal bears; NAAIM's rarely does.
+    fig.add_hline(y=0, line=dict(color=vc.TEXT_COLOR, width=1, dash="dot"), opacity=0.6,
+                  row=rows, col=1, exclude_empty_subplots=False)
+    if bands and "spy" in f:
+        _drawdown_keys(fig, first)
+    fig.update_xaxes(type="date")
+    if not f.empty:
+        fig.update_xaxes(range=window, autorangeoptions=autorange_clip(
+            read, (("spy",) if spy else ()) + ("naaim", "aaii")))
+    range_buttons(fig)
+    _left_titles(fig)
+    _base(fig, PRICE_RAW_HEIGHT if spy else PRICE_RAW_NO_SPY_HEIGHT)
+    # Both survey panels are fitted to the window: nothing pins a raw reading to a scale.
+    fig.update_layout(uirevision=UIREVISION, margin=dict(t=44),
+                      meta=_price_refit(spy, (_axis(first), _axis(rows))))
+    if not spy:
+        _lift_buttons(fig)
     return fig
 
 

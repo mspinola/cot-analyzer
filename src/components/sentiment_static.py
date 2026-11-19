@@ -42,6 +42,15 @@ None of that moves with the lookback, so it is drawn once. The toggle rewrites t
 survey tiles' value, crowd-state line (`sentiment.crowd_state`, the index at the
 chart's 80 and 20) and date (`#readings [data-key]`); the stocks tile is static.
 
+**The price card's three switches** (since 2026-11-19): "Scale" swaps the range index
+for each survey as read (`sentiment.SCALE_RAW`, one more figure in the payload under
+`PRICE_RAW_KEY`, embedded once because it does not move with the lookback). "SPY
+drawdown shading" drops the bands and their legend keys in the browser (every shape and
+trace in a `drawdown` legend group), so no second copy of any figure is embedded for it.
+"SPY panel" takes the price panel off: a figure without it has other axes and another
+height, so each price figure is embedded a second time without the panel (the
+`NO_SPY` suffix on its key).
+
 **Provisional weeks** are not marked anywhere on the page but its footer
 (`sentiment.provisional_note`), since 2026-11-12: readers did not use the distinction.
 
@@ -54,7 +63,9 @@ lifted zoom buttons take, and the price chart by its legend's extra rows as well
 y axes are then re-fitted to the window on screen, as they are after every lookback
 flip: `Plotly.react` restores a reader's zoom on x (the figures' `uirevision`) but
 not the y ranges the re-fit set, so a flip after a zoom showed one year of SPY on the
-five-year scale (found 2026-11-10).
+five-year scale (found 2026-11-10). Every draw hands Plotly a copy of the embedded
+layout (`fitted`), because Plotly writes the kept zoom into the object it is given and
+a figure drawn a second time then broke the zoom tracking (2026-11-19).
 
 The figures are serialized by plotly.py and drawn by the plotly.js release it bundles,
 loaded from Plotly's CDN rather than inlined (about 4.6 MB). The version is read from the
@@ -164,6 +175,11 @@ PHONE_BUTTON_LIFT_PX = 32
 PHONE_LEGEND_ROOM_PX = 90
 
 PRICE_ID = "price"
+#: The as-read price figure's payload key, beside the lookback keys: drawn from the
+#: default read and embedded once, since nothing in it follows the lookback.
+PRICE_RAW_KEY = "price_raw"
+#: Appended to a price figure's key for its copy without the SPY panel.
+NO_SPY = "_nospy"
 COLUMNS_ID = "columns"
 VOTES_ID = "votes"
 #: The payload key for the AAII votes figures, beside the lookback keys: the card does
@@ -272,6 +288,8 @@ def lookback_payload(read, colors, palette):
     """Everything one lookback draws, as JSON-ready values."""
     return {
         "price": json.loads(sentiment.price_sentiment_figure(read, colors, palette).to_json()),
+        "price" + NO_SPY: json.loads(sentiment.price_sentiment_figure(
+            read, colors, palette, spy=False).to_json()),
         "columns": json.loads(sentiment.columns_figure(read, colors, palette).to_json()),
         "tiles": survey_tiles(read),
         "caption": sentiment.caption(read, local=False),
@@ -430,6 +448,11 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
   font-size: 10px; padding: 2px 8px; cursor: pointer; }}
 .lookback button[aria-pressed="true"] {{ border-color: var(--ink); }}
+.switches {{ display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.8rem; margin: 2px 0 8px; }}
+.switches > span {{ display: flex; align-items: center; gap: 6px; }}
+.switches button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
+  font-size: 10px; padding: 2px 8px; cursor: pointer; }}
+.switches button[aria-pressed="true"] {{ border-color: var(--ink); }}
 .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }}
 .card h2 {{ color: var(--ink); font-size: 0.95rem; font-weight: 400; margin: 0 0 3px; }}
 /* The subtitle and its "How to read this" share one line while the help is closed
@@ -457,6 +480,10 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
         if read.frame.empty:
             raise ValueError(f"the {years}y read is empty (awaiting {', '.join(read.awaiting)})")
     payload = {str(y): lookback_payload(r, colors, palette) for y, r in sorted(reads.items())}
+    for suffix, spy in (("", True), (NO_SPY, False)):
+        payload[PRICE_RAW_KEY + suffix] = json.loads(sentiment.price_sentiment_figure(
+            reads[sentiment.DEFAULT_LOOKBACK], colors, palette,
+            scale=sentiment.SCALE_RAW, spy=spy).to_json())
     pct_blocks = percentiles_card.figures(colors, palette, naaim, votes)
     if pct_blocks:
         payload[PERCENTILES_KEY] = {key: json.loads(fig.to_json()) for key, fig in pct_blocks}
@@ -481,6 +508,19 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
     pressed = {y: "true" if y == sentiment.DEFAULT_LOOKBACK else "false" for y in reads}
     buttons = "".join(f'<button type="button" data-years="{y}" aria-pressed="{pressed[y]}">'
                       f'{y}Y</button>' for y in sorted(reads))
+    scale_buttons = "".join(
+        f'<button type="button" data-scale="{v}" aria-pressed='
+        f'"{"true" if v == sentiment.SCALE_INDEX else "false"}">{esc(label)}</button>'
+        for v, label in sentiment.SCALES)
+    switches = (f'<div class="switches"><span role="group" aria-label="Scale"><span>Scale'
+                f'</span>{scale_buttons}</span><span role="group" aria-label="SPY drawdown '
+                'shading"><span>SPY drawdown shading</span>'
+                '<button type="button" data-bands="on" aria-pressed="true">On</button>'
+                '<button type="button" data-bands="off" aria-pressed="false">Off</button>'
+                '</span><span role="group" aria-label="SPY panel"><span>SPY panel</span>'
+                '<button type="button" data-spy="on" aria-pressed="true">On</button>'
+                '<button type="button" data-spy="off" aria-pressed="false">Off</button>'
+                '</span></div>')
     notes = "".join(f"<p>{esc(p)}</p>" for p in default["caption"])
     # The allocation survey's tile and notes are not rewritten by the lookback toggle:
     # nothing in them depends on the lookback.
@@ -518,7 +558,7 @@ footer .prov {{ margin: 0 0 6px; }}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
 {_tiles(tiles)}{_percentiles_card([k for k, _ in pct_blocks]) if pct_blocks else ""}{_naaim_card() if naaim is not None else ""}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
 <section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
-{_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
+{_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}{switches}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
 <section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
 <div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
 {_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
@@ -545,6 +585,13 @@ footer .prov {{ margin: 0 0 6px; }}
   var ROOM = {{'{PRICE_ID}': {PHONE_LEGEND_ROOM_PX}}};
   function plotOf(id) {{ return document.querySelector('#' + id + ' .plot'); }}
   function fitted(layout, id) {{
+    // A copy, every draw. Plotly writes a reader's kept zoom into the layout object
+    // it is handed, so an embedded figure drawn twice came back carrying a zoom as
+    // if it were its own opening range; Plotly then took the zoom for the page's
+    // doing, stopped tracking it, and the next figure opened unzoomed (found
+    // 2026-11-19, as read then a lookback flip then index). The embedded figures
+    // stay as rendered.
+    layout = JSON.parse(JSON.stringify(layout));
     var rs = layout.xaxis && layout.xaxis.rangeselector;
     if (!PHONE || !rs) {{ return layout; }}
     var buttons = rs.buttons.filter(function (b) {{ return HIDDEN.indexOf(b.label) < 0; }});
@@ -555,8 +602,9 @@ footer .prov {{ margin: 0 0 6px; }}
     margin.t = (margin.t || 0) + {PHONE_BUTTON_LIFT_PX};
     var height = (layout.height || 450) + {PHONE_BUTTON_LIFT_PX} + (ROOM[id] || 0);
     var plotH = height - margin.t - (margin.b || 0);
+    // On top of any lift the figure has already (the price card without its SPY panel).
     var lifted = Object.assign({{}}, rs, {{buttons: buttons, yanchor: 'bottom',
-                                          y: 1 + {PHONE_BUTTON_LIFT_PX} / plotH}});
+                                          y: (rs.y || 1) + {PHONE_BUTTON_LIFT_PX} / plotH}});
     var out = Object.assign({{}}, layout, {{margin: margin, height: height}});
     out.xaxis = Object.assign({{}}, layout.xaxis, {{rangeselector: lifted}});
     // The weekly charts open on fewer years: five is a scribble at this width.
@@ -572,16 +620,37 @@ footer .prov {{ margin: 0 0 6px; }}
     }}
     return out;
   }}
-  // Fit the y axes to the window now on screen, by the rule a zoom uses.
+  // After a draw: every x axis on the reader's window, then the y axes fitted to it
+  // by the rule a zoom uses (clientside.js, sync_x_then_refit). The range buttons
+  // write the top axis alone, so a redraw keeps the zoom there and the panels under
+  // it come back on the opening window.
   function refitNow(id) {{
-    var gd = plotOf(id), r = gd.layout && gd.layout.xaxis && gd.layout.xaxis.range;
-    if (!r) {{ return; }}
-    try {{ refit({{'xaxis.range': [r[0], r[1]]}}, id); }} catch (e) {{ console.error(e); }}
+    try {{ window.dash_clientside.clientside.sync_x_then_refit(id); }} catch (e) {{ console.error(e); }}
+  }}
+  // The price card's switches. The as-read figure is one for every lookback; the
+  // shading is every shape and trace in a drawdown legend group, dropped here.
+  var YEARS = {sentiment.DEFAULT_LOOKBACK}, SCALE = '{sentiment.SCALE_INDEX}', BANDS = true, SPY = true;
+  function isBand(o) {{ return (o.legendgroup || '').indexOf('drawdown') === 0; }}
+  function priceFigure(d) {{
+    var sfx = SPY ? '' : '{NO_SPY}';
+    var fig = SCALE === '{sentiment.SCALE_RAW}' ? DATA['{PRICE_RAW_KEY}' + sfx] : d['price' + sfx];
+    if (BANDS) {{ return fig; }}
+    return {{data: fig.data.filter(function (t) {{ return !isBand(t); }}),
+            layout: Object.assign({{}}, fig.layout, {{shapes: (fig.layout.shapes || []).filter(
+              function (s) {{ return !isBand(s); }})}})}};
+  }}
+  function drawPrice() {{
+    var fig = priceFigure(DATA[String(YEARS)]);
+    var done = Plotly.react(plotOf('{PRICE_ID}'), fig.data, fitted(fig.layout, '{PRICE_ID}'), CONFIG);
+    Promise.resolve(done).then(function () {{ refitNow('{PRICE_ID}'); }});
   }}
   function draw(years, first) {{
+    YEARS = years;
     var d = DATA[String(years)];
     IDS.forEach(function (id) {{
-      var fig = d[KEYS[id]];
+      // As read does not follow the lookback, so a flip leaves that chart alone.
+      if (id === '{PRICE_ID}' && !first && SCALE === '{sentiment.SCALE_RAW}') {{ return; }}
+      var fig = id === '{PRICE_ID}' ? priceFigure(d) : d[KEYS[id]];
       var fn = first ? Plotly.newPlot : Plotly.react;
       var done = fn(plotOf(id), fig.data, fitted(fig.layout, id), CONFIG);
       // A first draw on a desktop is already fitted to its window by the server. A
@@ -626,7 +695,22 @@ footer .prov {{ margin: 0 0 6px; }}
     }});
   }});
   document.querySelectorAll('.lookback button').forEach(function (b) {{
-    b.addEventListener('click', function () {{ draw(b.dataset.years, false); }});
+    b.addEventListener('click', function () {{
+      // Pressing the lookback already shown redraws nothing.
+      if (b.dataset.years !== String(YEARS)) {{ draw(b.dataset.years, false); }}
+    }});
+  }});
+  document.querySelectorAll('.switches button').forEach(function (b) {{
+    b.addEventListener('click', function () {{
+      if (b.getAttribute('aria-pressed') === 'true') {{ return; }}
+      if (b.dataset.scale) {{ SCALE = b.dataset.scale; }}
+      else if (b.dataset.bands) {{ BANDS = b.dataset.bands === 'on'; }}
+      else {{ SPY = b.dataset.spy === 'on'; }}
+      Array.prototype.forEach.call(b.parentNode.querySelectorAll('button'), function (o) {{
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      }});
+      drawPrice();
+    }});
   }});
 }})();
 </script>
