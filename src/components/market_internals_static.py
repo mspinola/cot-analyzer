@@ -50,6 +50,11 @@ DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY
 #: This page's name in the monitors row (`sentiment_static.SITES`, the one list).
 CURRENT = "Market"
 SURVEYS_URL = dict(surveys.SITES)["Surveys"]
+#: Where the page is served, for the canonical link and a shared link's preview. No
+#: preview image: the page publishes one HTML file and no assets.
+URL = dict(surveys.SITES)[CURRENT]
+SITE_NAME = "Blue Magic AI monitors"
+BREADTH_ID = "breadth"
 #: Every source a section of the page draws on, not only the breadth and the bars: the
 #: line named two of them until 2026-11-19, after volatility, the surveys and the COT
 #: had joined the page.
@@ -190,7 +195,7 @@ def _split_bar(left_pct, colors, cls="bar"):
 
 # ── cards ─────────────────────────────────────────────────────────────────────
 
-def headwind_card(h, colors, chip=""):
+def headwind_card(h, colors, chip="", more=""):
     """One headwind: its name and state, the number, the quarter behind it, what would
     flip it and how long it has stood. The tile's left edge takes the state's colour."""
     tone = colors.bear if h.on else colors.bull
@@ -207,7 +212,7 @@ def headwind_card(h, colors, chip=""):
         + _chart(HEADWIND_PREFIX + h.key, view.headwind_chart(h, colors)["height"])
         + _detail(h.flip)
         + f'<div class="detail" style="color:{tone}">{_esc(view.headwind_streak(h))}</div>'
-        '</section>\n')
+        f'{more}</section>\n')
 
 
 def _marks(flags, height, fill, opacity=1.0, y=0):
@@ -292,9 +297,13 @@ def history_card(history, colors):
                'All on, and one short</button>'
                '<button type="button" data-shade="every" aria-pressed="false">'
                'Only all on at once</button></div>')
+    first, steps = view.history_day_steps(history)
     return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
                  windows,
+                 f'<div class="detail hread" data-history-read aria-live="polite">'
+                 f'{_esc(view.HISTORY_READ_HINT)}</div>',
                  f'<div class="hgrid" id="{HISTORY_ID}" data-sessions="{n}" '
+                 f'data-first="{first}" data-steps="{steps}" '
                  f'data-units="{units:g}" data-total="{history.total}" data-mark="{mark}">'
                  f'{"".join(rows)}</div>',
                  f'<div class="detail" data-history-summary>'
@@ -324,9 +333,13 @@ def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
+    # The net-highs card points at the year of counts behind it, far down the page.
+    more = ({"net_highs": f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'}
+            if snap.breadth is not None else {})
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
-            + "".join(headwind_card(h, colors, _prov(snap, h.key)) for h in snap.headwinds) + f'</div>\n{note}'
+            + "".join(headwind_card(h, colors, _prov(snap, h.key), more.get(h.key, ""))
+                      for h in snap.headwinds) + f'</div>\n{note}'
             + history_card(snap.history, colors))
 
 
@@ -498,7 +511,7 @@ def breadth_charts(snap, colors):
     if snap.breadth is None:
         return ""
     b = snap.breadth
-    return ('<div class="cards">\n'
+    return (f'<div class="cards" id="{BREADTH_ID}">\n'
             + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
                     f'<div class="detail"><span class="key" style="color:{colors.bull}">'
                     f'▲ New highs {b.highs[-1]:.0f}</span><span style="color:{colors.bear}">'
@@ -656,6 +669,13 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(TITLE)}</title>
 <meta name="description" content="{_esc(DESCRIPTION)}">
+<link rel="canonical" href="{URL}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{_esc(SITE_NAME)}">
+<meta property="og:title" content="{_esc(TITLE)}">
+<meta property="og:description" content="{_esc(DESCRIPTION)}">
+<meta property="og:url" content="{URL}">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -730,6 +750,11 @@ table.cot td small {{ color: var(--muted); }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
 .hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
 .hwin, .hshade {{ margin: 8px 0 0; }}
+/* The session under the pointer; a fixed line so the grid does not jump as it fills.
+   A sideways drag on the plots reads sessions, an up-and-down one still scrolls. */
+.hread {{ margin: 8px 0 0; min-height: 1.4em; }}
+.hp {{ touch-action: pan-y; }}
+.card a.jump {{ font-size: 0.78rem; color: var(--ink-2); }}
 @media (max-width: 700px) {{
   .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
@@ -912,8 +937,10 @@ footer a {{ color: var(--ink-2); }}
     }});
     return out;
   }}
+  var win = [0, N];
   function show(sessions) {{
     var len = sessions ? Math.min(sessions, N) : N, start = N - len;
+    win = [start, len];
     var low = Infinity, high = -Infinity;
     points.forEach(function (p) {{
       if (p[0] >= start) {{ low = Math.min(low, p[1]); high = Math.max(high, p[1]); }}
@@ -934,8 +961,24 @@ footer a {{ color: var(--ink-2); }}
       b.setAttribute('aria-pressed', +b.dataset.sessions === sessions ? 'true' : 'false');
     }});
   }}
+  // What the reader chose, kept in this browser only. Storage can be missing or
+  // refuse (a private window), and the card works the same without it.
+  var KEY = 'internals.history';
+  function load() {{
+    try {{ return JSON.parse(localStorage.getItem(KEY)) || {{}}; }} catch (e) {{ return {{}}; }}
+  }}
+  function save(patch) {{
+    try {{
+      var state = load();
+      Object.keys(patch).forEach(function (k) {{ state[k] = patch[k]; }});
+      localStorage.setItem(KEY, JSON.stringify(state));
+    }} catch (e) {{}}
+  }}
   document.querySelectorAll('.hwin button').forEach(function (b) {{
-    b.addEventListener('click', function () {{ show(+b.dataset.sessions); }});
+    b.addEventListener('click', function () {{
+      show(+b.dataset.sessions);
+      save({{window: +b.dataset.sessions}});
+    }});
   }});
 
   // A row's name switches it. The bottom row and the shading count the headwind rows
@@ -979,6 +1022,7 @@ footer a {{ color: var(--ink-2); }}
     var n = on.length;
     var every = n ? where(n) : [], most = n > 1 ? where(n - 1) : [];
     allStrip.innerHTML = rects(every, 1, 0, 1);
+    allStrip.appendChild(cursors[svgs.indexOf(allStrip)]);    // innerHTML dropped it
     band('every').innerHTML = rects(every, UNITS * 2, -UNITS / 2, 0.45);
     band('most').innerHTML = rects(most, UNITS * 2, -UNITS / 2, 0.18);
     allLabel.textContent = n === 0 ? 'No row is on' : n === 1 ? 'The 1 row on' : 'All ' + n + ' at once';
@@ -997,6 +1041,7 @@ footer a {{ color: var(--ink-2); }}
     b.addEventListener('click', function () {{
       band('most').setAttribute('display', b.dataset.shade === 'most' ? 'inline' : 'none');
       shades.forEach(function (o) {{ o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); }});
+      save({{shade: b.dataset.shade}});
     }});
   }});
   grid.querySelectorAll('button.htog').forEach(function (b) {{
@@ -1004,10 +1049,83 @@ footer a {{ color: var(--ink-2); }}
       var on = b.getAttribute('aria-pressed') !== 'true';
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
       grid.querySelector('[data-strip="' + b.dataset.row + '"]').classList.toggle('off', !on);
+      var kept = load().rows || {{}};
+      kept[b.dataset.row] = on;
+      save({{rows: kept}});
       if (runs[b.dataset.row]) {{ recount(); return; }}
       var over = band(b.dataset.row);
       if (over) {{ over.setAttribute('display', on ? 'inline' : 'none'); }}
     }});
+  }});
+
+  // The session under the pointer: a line down every row, and its date and the rows
+  // that were on in the line under the buttons. Dates are the first one plus each
+  // session's days since the one before.
+  var read = document.querySelector('[data-history-read]');
+  var hint = read ? read.textContent : '';
+  var stamp = Date.parse(grid.dataset.first + 'T00:00:00Z'), DAYS = [stamp];
+  grid.dataset.steps.split(',').forEach(function (step) {{
+    if (step) {{ stamp += +step * 86400000; DAYS.push(stamp); }}
+  }});
+  var cursors = svgs.map(function (svg) {{
+    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    var tall = svg === price;
+    line.setAttribute('y1', tall ? -UNITS : 0);
+    line.setAttribute('y2', tall ? UNITS * 2 : 1);
+    line.setAttribute('stroke', '{surveys.INK}');
+    line.setAttribute('stroke-opacity', '0.7');
+    line.setAttribute('stroke-width', '1');
+    line.setAttribute('vector-effect', 'non-scaling-stroke');
+    line.setAttribute('pointer-events', 'none');
+    line.setAttribute('display', 'none');
+    svg.appendChild(line);
+    return line;
+  }});
+  function forget() {{
+    cursors.forEach(function (line) {{ line.setAttribute('display', 'none'); }});
+    if (read) {{ read.textContent = hint; }}
+  }}
+  function point(x) {{
+    var box = price.getBoundingClientRect();
+    if (!read || !box.width || x < box.left || x > box.right) {{ forget(); return; }}
+    var i = Math.floor(win[0] + (x - box.left) / box.width * win[1]);
+    i = Math.max(0, Math.min(N - 1, i));
+    cursors.forEach(function (line) {{
+      line.setAttribute('x1', i + 0.5);
+      line.setAttribute('x2', i + 0.5);
+      line.setAttribute('display', 'inline');
+    }});
+    var names = [], rows = 0;
+    grid.querySelectorAll('button.htog[aria-pressed="true"]').forEach(function (b) {{
+      var list = runs[b.dataset.row];
+      if (!list) {{ return; }}
+      rows++;
+      if (list.some(function (r) {{ return i >= r[0] && i < r[0] + r[1]; }})) {{
+        names.push(b.textContent);
+      }}
+    }});
+    var day = new Date(DAYS[i]);
+    read.textContent = NAMES[day.getUTCMonth()] + ' ' + day.getUTCDate() + ', ' + day.getUTCFullYear()
+      + ' \u00b7 ' + names.length + ' of ' + rows + ' on'
+      + (names.length ? ': ' + names.join(' \u00b7 ') : '');
+  }}
+  grid.addEventListener('pointermove', function (e) {{ point(e.clientX); }});
+  grid.addEventListener('pointerdown', function (e) {{ point(e.clientX); }});
+  grid.addEventListener('pointerleave', function (e) {{
+    if (e.pointerType === 'mouse') {{ forget(); }}      // a tap's reading stays put
+  }});
+
+  // Put back what the reader left: each choice goes through its own button.
+  var kept = load();
+  document.querySelectorAll('.hwin button').forEach(function (b) {{
+    if (+b.dataset.sessions === kept.window && b.getAttribute('aria-pressed') !== 'true') {{ b.click(); }}
+  }});
+  shades.forEach(function (b) {{
+    if (b.dataset.shade === kept.shade && b.getAttribute('aria-pressed') !== 'true') {{ b.click(); }}
+  }});
+  grid.querySelectorAll('button.htog').forEach(function (b) {{
+    var want = (kept.rows || {{}})[b.dataset.row];
+    if (typeof want === 'boolean' && want !== (b.getAttribute('aria-pressed') === 'true')) {{ b.click(); }}
   }});
 }})();
 </script>

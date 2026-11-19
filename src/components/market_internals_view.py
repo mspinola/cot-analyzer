@@ -45,7 +45,9 @@ HISTORY_HOW = (
     "off to begin with and never in the count: switched on, it marks the sessions the "
     "reading was washed out (cool) or stretched (warm), on its own row and over the "
     "price, from late 2018 where its series starts. The window buttons "
-    "zoom every row together and refit the price to what is on screen. The history starts "
+    "zoom every row together and refit the price to what is on screen. Point at a "
+    "session (or tap it) and the line under the buttons names its date and the rows "
+    "that were on. Your window, shading and rows are remembered on this device. The history starts "
     "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
     "up and nothing more: no claim is made here about what followed, and none has been "
     "tested.")
@@ -566,6 +568,17 @@ def history_year_ticks(history, every=HISTORY_TICK_YEARS):
             if i and year % every == 0:
                 out.append((i / n, str(year)))
     return out
+
+
+HISTORY_READ_HINT = "Point at a session, or tap it, for its date and what was on."
+
+
+def history_day_steps(history):
+    """`(first date, "1,1,3,1,...")`: every session's date as the days since the one
+    before, which is what lets the page's script name the session under the pointer
+    for about two characters a session where the dates themselves would be eleven."""
+    days = [datetime.strptime(d, "%Y-%m-%d") for d in history.dates]
+    return history.dates[0], ",".join(str((b - a).days) for a, b in zip(days, days[1:]))
 
 
 def history_month_starts(history):

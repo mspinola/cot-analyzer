@@ -685,3 +685,35 @@ def test_jump_links_name_only_the_sections_on_the_page():
     full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
     links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
     assert links == [anchor for anchor, _ in st.JUMPS]
+
+
+def test_the_history_names_the_session_under_the_pointer():
+    """The script gets every session's date as steps from the first, and a line to
+    write the reading in; the steps add back up to the history's own dates."""
+    from datetime import datetime, timedelta
+    snap = _snap()
+    h = snap.history
+    first, steps = view.history_day_steps(h)
+    day, dates = datetime.strptime(first, "%Y-%m-%d"), [first]
+    for step in steps.split(","):
+        day += timedelta(days=int(step))
+        dates.append(day.strftime("%Y-%m-%d"))
+    assert tuple(dates) == h.dates
+    page = st.render(snap, COLORS)
+    assert f'data-first="{first}" data-steps="{steps}"' in page
+    assert f'data-history-read aria-live="polite">{view.HISTORY_READ_HINT}</div>' in page
+    # The reader's window, shading and rows are kept in the browser, behind a try.
+    assert "localStorage.getItem(KEY)" in page and "localStorage.setItem(KEY" in page
+
+
+def test_a_shared_link_has_a_preview_and_the_net_highs_card_points_at_its_year():
+    page = st.render(_snap(), COLORS)
+    assert f'<link rel="canonical" href="{st.URL}">' in page
+    assert st.URL == "https://internals.bluemagicai.com/"
+    for name in ("og:title", "og:description", "og:url", "og:type", "og:site_name"):
+        assert f'<meta property="{name}" content="' in page
+    card = page.split('data-key="net_highs"')[1].split("</section>")[0]
+    assert f'<a class="jump" href="#{st.BREADTH_ID}">' in card and f'id="{st.BREADTH_ID}"' in page
+    # Without the year of counts there is nothing to point at.
+    bare = st.render(_snap(drop=("NASDAQ_NH52W",)), COLORS)
+    assert f'href="#{st.BREADTH_ID}"' not in bare
