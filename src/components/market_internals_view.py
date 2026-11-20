@@ -99,9 +99,14 @@ HISTORY_HOW = (
     "Select a row's name to switch it off or on: the bottom row and the shading then "
     "count only the rows that are on, so you can ask when any set of them lined up. "
     "\"Only all on at once\" drops the lighter band.",
-    "FOMO is an extra row, off to begin with and never in the count: switched on, it "
-    "marks the sessions the reading was washed out (cool) or stretched (warm), from late "
-    "2018 where its series starts.",
+    "The bottom row is FOMO, the share of Nasdaq stocks above their 5-day average, on 0 "
+    f"to 100. Under {indicators.FOMO_FEAR_MAX:.0f} (the cool band) is washed out, "
+    f"{indicators.FOMO_EXHAUSTION_MIN:.0f} and over (the warm band) stretched. On a "
+    "window of a year or so it is a daily bar: the high-to-low line, the open a tick "
+    "left, the close a tick right. Every window marks the sessions that closed in "
+    "either band, and on longer windows, where a daily bar is too thin to read, the "
+    "marks are all it draws. It is never in the "
+    "count, and starts in late 2018 where its series does.",
     "The window buttons zoom every row together. Point at a session (or tap it) for its "
     "date and the rows that were on. Your window, shading and rows are remembered on "
     "this device.",
@@ -172,6 +177,66 @@ POSITIONING_HOW = (
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
 POSITIONING_PATH = "52w path"
+ANOMALIES_TITLE = "Market anomalies"
+ANOMALIES_SUBTITLE = ("Days a usual relationship between two markets did not hold. To be "
+                      "aware of: not counted as a headwind.")
+ANOMALIES_HOW = (
+    "Each card compares two markets' closes, session by session, over the last "
+    f"{mi.ANOMALY_SESSIONS} sessions. A triangle is that market's close, up or down "
+    "on the day; a shaded column is an anomaly day.",
+    "Red is the pressure side, green the relief side. Point at a column (or tap it) "
+    "for its date and both changes.",
+    "The three pairs and their colours are the Caruso Insights dashboard's. They are "
+    "context only: nothing here has been tested as a signal.",
+)
+#: Each anomaly card's own explanation, by key. Caruso's notes restated in this page's
+#: words and credited, as on the headwind cards.
+ANOMALY_HOWS = {
+    "vix_spy": (
+        "The VIX and the S&P 500 usually move as mirror images: the VIX rises when the "
+        "market sells off and falls when it rallies.",
+        "An anomaly is a day they close the same way. Both up is red: the VIX climbing "
+        "with the market, the pressure Caruso associates with tops. Both down is green: "
+        "the VIX easing even as the market falls.",
+        "Caruso notes the VIX was climbing alongside the S&P 500 before the 2019, 2020 "
+        "and 2024 tops, and treats it as a yellow flag, not a reason to go to cash.",
+    ),
+    "jnk_tlt": (
+        "JNK (high-yield bonds) usually moves with Treasuries like TLT. Both are "
+        "dividend-adjusted here, since a payout would otherwise read as a down day.",
+        "An anomaly is a day they close opposite ways. TLT up with JNK down is red: "
+        "money leaving credit for safety. TLT down with JNK up is green.",
+        "Caruso's example: in the April 2025 selloff TLT fell when it would normally "
+        "have risen.",
+    ),
+    "xlp_qqq": (
+        "XLP is consumer staples, the defensive side; QQQ is the Nasdaq 100.",
+        "Red: both close up but XLP is up more, money favouring defense even on an up "
+        "day. Green: both close down but QQQ is down less, growth holding up better "
+        "than defense.",
+        "The XLP/QQQ headwind above is the trend of this rotation; this card flags it a "
+        "day at a time.",
+    ),
+}
+ANOMALY_WORDS = {mi.RED: "Anomaly", mi.GREEN: "Anomaly", None: "Normal"}
+
+
+def anomaly_badge(read):
+    """The card's badge: today's state."""
+    return ANOMALY_WORDS[read.flag]
+
+
+def anomaly_tally(read):
+    return f"Last {len(read.sessions)} sessions: {read.red} red · {read.green} green"
+
+
+def anomaly_tip(read, session):
+    """A column's tooltip: its date and both legs' changes."""
+    day, first, second, _ = session
+    (a, b) = read.labels
+    return f"{day_text(day)}: {a} {first * 100:+.2f}%, {b} {second * 100:+.2f}%"
+
+
 DETAIL_TITLE = "Detail"
 DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange, and the "
                    "index and asset table.")
@@ -312,6 +377,14 @@ def headwind_versus(headwind):
 def headwind_streak(headwind):
     n = headwind.streak
     return f"{headwind_badge(headwind)} for {n} session{'' if n == 1 else 's'}"
+
+
+def fomo_day(read):
+    """The session's range: "Day: open 41.6 · high 41.6 · low 14.4 · close 14.4"."""
+    if read.bar is None:
+        return ""
+    o, h, lo, c = read.bar
+    return f"Day: open {o:.1f} · high {h:.1f} · low {lo:.1f} · close {c:.1f}"
 
 
 def fomo_recent(read, sessions=5):
@@ -684,7 +757,7 @@ HISTORY_TICK_YEARS = 2
 HISTORY_DAILY_SESSIONS = 3 * 252
 #: The card's windows, (label, sessions back from the newest; 0 is everything). Max is
 #: what the page opens on and what a reader without JavaScript sees.
-HISTORY_WINDOWS = (("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
+HISTORY_WINDOWS = (("3M", 63), ("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
 HISTORY_DEFAULT_WINDOW = "Max"
 
 
@@ -749,9 +822,53 @@ def history_month_starts(history):
     return out
 
 
-HISTORY_FOMO_KEY = "fomo"
-HISTORY_FOMO_LABEL = (f"FOMO extremes (under {indicators.FOMO_FEAR_MAX:.0f}, over "
-                      f"{indicators.FOMO_EXHAUSTION_MIN:.0f})")
+HISTORY_FOMO_LABEL = "FOMO, 0 to 100"
+#: Height of the FOMO row in its own SVG units: the share itself, 0 to 100.
+HISTORY_FOMO_UNITS = 100.0
+
+
+#: Longest window, in sessions, that draws FOMO's daily bars. Past it a bar is under a
+#: pixel wide and the row is a solid band; a coarser bar does not help either, because
+#: the share crosses most of its range inside a week, so a weekly or monthly bar is
+#: nearly full height every time (tried 2026-11-19). Every window draws the extremes:
+#: a mark in the washed-out band for each session that closed under it, and in the
+#: stretched band for each that closed in it; past this window they are all it draws.
+HISTORY_FOMO_DAILY_UPTO = 400
+
+
+def history_fomo_path(history):
+    """One SVG path of FOMO's daily bars, a session a unit wide on a 0 to 100 scale
+    flipped for SVG: the high-to-low line, the open a tick to the left, the close a
+    tick to the right."""
+    if history.fomo is None:
+        return ""
+    bars, _ = history.fomo
+    top = HISTORY_FOMO_UNITS
+    parts = []
+    for i, bar in enumerate(bars):
+        if bar is None:
+            continue
+        o, h, lo, c = (round(top - v, 1) for v in bar)
+        x = i + 0.5
+        parts.append(f"M{x} {h:g}V{lo:g}M{i + 0.15:g} {o:g}H{x}M{x} {c:g}H{i + 0.85:g}")
+    return "".join(parts)
+
+
+def history_fomo_extremes(history):
+    """(washed-out flags, stretched flags) per session, from each session's close:
+    the long windows' marks."""
+    if history.fomo is None:
+        return (), ()
+    closes = [None if bar is None else bar[3] for bar in history.fomo[0]]
+    return (tuple(c is not None and c < indicators.FOMO_FEAR_MAX for c in closes),
+            tuple(c is not None and c >= indicators.FOMO_EXHAUSTION_MIN for c in closes))
+
+
+def history_fomo_closes(history):
+    """FOMO's close per session, for the pointer's readout; "" where it was not read."""
+    if history.fomo is None:
+        return ""
+    return ",".join("" if bar is None else f"{bar[3]:.1f}" for bar in history.fomo[0])
 
 
 def history_subtitle(history):
