@@ -43,7 +43,7 @@ from components import sentiment_static as surveys
 TITLE = "Market Internals"
 EYEBROW = "Breadth · credit · rotation · volume · daily"
 H1_TICKER, H1_REST = "Market", "internals"
-DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY up/down "
+DESCRIPTION = ("Six market headwinds, daily: Nasdaq and NYSE net new 52-week highs, QQQ and SPY up/down "
                "volume, high-yield credit's 20-day EMA, and staples over Nasdaq against "
                "its 50-day, each with what would flip it. Beside them, Nasdaq FOMO, a "
                "junk-against-Treasuries credit gauge, the day's breadth and an ETF table.")
@@ -55,6 +55,9 @@ SURVEYS_URL = dict(surveys.SITES)["Surveys"]
 URL = dict(surveys.SITES)[CURRENT]
 SITE_NAME = "Blue Magic AI monitors"
 BREADTH_ID = "breadth"
+#: Each net-highs card's folded chart: new lows as a share of issues traded. Its key
+#: is LOWS_SHARE_PREFIX + the exchange, lower case.
+LOWS_SHARE_PREFIX = "lows-share:"
 #: Every source a section of the page draws on, not only the breadth and the bars: the
 #: line named two of them until 2026-11-19, after volatility, the surveys and the COT
 #: had joined the page.
@@ -134,6 +137,8 @@ def charts(snap, colors, positioning=(), groups=None):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
+    for share in snap.lows_shares:
+        out[LOWS_SHARE_PREFIX + share.exchange.lower()] = view.lows_share_chart(share, colors)
     if snap.breadth is not None:
         out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
         out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
@@ -159,9 +164,24 @@ def _badge(text, verdict, colors):
             f'border-color:{plot_colors.hex_to_rgba(color, 0.35)}">{_esc(text)}</span>')
 
 
+def _how(how):
+    """A closed "How to read this": a paragraph, or a tuple of points, one each."""
+    if not how:
+        return ""
+    if isinstance(how, str):
+        how = (how,)
+    points = "".join(f"<li>{_esc(p)}</li>" for p in how)
+    return (f'<details class="how"><summary>{_esc(sentiment.HOW_TO_READ_LABEL)}</summary>'
+            f'<ul>{points}</ul></details>\n')
+
+
+def _sub(subtitle, how=None):
+    return f'<div class="sub">{_esc(subtitle)}</div>\n' + _how(how)
+
+
 def _card(title, subtitle, how, *body):
     """A card as the surveys page builds one: title, one sentence, the rest closed."""
-    head = surveys._sub(subtitle, how) if subtitle else ""
+    head = _sub(subtitle, how) if subtitle else ""
     return (f'<section class="card"><h2>{_esc(title)}</h2>\n{head}'
             + "\n".join(body) + '</section>\n')
 
@@ -169,7 +189,7 @@ def _card(title, subtitle, how, *body):
 def _section(title, subtitle, how=None):
     """A section heading over a group of cards: a title, one sentence, the rest closed."""
     return (f'<div class="sec"><h2>{_esc(title)}</h2>\n'
-            + surveys._sub(subtitle, how) + '</div>\n')
+            + _sub(subtitle, how) + '</div>\n')
 
 
 def _prov(snap, key):
@@ -195,7 +215,7 @@ def _split_bar(left_pct, colors, cls="bar"):
 
 # ── cards ─────────────────────────────────────────────────────────────────────
 
-def headwind_card(h, colors, chip="", more=""):
+def headwind_card(h, colors, chip="", extra=""):
     """One headwind: its name and state, the number, the quarter behind it, what would
     flip it and how long it has stood. The tile's left edge takes the state's colour."""
     tone = colors.bear if h.on else colors.bull
@@ -208,11 +228,11 @@ def headwind_card(h, colors, chip="", more=""):
         f'<div class="row"><span class="big">{_esc(h.display)}</span>{chip}'
         + (f'<span class="detail" style="color:{versus_tone}">{_esc(versus)}</span>'
            if versus else "")
-        + f'</div>{_detail(h.subtitle)}'
+        + f'</div>{_detail(h.subtitle)}{_how(view.HEADWIND_HOWS.get(h.key))}'
         + _chart(HEADWIND_PREFIX + h.key, view.headwind_chart(h, colors)["height"])
-        + _detail(h.flip)
+        + extra + _detail(h.flip)
         + f'<div class="detail" style="color:{tone}">{_esc(view.headwind_streak(h))}</div>'
-        f'{more}</section>\n')
+        '</section>\n')
 
 
 def _marks(flags, height, fill, opacity=1.0, y=0):
@@ -256,7 +276,8 @@ def history_card(history, colors):
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
         f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
-        f'price with the sessions four or five headwinds were on shaded">'
+        f'price with the sessions {history.total - 1} or {history.total} headwinds were on '
+        f'shaded">'
         # Taller than the panel: a zoom pads the price's y range past 0 and the units.
         f'<g data-band="most">{_marks(most, tall, mark, 0.18, y=top)}</g>'
         f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>{fomo_bands}'
@@ -333,12 +354,19 @@ def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
-    # The net-highs card points at the year of counts behind it, far down the page.
-    more = ({"net_highs": f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'}
-            if snap.breadth is not None else {})
+    # Each net-highs card's folded second chart: its new lows against the 4% line.
+    extra = {}
+    for share in snap.lows_shares:
+        tone = colors.bear if share.value >= mi.LOWS_SHARE_LINE else "var(--ink-2)"
+        key = LOWS_SHARE_PREFIX + share.exchange.lower()
+        extra[mi.net_highs_key(share.exchange)] = (
+            f'<details class="share" data-lows-share><summary>{_esc(view.LOWS_SHARE_TITLE)} '
+            f'<span class="mid" style="color:{tone}">{share.value:.1f}%</span></summary>'
+            + _chart(key, view.lows_share_chart(share, colors)["height"])
+            + '</details>')
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
-            + "".join(headwind_card(h, colors, _prov(snap, h.key), more.get(h.key, ""))
+            + "".join(headwind_card(h, colors, _prov(snap, h.key), extra.get(h.key, ""))
                       for h in snap.headwinds) + f'</div>\n{note}'
             + history_card(snap.history, colors))
 
@@ -507,8 +535,8 @@ def positioning_section(positioning, colors, groups=None):
 
 
 def breadth_charts(snap, colors):
-    """The year behind the net-highs headwind: the two counts, then their net. No
-    cards without the counts (the headwind card already says it is awaiting them)."""
+    """The year behind the net-highs headwinds: the two counts, then their net. No
+    cards without the counts (the headwind cards already say they are awaiting them)."""
     if snap.breadth is None:
         return ""
     b = snap.breadth
@@ -779,17 +807,24 @@ table.cot td small {{ color: var(--muted); }}
    A sideways drag on the plots reads sessions, an up-and-down one still scrolls. */
 .hread {{ margin: 8px 0 0; min-height: 1.4em; }}
 .hp {{ touch-action: pan-y; }}
-.card a.jump {{ font-size: 0.78rem; color: var(--ink-2); }}
 @media (max-width: 700px) {{
   .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
   .hprice {{ height: 150px; }}
 }}
+/* A How to read this is a short list of points, one idea each. */
+.how ul {{ margin: 4px 0 0; padding-left: 18px; }}
+.how li {{ margin: 3px 0; line-height: 1.45; }}
+.card.hw .how {{ margin: 2px 0 4px; }}
+.card.hw .share {{ margin: 6px 0 2px; font-size: 0.8rem; }}
+.card.hw .share summary {{ cursor: pointer; color: var(--ink-2); }}
+.card.hw .share .mid {{ font-weight: 600; }}
+.card.hw .share[open] summary {{ margin-bottom: 4px; }}
 .card.hw {{ border-left: 3px solid var(--line); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}
 .card.hw .big {{ font-size: 1.6rem; }}
-/* Cards two across from 900px, the five headwinds three across from 1100px; one
+/* Cards two across from 900px, the six headwinds three across from 1100px; one
    column on a phone. */
 .cards {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }}
 @media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
@@ -933,9 +968,14 @@ footer a {{ color: var(--ink-2); }}
         line = chart.addSeries(LC.BaselineSeries, {{
           baseValue: {{type: 'price', price: s.base}}, lineWidth: s.width,
           topLineColor: s.color, bottomLineColor: s.color,
-          topFillColor1: 'transparent', topFillColor2: 'transparent',
+          topFillColor1: s.top || 'transparent', topFillColor2: s.top || 'transparent',
           bottomFillColor1: s.shade, bottomFillColor2: s.shade,
           priceFormat: format, priceLineVisible: false, lastValueVisible: false}});
+      }} else if (s.type === 'area') {{
+        // Each point carries its own fill: the session's state.
+        line = chart.addSeries(LC.AreaSeries, {{lineColor: s.color, lineWidth: s.width,
+          topColor: 'transparent', bottomColor: 'transparent', priceFormat: format,
+          priceLineVisible: false, lastValueVisible: false}});
       }} else {{
         line = chart.addSeries(LC.LineSeries, options);
       }}

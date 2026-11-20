@@ -17,40 +17,101 @@ from cotmetrics import indicators
 
 import components.market_internals as mi
 from components import sentiment
-from components.sentiment_static import INK, INK_2
+from components.sentiment_static import INK, INK_2, SURFACE_COLOR
 
 AVERAGE_COLOR = "#5B8DD6"
 
 HEADWINDS_TITLE = "Market headwinds"
-HEADWINDS_SUBTITLE = ("Five trend measures, each a headwind or not. The count is how many "
+HEADWINDS_SUBTITLE = ("Six trend measures, each a headwind or not. The count is how many "
                       "are on.")
+#: A "How to read this" is a string (one paragraph) or a tuple (one point each).
+#: Points marked as Caruso's restate the Insights member dashboard's own notes in this
+#: page's words; they are that dashboard's reading, not something tested here.
 HEADWINDS_HOW = (
-    "Net new highs: Nasdaq plus NYSE 52-week highs minus lows, as a 5-day average; below "
-    "zero is a headwind. Up/down volume: over the last 20 sessions, volume on up-close "
-    "days over volume on down-close days, for QQQ and for SPY; below 1 is net selling. "
-    "JNK: the 20-day EMA of dividend-adjusted high-yield credit; falling is a headwind. "
-    "XLP/QQQ: staples over Nasdaq above the ratio's 50-day average is defensives "
-    "leading. The definitions are the Caruso Insights member dashboard's. Each card "
-    "says what would flip it, how long it has been in its state, and whether it is "
-    "better or worse than five sessions ago.")
+    "Each card is one trend measure, a headwind or not, and opens its own How to read "
+    "this. The definitions are the Caruso Insights member dashboard's.",
+    "Caruso's use of the count: the more headwinds are on, the more defensive to be, "
+    "stepping exposure up or down as they change rather than all in or all out.",
+    "Every card says what would flip it, how long it has been in its state, and whether "
+    "it is better or worse than five sessions ago.",
+)
+#: Each headwind card's own explanation, by headwind key.
+HEADWIND_HOWS = {
+    "nasdaq_net_highs": (
+        "Nasdaq stocks at a new 52-week high minus those at a new 52-week low, on the "
+        "day. Below zero is a headwind.",
+        "Caruso's reading: more highs than lows is a healthy market, more lows than "
+        "highs a weak one, and the net tends to stay positive while money is flowing in.",
+        "The fold under the chart is new lows as a share of Nasdaq issues traded "
+        "(advancing plus declining), against the 4% line from the NYSE study cited on "
+        "the NYSE card. Here it is a reference: the study was not of the Nasdaq.",
+        "A few sessions of net lows can be a false signal. Caruso checks it against "
+        "FOMO: net lows with a washed-out FOMO reading is usually a pause, net lows "
+        "without one a real breakdown. Three or more sessions of net highs in a row is, "
+        "in that reading, a positive trend.",
+        "The chart is the last quarter, a column a session, red where it was below zero.",
+    ),
+    "nyse_net_highs": (
+        "The same count for NYSE stocks: new 52-week highs minus new lows on the day. "
+        "Below zero is a headwind.",
+        "Caruso cites a study by Larry Williams and Ralph Vince on the NYSE: new lows "
+        "reaching 4% or more of issues marked a market in serious trouble. The fold "
+        "under the chart is that share: new lows over issues advancing plus declining, "
+        "with the 4% line dashed. "
+        "Unchanged issues are not counted, so it reads slightly high. Context only, "
+        "not part of the headwind.",
+        "The chart is the last quarter, a column a session, red where it was below zero.",
+    ),
+    "qqq_updown": (
+        "Over the last 20 sessions, QQQ's volume on up-close days divided by its volume "
+        "on down-close days.",
+        "Below 1.0 is more selling than buying in the Nasdaq 100: the headwind side.",
+        "Caruso reads it with net new highs: both on marks a weak market to be careful in.",
+    ),
+    "spy_updown": (
+        "Over the last 20 sessions, SPY's volume on up-close days divided by its volume "
+        "on down-close days.",
+        "Below 1.0 is more selling than buying in the S&P 500: the headwind side.",
+    ),
+    "credit": (
+        "JNK is a high-yield (junk) bond fund. Junk bonds behave partly like stocks, so "
+        "they react quickly when risk rises.",
+        "Caruso uses it as a daily stand-in for the Chicago Fed's National Financial "
+        "Conditions Index, which comes out weekly and is revised.",
+        "Its 20-day EMA falling is conditions tightening, a headwind; rising is easing. "
+        "The price is dividend-adjusted, since each monthly payout would otherwise notch "
+        "it under its average.",
+        "Caruso notes it gives a few more false signals than the other measures.",
+    ),
+    "rotation": (
+        "XLP (consumer staples, the defensive side) divided by QQQ (the Nasdaq 100, "
+        "growth), against the ratio's 50-day average.",
+        "Above the average is money rotating to defense, a headwind, and it can weigh on "
+        "growth stocks while the index still looks fine. Below is risk on.",
+        "Caruso notes it can be late, so read it with the others.",
+    ),
+}
 HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
-    "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. Select a row's name "
-    "to switch it off or on: the bottom row and the shading then count only the rows "
-    "that are on, so you can ask when any set of them lined up. \"Only all on at once\" "
-    "drops the lighter band, leaving the price shaded only where every row that is on "
-    "lined up. FOMO is an extra row, "
-    "off to begin with and never in the count: switched on, it marks the sessions the "
-    "reading was washed out (cool) or stretched (warm), on its own row and over the "
-    "price, from late 2018 where its series starts. The window buttons "
-    "zoom every row together and refit the price to what is on screen. Point at a "
-    "session (or tap it) and the line under the buttons names its date and the rows "
-    "that were on. Your window, shading and rows are remembered on this device. The history starts "
-    "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
-    "up and nothing more: no claim is made here about what followed, and none has been "
-    "tested.")
+    "bottom row marks the sessions all six were on at once, and the shading behind the "
+    "price is the same count: light for five, darker for all six.",
+    "Select a row's name to switch it off or on: the bottom row and the shading then "
+    "count only the rows that are on, so you can ask when any set of them lined up. "
+    "\"Only all on at once\" drops the lighter band.",
+    "FOMO is an extra row, off to begin with and never in the count: switched on, it "
+    "marks the sessions the reading was washed out (cool) or stretched (warm), from late "
+    "2018 where its series starts.",
+    "The window buttons zoom every row together. Point at a session (or tap it) for its "
+    "date and the rows that were on. Your window, shading and rows are remembered on "
+    "this device.",
+    "Caruso's reading: strong uptrends show few headwinds and serious corrections show "
+    "them stacked. Expect a few short false signals; the aim is to stay with the major "
+    "trend, not to be perfect.",
+    "The history starts where the youngest series does (JNK, late 2007). It shows when "
+    "the headwinds lined up and nothing more: no claim is made here about what "
+    "followed, and none has been tested.",
+)
 UNCOUNTED_TITLE = "Not in the count"
 UNCOUNTED_SUBTITLE = ("A short-term extreme check, a credit gauge, and equity and rates "
                       "volatility. None is a trend measure.")
@@ -105,10 +166,17 @@ DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange,
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
 FOMO_SUBTITLE = ("The share of Nasdaq Composite stocks above their own 5-day average, past "
                  "year. Not a trend signal.")
-FOMO_HOW = (f"Above {indicators.FOMO_EXHAUSTION_MIN:.0f} is stretched: buying exhaustion, "
-            f"the end to sell into. Below {indicators.FOMO_FEAR_MAX:.0f} is washed out: "
-            "broad pessimism, the buyable end, and a reading climbing back out of it is "
-            "recovering. Between the named zones the reading offers no edge either way.")
+FOMO_HOW = (
+    "The share of Nasdaq stocks above their own 5-day average: short-term impulse "
+    "buying and selling. A tactical check at the extremes, not a trend measure, and "
+    "never in the count.",
+    f"Above {indicators.FOMO_EXHAUSTION_MIN:.0f} is stretched: almost everyone has been "
+    "buying, which Caruso treats as a likely short-term trap.",
+    f"Below {indicators.FOMO_FEAR_MAX:.0f} is washed out: almost everyone has been "
+    "selling, short-term fear. A reading climbing back out of it is recovering.",
+    "Caruso uses it as context for net new lows: with fear, usually a pause; without "
+    "fear, a real breakdown. Between the named zones it offers no edge either way.",
+)
 APPETITE_TITLE = (f"Credit appetite · {mi.APPETITE_JUNK} against {mi.APPETITE_TREASURY}")
 APPETITE_SUBTITLE = ("Junk bonds against Treasuries, ranked on their own past year. "
                      "Context: not one of the headwinds.")
@@ -125,21 +193,23 @@ APPETITE_HOW = (
     "why it is drawn here and not counted.")
 NET_HIGHS_TITLE = "Net new highs by exchange"
 NET_HIGHS_SUBTITLE = ("Each exchange's own daily count of new 52-week highs less new lows. "
-                      "The headwind above reads both summed, as a 5-day average.")
+                      "The two net new highs headwinds above read these same counts.")
 NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS} sessions in "
                  "a row on one side is marked by the bar at the row's left, anything else "
-                 "is mixed. The headwind above is a different cut of the same counts: both "
-                 "exchanges summed, as a 5-day average.")
+                 "is mixed. The headwinds above read the same counts a session at a "
+                 "time: an exchange's is on whenever its net is below zero today.")
 HIGHS_LOWS_TITLE = "New highs vs. new lows"
 HIGHS_LOWS_SUBTITLE = ("Nasdaq plus NYSE 52-week highs above the line, lows below it. "
                        "Daily counts, past year.")
 NET_HISTORY_TITLE = "Net new highs, past year"
-NET_HISTORY_SUBTITLE = (f"Highs minus lows, daily and as the {mi.NET_HIGHS_AVERAGE}-day "
-                        "average the headwind reads. Below zero is the headwind's zone.")
-NET_HISTORY_HOW = ("The thin line is each session's highs minus lows; the heavy line is "
-                   f"its {mi.NET_HIGHS_AVERAGE}-day average, the number on the Net new "
-                   "highs card above. The headwind is on while the average is below "
-                   "zero, the shaded side.")
+NET_HISTORY_SUBTITLE = ("Nasdaq plus NYSE highs minus lows, daily and as a "
+                        f"{mi.NET_HIGHS_AVERAGE}-day average. Shaded where the average "
+                        "is below zero.")
+NET_HISTORY_HOW = ("The thin line is each session's highs minus lows, both exchanges "
+                   f"summed; the heavy line is its {mi.NET_HIGHS_AVERAGE}-day average, "
+                   "drawn to steady the eye. Neither is a headwind's own number: the two "
+                   "net new highs headwinds above read each exchange's daily figure on "
+                   "its own, so one can be on while this line is above zero.")
 ADVANCE_DECLINE_TITLE = "Nasdaq issues advancing vs declining"
 ASSETS_TITLE = "Index and asset overview"
 ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo")
@@ -320,11 +390,37 @@ def bars(color, dates, values):
                      if v is not None and v == v]}
 
 
-def zone(color, shade, dates, values, base=0.0):
-    """A line for `chart` whose side BELOW `base` is shaded: the headwind's zone."""
-    return {"type": "baseline", "color": color, "shade": shade, "base": base, "width": 2,
+def zone(color, shade, dates, values, base=0.0, top=None, width=2):
+    """A line for `chart` whose side BELOW `base` is shaded: the headwind's zone. `top`
+    shades the side above it too."""
+    return {"type": "baseline", "color": color, "shade": shade, "top": top, "base": base,
+            "width": width,
             "data": [{"time": d, "value": v} for d, v in zip(dates, values)
                      if v is not None and v == v]}
+
+
+def area(color, dates, values, fills, width=1):
+    """A line for `chart` shaded down to the axis, each session in its own `fills[i]`."""
+    return {"type": "area", "color": color, "width": width,
+            "data": [{"time": d, "value": v, "topColor": f, "bottomColor": f}
+                     for d, v, f in zip(dates, values, fills) if v is not None and v == v]}
+
+
+def band(dates, values, average, fills):
+    """Two series that shade between `values` and `average`: an area down to the
+    upper of the two in the session's fill, then one down to the lower in the card's
+    own surface, which masks everything under the band. Lightweight Charts has no
+    fill between two lines, so the band is drawn by subtraction. No fill where the
+    average has not filled yet."""
+    pairs = [(d, v, a, f) for d, v, a, f in zip(dates, values, average, fills)
+             if a is not None and v is not None and v == v]
+    upper = {"type": "area", "color": "transparent", "width": 1,
+             "data": [{"time": d, "value": max(v, a), "topColor": f, "bottomColor": f}
+                      for d, v, a, f in pairs]}
+    lower = {"type": "area", "color": "transparent", "width": 1,
+             "data": [{"time": d, "value": min(v, a), "topColor": SURFACE_COLOR,
+                       "bottomColor": SURFACE_COLOR} for d, v, a, f in pairs]}
+    return upper, lower
 
 
 def chart(height, series, levels=(), decimals=0):
@@ -341,8 +437,8 @@ def highs_lows_chart(breadth, colors):
 
 
 def net_highs_chart(breadth, colors):
-    """The daily net, thin, under its 5-day average; under zero the average is in the
-    headwind's zone, shaded."""
+    """The daily net, thin, under its 5-day average, shaded where the average is under
+    zero. Both exchanges summed; no headwind reads this line."""
     from components import plot_colors
     daily = {"color": plot_colors.hex_to_rgba(INK_2, 0.55), "width": 1,
              "data": [{"time": d, "value": v} for d, v in zip(breadth.dates, breadth.net)]}
@@ -501,12 +597,61 @@ def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
     return " ".join(f"{x:.1f},{y:.1f}" for x, y in pts), pts[-1]
 
 
+#: Opacity of the faint state fill under a headwind card's line.
+STATE_FILL = 0.16
+
+
+LOWS_SHARE_TITLE = "New lows, % of issues traded"
+
+
+def lows_share_chart(share, colors):
+    """A column a session, red at or over the line Caruso cites, grey under it."""
+    dates, values = share.path
+    cols = bars(INK_2, dates, values)
+    for point in cols["data"]:
+        if point["value"] >= mi.LOWS_SHARE_LINE:
+            point["color"] = colors.bear
+    return chart(80, [cols], levels=((mi.LOWS_SHARE_LINE, colors.bear),), decimals=1)
+
+
 def headwind_chart(headwind, colors):
     """A headwind's quarter: its series against the level it turns on, or, where the
-    read is a series against its own average, the two lines."""
+    read is a series against its own average, the two lines. Net new highs, a daily
+    count, is columns."""
     dates, values, second = headwind.path
     tone = colors.bear if headwind.on else colors.bull
-    decimals = 4 if headwind.key == "rotation" else 2 if headwind.key != "net_highs" else 0
+    if headwind.key.endswith("net_highs"):
+        # A daily count reads as columns: one a session from zero, red on the
+        # sessions it was a headwind (below the level), green on the others.
+        cols = bars(colors.bull, dates, values)
+        for point in cols["data"]:
+            if point["value"] < headwind.level:
+                point["color"] = colors.bear
+        return chart(120, [cols], levels=((headwind.level, INK_2),))
+    from components import plot_colors
+    good = plot_colors.hex_to_rgba(colors.bull, STATE_FILL)
+    bad = plot_colors.hex_to_rgba(colors.bear, STATE_FILL)
+    if headwind.key.endswith("_updown"):
+        # Shaded from the 1.0 line to the ratio: green on the buying side, red below.
+        return chart(120, [zone(INK, bad, dates, values, base=headwind.level, top=good,
+                                width=1.5)],
+                     levels=((headwind.level, tone),), decimals=2)
+    if headwind.key in ("credit", "rotation"):
+        # Shaded between the line and its average, red on the sessions the headwind was
+        # on: JNK's EMA falling, or the ratio above its average.
+        if headwind.key == "credit":
+            on = [i > 0 and None not in (second[i], second[i - 1])
+                  and second[i] < second[i - 1] for i in range(len(second))]
+        else:
+            on = [a is not None and v > a for v, a in zip(values, second)]
+        return chart(120, [*band(dates, values, second, [bad if x else good for x in on]),
+                           {"color": INK_2, "width": 1,
+                            "data": [{"time": d, "value": v} for d, v in zip(dates, values)]},
+                           {"color": tone, "width": 2,
+                            "data": [{"time": d, "value": v} for d, v in zip(dates, second)
+                                     if v is not None]}],
+                     decimals=2 if headwind.key == "credit" else 4)
+    decimals = 2
     if second is None:
         return line_chart(120, [(INK, 1.5, dates, values)],
                           levels=((headwind.level, tone),), decimals=decimals)

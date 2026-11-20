@@ -46,6 +46,7 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
     assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
                                    st.NET_HISTORY_KEY,
+                                   *(st.LOWS_SHARE_PREFIX + x.lower() for x, _, _ in mi.NET_HIGHS_SYMBOLS),
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
@@ -69,18 +70,23 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
     # A level read draws one line against the level it turns on; a read against its
     # own average draws the two lines and no level.
-    assert [lv["value"] for lv in by_key["net_highs"]["levels"]] == [0.0]
+    # Net new highs is columns from zero, red on the sessions below it.
+    for key in ("nasdaq_net_highs", "nyse_net_highs"):
+        assert [lv["value"] for lv in by_key[key]["levels"]] == [0.0]
+        (cols,) = by_key[key]["series"]
+        assert cols["type"] == "histogram" and cols["color"] == colors.bull
+        assert all(p.get("color", colors.bull) == (colors.bear if p["value"] < 0 else colors.bull)
+                   for p in cols["data"])
     assert [lv["value"] for lv in by_key["qqq_updown"]["levels"]] == [1.0]
-    assert len(by_key["net_highs"]["series"]) == 1
-    for key in ("credit", "rotation"):
-        assert len(by_key[key]["series"]) == 2 and by_key[key]["levels"] == []
+    for key in ("credit", "rotation"):              # the band's two areas, then the lines
+        assert len(by_key[key]["series"]) == 4 and by_key[key]["levels"] == []
 
 
 def test_each_headwind_card_says_its_state_what_flips_it_and_for_how_long():
     snap = _snap()
     page = st.render(snap, COLORS)
     section = page.split(f'id="{st.HEADWINDS_ID}"')[1].split('<div class="sec">')[0]
-    assert section.count('<section class="card hw ') == len(snap.headwinds) == 5
+    assert section.count('<section class="card hw ') == len(snap.headwinds) == 6
     for h in snap.headwinds:
         card = section.split(f'data-key="{h.key}"')[1].split("</section>")[0]
         assert f'<span class="big">{html.escape(h.display)}</span>' in card
@@ -559,8 +565,8 @@ def test_no_breadth_charts_without_both_exchanges_counts():
 
 
 def test_every_history_row_is_a_switch_and_fomo_starts_off():
-    """A row's name is a button. The five headwinds start on and are what the count is
-    made of (`data-headwind`); FOMO is a sixth row that starts off, drawn in the tiles'
+    """A row's name is a button. The six headwinds start on and are what the count is
+    made of (`data-headwind`); FOMO is a seventh row that starts off, drawn in the tiles'
     cool and warm tones, with its marks over the price hidden until it is switched on."""
     snap = _snap()
     h = snap.history
@@ -630,8 +636,8 @@ def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
     chip = '<span class="prov"'
     fomo = page.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
     assert chip in fomo and ">provisional</span>" in fomo
-    net = page.split('data-key="net_highs"')[1].split("</section>")[0]
-    assert chip in net
+    for key in ("nasdaq_net_highs", "nyse_net_highs"):
+        assert chip in page.split(f'data-key="{key}"')[1].split("</section>")[0]
     for key in ("qqq_updown", "credit", "rotation"):       # prices, never provisional
         assert chip not in page.split(f'data-key="{key}"')[1].split("</section>")[0]
     assert html.escape(view.provisional_note(snap)) in page
@@ -643,11 +649,14 @@ def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
 
 
 def test_a_row_of_cards_never_leaves_a_hole():
-    """Five headwinds are three across and then two sharing the row; the four context
-    cards (with the MOVE) are two across; three are three across."""
+    """Six headwinds are three across, twice; five (one awaiting data) are three and
+    then two sharing the row; the four context cards (with the MOVE) are two across."""
     assert [st._across([0] * n) for n in (2, 3, 4, 5, 6)] == ["", " three", "", " five", " three"]
     page = st.render(_snap(), COLORS)
-    assert f'<div class="cards five" id="{st.HEADWINDS_ID}">' in page
+    assert f'<div class="cards three" id="{st.HEADWINDS_ID}">' in page
+    short = st.render(_snap(drop=("NYSE_NL52W",)), COLORS)
+    assert f'<div class="cards five" id="{st.HEADWINDS_ID}">' in short
+    assert "Awaiting data for: nyse net highs." in short
     assert ".cards.five > :nth-child(n+4) { grid-column: span 3; }" in page
 
 
@@ -706,17 +715,15 @@ def test_the_history_names_the_session_under_the_pointer():
     assert "localStorage.getItem(KEY)" in page and "localStorage.setItem(KEY" in page
 
 
-def test_a_shared_link_has_a_preview_and_the_net_highs_card_points_at_its_year():
+def test_a_shared_link_has_a_preview_and_no_card_carries_a_jump_link():
     page = st.render(_snap(), COLORS)
     assert f'<link rel="canonical" href="{st.URL}">' in page
     assert st.URL == "https://internals.bluemagicai.com/"
     for name in ("og:title", "og:description", "og:url", "og:type", "og:site_name"):
         assert f'<meta property="{name}" content="' in page
-    card = page.split('data-key="net_highs"')[1].split("</section>")[0]
-    assert f'<a class="jump" href="#{st.BREADTH_ID}">' in card and f'id="{st.BREADTH_ID}"' in page
-    # Without the year of counts there is nothing to point at.
-    bare = st.render(_snap(drop=("NASDAQ_NH52W",)), COLORS)
-    assert f'href="#{st.BREADTH_ID}"' not in bare
+    # The year of counts is still on the page, under Detail; the cards no longer
+    # link down to it (dropped as clutter).
+    assert f'id="{st.BREADTH_ID}"' in page and '<a class="jump"' not in page
 
 
 def test_an_old_page_says_so_from_the_readers_own_clock():
@@ -755,3 +762,61 @@ def test_a_legend_wraps_whole_items():
     page = st.render(_snap(), COLORS, positioning=_positioning())
     assert page.count('class="detail legend"') == 3
     assert "white-space: nowrap" in page.split(".key {")[1].split("}")[0]
+
+
+def test_each_headwind_card_carries_its_own_how_to_read():
+    """The explanation sits on the card it explains, as a closed list of points, and
+    the section's own fold no longer defines every measure at once."""
+    page = st.render(_snap(), COLORS)
+    assert set(view.HEADWIND_HOWS) == set(mi.HEADWIND_KEYS)
+    for key, points in view.HEADWIND_HOWS.items():
+        card = page.split(f'data-key="{key}"')[1].split("</section>")[0]
+        assert '<details class="how">' in card
+        assert all(f"<li>{html.escape(p)}</li>" in card for p in points)
+        others = [p for k, ps in view.HEADWIND_HOWS.items() if k != key for p in ps]
+        assert not any(f"<li>{html.escape(p)}</li>" in card for p in others if p not in points)
+    section = page.split('<div class="sec"><h2>Market headwinds</h2>')[1].split("</details>")[0]
+    assert "Up/down volume" not in section and "<li>" in section
+
+
+def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
+    snap = _snap()
+    colors = st.page_colors(COLORS)
+    page = st.render(snap, COLORS)
+    # Each net-highs card folds its own new-lows share under its columns, closed.
+    for share in snap.lows_shares:
+        card = page.split(f'data-key="{mi.net_highs_key(share.exchange)}"')[1].split("</section>")[0]
+        key = st.LOWS_SHARE_PREFIX + share.exchange.lower()
+        assert '<details class="share" data-lows-share>' in card
+        assert f"{share.value:.1f}%</span></summary>" in card and " line</summary>" not in card
+        assert card.index(f'data-chart="{st.HEADWIND_PREFIX}{mi.net_highs_key(share.exchange)}"') \
+            < card.index(f'data-chart="{key}"') < card.index("Flips at")
+        spec = _payload(page)[key]
+        assert [lv["value"] for lv in spec["levels"]] == [mi.LOWS_SHARE_LINE]
+        (cols,) = spec["series"]
+        assert cols["type"] == "histogram" and len(cols["data"]) == len(share.path[0])
+        assert all((p.get("color") == colors.bear) == (p["value"] >= mi.LOWS_SHARE_LINE)
+                   for p in cols["data"])
+    assert page.count("data-lows-share") == 2
+    data = _payload(page)
+    up = data[st.HEADWIND_PREFIX + "qqq_updown"]["series"][0]
+    assert up["type"] == "baseline" and up["base"] == 1.0 and up["top"] and up["shade"]
+    for key in ("credit", "rotation"):
+        upper, lower, line, average_line = data[st.HEADWIND_PREFIX + key]["series"]
+        assert upper["type"] == lower["type"] == "area" and "type" not in line
+        # The band runs from the lower of line and average to the upper.
+        h = next(h for h in snap.headwinds if h.key == key)
+        _, values, average = h.path
+        both = [(v, a) for v, a in zip(values, average) if a is not None]
+        assert [p["value"] for p in upper["data"]] == [max(v, a) for v, a in both]
+        assert [p["value"] for p in lower["data"]] == [min(v, a) for v, a in both]
+        assert {p["topColor"] for p in lower["data"]} == {view.SURFACE_COLOR}
+    h = next(h for h in snap.headwinds if h.key == "rotation")
+    dates, values, average = h.path
+    fill = [p for p in data[st.HEADWIND_PREFIX + "rotation"]["series"][0]["data"]]
+    values, average = zip(*[(v, a) for v, a in zip(values, average) if a is not None])
+    from components import plot_colors
+    bad = plot_colors.hex_to_rgba(colors.bear, view.STATE_FILL)
+    assert [p["topColor"] == bad for p in fill] == [
+        a is not None and v > a for v, a in zip(values, average)]
+    assert "LC.AreaSeries" in page

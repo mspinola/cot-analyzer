@@ -55,6 +55,10 @@ def _universe(n=120):
     for i, symbol in enumerate(mi.ASSET_SYMBOLS):
         frames[symbol] = _walk(n, seed=10 + i, with_volume=True)
     frames[mi.ROTATION_NUMER] = _walk(n, seed=30, with_volume=True)
+    # Drawn last, so the series above keep the values their tests were written on.
+    for symbol in (mi.NYSE_ADVANCING, mi.NYSE_DECLINING):
+        frames[symbol] = pd.DataFrame({"Close": rng.integers(800, 2000, n).astype(float)},
+                                      index=idx)
     return frames
 
 
@@ -280,7 +284,7 @@ def test_a_full_store_yields_every_card_and_awaits_nothing():
     assert len(mi.summary_sentences(snap)) == 8
     assert [h.key for h in snap.headwinds] == list(mi.HEADWIND_KEYS)
     count, lean = mi.headline(snap)
-    assert count.endswith("of 5 headwinds on") and lean.endswith(".")
+    assert count.endswith("of 6 headwinds on") and lean.endswith(".")
 
 
 def test_a_symbol_the_store_does_not_hold_is_awaited_not_drawn():
@@ -293,10 +297,11 @@ def test_a_symbol_the_store_does_not_hold_is_awaited_not_drawn():
     assert [r.exchange for r in snap.net_highs] == ["Nasdaq"]
     assert "DIA" not in [r.symbol for r in snap.assets]
     assert set(snap.awaiting) == {mi.FOMO_SYMBOL, "DIA", "NYSE_NL52W"}
-    # Half a net-highs sum is a different number, so that headwind is not read; the
-    # other four are, and the count says four.
-    assert [h.key for h in snap.headwinds] == [k for k in mi.HEADWIND_KEYS if k != "net_highs"]
-    assert mi.headline(snap)[0].endswith("of 4 headwinds on")
+    # The NYSE's net needs both its legs, so that headwind is not read; the other
+    # five are (the Nasdaq's among them), and the count says five.
+    assert [h.key for h in snap.headwinds] == [k for k in mi.HEADWIND_KEYS
+                                               if k != "nyse_net_highs"]
+    assert mi.headline(snap)[0].endswith("of 5 headwinds on")
 
 
 def test_an_unset_store_awaits_everything_and_raises_nothing(monkeypatch):
@@ -366,28 +371,41 @@ def test_a_stale_credit_appetite_is_named():
     assert any(n.startswith("credit appetite last read") for n in mi.stale_notes(snap))
 
 
-# ── the five headwinds (the Caruso dashboard's definitions) ───────────────────
+# ── the six headwinds (the Caruso dashboard's definitions) ────────────────────
 
 def _days(values, start="2026-04-01"):
     return pd.Series([float(v) for v in values],
                      index=pd.bdate_range(start, periods=len(values), name="Date"))
 
 
-def test_net_highs_headwind_is_both_exchanges_summed_as_a_five_day_average():
+def test_net_highs_headwind_is_one_exchanges_daily_count_below_zero():
     highs = _days([50] * 10)
-    nasdaq_lows = _days([10, 10, 10, 10, 10, 60, 60, 60, 60, 90])
-    nyse_lows = _days([10] * 10)
-    h = mi.net_highs_headwind([(highs, nasdaq_lows), (highs, nyse_lows)])
-    # Daily nets: 80 x5, then 30 x4, then 0. Five-day averages end 40, 30, 24.
-    assert h.display == "+24" and not h.on
-    assert h.flip == "Flips at 0 · needs -24"
-    assert h.streak == 6                      # every averaged session was above zero
-    assert h.versus == "worse"                # 24 against 80 five sessions ago
+    lows = _days([10, 10, 10, 10, 60, 60, 60, 20, 20, 30])
+    h = mi.net_highs_headwind("Nasdaq", highs, lows)
+    # Daily nets: 40 x4, -10 x3, 30, 30, 20. Read unsmoothed, the last one.
+    assert h.key == "nasdaq_net_highs" and h.title == "Nasdaq net new highs"
+    assert h.display == "+20" and not h.on
+    assert h.flip == "Flips at 0 · needs -20"
+    assert h.streak == 3                      # above zero for the last three sessions
+    assert h.versus == "better"               # 20 against -10 five sessions ago
     assert h.level == 0.0 and h.path[2] is None
-    worse = mi.net_highs_headwind([(highs, _days([200] * 10)), (highs, nyse_lows)])
-    assert worse.on and worse.display == "-110" and worse.flip.endswith("needs +110")
-    # One leg missing: no read, never half a sum.
-    assert mi.net_highs_headwind([(highs, nasdaq_lows), (highs, None)]) is None
+    assert h.path[1] == (40, 40, 40, 40, -10, -10, -10, 30, 30, 20)
+    worse = mi.net_highs_headwind("NYSE", highs, _days([10] * 9 + [160]))
+    assert worse.key == "nyse_net_highs" and worse.on and worse.streak == 1
+    assert worse.display == "-110" and worse.flip.endswith("needs +110")
+    # Exactly zero is not below zero.
+    assert not mi.net_highs_headwind("NYSE", highs, _days([50] * 10)).on
+    # One leg missing: no read.
+    assert mi.net_highs_headwind("NYSE", highs, None) is None
+
+
+def test_the_two_exchanges_are_separate_headwinds_and_can_disagree():
+    frames = _universe()
+    frames["NASDAQ_NL52W"] = frames["NASDAQ_NL52W"] * 0 + 1e6     # lows swamp highs
+    frames["NYSE_NL52W"] = frames["NYSE_NL52W"] * 0               # no lows at all
+    by_key = {h.key: h for h in mi.build_snapshot(_bars(frames)).headwinds}
+    assert by_key["nasdaq_net_highs"].on and not by_key["nyse_net_highs"].on
+    assert [mi.net_highs_key(x) for x, _, _ in mi.NET_HIGHS_SYMBOLS] == list(mi.HEADWIND_KEYS[:2])
 
 
 def test_updown_headwind_is_the_reads_own_ratio_under_one():
@@ -436,13 +454,13 @@ def test_rotation_headwind_is_the_ratio_above_its_fifty_day_average():
 def test_the_headline_counts_headwinds_and_fomo_is_not_one_of_them():
     snap = mi.build_snapshot(_bars(_universe()))
     on = sum(h.on for h in snap.headwinds)
-    assert mi.headline(snap)[0] == f"{on} of 5 headwinds on"
+    assert mi.headline(snap)[0] == f"{on} of 6 headwinds on"
     # FOMO, the advancing share and credit appetite cannot move the count.
     frames = _universe()
     frames[mi.FOMO_SYMBOL] = frames[mi.FOMO_SYMBOL] * 0 + 5.0       # deeply washed out
     frames[mi.ADVANCING_SYMBOL] = frames[mi.ADVANCING_SYMBOL] * 0 + 1.0
     assert mi.headline(mi.build_snapshot(_bars(frames))) == mi.headline(snap)
-    assert "fomo" not in mi.HEADWIND_KEYS and len(mi.HEADWIND_KEYS) == 5
+    assert "fomo" not in mi.HEADWIND_KEYS and len(mi.HEADWIND_KEYS) == 6
 
 
 def test_the_headlines_sentence_follows_the_count():
@@ -467,11 +485,11 @@ def test_run_length_and_versus_are_what_the_cards_say():
 
 # ── the history under the headwinds ───────────────────────────────────────────
 
-def test_the_history_is_the_cards_own_states_on_the_sessions_all_five_share():
+def test_the_history_is_the_cards_own_states_on_the_sessions_all_six_share():
     frames = _universe(200)
     snap = mi.build_snapshot(_bars(frames))
     h = snap.history
-    assert [key for key, _, _ in h.rows] == list(mi.HEADWIND_KEYS) and h.total == 5
+    assert [key for key, _, _ in h.rows] == list(mi.HEADWIND_KEYS) and h.total == 6
     assert all(len(flags) == len(h.dates) == len(h.price) == len(h.count)
                for _, _, flags in h.rows)
     # The last session of every row is what that headwind's card says today.
@@ -487,9 +505,9 @@ def test_the_history_is_the_cards_own_states_on_the_sessions_all_five_share():
 
 def test_no_history_unless_every_headwind_can_be_read():
     frames = _universe(200)
-    del frames["NYSE_NL52W"]                    # half the net-highs sum
+    del frames["NYSE_NL52W"]                    # the NYSE's net cannot be read
     snap = mi.build_snapshot(_bars(frames))
-    assert len(snap.headwinds) == 4 and snap.history is None
+    assert len(snap.headwinds) == 5 and snap.history is None
 
 
 def test_stretches_join_runs_that_are_close_and_count_only_all_on_sessions():
@@ -604,7 +622,7 @@ def test_bond_volatility_is_the_move_index_on_its_own_history():
 
 # ── a year of the counts behind the net-highs headwind ────────────────────────
 
-def test_breadth_history_sums_the_exchanges_and_carries_the_headwinds_own_average():
+def test_breadth_history_sums_the_exchanges_and_carries_a_five_day_average():
     frames = _universe(300)
     snap = mi.build_snapshot(_bars(frames))
     b = snap.breadth
@@ -613,11 +631,11 @@ def test_breadth_history_sums_the_exchanges_and_carries_the_headwinds_own_averag
     lows = sum(frames[lo]["Close"] for _, _, lo in mi.NET_HIGHS_SYMBOLS)
     assert b.highs[-1] == highs.iloc[-1] and b.lows[-1] == lows.iloc[-1]
     assert b.net == tuple(h - lo for h, lo in zip(b.highs, b.lows))
-    # The chart's heavy line ends on the number the headwind card prints.
-    card = next(h for h in snap.headwinds if h.key == "net_highs")
-    assert f"{b.average[-1]:+.0f}" == card.display
     assert b.average[-1] == pytest.approx(sum(b.net[-5:]) / 5)
-    assert b.dates[-1] == card.date
+    # The summed net is the two headwind cards' own numbers added up.
+    cards = [h for h in snap.headwinds if h.key.endswith("net_highs")]
+    assert len(cards) == 2 and all(c.date == b.dates[-1] for c in cards)
+    assert sum(c.path[1][-1] for c in cards) == b.net[-1]
 
 
 def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
@@ -648,7 +666,7 @@ def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
     plain = _universe(200)
     del plain[mi.FOMO_SYMBOL]
     without = mi.build_snapshot(_bars(plain)).history
-    assert without.fomo is None and without.count == h.count and without.total == h.total == 5
+    assert without.fomo is None and without.count == h.count and without.total == h.total == 6
 
 
 # ── provisional breadth: the evening's unconfirmed bar ────────────────────────
@@ -674,9 +692,11 @@ def test_a_provisional_bar_is_spliced_after_the_official_series_and_named():
     snap = mi.build_snapshot(_bars(with_bars))
     assert snap.fomo.value == 9.5 and snap.fomo.date == day
     assert snap.fomo.change == 9.5 - plain.fomo.value
-    assert set(snap.provisional) == {"fomo", "net_highs", "Nasdaq", "NYSE"}
-    card = next(h for h in snap.headwinds if h.key == "net_highs")
-    assert card.date == day and snap.breadth.dates[-1] == day
+    assert set(snap.provisional) == {"fomo", "net_highs", "nasdaq_net_highs",
+                                     "nyse_net_highs", "Nasdaq", "NYSE"}
+    for card in (h for h in snap.headwinds if h.key.endswith("net_highs")):
+        assert card.date == day and card.display == "-400" and card.on
+    assert snap.breadth.dates[-1] == day
     assert snap.breadth.net[-1] == (500 - 900) * 2
     # The advancing share has no sibling here, so it is as it was and not named.
     assert snap.advance_decline == plain.advance_decline
@@ -705,3 +725,33 @@ def test_a_provisional_bar_is_never_awaited_and_one_leg_alone_does_not_move_the_
     # Highs without lows for the new session is no net for it: nothing changes.
     assert snap.net_highs == plain.net_highs and snap.breadth == plain.breadth
     assert "net_highs" not in snap.provisional and "Nasdaq" not in snap.provisional
+
+
+# ── the NYSE new-lows share (context on the NYSE card) ────────────────────────
+
+def test_the_nyse_lows_share_is_lows_over_issues_advancing_plus_declining():
+    lows = _days([10, 40, 120, 130])
+    adv, dec = _days([1500, 1000, 600, 700]), _days([1000, 1500, 2400, 2300])
+    share = mi.lows_share_read("NYSE", lows, adv, dec)
+    assert share.value == pytest.approx(130 / 3000 * 100)
+    assert (share.lows, share.traded) == (130, 3000)
+    assert share.above_last_year == 2          # 4.0% and 4.33%; 0.4% and 1.6% are under
+    assert share.date == lows.index[-1].strftime("%Y-%m-%d") == share.path[0][-1]
+    assert share.path[1][-1] == share.value and len(share.path[0]) == 4
+    assert share.exchange == "NYSE"
+    assert mi.lows_share_read("NYSE", lows, adv, None) is None
+
+
+def test_each_exchanges_lows_share_is_context_and_never_awaited():
+    frames = _universe()
+    snap = mi.build_snapshot(_bars(frames))
+    assert [s.exchange for s in snap.lows_shares] == ["Nasdaq", "NYSE"]
+    for share, (_, _, lo) in zip(snap.lows_shares, mi.NET_HIGHS_SYMBOLS):
+        adv, dec = mi.ISSUES_SYMBOLS[share.exchange]
+        traded = frames[adv]["Close"].iloc[-1] + frames[dec]["Close"].iloc[-1]
+        assert share.value == pytest.approx(frames[lo]["Close"].iloc[-1] / traded * 100)
+    del frames[mi.NYSE_ADVANCING]
+    without = mi.build_snapshot(_bars(frames))
+    assert [s.exchange for s in without.lows_shares] == ["Nasdaq"]
+    assert mi.NYSE_ADVANCING not in without.awaiting
+    assert mi.headline(without) == mi.headline(snap)
