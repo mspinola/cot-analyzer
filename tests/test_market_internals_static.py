@@ -780,3 +780,27 @@ def test_each_headwind_card_carries_its_own_how_to_read():
         assert not any(f"<li>{html.escape(p)}</li>" in card for p in others if p not in points)
     section = page.split('<div class="sec"><h2>Market headwinds</h2>')[1].split("</details>")[0]
     assert "Up/down volume" not in section and "<li>" in section
+
+
+def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
+    snap = _snap()
+    colors = st.page_colors(COLORS)
+    page = st.render(snap, COLORS)
+    card = page.split('data-key="nyse_net_highs"')[1].split("</section>")[0]
+    assert html.escape(view.nyse_lows_share_text(snap.nyse_lows_share)) in card
+    assert "data-lows-share" not in page.split('data-key="nasdaq_net_highs"')[1].split("</section>")[0]
+    data = _payload(page)
+    up = data[st.HEADWIND_PREFIX + "qqq_updown"]["series"][0]
+    assert up["type"] == "baseline" and up["base"] == 1.0 and up["top"] and up["shade"]
+    for key in ("credit", "rotation"):
+        fill, line = data[st.HEADWIND_PREFIX + key]["series"]
+        assert fill["type"] == "area" and "type" not in line
+        assert all(p["topColor"] == p["bottomColor"] for p in fill["data"])
+    h = next(h for h in snap.headwinds if h.key == "rotation")
+    fill = data[st.HEADWIND_PREFIX + "rotation"]["series"][0]["data"]
+    dates, values, average = h.path
+    from components import plot_colors
+    bad = plot_colors.hex_to_rgba(colors.bear, view.STATE_FILL)
+    assert [p["topColor"] == bad for p in fill] == [
+        a is not None and v > a for v, a in zip(values, average)]
+    assert "LC.AreaSeries" in page

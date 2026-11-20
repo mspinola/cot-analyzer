@@ -55,6 +55,10 @@ def _universe(n=120):
     for i, symbol in enumerate(mi.ASSET_SYMBOLS):
         frames[symbol] = _walk(n, seed=10 + i, with_volume=True)
     frames[mi.ROTATION_NUMER] = _walk(n, seed=30, with_volume=True)
+    # Drawn last, so the series above keep the values their tests were written on.
+    for symbol in (mi.NYSE_ADVANCING, mi.NYSE_DECLINING):
+        frames[symbol] = pd.DataFrame({"Close": rng.integers(800, 2000, n).astype(float)},
+                                      index=idx)
     return frames
 
 
@@ -721,3 +725,29 @@ def test_a_provisional_bar_is_never_awaited_and_one_leg_alone_does_not_move_the_
     # Highs without lows for the new session is no net for it: nothing changes.
     assert snap.net_highs == plain.net_highs and snap.breadth == plain.breadth
     assert "net_highs" not in snap.provisional and "Nasdaq" not in snap.provisional
+
+
+# ── the NYSE new-lows share (context on the NYSE card) ────────────────────────
+
+def test_the_nyse_lows_share_is_lows_over_issues_advancing_plus_declining():
+    lows = _days([10, 40, 120, 130])
+    adv, dec = _days([1500, 1000, 600, 700]), _days([1000, 1500, 2400, 2300])
+    share = mi.lows_share_read(lows, adv, dec)
+    assert share.value == pytest.approx(130 / 3000 * 100)
+    assert (share.lows, share.traded) == (130, 3000)
+    assert share.above_last_year == 2          # 4.0% and 4.33%; 0.4% and 1.6% are under
+    assert share.date == lows.index[-1].strftime("%Y-%m-%d")
+    assert mi.lows_share_read(lows, adv, None) is None
+
+
+def test_the_nyse_lows_share_is_context_and_never_awaited():
+    frames = _universe()
+    snap = mi.build_snapshot(_bars(frames))
+    assert snap.nyse_lows_share is not None
+    lows = frames["NYSE_NL52W"]["Close"].iloc[-1]
+    traded = frames[mi.NYSE_ADVANCING]["Close"].iloc[-1] + frames[mi.NYSE_DECLINING]["Close"].iloc[-1]
+    assert snap.nyse_lows_share.value == pytest.approx(lows / traded * 100)
+    del frames[mi.NYSE_ADVANCING]
+    without = mi.build_snapshot(_bars(frames))
+    assert without.nyse_lows_share is None and mi.NYSE_ADVANCING not in without.awaiting
+    assert mi.headline(without) == mi.headline(snap)

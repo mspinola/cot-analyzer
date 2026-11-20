@@ -353,6 +353,13 @@ def headwinds_section(snap, colors):
     jump = f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'
     more = ({mi.net_highs_key(x): jump for x, _, _ in mi.NET_HIGHS_SYMBOLS}
             if snap.breadth is not None else {})
+    share = snap.nyse_lows_share
+    if share is not None:
+        tone = colors.bear if share.value >= mi.NYSE_LOWS_SHARE_LINE else "var(--ink-2)"
+        line = (f'<div class="detail" data-lows-share style="color:{tone}">'
+                f'{_esc(view.nyse_lows_share_text(share))}</div>')
+        key = mi.net_highs_key("NYSE")
+        more[key] = line + more.get(key, "")
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
             + "".join(headwind_card(h, colors, _prov(snap, h.key), more.get(h.key, ""))
@@ -954,9 +961,14 @@ footer a {{ color: var(--ink-2); }}
         line = chart.addSeries(LC.BaselineSeries, {{
           baseValue: {{type: 'price', price: s.base}}, lineWidth: s.width,
           topLineColor: s.color, bottomLineColor: s.color,
-          topFillColor1: 'transparent', topFillColor2: 'transparent',
+          topFillColor1: s.top || 'transparent', topFillColor2: s.top || 'transparent',
           bottomFillColor1: s.shade, bottomFillColor2: s.shade,
           priceFormat: format, priceLineVisible: false, lastValueVisible: false}});
+      }} else if (s.type === 'area') {{
+        // Each point carries its own fill: the session's state.
+        line = chart.addSeries(LC.AreaSeries, {{lineColor: s.color, lineWidth: s.width,
+          topColor: 'transparent', bottomColor: 'transparent', priceFormat: format,
+          priceLineVisible: false, lastValueVisible: false}});
       }} else {{
         line = chart.addSeries(LC.LineSeries, options);
       }}

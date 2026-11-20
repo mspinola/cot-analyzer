@@ -107,6 +107,13 @@ NET_HIGHS_SYMBOLS = (
     ("NYSE", "NYSE_NH52W", "NYSE_NL52W"),
 )
 ADVANCING_SYMBOL, DECLINING_SYMBOL = "NASDAQ_ADV", "NASDAQ_DEC"
+#: NYSE issues advancing and declining: their sum is the issues traded, the
+#: denominator of the new-lows share. Unchanged issues are not in the store, so the
+#: sum runs a few percent short of the true count and the share reads slightly high.
+NYSE_ADVANCING, NYSE_DECLINING = "NYSE_ADV", "NYSE_DEC"
+#: The line Caruso cites from Larry Williams and Ralph Vince: NYSE new lows at 4% or
+#: more of issues. Context on the NYSE card, never a headwind.
+NYSE_LOWS_SHARE_LINE = 4.0
 # The credit leg on the TOTAL tier, and this is not a preference. JNK distributes
 # about 6.7% a year in monthly instalments of roughly 0.56% of its price, so every
 # ex-dividend date puts a notch in the raw price that has nothing to do with credit
@@ -266,6 +273,16 @@ class NetHighsRead:
 
 
 @dataclass(frozen=True)
+class LowsShare:
+    """NYSE new 52-week lows as a percent of issues traded (advancing plus declining)."""
+    value: float           # percent
+    lows: int
+    traded: int
+    above_last_year: int   # sessions at or above NYSE_LOWS_SHARE_LINE in the last 252
+    date: str
+
+
+@dataclass(frozen=True)
 class AdvanceDeclineRead:
     advancing: int
     declining: int
@@ -414,6 +431,7 @@ class Snapshot:
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
+    nyse_lows_share: Optional[LowsShare] = None
     #: The reads whose newest session is a provisional bar, by key: "fomo",
     #: "net_highs" (the year of counts), an exchange's headwind key for its headwind,
     #: an exchange's name for its row, "advance_decline". Empty when every breadth
@@ -800,6 +818,24 @@ def net_highs_headwind(exchange, highs, lows):
         net < NET_HIGHS_LEVEL,
         f"Flips at {NET_HIGHS_LEVEL:.0f} · needs {_needs(NET_HIGHS_LEVEL - value, '.0f')}",
         _versus(net, higher_is_better=True), net, level=NET_HIGHS_LEVEL)
+
+
+def lows_share_read(lows, advancing, declining):
+    """NYSE new lows over advancing plus declining issues, as a percent, on the
+    sessions all three were read. None when any is missing."""
+    if lows is None or advancing is None or declining is None:
+        return None
+    table = pd.concat([lows, advancing + declining], axis=1, join="inner",
+                      keys=["lows", "traded"]).dropna()
+    table = table[table["traded"] > 0]
+    if table.empty:
+        return None
+    share = table["lows"] / table["traded"] * 100
+    return LowsShare(value=float(share.iloc[-1]), lows=int(table["lows"].iloc[-1]),
+                     traded=int(table["traded"].iloc[-1]),
+                     above_last_year=int((share.tail(BREADTH_HISTORY_SESSIONS)
+                                          >= NYSE_LOWS_SHARE_LINE).sum()),
+                     date=_stamp_of(table.index))
 
 
 def updown_ratio_series(frame, sessions=UPDOWN_SESSIONS):
@@ -1245,6 +1281,17 @@ def build_snapshot(get_bars=None):
                                  quiet(VOLATILITY_BOND_SYMBOL))
 
     breadth = breadth_history(pairs)
+
+    def quiet_series(symbol):
+        # Context only: a miss is no line on the card, not a symbol awaited.
+        try:
+            return _with_provisional(get_bars, symbol)[0]
+        except Exception:  # noqa: BLE001
+            return None
+
+    nyse_lows = dict((x, lo) for x, _, lo in NET_HIGHS_SYMBOLS)["NYSE"]
+    nyse_lows_share = lows_share_read(series(nyse_lows), quiet_series(NYSE_ADVANCING),
+                                      quiet_series(NYSE_DECLINING))
     exchanges = {exchange: (hi, lo) for exchange, hi, lo in NET_HIGHS_SYMBOLS}
     every_leg = [s for legs in exchanges.values() for s in legs]
     provisional = [key for key, read, symbols in (
@@ -1273,6 +1320,7 @@ def build_snapshot(get_bars=None):
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
         provisional=tuple(provisional),
+        nyse_lows_share=nyse_lows_share,
     )
 
 

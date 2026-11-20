@@ -52,8 +52,10 @@ HEADWIND_HOWS = {
         "The same count for NYSE stocks: new 52-week highs minus new lows on the day. "
         "Below zero is a headwind.",
         "Caruso cites a study by Larry Williams and Ralph Vince on the NYSE: new lows "
-        "reaching 4% or more of issues marked a market in serious trouble. This page "
-        "does not compute that share.",
+        "reaching 4% or more of issues marked a market in serious trouble. The card's "
+        "last line is that share: new lows over issues advancing plus declining. "
+        "Unchanged issues are not counted, so it reads slightly high. Context only, "
+        "not part of the headwind.",
         "The chart is the last quarter, a column a session, red where it was below zero.",
     ),
     "qqq_updown": (
@@ -384,11 +386,20 @@ def bars(color, dates, values):
                      if v is not None and v == v]}
 
 
-def zone(color, shade, dates, values, base=0.0):
-    """A line for `chart` whose side BELOW `base` is shaded: the headwind's zone."""
-    return {"type": "baseline", "color": color, "shade": shade, "base": base, "width": 2,
+def zone(color, shade, dates, values, base=0.0, top=None, width=2):
+    """A line for `chart` whose side BELOW `base` is shaded: the headwind's zone. `top`
+    shades the side above it too."""
+    return {"type": "baseline", "color": color, "shade": shade, "top": top, "base": base,
+            "width": width,
             "data": [{"time": d, "value": v} for d, v in zip(dates, values)
                      if v is not None and v == v]}
+
+
+def area(color, dates, values, fills, width=1):
+    """A line for `chart` shaded down to the axis, each session in its own `fills[i]`."""
+    return {"type": "area", "color": color, "width": width,
+            "data": [{"time": d, "value": v, "topColor": f, "bottomColor": f}
+                     for d, v, f in zip(dates, values, fills) if v is not None and v == v]}
 
 
 def chart(height, series, levels=(), decimals=0):
@@ -565,6 +576,17 @@ def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
     return " ".join(f"{x:.1f},{y:.1f}" for x, y in pts), pts[-1]
 
 
+#: Opacity of the faint state fill under a headwind card's line.
+STATE_FILL = 0.16
+
+
+def nyse_lows_share_text(share):
+    """The NYSE card's context line: today's share against the line Caruso cites."""
+    return (f"New lows {share.value:.1f}% of issues traded "
+            f"({mi.NYSE_LOWS_SHARE_LINE:.0f}% line) · at or above it on "
+            f"{share.above_last_year} sessions in the past year")
+
+
 def headwind_chart(headwind, colors):
     """A headwind's quarter: its series against the level it turns on, or, where the
     read is a series against its own average, the two lines. Net new highs, a daily
@@ -579,7 +601,30 @@ def headwind_chart(headwind, colors):
             if point["value"] < headwind.level:
                 point["color"] = colors.bear
         return chart(120, [cols], levels=((headwind.level, INK_2),))
-    decimals = 4 if headwind.key == "rotation" else 2
+    from components import plot_colors
+    good = plot_colors.hex_to_rgba(colors.bull, STATE_FILL)
+    bad = plot_colors.hex_to_rgba(colors.bear, STATE_FILL)
+    if headwind.key.endswith("_updown"):
+        # Shaded from the 1.0 line to the ratio: green on the buying side, red below.
+        return chart(120, [zone(INK, bad, dates, values, base=headwind.level, top=good,
+                                width=1.5)],
+                     levels=((headwind.level, tone),), decimals=2)
+    if headwind.key == "credit":
+        # The price shaded to the axis, red on the sessions the EMA was falling.
+        falling = [i > 0 and None not in (second[i], second[i - 1])
+                   and second[i] < second[i - 1] for i in range(len(second))]
+        return chart(120, [area(INK_2, dates, values, [bad if f else good for f in falling]),
+                           {"color": tone, "width": 2,
+                            "data": [{"time": d, "value": v} for d, v in zip(dates, second)
+                                     if v is not None]}], decimals=2)
+    if headwind.key == "rotation":
+        # The ratio shaded to the axis, red on the sessions it was above its average.
+        above = [a is not None and v > a for v, a in zip(values, second)]
+        return chart(120, [area(INK_2, dates, values, [bad if x else good for x in above]),
+                           {"color": tone, "width": 2,
+                            "data": [{"time": d, "value": v} for d, v in zip(dates, second)
+                                     if v is not None]}], decimals=4)
+    decimals = 2
     if second is None:
         return line_chart(120, [(INK, 1.5, dates, values)],
                           levels=((headwind.level, tone),), decimals=decimals)
