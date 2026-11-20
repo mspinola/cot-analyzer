@@ -279,15 +279,15 @@ def history_card(history, colors):
             f'<div class="hp"><svg class="hfomo" viewBox="0 0 {n} {u:g}" '
             f'preserveAspectRatio="none" role="img" aria-label="FOMO daily bars, 0 to 100" '
             f'data-closes="{view.history_fomo_closes(history)}">{zones}{unread}'
-            + f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
-            f'vector-effect="non-scaling-stroke" data-fomo="bars" '
-            f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none" '
-            f'd="{view.history_fomo_path(history)}"/>'
-            # Without the script the card shows its full history, so the marks.
+            # The extremes on every window, under the bars where they are drawn.
             + '<g data-fomo="extremes">'
             + _marks(washed, f"{u - fear:g}", surveys.TONE_LOW, 0.9, y=f"{fear:g}")
             + _marks(over, f"{stretched:g}", surveys.TONE_HIGH, 0.9)
             + '</g>'
+            + f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
+            f'vector-effect="non-scaling-stroke" data-fomo="bars" '
+            f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none" '
+            f'd="{view.history_fomo_path(history)}"/>'
             + '</svg></div>')
     rows = [
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
@@ -1145,12 +1145,11 @@ footer a {{ color: var(--ink-2); }}
         : svg === fomo ? [0, {view.HISTORY_FOMO_UNITS:g}] : [0, 1];
       svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
     }});
-    // FOMO: daily bars while they are wide enough to read, else the extremes.
+    // FOMO: daily bars while they are wide enough to read; the extremes always.
     if (fomo) {{
       var bars = fomo.querySelector('[data-fomo="bars"]');
       var daily = len <= +bars.dataset.upto;
       bars.setAttribute('display', daily ? 'inline' : 'none');
-      fomo.querySelector('[data-fomo="extremes"]').setAttribute('display', daily ? 'none' : 'inline');
     }}
     axis.textContent = '';
     ticks(start, len).forEach(function (t) {{

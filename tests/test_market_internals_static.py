@@ -592,6 +592,9 @@ def test_every_headwind_row_is_a_switch_and_fomo_is_the_bottom_row_of_bars():
     washed, over = view.history_fomo_extremes(h)
     marks = row.split('<g data-fomo="extremes">')[1].split("</g>")[0]
     assert marks.count("<rect") == len(view.runs(washed)) + len(view.runs(over))
+    # The marks sit under the bars, and the script never hides them.
+    assert row.index('data-fomo="extremes"') < row.index('data-fomo="bars"')
+    assert """[data-fomo="extremes"]').setAttribute""" not in page
     assert f'fill="{surveys.TONE_LOW}"' in row and f'fill="{surveys.TONE_HIGH}"' in row
     for level in (indicators.FOMO_FEAR_MAX, indicators.FOMO_EXHAUSTION_MIN):
         assert f'y1="{view.HISTORY_FOMO_UNITS - level:g}"' in row

@@ -103,8 +103,9 @@ HISTORY_HOW = (
     f"to 100. Under {indicators.FOMO_FEAR_MAX:.0f} (the cool band) is washed out, "
     f"{indicators.FOMO_EXHAUSTION_MIN:.0f} and over (the warm band) stretched. On a "
     "window of a year or so it is a daily bar: the high-to-low line, the open a tick "
-    "left, the close a tick right. On longer windows a daily bar is too thin to read, "
-    "so the row marks only the sessions that closed in either band. It is never in the "
+    "left, the close a tick right. Every window marks the sessions that closed in "
+    "either band, and on longer windows, where a daily bar is too thin to read, the "
+    "marks are all it draws. It is never in the "
     "count, and starts in late 2018 where its series does.",
     "The window buttons zoom every row together. Point at a session (or tap it) for its "
     "date and the rows that were on. Your window, shading and rows are remembered on "
@@ -817,9 +818,9 @@ HISTORY_FOMO_UNITS = 100.0
 #: Longest window, in sessions, that draws FOMO's daily bars. Past it a bar is under a
 #: pixel wide and the row is a solid band; a coarser bar does not help either, because
 #: the share crosses most of its range inside a week, so a weekly or monthly bar is
-#: nearly full height every time (tried 2026-11-19). A longer window draws the
-#: extremes instead: a mark in the washed-out band for every session that closed under
-#: it, and in the stretched band for every session that closed in it.
+#: nearly full height every time (tried 2026-11-19). Every window draws the extremes:
+#: a mark in the washed-out band for each session that closed under it, and in the
+#: stretched band for each that closed in it; past this window they are all it draws.
 HISTORY_FOMO_DAILY_UPTO = 400
 
 
