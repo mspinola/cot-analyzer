@@ -42,6 +42,9 @@ HEADWIND_HOWS = {
         "day. Below zero is a headwind.",
         "Caruso's reading: more highs than lows is a healthy market, more lows than "
         "highs a weak one, and the net tends to stay positive while money is flowing in.",
+        "The fold under the chart is new lows as a share of Nasdaq issues traded "
+        "(advancing plus declining), against the 4% line from the NYSE study cited on "
+        "the NYSE card. Here it is a reference: the study was not of the Nasdaq.",
         "A few sessions of net lows can be a false signal. Caruso checks it against "
         "FOMO: net lows with a washed-out FOMO reading is usually a pause, net lows "
         "without one a real breakdown. Three or more sessions of net highs in a row is, "
@@ -52,9 +55,9 @@ HEADWIND_HOWS = {
         "The same count for NYSE stocks: new 52-week highs minus new lows on the day. "
         "Below zero is a headwind.",
         "Caruso cites a study by Larry Williams and Ralph Vince on the NYSE: new lows "
-        "reaching 4% or more of issues marked a market in serious trouble. The second "
-        "chart is that share: new lows over issues advancing plus declining, with the "
-        "4% line dashed. "
+        "reaching 4% or more of issues marked a market in serious trouble. The fold "
+        "under the chart is that share: new lows over issues advancing plus declining, "
+        "with the 4% line dashed. "
         "Unchanged issues are not counted, so it reads slightly high. Context only, "
         "not part of the headwind.",
         "The chart is the last quarter, a column a session, red where it was below zero.",
@@ -603,8 +606,8 @@ LOWS_SHARE_TITLE = "New lows, % of issues traded"
 
 def lows_share_side(share):
     """The words beside the share's number: which side of the line it is on."""
-    line = f"{mi.NYSE_LOWS_SHARE_LINE:.0f}%"
-    return f"over the {line} line" if share.value >= mi.NYSE_LOWS_SHARE_LINE else f"under the {line} line"
+    line = f"{mi.LOWS_SHARE_LINE:.0f}%"
+    return f"over the {line} line" if share.value >= mi.LOWS_SHARE_LINE else f"under the {line} line"
 
 
 def lows_share_chart(share, colors):
@@ -612,9 +615,9 @@ def lows_share_chart(share, colors):
     dates, values = share.path
     cols = bars(INK_2, dates, values)
     for point in cols["data"]:
-        if point["value"] >= mi.NYSE_LOWS_SHARE_LINE:
+        if point["value"] >= mi.LOWS_SHARE_LINE:
             point["color"] = colors.bear
-    return chart(80, [cols], levels=((mi.NYSE_LOWS_SHARE_LINE, colors.bear),), decimals=1)
+    return chart(80, [cols], levels=((mi.LOWS_SHARE_LINE, colors.bear),), decimals=1)
 
 
 def headwind_chart(headwind, colors):

@@ -111,9 +111,15 @@ ADVANCING_SYMBOL, DECLINING_SYMBOL = "NASDAQ_ADV", "NASDAQ_DEC"
 #: denominator of the new-lows share. Unchanged issues are not in the store, so the
 #: sum runs a few percent short of the true count and the share reads slightly high.
 NYSE_ADVANCING, NYSE_DECLINING = "NYSE_ADV", "NYSE_DEC"
+#: Each exchange's (advancing, declining) issues: the denominator of its share.
+ISSUES_SYMBOLS = {"Nasdaq": (ADVANCING_SYMBOL, DECLINING_SYMBOL),
+                  "NYSE": (NYSE_ADVANCING, NYSE_DECLINING)}
 #: The line Caruso cites from Larry Williams and Ralph Vince: NYSE new lows at 4% or
-#: more of issues. Context on the NYSE card, never a headwind.
-NYSE_LOWS_SHARE_LINE = 4.0
+#: more of issues. Drawn on both net-highs cards as context, never a headwind; the
+#: study was of the NYSE, so on the Nasdaq card it is a reference, not its finding.
+#: Measured on the store since 2006: at or over it on 7.8% of NYSE sessions and 8.7%
+#: of Nasdaq sessions, so the line marks the same rough tail on both.
+LOWS_SHARE_LINE = 4.0
 # The credit leg on the TOTAL tier, and this is not a preference. JNK distributes
 # about 6.7% a year in monthly instalments of roughly 0.56% of its price, so every
 # ex-dividend date puts a notch in the raw price that has nothing to do with credit
@@ -274,11 +280,13 @@ class NetHighsRead:
 
 @dataclass(frozen=True)
 class LowsShare:
-    """NYSE new 52-week lows as a percent of issues traded (advancing plus declining)."""
+    """An exchange's new 52-week lows as a percent of issues traded (advancing plus
+    declining)."""
+    exchange: str
     value: float           # percent
     lows: int
     traded: int
-    above_last_year: int   # sessions at or above NYSE_LOWS_SHARE_LINE in the last 252
+    above_last_year: int   # sessions at or above LOWS_SHARE_LINE in the last 252
     path: tuple            # (date strings, percents), the quarter the cards draw
     date: str
 
@@ -432,7 +440,8 @@ class Snapshot:
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
-    nyse_lows_share: Optional[LowsShare] = None
+    #: Each exchange's LowsShare, in NET_HIGHS_SYMBOLS order; context, never counted.
+    lows_shares: tuple = ()
     #: The reads whose newest session is a provisional bar, by key: "fomo",
     #: "net_highs" (the year of counts), an exchange's headwind key for its headwind,
     #: an exchange's name for its row, "advance_decline". Empty when every breadth
@@ -821,9 +830,9 @@ def net_highs_headwind(exchange, highs, lows):
         _versus(net, higher_is_better=True), net, level=NET_HIGHS_LEVEL)
 
 
-def lows_share_read(lows, advancing, declining):
-    """NYSE new lows over advancing plus declining issues, as a percent, on the
-    sessions all three were read. None when any is missing."""
+def lows_share_read(exchange, lows, advancing, declining):
+    """An exchange's new lows over its advancing plus declining issues, as a percent,
+    on the sessions all three were read. None when any is missing."""
     if lows is None or advancing is None or declining is None:
         return None
     table = pd.concat([lows, advancing + declining], axis=1, join="inner",
@@ -832,10 +841,10 @@ def lows_share_read(lows, advancing, declining):
     if table.empty:
         return None
     share = table["lows"] / table["traded"] * 100
-    return LowsShare(value=float(share.iloc[-1]), lows=int(table["lows"].iloc[-1]),
+    return LowsShare(exchange=exchange, value=float(share.iloc[-1]), lows=int(table["lows"].iloc[-1]),
                      traded=int(table["traded"].iloc[-1]),
                      above_last_year=int((share.tail(BREADTH_HISTORY_SESSIONS)
-                                          >= NYSE_LOWS_SHARE_LINE).sum()),
+                                          >= LOWS_SHARE_LINE).sum()),
                      path=(_dates(share.tail(PATH_SESSIONS).index),
                            tuple(float(v) for v in share.tail(PATH_SESSIONS))),
                      date=_stamp_of(table.index))
@@ -1292,9 +1301,13 @@ def build_snapshot(get_bars=None):
         except Exception:  # noqa: BLE001
             return None
 
-    nyse_lows = dict((x, lo) for x, _, lo in NET_HIGHS_SYMBOLS)["NYSE"]
-    nyse_lows_share = lows_share_read(series(nyse_lows), quiet_series(NYSE_ADVANCING),
-                                      quiet_series(NYSE_DECLINING))
+    lows_shares = []
+    for exchange, _, lo in NET_HIGHS_SYMBOLS:
+        advancing, declining = ISSUES_SYMBOLS[exchange]
+        share = lows_share_read(exchange, series(lo), quiet_series(advancing),
+                                quiet_series(declining))
+        if share is not None:
+            lows_shares.append(share)
     exchanges = {exchange: (hi, lo) for exchange, hi, lo in NET_HIGHS_SYMBOLS}
     every_leg = [s for legs in exchanges.values() for s in legs]
     provisional = [key for key, read, symbols in (
@@ -1323,7 +1336,7 @@ def build_snapshot(get_bars=None):
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
         provisional=tuple(provisional),
-        nyse_lows_share=nyse_lows_share,
+        lows_shares=tuple(lows_shares),
     )
 
 

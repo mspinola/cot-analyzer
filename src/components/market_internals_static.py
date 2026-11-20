@@ -55,8 +55,9 @@ SURVEYS_URL = dict(surveys.SITES)["Surveys"]
 URL = dict(surveys.SITES)[CURRENT]
 SITE_NAME = "Blue Magic AI monitors"
 BREADTH_ID = "breadth"
-#: The NYSE card's second chart: new lows as a share of issues traded.
-LOWS_SHARE_KEY = "lows-share"
+#: Each net-highs card's folded chart: new lows as a share of issues traded. Its key
+#: is LOWS_SHARE_PREFIX + the exchange, lower case.
+LOWS_SHARE_PREFIX = "lows-share:"
 #: Every source a section of the page draws on, not only the breadth and the bars: the
 #: line named two of them until 2026-11-19, after volatility, the surveys and the COT
 #: had joined the page.
@@ -136,8 +137,8 @@ def charts(snap, colors, positioning=(), groups=None):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
-    if snap.nyse_lows_share is not None:
-        out[LOWS_SHARE_KEY] = view.lows_share_chart(snap.nyse_lows_share, colors)
+    for share in snap.lows_shares:
+        out[LOWS_SHARE_PREFIX + share.exchange.lower()] = view.lows_share_chart(share, colors)
     if snap.breadth is not None:
         out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
         out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
@@ -353,17 +354,17 @@ def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
-    # The NYSE card's second chart: its new lows against the 4% line Caruso cites.
+    # Each net-highs card's folded second chart: its new lows against the 4% line.
     extra = {}
-    share = snap.nyse_lows_share
-    if share is not None:
-        tone = colors.bear if share.value >= mi.NYSE_LOWS_SHARE_LINE else "var(--ink-2)"
-        extra[mi.net_highs_key("NYSE")] = (
-            f'<div class="share" data-lows-share>{_detail(view.LOWS_SHARE_TITLE)}'
-            f'<div class="row"><span class="mid" style="color:{tone}">{share.value:.1f}%</span>'
-            f'{_detail(view.lows_share_side(share))}</div>'
-            + _chart(LOWS_SHARE_KEY, view.lows_share_chart(share, colors)["height"])
-            + '</div>')
+    for share in snap.lows_shares:
+        tone = colors.bear if share.value >= mi.LOWS_SHARE_LINE else "var(--ink-2)"
+        key = LOWS_SHARE_PREFIX + share.exchange.lower()
+        extra[mi.net_highs_key(share.exchange)] = (
+            f'<details class="share" data-lows-share><summary>{_esc(view.LOWS_SHARE_TITLE)} '
+            f'<span class="mid" style="color:{tone}">{share.value:.1f}%</span> '
+            f'{_esc(view.lows_share_side(share))}</summary>'
+            + _chart(key, view.lows_share_chart(share, colors)["height"])
+            + '</details>')
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
             + "".join(headwind_card(h, colors, _prov(snap, h.key), extra.get(h.key, ""))
@@ -816,8 +817,10 @@ table.cot td small {{ color: var(--muted); }}
 .how ul {{ margin: 4px 0 0; padding-left: 18px; }}
 .how li {{ margin: 3px 0; line-height: 1.45; }}
 .card.hw .how {{ margin: 2px 0 4px; }}
-.card.hw .share {{ margin-top: 10px; }}
-.card.hw .share .mid {{ font-size: 1.05rem; font-weight: 600; }}
+.card.hw .share {{ margin: 6px 0 2px; font-size: 0.8rem; }}
+.card.hw .share summary {{ cursor: pointer; color: var(--ink-2); }}
+.card.hw .share .mid {{ font-weight: 600; }}
+.card.hw .share[open] summary {{ margin-bottom: 4px; }}
 .card.hw {{ border-left: 3px solid var(--line); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}

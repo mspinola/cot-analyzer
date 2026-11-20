@@ -732,23 +732,26 @@ def test_a_provisional_bar_is_never_awaited_and_one_leg_alone_does_not_move_the_
 def test_the_nyse_lows_share_is_lows_over_issues_advancing_plus_declining():
     lows = _days([10, 40, 120, 130])
     adv, dec = _days([1500, 1000, 600, 700]), _days([1000, 1500, 2400, 2300])
-    share = mi.lows_share_read(lows, adv, dec)
+    share = mi.lows_share_read("NYSE", lows, adv, dec)
     assert share.value == pytest.approx(130 / 3000 * 100)
     assert (share.lows, share.traded) == (130, 3000)
     assert share.above_last_year == 2          # 4.0% and 4.33%; 0.4% and 1.6% are under
     assert share.date == lows.index[-1].strftime("%Y-%m-%d") == share.path[0][-1]
     assert share.path[1][-1] == share.value and len(share.path[0]) == 4
-    assert mi.lows_share_read(lows, adv, None) is None
+    assert share.exchange == "NYSE"
+    assert mi.lows_share_read("NYSE", lows, adv, None) is None
 
 
-def test_the_nyse_lows_share_is_context_and_never_awaited():
+def test_each_exchanges_lows_share_is_context_and_never_awaited():
     frames = _universe()
     snap = mi.build_snapshot(_bars(frames))
-    assert snap.nyse_lows_share is not None
-    lows = frames["NYSE_NL52W"]["Close"].iloc[-1]
-    traded = frames[mi.NYSE_ADVANCING]["Close"].iloc[-1] + frames[mi.NYSE_DECLINING]["Close"].iloc[-1]
-    assert snap.nyse_lows_share.value == pytest.approx(lows / traded * 100)
+    assert [s.exchange for s in snap.lows_shares] == ["Nasdaq", "NYSE"]
+    for share, (_, _, lo) in zip(snap.lows_shares, mi.NET_HIGHS_SYMBOLS):
+        adv, dec = mi.ISSUES_SYMBOLS[share.exchange]
+        traded = frames[adv]["Close"].iloc[-1] + frames[dec]["Close"].iloc[-1]
+        assert share.value == pytest.approx(frames[lo]["Close"].iloc[-1] / traded * 100)
     del frames[mi.NYSE_ADVANCING]
     without = mi.build_snapshot(_bars(frames))
-    assert without.nyse_lows_share is None and mi.NYSE_ADVANCING not in without.awaiting
+    assert [s.exchange for s in without.lows_shares] == ["Nasdaq"]
+    assert mi.NYSE_ADVANCING not in without.awaiting
     assert mi.headline(without) == mi.headline(snap)

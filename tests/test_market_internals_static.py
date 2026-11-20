@@ -45,7 +45,8 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
     assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
-                                   st.NET_HISTORY_KEY, st.LOWS_SHARE_KEY,
+                                   st.NET_HISTORY_KEY,
+                                   *(st.LOWS_SHARE_PREFIX + x.lower() for x, _, _ in mi.NET_HIGHS_SYMBOLS),
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
@@ -782,21 +783,21 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
     snap = _snap()
     colors = st.page_colors(COLORS)
     page = st.render(snap, COLORS)
-    card = page.split('data-key="nyse_net_highs"')[1].split("</section>")[0]
-    share = snap.nyse_lows_share
-    assert "data-lows-share" in card and f"{share.value:.1f}%" in card
-    assert html.escape(view.lows_share_side(share)) in card
-    assert f'data-chart="{st.LOWS_SHARE_KEY}"' in card
-    # The second chart sits between the net columns and what would flip the card.
-    assert card.index(f'data-chart="{st.HEADWIND_PREFIX}nyse_net_highs"') < card.index(
-        f'data-chart="{st.LOWS_SHARE_KEY}"') < card.index("Flips at")
-    assert "data-lows-share" not in page.split('data-key="nasdaq_net_highs"')[1].split("</section>")[0]
-    spec = _payload(page)[st.LOWS_SHARE_KEY]
-    assert [lv["value"] for lv in spec["levels"]] == [mi.NYSE_LOWS_SHARE_LINE]
-    (cols,) = spec["series"]
-    assert cols["type"] == "histogram" and len(cols["data"]) == len(share.path[0])
-    assert all((p.get("color") == colors.bear) == (p["value"] >= mi.NYSE_LOWS_SHARE_LINE)
-               for p in cols["data"])
+    # Each net-highs card folds its own new-lows share under its columns, closed.
+    for share in snap.lows_shares:
+        card = page.split(f'data-key="{mi.net_highs_key(share.exchange)}"')[1].split("</section>")[0]
+        key = st.LOWS_SHARE_PREFIX + share.exchange.lower()
+        assert '<details class="share" data-lows-share>' in card
+        assert f"{share.value:.1f}%" in card and html.escape(view.lows_share_side(share)) in card
+        assert card.index(f'data-chart="{st.HEADWIND_PREFIX}{mi.net_highs_key(share.exchange)}"') \
+            < card.index(f'data-chart="{key}"') < card.index("Flips at")
+        spec = _payload(page)[key]
+        assert [lv["value"] for lv in spec["levels"]] == [mi.LOWS_SHARE_LINE]
+        (cols,) = spec["series"]
+        assert cols["type"] == "histogram" and len(cols["data"]) == len(share.path[0])
+        assert all((p.get("color") == colors.bear) == (p["value"] >= mi.LOWS_SHARE_LINE)
+                   for p in cols["data"])
+    assert page.count("data-lows-share") == 2
     data = _payload(page)
     up = data[st.HEADWIND_PREFIX + "qqq_updown"]["series"][0]
     assert up["type"] == "baseline" and up["base"] == 1.0 and up["top"] and up["shade"]
