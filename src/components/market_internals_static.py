@@ -159,9 +159,24 @@ def _badge(text, verdict, colors):
             f'border-color:{plot_colors.hex_to_rgba(color, 0.35)}">{_esc(text)}</span>')
 
 
+def _how(how):
+    """A closed "How to read this": a paragraph, or a tuple of points, one each."""
+    if not how:
+        return ""
+    if isinstance(how, str):
+        how = (how,)
+    points = "".join(f"<li>{_esc(p)}</li>" for p in how)
+    return (f'<details class="how"><summary>{_esc(sentiment.HOW_TO_READ_LABEL)}</summary>'
+            f'<ul>{points}</ul></details>\n')
+
+
+def _sub(subtitle, how=None):
+    return f'<div class="sub">{_esc(subtitle)}</div>\n' + _how(how)
+
+
 def _card(title, subtitle, how, *body):
     """A card as the surveys page builds one: title, one sentence, the rest closed."""
-    head = surveys._sub(subtitle, how) if subtitle else ""
+    head = _sub(subtitle, how) if subtitle else ""
     return (f'<section class="card"><h2>{_esc(title)}</h2>\n{head}'
             + "\n".join(body) + '</section>\n')
 
@@ -169,7 +184,7 @@ def _card(title, subtitle, how, *body):
 def _section(title, subtitle, how=None):
     """A section heading over a group of cards: a title, one sentence, the rest closed."""
     return (f'<div class="sec"><h2>{_esc(title)}</h2>\n'
-            + surveys._sub(subtitle, how) + '</div>\n')
+            + _sub(subtitle, how) + '</div>\n')
 
 
 def _prov(snap, key):
@@ -208,7 +223,7 @@ def headwind_card(h, colors, chip="", more=""):
         f'<div class="row"><span class="big">{_esc(h.display)}</span>{chip}'
         + (f'<span class="detail" style="color:{versus_tone}">{_esc(versus)}</span>'
            if versus else "")
-        + f'</div>{_detail(h.subtitle)}'
+        + f'</div>{_detail(h.subtitle)}{_how(view.HEADWIND_HOWS.get(h.key))}'
         + _chart(HEADWIND_PREFIX + h.key, view.headwind_chart(h, colors)["height"])
         + _detail(h.flip)
         + f'<div class="detail" style="color:{tone}">{_esc(view.headwind_streak(h))}</div>'
@@ -787,6 +802,10 @@ table.cot td small {{ color: var(--muted); }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
   .hprice {{ height: 150px; }}
 }}
+/* A How to read this is a short list of points, one idea each. */
+.how ul {{ margin: 4px 0 0; padding-left: 18px; }}
+.how li {{ margin: 3px 0; line-height: 1.45; }}
+.card.hw .how {{ margin: 2px 0 4px; }}
 .card.hw {{ border-left: 3px solid var(--line); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}

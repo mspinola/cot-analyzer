@@ -24,33 +24,89 @@ AVERAGE_COLOR = "#5B8DD6"
 HEADWINDS_TITLE = "Market headwinds"
 HEADWINDS_SUBTITLE = ("Six trend measures, each a headwind or not. The count is how many "
                       "are on.")
+#: A "How to read this" is a string (one paragraph) or a tuple (one point each).
+#: Points marked as Caruso's restate the Insights member dashboard's own notes in this
+#: page's words; they are that dashboard's reading, not something tested here.
 HEADWINDS_HOW = (
-    "Net new highs: each day's new 52-week highs minus new lows, for the Nasdaq and for "
-    "the NYSE; below zero is a headwind. Up/down volume: over the last 20 sessions, volume on up-close "
-    "days over volume on down-close days, for QQQ and for SPY; below 1 is net selling. "
-    "JNK: the 20-day EMA of dividend-adjusted high-yield credit; falling is a headwind. "
-    "XLP/QQQ: staples over Nasdaq above the ratio's 50-day average is defensives "
-    "leading. The definitions are the Caruso Insights member dashboard's. Each card "
-    "says what would flip it, how long it has been in its state, and whether it is "
-    "better or worse than five sessions ago.")
+    "Each card is one trend measure, a headwind or not, and opens its own How to read "
+    "this. The definitions are the Caruso Insights member dashboard's.",
+    "Caruso's use of the count: the more headwinds are on, the more defensive to be, "
+    "stepping exposure up or down as they change rather than all in or all out. This "
+    "page shows the count; it has not tested that use.",
+    "Every card says what would flip it, how long it has been in its state, and whether "
+    "it is better or worse than five sessions ago.",
+)
+#: Each headwind card's own explanation, by headwind key.
+HEADWIND_HOWS = {
+    "nasdaq_net_highs": (
+        "Nasdaq stocks at a new 52-week high minus those at a new 52-week low, on the "
+        "day. Below zero is a headwind.",
+        "Caruso's reading: more highs than lows is a healthy market, more lows than "
+        "highs a weak one, and the net tends to stay positive while money is flowing in.",
+        "A few sessions of net lows can be a false signal. Caruso checks it against "
+        "FOMO: net lows with a washed-out FOMO reading is usually a pause, net lows "
+        "without one a real breakdown. Three or more sessions of net highs in a row is, "
+        "in that reading, a positive trend.",
+        "The chart is the last quarter, a column a session, red where it was below zero.",
+    ),
+    "nyse_net_highs": (
+        "The same count for NYSE stocks: new 52-week highs minus new lows on the day. "
+        "Below zero is a headwind.",
+        "Caruso cites a study by Larry Williams and Ralph Vince on the NYSE: new lows "
+        "reaching 4% or more of issues marked a market in serious trouble. This page "
+        "does not compute that share.",
+        "The chart is the last quarter, a column a session, red where it was below zero.",
+    ),
+    "qqq_updown": (
+        "Over the last 20 sessions, QQQ's volume on up-close days divided by its volume "
+        "on down-close days.",
+        "Below 1.0 is more selling than buying in the Nasdaq 100: the headwind side.",
+        "Caruso reads it with net new highs: both on marks a weak market to be careful in.",
+    ),
+    "spy_updown": (
+        "Over the last 20 sessions, SPY's volume on up-close days divided by its volume "
+        "on down-close days.",
+        "Below 1.0 is more selling than buying in the S&P 500: the headwind side.",
+    ),
+    "credit": (
+        "JNK is a high-yield (junk) bond fund. Junk bonds behave partly like stocks, so "
+        "they react quickly when risk rises.",
+        "Caruso uses it as a daily stand-in for the Chicago Fed's National Financial "
+        "Conditions Index, which comes out weekly and is revised.",
+        "Its 20-day EMA falling is conditions tightening, a headwind; rising is easing. "
+        "The price is dividend-adjusted, since each monthly payout would otherwise notch "
+        "it under its average.",
+        "Caruso notes it gives a few more false signals than the other measures.",
+    ),
+    "rotation": (
+        "XLP (consumer staples, the defensive side) divided by QQQ (the Nasdaq 100, "
+        "growth), against the ratio's 50-day average.",
+        "Above the average is money rotating to defense, a headwind, and it can weigh on "
+        "growth stocks while the index still looks fine. Below is risk on.",
+        "Caruso notes it can be late, so read it with the others.",
+    ),
+}
 HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
     "bottom row marks the sessions all six were on at once, and the shading behind the "
-    "price is the same count: light for five, darker for all six. Select a row's name "
-    "to switch it off or on: the bottom row and the shading then count only the rows "
-    "that are on, so you can ask when any set of them lined up. \"Only all on at once\" "
-    "drops the lighter band, leaving the price shaded only where every row that is on "
-    "lined up. FOMO is an extra row, "
-    "off to begin with and never in the count: switched on, it marks the sessions the "
-    "reading was washed out (cool) or stretched (warm), on its own row and over the "
-    "price, from late 2018 where its series starts. The window buttons "
-    "zoom every row together and refit the price to what is on screen. Point at a "
-    "session (or tap it) and the line under the buttons names its date and the rows "
-    "that were on. Your window, shading and rows are remembered on this device. The history starts "
-    "where the youngest series does (JNK, late 2007). It shows when the headwinds lined "
-    "up and nothing more: no claim is made here about what followed, and none has been "
-    "tested.")
+    "price is the same count: light for five, darker for all six.",
+    "Select a row's name to switch it off or on: the bottom row and the shading then "
+    "count only the rows that are on, so you can ask when any set of them lined up. "
+    "\"Only all on at once\" drops the lighter band.",
+    "FOMO is an extra row, off to begin with and never in the count: switched on, it "
+    "marks the sessions the reading was washed out (cool) or stretched (warm), from late "
+    "2018 where its series starts.",
+    "The window buttons zoom every row together. Point at a session (or tap it) for its "
+    "date and the rows that were on. Your window, shading and rows are remembered on "
+    "this device.",
+    "Caruso's reading: strong uptrends show few headwinds and serious corrections show "
+    "them stacked. Expect a few short false signals; the aim is to stay with the major "
+    "trend, not to be perfect.",
+    "The history starts where the youngest series does (JNK, late 2007). It shows when "
+    "the headwinds lined up and nothing more: no claim is made here about what "
+    "followed, and none has been tested.",
+)
 UNCOUNTED_TITLE = "Not in the count"
 UNCOUNTED_SUBTITLE = ("A short-term extreme check, a credit gauge, and equity and rates "
                       "volatility. None is a trend measure.")
@@ -105,10 +161,17 @@ DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange,
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
 FOMO_SUBTITLE = ("The share of Nasdaq Composite stocks above their own 5-day average, past "
                  "year. Not a trend signal.")
-FOMO_HOW = (f"Above {indicators.FOMO_EXHAUSTION_MIN:.0f} is stretched: buying exhaustion, "
-            f"the end to sell into. Below {indicators.FOMO_FEAR_MAX:.0f} is washed out: "
-            "broad pessimism, the buyable end, and a reading climbing back out of it is "
-            "recovering. Between the named zones the reading offers no edge either way.")
+FOMO_HOW = (
+    "The share of Nasdaq stocks above their own 5-day average: short-term impulse "
+    "buying and selling. A tactical check at the extremes, not a trend measure, and "
+    "never in the count.",
+    f"Above {indicators.FOMO_EXHAUSTION_MIN:.0f} is stretched: almost everyone has been "
+    "buying, which Caruso treats as a likely short-term trap.",
+    f"Below {indicators.FOMO_FEAR_MAX:.0f} is washed out: almost everyone has been "
+    "selling, short-term fear. A reading climbing back out of it is recovering.",
+    "Caruso uses it as context for net new lows: with fear, usually a pause; without "
+    "fear, a real breakdown. Between the named zones it offers no edge either way.",
+)
 APPETITE_TITLE = (f"Credit appetite · {mi.APPETITE_JUNK} against {mi.APPETITE_TREASURY}")
 APPETITE_SUBTITLE = ("Junk bonds against Treasuries, ranked on their own past year. "
                      "Context: not one of the headwinds.")

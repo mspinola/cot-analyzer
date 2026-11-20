@@ -765,3 +765,18 @@ def test_a_legend_wraps_whole_items():
     page = st.render(_snap(), COLORS, positioning=_positioning())
     assert page.count('class="detail legend"') == 3
     assert "white-space: nowrap" in page.split(".key {")[1].split("}")[0]
+
+
+def test_each_headwind_card_carries_its_own_how_to_read():
+    """The explanation sits on the card it explains, as a closed list of points, and
+    the section's own fold no longer defines every measure at once."""
+    page = st.render(_snap(), COLORS)
+    assert set(view.HEADWIND_HOWS) == set(mi.HEADWIND_KEYS)
+    for key, points in view.HEADWIND_HOWS.items():
+        card = page.split(f'data-key="{key}"')[1].split("</section>")[0]
+        assert '<details class="how">' in card
+        assert all(f"<li>{html.escape(p)}</li>" in card for p in points)
+        others = [p for k, ps in view.HEADWIND_HOWS.items() if k != key for p in ps]
+        assert not any(f"<li>{html.escape(p)}</li>" in card for p in others if p not in points)
+    section = page.split('<div class="sec"><h2>Market headwinds</h2>')[1].split("</details>")[0]
+    assert "Up/down volume" not in section and "<li>" in section
