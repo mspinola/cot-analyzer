@@ -256,7 +256,8 @@ def test_the_history_card_draws_a_strip_per_headwind_aligned_to_the_session():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     n = len(h.dates)
     # Every SVG is one unit a session wide, so a mark's x is its session index.
-    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 2   # + all, + FOMO
+    assert card.count(f'viewBox="0 0 {n} 1"') == len(mi.HEADWIND_KEYS) + 1   # + all
+    assert f'viewBox="0 0 {n} {view.HISTORY_FOMO_UNITS:g}"' in card        # FOMO's bars
     assert f'viewBox="0 0 {n} {view.HISTORY_PRICE_UNITS:g}"' in card
     for key, label, flags in h.rows:
         strip = card.split(f'data-strip="{key}"')[1].split("</svg>")[0]
@@ -506,7 +507,9 @@ def test_the_history_marks_are_the_headwind_cards_red():
     page = st.render(_snap(), COLORS)
     red = st.page_colors(COLORS).bear
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
-    assert f'fill="{red}"' in card and surveys.TONE_HIGH not in card
+    # The warm tone is FOMO's stretched band, in its own row, never a headwind mark.
+    strips = card.split('class="hfomo"')[0]
+    assert f'fill="{red}"' in strips and surveys.TONE_HIGH not in strips
     assert f".hl.all {{ color: {red};" in page
 
 
@@ -564,10 +567,11 @@ def test_no_breadth_charts_without_both_exchanges_counts():
     assert st.HIGHS_LOWS_KEY not in _payload(page)
 
 
-def test_every_history_row_is_a_switch_and_fomo_starts_off():
+def test_every_headwind_row_is_a_switch_and_fomo_is_the_bottom_row_of_bars():
     """A row's name is a button. The six headwinds start on and are what the count is
-    made of (`data-headwind`); FOMO is a seventh row that starts off, drawn in the tiles'
-    cool and warm tones, with its marks over the price hidden until it is switched on."""
+    made of (`data-headwind`). FOMO is the bottom row: not a switch, never counted,
+    its daily bars drawn on 0 to 100 with the two extremes banded."""
+    from cotmetrics import indicators
     snap = _snap()
     h = snap.history
     assert h.fomo is not None
@@ -575,31 +579,46 @@ def test_every_history_row_is_a_switch_and_fomo_starts_off():
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     switches = re.findall(r'<button type="button" class="hl htog" data-row="(\w+)" '
                           r'aria-pressed="(\w+)">', card)
-    assert switches == [(k, "true") for k in mi.HEADWIND_KEYS] + [(view.HISTORY_FOMO_KEY, "false")]
+    assert switches == [(k, "true") for k in mi.HEADWIND_KEYS]
     assert card.count("data-headwind") == len(mi.HEADWIND_KEYS)
-    assert f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">' in card
-    assert card.count('class="hp off"') == 1
-    washed, stretched, _ = h.fomo
-    strip = card.split(f'data-strip="{view.HISTORY_FOMO_KEY}"')[1].split("</svg>")[0]
-    assert strip.count(f'fill="{surveys.TONE_LOW}"') == len(view.runs(washed))
-    assert strip.count(f'fill="{surveys.TONE_HIGH}"') == len(view.runs(stretched))
-    assert '<g data-band="fomo" display="none">' in card
+    assert 'class="hp off"' not in card and 'data-band="fomo"' not in card
+    # The FOMO row comes after "All 6 at once" and before the axis.
+    assert card.index("data-all-label") < card.index('class="hfomo"') < card.index("hyears")
+    row = card.split('class="hfomo"')[1].split("</svg>")[0]
+    bars, first = h.fomo
+    path = row.split('data-fomo="bars"')[1].split(' d="')[1].split('"')[0]
+    assert path.count("M") == 3 * sum(b is not None for b in bars)
+    assert f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none"' in row
+    washed, over = view.history_fomo_extremes(h)
+    marks = row.split('<g data-fomo="extremes">')[1].split("</g>")[0]
+    assert marks.count("<rect") == len(view.runs(washed)) + len(view.runs(over))
+    # The marks sit under the bars, and the script never hides them.
+    assert row.index('data-fomo="extremes"') < row.index('data-fomo="bars"')
+    assert """[data-fomo="extremes"]').setAttribute""" not in page
+    assert f'fill="{surveys.TONE_LOW}"' in row and f'fill="{surveys.TONE_HIGH}"' in row
+    for level in (indicators.FOMO_FEAR_MAX, indicators.FOMO_EXHAUSTION_MIN):
+        assert f'y1="{view.HISTORY_FOMO_UNITS - level:g}"' in row
+    assert f'data-closes="{view.history_fomo_closes(h)}"' in card
     assert '<g data-band="most">' in card and '<g data-band="every">' in card
-    # The shading option: both bands by default, or only the all-on one.
     assert 'data-shade="most" aria-pressed="true"' in card
     assert 'data-shade="every" aria-pressed="false"' in card
     assert f'data-total="{h.total}"' in card and "data-history-summary" in card
-    # The script recounts from the rows that are on, and FOMO is never one of them.
     assert "svg[data-headwind]" in page and "function recount()" in page
     assert html.escape(view.HISTORY_FOMO_LABEL) in card
+
+
+def test_the_fomo_path_is_high_to_low_with_open_and_close_ticks():
+    import dataclasses
+    h = dataclasses.replace(_snap().history, fomo=(((41.6, 41.6, 14.4, 14.4), None), 0))
+    assert view.history_fomo_path(h) == "M0.5 58.4V85.6M0.15 58.4H0.5M0.5 85.6H0.85"
+    assert view.history_fomo_closes(h) == "14.4,"
 
 
 def test_the_history_draws_without_a_fomo_row_when_the_series_is_missing():
     snap = _snap(drop=(mi.FOMO_SYMBOL,))
     assert snap.history is not None and snap.history.fomo is None
     card = st.render(snap, COLORS).split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
-    assert view.HISTORY_FOMO_KEY not in re.findall(r'data-row="(\w+)"', card)
-    assert 'data-band="fomo"' not in card
+    assert 'class="hfomo"' not in card and 'data-band="fomo"' not in card
 
 
 def test_sentiment_dots_are_warm_and_cool_not_green_and_red():
@@ -689,7 +708,8 @@ def test_the_headline_says_how_long_the_count_has_stood():
 def test_jump_links_name_only_the_sections_on_the_page():
     plain = st.render(_snap(), COLORS)
     links = re.findall(r'<a href="#([a-z]+)">', plain.split('<nav class="jumps"')[1].split("</nav>")[0])
-    assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.DETAIL_ID]
+    assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.ANOMALIES_ID,
+                     st.DETAIL_ID]
     assert all(f'id="{anchor}"' in plain for anchor in links)
     full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
     links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
@@ -820,3 +840,52 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
     assert [p["topColor"] == bad for p in fill] == [
         a is not None and v > a for v, a in zip(values, average)]
     assert "LC.AreaSeries" in page
+
+
+def test_the_anomaly_cards_draw_a_cell_a_session_and_shade_the_flagged_days():
+    snap = _snap()
+    assert snap.anomalies                       # JNK/TLT and XLP/QQQ; no VIX in the fixture
+    page = st.render(snap, COLORS)
+    assert f'id="{st.ANOMALIES_ID}"' in page and f'href="#{st.ANOMALIES_ID}"' in page
+    for read in snap.anomalies:
+        card = page.split(f'data-anomaly="{read.key}"')[1].split("</section>")[0]
+        assert card.count('class="ac"') == 2 * len(read.sessions)
+        flagged = sum(1 for s in read.sessions if s[3])
+        assert card.count('class="ac" title=') == 2 * len(read.sessions)
+        assert len(re.findall(r'class="ac" title="[^"]*" style="background:rgba\(', card)) \
+            == 2 * flagged
+        assert html.escape(view.anomaly_tally(read)) in card
+        assert html.escape(view.anomaly_tip(read, read.sessions[-1])) in card
+        assert '<details class="how">' in card
+    # Context: the count does not move.
+    assert view.anomaly_badge(snap.anomalies[0]) in ("Anomaly", "Normal")
+
+
+def test_the_anomalies_sit_below_sentiment_and_positioning():
+    page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    at = {anchor: page.index(f'id="{anchor}"') for anchor, _ in st.JUMPS}
+    assert at[st.SENTIMENT_ID] < at[st.POSITIONING_ID] < at[st.ANOMALIES_ID] < at[st.DETAIL_ID]
+
+
+def test_the_fomo_card_has_a_gauge_the_last_closes_and_the_days_range():
+    import dataclasses
+    snap = _snap()
+    fomo = dataclasses.replace(snap.fomo, value=14.4, bar=(41.6, 41.6, 14.4, 14.4))
+    page = st.render(dataclasses.replace(snap, fomo=fomo), COLORS)
+    card = page.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
+    assert '<div class="fg"' in card and 'class="fm" style="left:14.4%"' in card
+    assert 'class="fr" style="left:14.4%;width:27.2%"' in card
+    assert view.fomo_day(fomo) == "Day: open 41.6 · high 41.6 · low 14.4 · close 14.4"
+    assert html.escape(view.fomo_day(fomo)) in card and html.escape(view.fomo_recent(fomo)) in card
+    bare = st.render(snap, COLORS)
+    card = bare.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
+    assert '<div class="fg"' in card and "Day: open" not in card and 'class="fr"' not in card
+
+
+def test_the_long_windows_mark_fomos_extreme_closes():
+    import dataclasses
+    h = _snap().history
+    bars = ((30.0, 35.0, 20.0, 19.9), None, (14.0, 85.0, 14.0, 80.0), (41.6, 41.6, 14.4, 50.0))
+    h = dataclasses.replace(h, dates=h.dates[:4], fomo=(bars, 0))
+    assert view.history_fomo_extremes(h) == ((True, False, False, False),
+                                             (False, False, True, False))

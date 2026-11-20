@@ -647,26 +647,33 @@ def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
     assert short.average[4] is not None
 
 
-def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
-    from cotmetrics import indicators
+def test_the_history_carries_fomos_bars_beside_the_count_not_in_it():
     frames = _universe(200)
     values = [50.0] * 200
-    values[150], values[151], values[180] = 10.0, 12.0, 90.0
-    frames[mi.FOMO_SYMBOL] = pd.DataFrame({"Close": values}, index=frames["QQQ"].index).iloc[100:]
+    values[150], values[180] = 10.0, 90.0
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame(
+        {"Open": values, "High": [v + 5 for v in values], "Low": [v - 5 for v in values],
+         "Close": values}, index=frames["QQQ"].index).iloc[100:]
     h = mi.build_snapshot(_bars(frames)).history
-    washed, stretched, first = h.fomo
-    assert len(washed) == len(stretched) == len(h.dates)
-    # Flags are cotmetrics' zones (fear, exhaustion) on the history's own sessions.
+    bars, first = h.fomo
+    assert len(bars) == len(h.dates)
     offset = 200 - len(h.dates)
-    assert [i + offset for i, v in enumerate(washed) if v] == [150, 151]
-    assert [i + offset for i, v in enumerate(stretched) if v] == [180]
     assert first == 100 - offset                      # where the FOMO series starts
-    assert values[150] < indicators.FOMO_FEAR_MAX and values[180] >= indicators.FOMO_EXHAUSTION_MIN
+    assert all(b is None for b in bars[:first]) and all(b is not None for b in bars[first:])
+    assert bars[150 - offset] == (10.0, 15.0, 5.0, 10.0)
+    assert bars[180 - offset] == (90.0, 95.0, 85.0, 90.0)
+    # A provisional session is the last bar, when the history reaches it.
     # It changes nothing the count is made of.
     plain = _universe(200)
     del plain[mi.FOMO_SYMBOL]
     without = mi.build_snapshot(_bars(plain)).history
     assert without.fomo is None and without.count == h.count and without.total == h.total == 6
+
+
+def test_a_close_only_fomo_draws_as_ticks():
+    frame = mi._fomo_frame(_bars({mi.FOMO_SYMBOL: pd.DataFrame(
+        {"Close": [30.0, 40.0]}, index=pd.bdate_range("2026-04-01", periods=2, name="Date"))}))
+    assert frame.iloc[-1].tolist() == [40.0, 40.0, 40.0, 40.0]
 
 
 # ── provisional breadth: the evening's unconfirmed bar ────────────────────────
@@ -755,3 +762,64 @@ def test_each_exchanges_lows_share_is_context_and_never_awaited():
     assert [s.exchange for s in without.lows_shares] == ["Nasdaq"]
     assert mi.NYSE_ADVANCING not in without.awaiting
     assert mi.headline(without) == mi.headline(snap)
+
+
+# ── market anomalies (context, never counted) ─────────────────────────────────
+
+@pytest.mark.parametrize("key, first, second, flags", [
+    # SPY, VIX: the same way is an anomaly; both up red, both down green.
+    ("vix_spy", [0.01, -0.01, 0.01, -0.01, 0.0], [0.02, -0.03, -0.02, 0.05, 0.04],
+     [mi.RED, mi.GREEN, None, None, None]),
+    # JNK, TLT: opposite ways; TLT up with JNK down red, TLT down with JNK up green.
+    ("jnk_tlt", [-0.01, 0.01, 0.01, -0.01, 0.01], [0.01, -0.01, 0.01, -0.01, 0.0],
+     [mi.RED, mi.GREEN, None, None, None]),
+    # QQQ, XLP: both up with XLP up more red; both down with QQQ down less green.
+    ("xlp_qqq", [0.01, 0.02, -0.01, -0.02, 0.01], [0.02, 0.01, -0.02, -0.01, -0.01],
+     [mi.RED, None, mi.GREEN, None, None]),
+])
+def test_anomaly_flags_are_the_dashboards_rules(key, first, second, flags):
+    got = mi.anomaly_flags(key, _days(first), _days(second))
+    assert list(got) == flags
+
+
+def test_an_anomaly_read_counts_the_last_twenty_sessions():
+    spy = _days([100 * 1.01 ** i for i in range(30)])              # up every day
+    vix = _days([20 + (i % 2) for i in range(30)])                 # up, down, up...
+    read = mi.anomaly_read("vix_spy", "VIX vs. SPY", ("SPY", "VIX"), spy, vix)
+    assert len(read.sessions) == mi.ANOMALY_SESSIONS
+    assert read.red == 10 and read.green == 0                      # every VIX up day
+    assert read.flag == (mi.RED if vix.iloc[-1] > vix.iloc[-2] else None)
+    assert read.changes[0] == pytest.approx(0.01)
+    assert read.date == read.sessions[-1][0] == spy.index[-1].strftime("%Y-%m-%d")
+    assert mi.anomaly_read("vix_spy", "t", ("a", "b"), spy, None) is None
+
+
+def test_anomalies_are_context_and_never_awaited():
+    frames = _universe()
+    frames["VIX"] = _walk(len(frames["QQQ"]), seed=99)
+    snap = mi.build_snapshot(_bars(frames))
+    assert [r.key for r in snap.anomalies] == [k for k, *_ in mi.ANOMALY_PAIRS]
+    del frames["VIX"]
+    without = mi.build_snapshot(_bars(frames))
+    assert [r.key for r in without.anomalies] == ["jnk_tlt", "xlp_qqq"]
+    assert "VIX" not in without.awaiting and mi.headline(without) == mi.headline(snap)
+
+
+def test_fomo_carries_the_newest_sessions_range_from_its_source():
+    frames = _universe(200)
+    idx = frames[mi.FOMO_SYMBOL].index
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame(
+        {"Open": 50.0, "High": 60.0, "Low": 40.0, "Close": frames[mi.FOMO_SYMBOL]["Close"]},
+        index=idx)
+    snap = mi.build_snapshot(_bars(frames))
+    assert snap.fomo.bar == (50.0, 60.0, 40.0, frames[mi.FOMO_SYMBOL]["Close"].iloc[-1])
+    # A provisional session's range comes from the sibling, not yesterday's bar.
+    nxt = idx[-1] + pd.offsets.BDay(1)
+    frames[mi.FOMO_SYMBOL + mi.PROVISIONAL_SUFFIX] = pd.DataFrame(
+        {"Open": [41.6], "High": [41.6], "Low": [14.4], "Close": [14.4]},
+        index=pd.DatetimeIndex([nxt], name="Date"))
+    snap = mi.build_snapshot(_bars(frames))
+    assert snap.fomo.value == 14.4 and snap.fomo.bar == (41.6, 41.6, 14.4, 14.4)
+    # A close-only series has no range, and the card simply leaves the line out.
+    plain = mi.build_snapshot(_bars(_universe(200)))
+    assert plain.fomo.bar is None

@@ -224,6 +224,50 @@ POSITIONING_SERIES_WEEKS = 156
 #: Weeks of the 12-month index the sparkline draws, the board's.
 POSITIONING_PATH_WEEKS = 52
 
+# ── market anomalies: days a usual relationship did not hold ──────────────────
+#
+# The Caruso dashboard's three, "to be aware of, not counted as a headwind". Each
+# pair's daily close-to-close changes are compared session by session; a day the
+# pair broke its usual pattern is an anomaly, flagged red (the pressure side) or
+# green (the relief side). An unchanged close is neither up nor down, so it can
+# flag nothing. Context only: never in the count, and nothing here has been tested.
+#
+# (key, title, (symbol, tier, label) for the first leg, the same for the second).
+# The JNK/TLT pair is dividend-adjusted, as the dashboard states (each payout notches
+# a raw close down, which would read as a down day); the others are as traded.
+ANOMALY_PAIRS = (
+    ("vix_spy", "VIX vs. SPY", ("SPY", "split", "SPY"), ("VIX", None, "VIX")),
+    ("jnk_tlt", "JNK vs. TLT", ("JNK", "total", "JNK adj."), ("TLT", "total", "TLT adj.")),
+    ("xlp_qqq", "XLP vs. QQQ", ("QQQ", "split", "QQQ"), ("XLP", "split", "XLP")),
+)
+#: Sessions each anomaly strip shows and counts.
+ANOMALY_SESSIONS = 20
+RED, GREEN = "red", "green"
+
+
+def anomaly_flags(key, first, second):
+    """Each session's flag for a pair, from the two legs' daily changes: RED, GREEN or
+    None. `first` and `second` are aligned change series, in ANOMALY_PAIRS order.
+
+    - vix_spy: SPY and the VIX close the same way. Both up is red (the VIX rising
+      with the market), both down green (the VIX easing as the market falls).
+    - jnk_tlt: junk and Treasuries close opposite ways. TLT up with JNK down is red
+      (a run to safety out of credit), TLT down with JNK up green.
+    - xlp_qqq: on a day both rise, XLP up more than QQQ is red (defense favoured on
+      an up day); on a day both fall, QQQ down less than XLP is green.
+    """
+    up_a, down_a, up_b, down_b = first > 0, first < 0, second > 0, second < 0
+    if key == "vix_spy":
+        red, green = up_a & up_b, down_a & down_b
+    elif key == "jnk_tlt":
+        red, green = up_b & down_a, down_b & up_a
+    elif key == "xlp_qqq":
+        red, green = up_a & up_b & (second > first), down_a & down_b & (first > second)
+    else:
+        raise ValueError(f"no anomaly rule for {key!r}")
+    return pd.Series(np.where(red, RED, np.where(green, GREEN, None)), index=first.index)
+
+
 POSITIVE, NEGATIVE, NEUTRAL = "positive", "negative", "neutral"
 
 FOMO_LABELS = {
@@ -262,6 +306,9 @@ class FomoRead:
     verdict: str
     path: tuple            # (date strings, values), the last month
     date: str
+    #: The newest session's (open, high, low, close), when the store holds the bar's
+    #: range: how far the share swung within the day, the dashboard's "Today" line.
+    bar: Optional[tuple] = None
 
 
 @dataclass(frozen=True)
@@ -404,6 +451,20 @@ class CreditAppetiteRead:
 
 
 @dataclass(frozen=True)
+class AnomalyRead:
+    """One pair's last ANOMALY_SESSIONS: each leg's daily change and the session's flag."""
+    key: str
+    title: str
+    labels: tuple          # (first leg, second leg), as the card names them
+    changes: tuple         # today's (first, second) daily changes, fractions
+    flag: Optional[str]    # today's: RED, GREEN or None
+    sessions: tuple        # ((date, first change, second change, flag), ...), oldest first
+    red: int               # red sessions among `sessions`
+    green: int
+    date: str
+
+
+@dataclass(frozen=True)
 class UpDownRead:
     symbol: str
     ratio: float
@@ -440,6 +501,8 @@ class Snapshot:
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
+    #: The market anomalies the store could serve, in ANOMALY_PAIRS order.
+    anomalies: tuple = ()
     #: Each exchange's LowsShare, in NET_HIGHS_SYMBOLS order; context, never counted.
     lows_shares: tuple = ()
     #: The reads whose newest session is a provisional bar, by key: "fomo",
@@ -488,6 +551,14 @@ def _stamp_of(index):
     return index[-1].strftime("%Y-%m-%d")
 
 
+def _quiet_closes(get_bars, symbol, tier=None):
+    """`_closes` for a context read: None on any miss, with no warning raised."""
+    try:
+        return _closes(get_bars, symbol, tier)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _closes(get_bars, symbol, tier=None):
     """The daily Close series, float, in session order, or None if unreadable."""
     try:
@@ -525,7 +596,26 @@ def signed_streak(net):
     return n * last
 
 
-def fomo_read(series):
+def _fomo_bar(get_bars, date):
+    """FOMO's (open, high, low, close) on `date`, from the provisional sibling when that
+    is the session's source, else the official series; None when neither holds it."""
+    for symbol in (FOMO_SYMBOL + PROVISIONAL_SUFFIX, FOMO_SYMBOL):
+        try:
+            frame = get_bars(symbol)
+        except Exception:  # noqa: BLE001
+            continue
+        if frame is None or frame.empty or not {"Open", "High", "Low", "Close"} <= set(frame):
+            continue
+        frame = frame.copy()
+        frame.index = pd.DatetimeIndex(frame.index)
+        row = frame[frame.index.strftime("%Y-%m-%d") == date]
+        if not row.empty:
+            r = row.iloc[-1]
+            return tuple(float(r[c]) for c in ("Open", "High", "Low", "Close"))
+    return None
+
+
+def fomo_read(series, bar=None):
     if series is None or len(series) < 2:
         return None
     zones = indicators.fomo_zones(series)
@@ -539,6 +629,7 @@ def fomo_read(series):
         verdict=FOMO_VERDICTS[zone],
         path=(_dates(path.index), tuple(float(v) for v in path)),
         date=_stamp_of(series.index),
+        bar=bar,
     )
 
 
@@ -756,23 +847,50 @@ class HeadwindHistory:
     rows: tuple            # ((key, condition label, tuple of bools), ...)
     count: tuple           # headwinds on, per session
     total: int             # how many headwinds a session can have on
-    #: FOMO's extremes on the same sessions, an optional row that is NOT a headwind and
-    #: never in `count`: (washed-out flags, stretched flags, index of the first session
-    #: FOMO was read on, or None). The series starts years after the others.
+    #: FOMO on the same sessions, the bottom row, NOT a headwind and never in `count`:
+    #: (bars, index of the first session FOMO was read on), each bar (open, high, low,
+    #: close) or None where it was not read. The series starts years after the others.
     fomo: Optional[tuple] = None
 
 
-def _fomo_extremes(fomo, index):
-    """FOMO's two extremes (`indicators.fomo_zones`: fear, exhaustion) on `index`."""
+def _fomo_frame(get_bars):
+    """FOMO's daily open, high, low and close, with the provisional sibling's newer
+    bar appended: the same sessions the FOMO card reads. A close-only frame is given
+    its close as all four, so the row still draws, as ticks. None when unreadable."""
+    frames = []
+    for symbol in (FOMO_SYMBOL, FOMO_SYMBOL + PROVISIONAL_SUFFIX):
+        try:
+            frame = get_bars(symbol)
+        except Exception:  # noqa: BLE001
+            frame = None
+        if frame is None or frame.empty or "Close" not in frame:
+            continue
+        frame = frame.copy()
+        frame.index = pd.DatetimeIndex(frame.index)
+        for column in ("Open", "High", "Low"):
+            if column not in frame:
+                frame[column] = frame["Close"]
+        frame = frame[["Open", "High", "Low", "Close"]].astype(float).dropna().sort_index()
+        if frames:
+            frame = frame[frame.index > frames[0].index[-1]]
+        frames.append(frame)
+    if not frames:
+        return None
+    out = pd.concat(frames)
+    return out if len(out) else None
+
+
+def _fomo_bars(fomo, index):
+    """FOMO's bars on the history's sessions: (bars, first session read) or None."""
     if fomo is None or fomo.empty:
         return None
-    zones = indicators.fomo_zones(fomo).reindex(index)
-    read = fomo.reindex(index).notna().to_numpy()
+    table = fomo.reindex(index)
+    read = table["Close"].notna().to_numpy()
     if not read.any():
         return None
-    return (tuple(bool(v) for v in (zones == "fear")),
-            tuple(bool(v) for v in (zones == "exhaustion")),
-            int(read.argmax()))
+    bars = tuple(None if row.isna().any() else tuple(float(v) for v in row)
+                 for _, row in table.iterrows())
+    return bars, int(read.argmax())
 
 
 def headwind_history(flags, price, price_symbol, fomo=None):
@@ -793,7 +911,7 @@ def headwind_history(flags, price, price_symbol, fomo=None):
                    for k in HEADWIND_KEYS),
         count=tuple(int(v) for v in states.sum(axis=1)),
         total=len(HEADWIND_KEYS),
-        fomo=_fomo_extremes(fomo, table.index),
+        fomo=_fomo_bars(fomo, table.index),
     )
 
 
@@ -848,6 +966,26 @@ def lows_share_read(exchange, lows, advancing, declining):
                      path=(_dates(share.tail(PATH_SESSIONS).index),
                            tuple(float(v) for v in share.tail(PATH_SESSIONS))),
                      date=_stamp_of(table.index))
+
+
+def anomaly_read(key, title, labels, first, second):
+    """A pair's anomaly read from the two legs' closes; None without both, or without
+    a session they share past the first."""
+    if first is None or second is None:
+        return None
+    changes = pd.concat([first, second], axis=1, join="inner").dropna().pct_change().dropna()
+    if changes.empty:
+        return None
+    a, b = changes.iloc[:, 0], changes.iloc[:, 1]
+    flags = anomaly_flags(key, a, b)
+    tail = changes.tail(ANOMALY_SESSIONS).index
+    sessions = tuple((d.strftime("%Y-%m-%d"), float(a[d]), float(b[d]), flags[d]) for d in tail)
+    return AnomalyRead(key=key, title=title, labels=labels,
+                       changes=(float(a.iloc[-1]), float(b.iloc[-1])), flag=flags.iloc[-1],
+                       sessions=sessions,
+                       red=sum(s[3] == RED for s in sessions),
+                       green=sum(s[3] == GREEN for s in sessions),
+                       date=_stamp_of(changes.index))
 
 
 def updown_ratio_series(frame, sessions=UPDOWN_SESSIONS):
@@ -1217,6 +1355,8 @@ def build_snapshot(get_bars=None):
         return read is not None and any(held.get(s) == read.date for s in symbols)
 
     fomo = fomo_read(series(FOMO_SYMBOL))
+    if fomo is not None:
+        fomo = fomo_read(series(FOMO_SYMBOL), bar=_fomo_bar(get_bars, fomo.date))
 
     net_highs = []
     for exchange, hi, lo in NET_HIGHS_SYMBOLS:
@@ -1274,7 +1414,7 @@ def build_snapshot(get_bars=None):
     history = headwind_history(
         headwind_flags(legs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
-        fomo=series(FOMO_SYMBOL))
+        fomo=_fomo_frame(get_bars))
 
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.
@@ -1291,6 +1431,15 @@ def build_snapshot(get_bars=None):
     volatility = volatility_read(quiet(VOLATILITY_SYMBOL), quiet(VOLATILITY_TERM_SYMBOL),
                                  quiet(VOLATILITY_NASDAQ_SYMBOL),
                                  quiet(VOLATILITY_BOND_SYMBOL))
+
+    anomalies = []
+    for key, title, (sym_a, tier_a, label_a), (sym_b, tier_b, label_b) in ANOMALY_PAIRS:
+        # Context only: a leg the store cannot serve is no card, not a symbol awaited.
+        read = anomaly_read(key, title, (label_a, label_b),
+                            _quiet_closes(get_bars, sym_a, tier_a),
+                            _quiet_closes(get_bars, sym_b, tier_b))
+        if read is not None:
+            anomalies.append(read)
 
     breadth = breadth_history(pairs)
 
@@ -1337,6 +1486,7 @@ def build_snapshot(get_bars=None):
         date=max(dates) if dates else None,
         provisional=tuple(provisional),
         lows_shares=tuple(lows_shares),
+        anomalies=tuple(anomalies),
     )
 
 

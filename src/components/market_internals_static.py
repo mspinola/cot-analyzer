@@ -78,6 +78,7 @@ HISTORY_ID = "history"
 POSITIONING_ID = "positioning"
 SENTIMENT_ID = "sentiment"
 CONTEXT_ID, DETAIL_ID = "context", "detail"
+ANOMALIES_ID = "anomalies"
 #: A market's commercials chart is POSITIONING_PREFIX + its symbol in the payload.
 POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
@@ -255,23 +256,39 @@ def history_card(history, colors):
     most = [c == history.total - 1 for c in history.count]
     every = [c == history.total for c in history.count]
     tall, top = f"{units * 2:g}", f"{-units / 2:g}"
-    fomo_bands = fomo_row = ""
+    fomo_row = ""
     if history.fomo is not None:
-        washed, stretched, first = history.fomo
-        cool, warm = surveys.TONE_LOW, surveys.TONE_HIGH
-        # Over the price only while the row is on (the script shows the group).
-        fomo_bands = (f'<g data-band="fomo" display="none">'
-                      f'{_marks(washed, tall, cool, 0.5, y=top)}'
-                      f'{_marks(stretched, tall, warm, 0.5, y=top)}</g>')
-        unread = (f'<rect x="0" y="0" width="{first}" height="1" fill="{surveys.PAGE_COLOR}" '
-                  'fill-opacity="0.75"/>' if first else "")
+        from cotmetrics import indicators
+        _, first = history.fomo
+        washed, over = view.history_fomo_extremes(history)
+        u = view.HISTORY_FOMO_UNITS
+        fear, stretched = u - indicators.FOMO_FEAR_MAX, u - indicators.FOMO_EXHAUSTION_MIN
+        # The two extremes as faint bands and dashed lines, the sessions before the
+        # series began dimmed, then the bars: white, like the price line above.
+        zones = (f'<rect x="0" y="{fear:g}" width="{n}" height="{u - fear:g}" '
+                 f'fill="{surveys.TONE_LOW}" fill-opacity="0.16"/>'
+                 f'<rect x="0" y="0" width="{n}" height="{stretched:g}" '
+                 f'fill="{surveys.TONE_HIGH}" fill-opacity="0.16"/>'
+                 + "".join(f'<line x1="0" x2="{n}" y1="{y:g}" y2="{y:g}" stroke="{surveys.INK_2}" '
+                           'stroke-opacity="0.6" stroke-dasharray="3 3" '
+                           'vector-effect="non-scaling-stroke"/>' for y in (fear, stretched)))
+        unread = (f'<rect x="0" y="0" width="{first}" height="{u:g}" '
+                  f'fill="{surveys.PAGE_COLOR}" fill-opacity="0.6"/>' if first else "")
         fomo_row = (
-            f'<button type="button" class="hl htog" data-row="{view.HISTORY_FOMO_KEY}" '
-            f'aria-pressed="false">{_esc(view.HISTORY_FOMO_LABEL)}</button>'
-            f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">'
-            f'<svg class="hstrip" viewBox="0 0 {n} 1" preserveAspectRatio="none" '
-            f'aria-hidden="true">{_marks(washed, 1, cool)}{_marks(stretched, 1, warm)}{unread}'
-            '</svg></div>')
+            f'<div class="hl">{_esc(view.HISTORY_FOMO_LABEL)}</div>'
+            f'<div class="hp"><svg class="hfomo" viewBox="0 0 {n} {u:g}" '
+            f'preserveAspectRatio="none" role="img" aria-label="FOMO daily bars, 0 to 100" '
+            f'data-closes="{view.history_fomo_closes(history)}">{zones}{unread}'
+            # The extremes on every window, under the bars where they are drawn.
+            + '<g data-fomo="extremes">'
+            + _marks(washed, f"{u - fear:g}", surveys.TONE_LOW, 0.9, y=f"{fear:g}")
+            + _marks(over, f"{stretched:g}", surveys.TONE_HIGH, 0.9)
+            + '</g>'
+            + f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
+            f'vector-effect="non-scaling-stroke" data-fomo="bars" '
+            f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none" '
+            f'd="{view.history_fomo_path(history)}"/>'
+            + '</svg></div>')
     rows = [
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
@@ -280,7 +297,7 @@ def history_card(history, colors):
         f'shaded">'
         # Taller than the panel: a zoom pads the price's y range past 0 and the units.
         f'<g data-band="most">{_marks(most, tall, mark, 0.18, y=top)}</g>'
-        f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>{fomo_bands}'
+        f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>'
         f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
         f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
         '</svg></div>']
@@ -340,7 +357,8 @@ def _across(cards):
 
 #: The page's sections in order, (anchor, label): the jump links under the title.
 JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CONTEXT_ID, "Context"),
-         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"), (DETAIL_ID, "Detail"))
+         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"),
+         (ANOMALIES_ID, "Anomalies"), (DETAIL_ID, "Detail"))
 
 
 def _jumps(body):
@@ -381,9 +399,34 @@ def fomo_card(read, colors, chip=""):
         f'{_badge(read.label, read.verdict, colors)}{chip}'
         f'<span class="detail push" style="color:{change}">'
         f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
+        _fomo_gauge(read),
+        _detail(view.fomo_recent(read)),
+        _detail(view.fomo_day(read)) if read.bar else "",
         _chart(FOMO_KEY, view.fomo_chart(read, colors)["height"]),
-        _detail(f"{view.FOMO_ZONES} · {view.fomo_recent(read)}"),
+        _detail(view.FOMO_ZONES),
     )
+
+
+def _fomo_gauge(read):
+    """0 to 100 with the two named extremes shaded, washed out (cool) at the low end
+    and stretched (warm) at the high, and today's reading marked; the day's range,
+    when the bar holds one, as a band under the mark."""
+    from cotmetrics import indicators
+    fear, stretched = indicators.FOMO_FEAR_MAX, indicators.FOMO_EXHAUSTION_MIN
+    span = ""
+    if read.bar is not None:
+        lo, hi = read.bar[2], read.bar[1]
+        span = (f'<i class="fr" style="left:{lo:.1f}%;width:{max(hi - lo, 0.5):.1f}%" '
+                f'title="Day\'s range {lo:.1f} to {hi:.1f}"></i>')
+    return (f'<div class="fg" role="img" aria-label="FOMO {read.value:.1f} on a 0 to 100 '
+            f'scale; under {fear:.0f} is washed out, {stretched:.0f} and over stretched">'
+            f'<i class="fz" style="left:0;width:{fear:.0f}%;background:{surveys.TONE_LOW}"></i>'
+            f'<i class="fz" style="left:{stretched:.0f}%;width:{100 - stretched:.0f}%;'
+            f'background:{surveys.TONE_HIGH}"></i>{span}'
+            f'<i class="fm" style="left:{read.value:.1f}%"></i></div>'
+            f'<div class="fl"><span>0</span><span style="left:{fear:.0f}%">{fear:.0f}</span>'
+            f'<span>50</span><span style="left:{stretched:.0f}%">{stretched:.0f}</span>'
+            f'<span>100</span></div>')
 
 
 def appetite_card(read, credit, colors):
@@ -400,6 +443,46 @@ def appetite_card(read, credit, colors):
         _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
         _detail(view.appetite_status(read, credit)),
     )
+
+
+def anomaly_card(read, colors):
+    """One pair: today's state and changes, then a strip of the last sessions, a column
+    a session, each leg's close as a triangle and an anomaly day shaded."""
+    tone = {mi.RED: colors.bear, mi.GREEN: colors.bull}
+    verdict = {mi.RED: mi.NEGATIVE, mi.GREEN: mi.POSITIVE, None: mi.NEUTRAL}[read.flag]
+    changes = "".join(
+        f'<span class="detail" style="color:{colors.bull if c >= 0 else colors.bear}">'
+        f'{_esc(label)} {c * 100:+.2f}%</span>' for label, c in zip(read.labels, read.changes))
+    cells = []
+    for row, label in enumerate(read.labels):
+        cells.append(f'<span class="al">{_esc(label)}</span>')
+        for session in read.sessions:
+            change, flag = session[1 + row], session[3]
+            mark = "▲" if change > 0 else "▼" if change < 0 else "·"
+            shade = (f' style="background:{plot_colors.hex_to_rgba(tone[flag], 0.32)}"'
+                     if flag else "")
+            cells.append(f'<span class="ac" title="{_esc(view.anomaly_tip(read, session))}"'
+                         f'{shade}>{mark}</span>')
+    first, last = read.sessions[0][0], read.sessions[-1][0]
+    return (
+        f'<section class="card" data-anomaly="{_esc(read.key)}">'
+        f'<div class="between"><h2>{_esc(read.title)}</h2>'
+        f'{_badge(view.anomaly_badge(read), verdict, colors)}</div>\n'
+        + _how(view.ANOMALY_HOWS.get(read.key))
+        + f'<div class="row">{changes}</div>'
+        f'<div class="anom" style="grid-template-columns:4.6em repeat({len(read.sessions)}, '
+        f'minmax(0, 1fr))">{"".join(cells)}</div>'
+        f'<div class="between detail"><span>{_esc(view.day_text(first))}</span>'
+        f'<span>{_esc(view.day_text(last))}</span></div>'
+        + _detail(view.anomaly_tally(read)) + '</section>\n')
+
+
+def anomalies_section(snap, colors):
+    if not snap.anomalies:
+        return ""
+    return (_section(view.ANOMALIES_TITLE, view.ANOMALIES_SUBTITLE, view.ANOMALIES_HOW)
+            + f'<div class="cards{_across(snap.anomalies)}" id="{ANOMALIES_ID}">\n'
+            + "".join(anomaly_card(r, colors) for r in snap.anomalies) + '</div>\n')
 
 
 def volatility_card(read, colors):
@@ -699,7 +782,8 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
                  + f'<div class="cards{_across(context)}" id="{CONTEXT_ID}">\n'
                  + "".join(context) + '</div>\n'
                  + sentiment_section(naaim, votes, allocation)
-                 + positioning_section(positioning, colors, groups))
+                 + positioning_section(positioning, colors, groups)
+                 + anomalies_section(snap, colors))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + breadth_charts(snap, colors)
               + f'<div class="cards" id="{DETAIL_ID}">\n' + breadth_card(snap, colors)
@@ -800,6 +884,7 @@ table.cot td small {{ color: var(--muted); }}
 .hp svg {{ display: block; width: 100%; }}
 .hprice {{ height: 190px; }}
 .hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
+.hfomo {{ height: 64px; background: var(--wash); border-radius: 2px; }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
 .hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
 .hwin, .hshade {{ margin: 8px 0 0; }}
@@ -816,6 +901,23 @@ table.cot td small {{ color: var(--muted); }}
 .how ul {{ margin: 4px 0 0; padding-left: 18px; }}
 .how li {{ margin: 3px 0; line-height: 1.45; }}
 .card.hw .how {{ margin: 2px 0 4px; }}
+/* The FOMO gauge: 0 to 100, the extremes shaded, the reading a mark, its day a band. */
+.fg {{ position: relative; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.10); margin: 10px 0 2px; }}
+.fg i {{ position: absolute; top: 0; height: 100%; }}
+.fg .fz {{ opacity: 0.45; }}
+.fg .fz:first-child {{ border-radius: 4px 0 0 4px; }}
+.fg .fz:nth-child(2) {{ border-radius: 0 4px 4px 0; }}
+.fg .fr {{ top: 2px; height: 4px; background: var(--ink-2); opacity: 0.6; }}
+.fg .fm {{ top: -3px; width: 3px; height: 14px; margin-left: -1.5px; background: var(--ink); border-radius: 1px; }}
+.fl {{ position: relative; height: 1.1em; font-size: 0.7rem; color: var(--ink-2); margin-bottom: 4px; }}
+.fl span {{ position: absolute; transform: translateX(-50%); }}
+.fl span:nth-child(1) {{ left: 0; transform: none; }}
+.fl span:nth-child(3) {{ left: 50%; }}
+.fl span:nth-child(5) {{ right: 0; left: auto; transform: none; }}
+/* An anomaly strip: a label, then a cell a session; a shaded column is a flagged day. */
+.anom {{ display: grid; gap: 2px 1px; align-items: center; margin: 8px 0 2px; font-size: 0.7rem; }}
+.anom .al {{ color: var(--ink-2); font-size: 0.75rem; white-space: nowrap; }}
+.anom .ac {{ text-align: center; color: var(--ink-2); border-radius: 2px; line-height: 1.7; cursor: default; }}
 .card.hw .share {{ margin: 6px 0 2px; font-size: 0.8rem; }}
 .card.hw .share summary {{ cursor: pointer; color: var(--ink-2); }}
 .card.hw .share .mid {{ font-weight: 600; }}
@@ -1006,6 +1108,8 @@ footer a {{ color: var(--ink-2); }}
   var N = +grid.dataset.sessions, UNITS = +grid.dataset.units;
   var svgs = [].slice.call(grid.querySelectorAll('svg'));
   var price = grid.querySelector('.hprice');
+  var fomo = grid.querySelector('.hfomo');
+  var fomoCloses = fomo ? fomo.dataset.closes.split(',') : null;
   var points = price.querySelector('polyline').getAttribute('points').split(' ')
     .map(function (p) {{ p = p.split(','); return [+p[0], +p[1]]; }});
   var axis = grid.querySelector('.hyears');
@@ -1037,9 +1141,16 @@ footer a {{ color: var(--ink-2); }}
     }});
     var pad = (high - low || UNITS) * 0.04;
     svgs.forEach(function (svg) {{
-      var y = svg === price ? [low - pad, high - low + 2 * pad] : [0, 1];
+      var y = svg === price ? [low - pad, high - low + 2 * pad]
+        : svg === fomo ? [0, {view.HISTORY_FOMO_UNITS:g}] : [0, 1];
       svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
     }});
+    // FOMO: daily bars while they are wide enough to read; the extremes always.
+    if (fomo) {{
+      var bars = fomo.querySelector('[data-fomo="bars"]');
+      var daily = len <= +bars.dataset.upto;
+      bars.setAttribute('display', daily ? 'inline' : 'none');
+    }}
     axis.textContent = '';
     ticks(start, len).forEach(function (t) {{
       var span = document.createElement('span');
@@ -1161,7 +1272,7 @@ footer a {{ color: var(--ink-2); }}
     var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     var tall = svg === price;
     line.setAttribute('y1', tall ? -UNITS : 0);
-    line.setAttribute('y2', tall ? UNITS * 2 : 1);
+    line.setAttribute('y2', tall ? UNITS * 2 : svg === fomo ? {view.HISTORY_FOMO_UNITS:g} : 1);
     line.setAttribute('stroke', '{surveys.INK}');
     line.setAttribute('stroke-opacity', '0.7');
     line.setAttribute('stroke-width', '1');
@@ -1197,7 +1308,8 @@ footer a {{ color: var(--ink-2); }}
     var day = new Date(DAYS[i]);
     read.textContent = NAMES[day.getUTCMonth()] + ' ' + day.getUTCDate() + ', ' + day.getUTCFullYear()
       + ' \u00b7 ' + names.length + ' of ' + rows + ' on'
-      + (names.length ? ': ' + names.join(' \u00b7 ') : '');
+      + (names.length ? ': ' + names.join(' \u00b7 ') : '')
+      + (fomoCloses && fomoCloses[i] ? ' \u00b7 FOMO ' + fomoCloses[i] : '');
   }}
   grid.addEventListener('pointermove', function (e) {{ point(e.clientX); }});
   grid.addEventListener('pointerdown', function (e) {{ point(e.clientX); }});
