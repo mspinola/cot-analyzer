@@ -691,7 +691,9 @@ def test_jump_links_name_only_the_sections_on_the_page():
     links = re.findall(r'<a href="#([a-z]+)">', plain.split('<nav class="jumps"')[1].split("</nav>")[0])
     assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.DETAIL_ID]
     assert all(f'id="{anchor}"' in plain for anchor in links)
-    full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    from tests.test_macro_calendar import calendar
+    full = st.render(_snap(), COLORS, positioning=_positioning(), calendar=calendar(),
+                     **_survey_parts())
     links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
     assert links == [anchor for anchor, _ in st.JUMPS]
 

@@ -51,6 +51,15 @@ def main(argv=None) -> int:
         parts["positioning"] = market_internals.equity_positioning()
     except Exception as e:  # noqa: BLE001
         print(f"export-internals: sentiment and positioning incomplete: {e}", file=sys.stderr)
+    # The macro calendar: context too, and its own try, so a calendar fault cannot take
+    # the surveys with it. None (no table, or nothing listed this fortnight) leaves the
+    # section off.
+    try:
+        from components import macro_calendar
+        parts["calendar"] = macro_calendar.read()
+    except Exception as e:  # noqa: BLE001
+        parts["calendar"] = None
+        print(f"export-internals: macro calendar not read: {e}", file=sys.stderr)
     for name, part in parts.items():
         if not part:
             print(f"export-internals: no {name}, left out", file=sys.stderr)
