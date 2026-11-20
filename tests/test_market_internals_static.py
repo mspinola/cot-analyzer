@@ -77,8 +77,8 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
         assert all(p.get("color", colors.bull) == (colors.bear if p["value"] < 0 else colors.bull)
                    for p in cols["data"])
     assert [lv["value"] for lv in by_key["qqq_updown"]["levels"]] == [1.0]
-    for key in ("credit", "rotation"):
-        assert len(by_key[key]["series"]) == 2 and by_key[key]["levels"] == []
+    for key in ("credit", "rotation"):              # the band's two areas, then the lines
+        assert len(by_key[key]["series"]) == 4 and by_key[key]["levels"] == []
 
 
 def test_each_headwind_card_says_its_state_what_flips_it_and_for_how_long():
@@ -793,12 +793,19 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
     up = data[st.HEADWIND_PREFIX + "qqq_updown"]["series"][0]
     assert up["type"] == "baseline" and up["base"] == 1.0 and up["top"] and up["shade"]
     for key in ("credit", "rotation"):
-        fill, line = data[st.HEADWIND_PREFIX + key]["series"]
-        assert fill["type"] == "area" and "type" not in line
-        assert all(p["topColor"] == p["bottomColor"] for p in fill["data"])
+        upper, lower, line, average_line = data[st.HEADWIND_PREFIX + key]["series"]
+        assert upper["type"] == lower["type"] == "area" and "type" not in line
+        # The band runs from the lower of line and average to the upper.
+        h = next(h for h in snap.headwinds if h.key == key)
+        _, values, average = h.path
+        both = [(v, a) for v, a in zip(values, average) if a is not None]
+        assert [p["value"] for p in upper["data"]] == [max(v, a) for v, a in both]
+        assert [p["value"] for p in lower["data"]] == [min(v, a) for v, a in both]
+        assert {p["topColor"] for p in lower["data"]} == {view.SURFACE_COLOR}
     h = next(h for h in snap.headwinds if h.key == "rotation")
-    fill = data[st.HEADWIND_PREFIX + "rotation"]["series"][0]["data"]
     dates, values, average = h.path
+    fill = [p for p in data[st.HEADWIND_PREFIX + "rotation"]["series"][0]["data"]]
+    values, average = zip(*[(v, a) for v, a in zip(values, average) if a is not None])
     from components import plot_colors
     bad = plot_colors.hex_to_rgba(colors.bear, view.STATE_FILL)
     assert [p["topColor"] == bad for p in fill] == [

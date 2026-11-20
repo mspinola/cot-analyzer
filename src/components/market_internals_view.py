@@ -17,7 +17,7 @@ from cotmetrics import indicators
 
 import components.market_internals as mi
 from components import sentiment
-from components.sentiment_static import INK, INK_2
+from components.sentiment_static import INK, INK_2, SURFACE_COLOR
 
 AVERAGE_COLOR = "#5B8DD6"
 
@@ -402,6 +402,23 @@ def area(color, dates, values, fills, width=1):
                      for d, v, f in zip(dates, values, fills) if v is not None and v == v]}
 
 
+def band(dates, values, average, fills):
+    """Two series that shade between `values` and `average`: an area down to the
+    upper of the two in the session's fill, then one down to the lower in the card's
+    own surface, which masks everything under the band. Lightweight Charts has no
+    fill between two lines, so the band is drawn by subtraction. No fill where the
+    average has not filled yet."""
+    pairs = [(d, v, a, f) for d, v, a, f in zip(dates, values, average, fills)
+             if a is not None and v is not None and v == v]
+    upper = {"type": "area", "color": "transparent", "width": 1,
+             "data": [{"time": d, "value": max(v, a), "topColor": f, "bottomColor": f}
+                      for d, v, a, f in pairs]}
+    lower = {"type": "area", "color": "transparent", "width": 1,
+             "data": [{"time": d, "value": min(v, a), "topColor": SURFACE_COLOR,
+                       "bottomColor": SURFACE_COLOR} for d, v, a, f in pairs]}
+    return upper, lower
+
+
 def chart(height, series, levels=(), decimals=0):
     """A chart of mixed series (`bars`, `zone`, or a line_chart series dict)."""
     return {"height": height, "range": None, "decimals": decimals, "series": list(series),
@@ -609,21 +626,21 @@ def headwind_chart(headwind, colors):
         return chart(120, [zone(INK, bad, dates, values, base=headwind.level, top=good,
                                 width=1.5)],
                      levels=((headwind.level, tone),), decimals=2)
-    if headwind.key == "credit":
-        # The price shaded to the axis, red on the sessions the EMA was falling.
-        falling = [i > 0 and None not in (second[i], second[i - 1])
-                   and second[i] < second[i - 1] for i in range(len(second))]
-        return chart(120, [area(INK_2, dates, values, [bad if f else good for f in falling]),
+    if headwind.key in ("credit", "rotation"):
+        # Shaded between the line and its average, red on the sessions the headwind was
+        # on: JNK's EMA falling, or the ratio above its average.
+        if headwind.key == "credit":
+            on = [i > 0 and None not in (second[i], second[i - 1])
+                  and second[i] < second[i - 1] for i in range(len(second))]
+        else:
+            on = [a is not None and v > a for v, a in zip(values, second)]
+        return chart(120, [*band(dates, values, second, [bad if x else good for x in on]),
+                           {"color": INK_2, "width": 1,
+                            "data": [{"time": d, "value": v} for d, v in zip(dates, values)]},
                            {"color": tone, "width": 2,
                             "data": [{"time": d, "value": v} for d, v in zip(dates, second)
-                                     if v is not None]}], decimals=2)
-    if headwind.key == "rotation":
-        # The ratio shaded to the axis, red on the sessions it was above its average.
-        above = [a is not None and v > a for v, a in zip(values, second)]
-        return chart(120, [area(INK_2, dates, values, [bad if x else good for x in above]),
-                           {"color": tone, "width": 2,
-                            "data": [{"time": d, "value": v} for d, v in zip(dates, second)
-                                     if v is not None]}], decimals=4)
+                                     if v is not None]}],
+                     decimals=2 if headwind.key == "credit" else 4)
     decimals = 2
     if second is None:
         return line_chart(120, [(INK, 1.5, dates, values)],
