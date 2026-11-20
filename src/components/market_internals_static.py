@@ -361,8 +361,7 @@ def headwinds_section(snap, colors):
         key = LOWS_SHARE_PREFIX + share.exchange.lower()
         extra[mi.net_highs_key(share.exchange)] = (
             f'<details class="share" data-lows-share><summary>{_esc(view.LOWS_SHARE_TITLE)} '
-            f'<span class="mid" style="color:{tone}">{share.value:.1f}%</span> '
-            f'{_esc(view.lows_share_side(share))}</summary>'
+            f'<span class="mid" style="color:{tone}">{share.value:.1f}%</span></summary>'
             + _chart(key, view.lows_share_chart(share, colors)["height"])
             + '</details>')
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)

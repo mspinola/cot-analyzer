@@ -788,7 +788,7 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
         card = page.split(f'data-key="{mi.net_highs_key(share.exchange)}"')[1].split("</section>")[0]
         key = st.LOWS_SHARE_PREFIX + share.exchange.lower()
         assert '<details class="share" data-lows-share>' in card
-        assert f"{share.value:.1f}%" in card and html.escape(view.lows_share_side(share)) in card
+        assert f"{share.value:.1f}%</span></summary>" in card and " line</summary>" not in card
         assert card.index(f'data-chart="{st.HEADWIND_PREFIX}{mi.net_highs_key(share.exchange)}"') \
             < card.index(f'data-chart="{key}"') < card.index("Flips at")
         spec = _payload(page)[key]

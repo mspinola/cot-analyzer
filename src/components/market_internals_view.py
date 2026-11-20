@@ -604,12 +604,6 @@ STATE_FILL = 0.16
 LOWS_SHARE_TITLE = "New lows, % of issues traded"
 
 
-def lows_share_side(share):
-    """The words beside the share's number: which side of the line it is on."""
-    line = f"{mi.LOWS_SHARE_LINE:.0f}%"
-    return f"over the {line} line" if share.value >= mi.LOWS_SHARE_LINE else f"under the {line} line"
-
-
 def lows_share_chart(share, colors):
     """A column a session, red at or over the line Caruso cites, grey under it."""
     dates, values = share.path
