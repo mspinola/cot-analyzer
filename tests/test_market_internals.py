@@ -647,26 +647,33 @@ def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
     assert short.average[4] is not None
 
 
-def test_the_history_carries_fomos_extremes_beside_the_count_not_in_it():
-    from cotmetrics import indicators
+def test_the_history_carries_fomos_bars_beside_the_count_not_in_it():
     frames = _universe(200)
     values = [50.0] * 200
-    values[150], values[151], values[180] = 10.0, 12.0, 90.0
-    frames[mi.FOMO_SYMBOL] = pd.DataFrame({"Close": values}, index=frames["QQQ"].index).iloc[100:]
+    values[150], values[180] = 10.0, 90.0
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame(
+        {"Open": values, "High": [v + 5 for v in values], "Low": [v - 5 for v in values],
+         "Close": values}, index=frames["QQQ"].index).iloc[100:]
     h = mi.build_snapshot(_bars(frames)).history
-    washed, stretched, first = h.fomo
-    assert len(washed) == len(stretched) == len(h.dates)
-    # Flags are cotmetrics' zones (fear, exhaustion) on the history's own sessions.
+    bars, first = h.fomo
+    assert len(bars) == len(h.dates)
     offset = 200 - len(h.dates)
-    assert [i + offset for i, v in enumerate(washed) if v] == [150, 151]
-    assert [i + offset for i, v in enumerate(stretched) if v] == [180]
     assert first == 100 - offset                      # where the FOMO series starts
-    assert values[150] < indicators.FOMO_FEAR_MAX and values[180] >= indicators.FOMO_EXHAUSTION_MIN
+    assert all(b is None for b in bars[:first]) and all(b is not None for b in bars[first:])
+    assert bars[150 - offset] == (10.0, 15.0, 5.0, 10.0)
+    assert bars[180 - offset] == (90.0, 95.0, 85.0, 90.0)
+    # A provisional session is the last bar, when the history reaches it.
     # It changes nothing the count is made of.
     plain = _universe(200)
     del plain[mi.FOMO_SYMBOL]
     without = mi.build_snapshot(_bars(plain)).history
     assert without.fomo is None and without.count == h.count and without.total == h.total == 6
+
+
+def test_a_close_only_fomo_draws_as_ticks():
+    frame = mi._fomo_frame(_bars({mi.FOMO_SYMBOL: pd.DataFrame(
+        {"Close": [30.0, 40.0]}, index=pd.bdate_range("2026-04-01", periods=2, name="Date"))}))
+    assert frame.iloc[-1].tolist() == [40.0, 40.0, 40.0, 40.0]
 
 
 # ── provisional breadth: the evening's unconfirmed bar ────────────────────────

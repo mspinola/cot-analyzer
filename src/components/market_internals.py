@@ -847,23 +847,50 @@ class HeadwindHistory:
     rows: tuple            # ((key, condition label, tuple of bools), ...)
     count: tuple           # headwinds on, per session
     total: int             # how many headwinds a session can have on
-    #: FOMO's extremes on the same sessions, an optional row that is NOT a headwind and
-    #: never in `count`: (washed-out flags, stretched flags, index of the first session
-    #: FOMO was read on, or None). The series starts years after the others.
+    #: FOMO on the same sessions, the bottom row, NOT a headwind and never in `count`:
+    #: (bars, index of the first session FOMO was read on), each bar (open, high, low,
+    #: close) or None where it was not read. The series starts years after the others.
     fomo: Optional[tuple] = None
 
 
-def _fomo_extremes(fomo, index):
-    """FOMO's two extremes (`indicators.fomo_zones`: fear, exhaustion) on `index`."""
+def _fomo_frame(get_bars):
+    """FOMO's daily open, high, low and close, with the provisional sibling's newer
+    bar appended: the same sessions the FOMO card reads. A close-only frame is given
+    its close as all four, so the row still draws, as ticks. None when unreadable."""
+    frames = []
+    for symbol in (FOMO_SYMBOL, FOMO_SYMBOL + PROVISIONAL_SUFFIX):
+        try:
+            frame = get_bars(symbol)
+        except Exception:  # noqa: BLE001
+            frame = None
+        if frame is None or frame.empty or "Close" not in frame:
+            continue
+        frame = frame.copy()
+        frame.index = pd.DatetimeIndex(frame.index)
+        for column in ("Open", "High", "Low"):
+            if column not in frame:
+                frame[column] = frame["Close"]
+        frame = frame[["Open", "High", "Low", "Close"]].astype(float).dropna().sort_index()
+        if frames:
+            frame = frame[frame.index > frames[0].index[-1]]
+        frames.append(frame)
+    if not frames:
+        return None
+    out = pd.concat(frames)
+    return out if len(out) else None
+
+
+def _fomo_bars(fomo, index):
+    """FOMO's bars on the history's sessions: (bars, first session read) or None."""
     if fomo is None or fomo.empty:
         return None
-    zones = indicators.fomo_zones(fomo).reindex(index)
-    read = fomo.reindex(index).notna().to_numpy()
+    table = fomo.reindex(index)
+    read = table["Close"].notna().to_numpy()
     if not read.any():
         return None
-    return (tuple(bool(v) for v in (zones == "fear")),
-            tuple(bool(v) for v in (zones == "exhaustion")),
-            int(read.argmax()))
+    bars = tuple(None if row.isna().any() else tuple(float(v) for v in row)
+                 for _, row in table.iterrows())
+    return bars, int(read.argmax())
 
 
 def headwind_history(flags, price, price_symbol, fomo=None):
@@ -884,7 +911,7 @@ def headwind_history(flags, price, price_symbol, fomo=None):
                    for k in HEADWIND_KEYS),
         count=tuple(int(v) for v in states.sum(axis=1)),
         total=len(HEADWIND_KEYS),
-        fomo=_fomo_extremes(fomo, table.index),
+        fomo=_fomo_bars(fomo, table.index),
     )
 
 
@@ -1387,7 +1414,7 @@ def build_snapshot(get_bars=None):
     history = headwind_history(
         headwind_flags(legs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
-        fomo=series(FOMO_SYMBOL))
+        fomo=_fomo_frame(get_bars))
 
     # Read with _closes directly: both symbols are already asked for above (JNK as the
     # credit leg, TLT in the table), and a miss there has named them as awaiting.

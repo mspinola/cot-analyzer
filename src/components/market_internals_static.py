@@ -256,22 +256,30 @@ def history_card(history, colors):
     most = [c == history.total - 1 for c in history.count]
     every = [c == history.total for c in history.count]
     tall, top = f"{units * 2:g}", f"{-units / 2:g}"
-    fomo_bands = fomo_row = ""
+    fomo_row = ""
     if history.fomo is not None:
-        washed, stretched, first = history.fomo
-        cool, warm = surveys.TONE_LOW, surveys.TONE_HIGH
-        # Over the price only while the row is on (the script shows the group).
-        fomo_bands = (f'<g data-band="fomo" display="none">'
-                      f'{_marks(washed, tall, cool, 0.5, y=top)}'
-                      f'{_marks(stretched, tall, warm, 0.5, y=top)}</g>')
-        unread = (f'<rect x="0" y="0" width="{first}" height="1" fill="{surveys.PAGE_COLOR}" '
-                  'fill-opacity="0.75"/>' if first else "")
+        from cotmetrics import indicators
+        _, first = history.fomo
+        u = view.HISTORY_FOMO_UNITS
+        fear, stretched = u - indicators.FOMO_FEAR_MAX, u - indicators.FOMO_EXHAUSTION_MIN
+        # The two extremes as faint bands and dashed lines, the sessions before the
+        # series began dimmed, then the bars: white, like the price line above.
+        zones = (f'<rect x="0" y="{fear:g}" width="{n}" height="{u - fear:g}" '
+                 f'fill="{surveys.TONE_LOW}" fill-opacity="0.16"/>'
+                 f'<rect x="0" y="0" width="{n}" height="{stretched:g}" '
+                 f'fill="{surveys.TONE_HIGH}" fill-opacity="0.16"/>'
+                 + "".join(f'<line x1="0" x2="{n}" y1="{y:g}" y2="{y:g}" stroke="{surveys.INK_2}" '
+                           'stroke-opacity="0.6" stroke-dasharray="3 3" '
+                           'vector-effect="non-scaling-stroke"/>' for y in (fear, stretched)))
+        unread = (f'<rect x="0" y="0" width="{first}" height="{u:g}" '
+                  f'fill="{surveys.PAGE_COLOR}" fill-opacity="0.6"/>' if first else "")
         fomo_row = (
-            f'<button type="button" class="hl htog" data-row="{view.HISTORY_FOMO_KEY}" '
-            f'aria-pressed="false">{_esc(view.HISTORY_FOMO_LABEL)}</button>'
-            f'<div class="hp off" data-strip="{view.HISTORY_FOMO_KEY}">'
-            f'<svg class="hstrip" viewBox="0 0 {n} 1" preserveAspectRatio="none" '
-            f'aria-hidden="true">{_marks(washed, 1, cool)}{_marks(stretched, 1, warm)}{unread}'
+            f'<div class="hl">{_esc(view.HISTORY_FOMO_LABEL)}</div>'
+            f'<div class="hp"><svg class="hfomo" viewBox="0 0 {n} {u:g}" '
+            f'preserveAspectRatio="none" role="img" aria-label="FOMO daily bars, 0 to 100" '
+            f'data-closes="{view.history_fomo_closes(history)}">{zones}{unread}'
+            f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
+            f'vector-effect="non-scaling-stroke" d="{view.history_fomo_path(history)}"/>'
             '</svg></div>')
     rows = [
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
@@ -281,7 +289,7 @@ def history_card(history, colors):
         f'shaded">'
         # Taller than the panel: a zoom pads the price's y range past 0 and the units.
         f'<g data-band="most">{_marks(most, tall, mark, 0.18, y=top)}</g>'
-        f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>{fomo_bands}'
+        f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>'
         f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
         f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
         '</svg></div>']
@@ -868,6 +876,7 @@ table.cot td small {{ color: var(--muted); }}
 .hp svg {{ display: block; width: 100%; }}
 .hprice {{ height: 190px; }}
 .hstrip {{ height: 14px; background: var(--wash); border-radius: 2px; }}
+.hfomo {{ height: 64px; background: var(--wash); border-radius: 2px; }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
 .hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
 .hwin, .hshade {{ margin: 8px 0 0; }}
@@ -1091,6 +1100,8 @@ footer a {{ color: var(--ink-2); }}
   var N = +grid.dataset.sessions, UNITS = +grid.dataset.units;
   var svgs = [].slice.call(grid.querySelectorAll('svg'));
   var price = grid.querySelector('.hprice');
+  var fomo = grid.querySelector('.hfomo');
+  var fomoCloses = fomo ? fomo.dataset.closes.split(',') : null;
   var points = price.querySelector('polyline').getAttribute('points').split(' ')
     .map(function (p) {{ p = p.split(','); return [+p[0], +p[1]]; }});
   var axis = grid.querySelector('.hyears');
@@ -1122,7 +1133,8 @@ footer a {{ color: var(--ink-2); }}
     }});
     var pad = (high - low || UNITS) * 0.04;
     svgs.forEach(function (svg) {{
-      var y = svg === price ? [low - pad, high - low + 2 * pad] : [0, 1];
+      var y = svg === price ? [low - pad, high - low + 2 * pad]
+        : svg === fomo ? [0, {view.HISTORY_FOMO_UNITS:g}] : [0, 1];
       svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
     }});
     axis.textContent = '';
@@ -1246,7 +1258,7 @@ footer a {{ color: var(--ink-2); }}
     var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     var tall = svg === price;
     line.setAttribute('y1', tall ? -UNITS : 0);
-    line.setAttribute('y2', tall ? UNITS * 2 : 1);
+    line.setAttribute('y2', tall ? UNITS * 2 : svg === fomo ? {view.HISTORY_FOMO_UNITS:g} : 1);
     line.setAttribute('stroke', '{surveys.INK}');
     line.setAttribute('stroke-opacity', '0.7');
     line.setAttribute('stroke-width', '1');
@@ -1282,7 +1294,8 @@ footer a {{ color: var(--ink-2); }}
     var day = new Date(DAYS[i]);
     read.textContent = NAMES[day.getUTCMonth()] + ' ' + day.getUTCDate() + ', ' + day.getUTCFullYear()
       + ' \u00b7 ' + names.length + ' of ' + rows + ' on'
-      + (names.length ? ': ' + names.join(' \u00b7 ') : '');
+      + (names.length ? ': ' + names.join(' \u00b7 ') : '')
+      + (fomoCloses && fomoCloses[i] ? ' \u00b7 FOMO ' + fomoCloses[i] : '');
   }}
   grid.addEventListener('pointermove', function (e) {{ point(e.clientX); }});
   grid.addEventListener('pointerdown', function (e) {{ point(e.clientX); }});

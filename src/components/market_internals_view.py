@@ -99,9 +99,11 @@ HISTORY_HOW = (
     "Select a row's name to switch it off or on: the bottom row and the shading then "
     "count only the rows that are on, so you can ask when any set of them lined up. "
     "\"Only all on at once\" drops the lighter band.",
-    "FOMO is an extra row, off to begin with and never in the count: switched on, it "
-    "marks the sessions the reading was washed out (cool) or stretched (warm), from late "
-    "2018 where its series starts.",
+    "The bottom row is FOMO, the share of Nasdaq stocks above their 5-day average, as a "
+    f"daily bar on 0 to 100: its high-to-low line, the open a tick left, the close a "
+    f"tick right. Under {indicators.FOMO_FEAR_MAX:.0f} (shaded cool) is washed out, "
+    f"{indicators.FOMO_EXHAUSTION_MIN:.0f} and over (shaded warm) stretched. It is "
+    "never in the count, and starts in late 2018 where its series does.",
     "The window buttons zoom every row together. Point at a session (or tap it) for its "
     "date and the rows that were on. Your window, shading and rows are remembered on "
     "this device.",
@@ -805,9 +807,34 @@ def history_month_starts(history):
     return out
 
 
-HISTORY_FOMO_KEY = "fomo"
-HISTORY_FOMO_LABEL = (f"FOMO extremes (under {indicators.FOMO_FEAR_MAX:.0f}, over "
-                      f"{indicators.FOMO_EXHAUSTION_MIN:.0f})")
+HISTORY_FOMO_LABEL = "FOMO, 0 to 100"
+#: Height of the FOMO row in its own SVG units: the share itself, 0 to 100.
+HISTORY_FOMO_UNITS = 100.0
+
+
+def history_fomo_path(history):
+    """One SVG path of FOMO's daily bars, a session a unit wide on a 0 to 100 scale
+    flipped for SVG: the high-to-low line, the open a tick to the left, the close a
+    tick to the right."""
+    if history.fomo is None:
+        return ""
+    bars, _ = history.fomo
+    top = HISTORY_FOMO_UNITS
+    parts = []
+    for i, bar in enumerate(bars):
+        if bar is None:
+            continue
+        o, h, lo, c = (round(top - v, 1) for v in bar)
+        x = i + 0.5
+        parts.append(f"M{x} {h:g}V{lo:g}M{i + 0.15:g} {o:g}H{x}M{x} {c:g}H{i + 0.85:g}")
+    return "".join(parts)
+
+
+def history_fomo_closes(history):
+    """FOMO's close per session, for the pointer's readout; "" where it was not read."""
+    if history.fomo is None:
+        return ""
+    return ",".join("" if bar is None else f"{bar[3]:.1f}" for bar in history.fomo[0])
 
 
 def history_subtitle(history):
