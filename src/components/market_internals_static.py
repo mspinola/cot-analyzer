@@ -341,8 +341,8 @@ def _across(cards):
 
 #: The page's sections in order, (anchor, label): the jump links under the title.
 JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CONTEXT_ID, "Context"),
-         (ANOMALIES_ID, "Anomalies"),
-         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"), (DETAIL_ID, "Detail"))
+         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"),
+         (ANOMALIES_ID, "Anomalies"), (DETAIL_ID, "Detail"))
 
 
 def _jumps(body):
@@ -740,9 +740,9 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
                  + f'<div class="cards{_across(context)}" id="{CONTEXT_ID}">\n'
                  + "".join(context) + '</div>\n'
-                 + anomalies_section(snap, colors)
                  + sentiment_section(naaim, votes, allocation)
-                 + positioning_section(positioning, colors, groups))
+                 + positioning_section(positioning, colors, groups)
+                 + anomalies_section(snap, colors))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
               + breadth_charts(snap, colors)
               + f'<div class="cards" id="{DETAIL_ID}">\n' + breadth_card(snap, colors)

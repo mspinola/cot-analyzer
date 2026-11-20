@@ -840,3 +840,9 @@ def test_the_anomaly_cards_draw_a_cell_a_session_and_shade_the_flagged_days():
         assert '<details class="how">' in card
     # Context: the count does not move.
     assert view.anomaly_badge(snap.anomalies[0]) in ("Anomaly", "Normal")
+
+
+def test_the_anomalies_sit_below_sentiment_and_positioning():
+    page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    at = {anchor: page.index(f'id="{anchor}"') for anchor, _ in st.JUMPS}
+    assert at[st.SENTIMENT_ID] < at[st.POSITIONING_ID] < at[st.ANOMALIES_ID] < at[st.DETAIL_ID]
