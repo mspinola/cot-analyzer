@@ -160,6 +160,66 @@ POSITIONING_HOW = (
 POSITIONING_COLUMNS = ("3M", "6M", "12M", "Full")
 POSITIONING_CHANGE = "6W change"
 POSITIONING_PATH = "52w path"
+ANOMALIES_TITLE = "Market anomalies"
+ANOMALIES_SUBTITLE = ("Days a usual relationship between two markets did not hold. To be "
+                      "aware of: not counted as a headwind.")
+ANOMALIES_HOW = (
+    "Each card compares two markets' closes, session by session, over the last "
+    f"{mi.ANOMALY_SESSIONS} sessions. A triangle is that market's close, up or down "
+    "on the day; a shaded column is an anomaly day.",
+    "Red is the pressure side, green the relief side. Point at a column (or tap it) "
+    "for its date and both changes.",
+    "The three pairs and their colours are the Caruso Insights dashboard's. They are "
+    "context only: nothing here has been tested as a signal.",
+)
+#: Each anomaly card's own explanation, by key. Caruso's notes restated in this page's
+#: words and credited, as on the headwind cards.
+ANOMALY_HOWS = {
+    "vix_spy": (
+        "The VIX and the S&P 500 usually move as mirror images: the VIX rises when the "
+        "market sells off and falls when it rallies.",
+        "An anomaly is a day they close the same way. Both up is red: the VIX climbing "
+        "with the market, the pressure Caruso associates with tops. Both down is green: "
+        "the VIX easing even as the market falls.",
+        "Caruso notes the VIX was climbing alongside the S&P 500 before the 2019, 2020 "
+        "and 2024 tops, and treats it as a yellow flag, not a reason to go to cash.",
+    ),
+    "jnk_tlt": (
+        "JNK (high-yield bonds) usually moves with Treasuries like TLT. Both are "
+        "dividend-adjusted here, since a payout would otherwise read as a down day.",
+        "An anomaly is a day they close opposite ways. TLT up with JNK down is red: "
+        "money leaving credit for safety. TLT down with JNK up is green.",
+        "Caruso's example: in the April 2025 selloff TLT fell when it would normally "
+        "have risen.",
+    ),
+    "xlp_qqq": (
+        "XLP is consumer staples, the defensive side; QQQ is the Nasdaq 100.",
+        "Red: both close up but XLP is up more, money favouring defense even on an up "
+        "day. Green: both close down but QQQ is down less, growth holding up better "
+        "than defense.",
+        "The XLP/QQQ headwind above is the trend of this rotation; this card flags it a "
+        "day at a time.",
+    ),
+}
+ANOMALY_WORDS = {mi.RED: "Anomaly", mi.GREEN: "Anomaly", None: "Normal"}
+
+
+def anomaly_badge(read):
+    """The card's badge: today's state."""
+    return ANOMALY_WORDS[read.flag]
+
+
+def anomaly_tally(read):
+    return f"Last {len(read.sessions)} sessions: {read.red} red · {read.green} green"
+
+
+def anomaly_tip(read, session):
+    """A column's tooltip: its date and both legs' changes."""
+    day, first, second, _ = session
+    (a, b) = read.labels
+    return f"{day_text(day)}: {a} {first * 100:+.2f}%, {b} {second * 100:+.2f}%"
+
+
 DETAIL_TITLE = "Detail"
 DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange, and the "
                    "index and asset table.")

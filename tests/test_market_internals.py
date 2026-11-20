@@ -755,3 +755,44 @@ def test_each_exchanges_lows_share_is_context_and_never_awaited():
     assert [s.exchange for s in without.lows_shares] == ["Nasdaq"]
     assert mi.NYSE_ADVANCING not in without.awaiting
     assert mi.headline(without) == mi.headline(snap)
+
+
+# ── market anomalies (context, never counted) ─────────────────────────────────
+
+@pytest.mark.parametrize("key, first, second, flags", [
+    # SPY, VIX: the same way is an anomaly; both up red, both down green.
+    ("vix_spy", [0.01, -0.01, 0.01, -0.01, 0.0], [0.02, -0.03, -0.02, 0.05, 0.04],
+     [mi.RED, mi.GREEN, None, None, None]),
+    # JNK, TLT: opposite ways; TLT up with JNK down red, TLT down with JNK up green.
+    ("jnk_tlt", [-0.01, 0.01, 0.01, -0.01, 0.01], [0.01, -0.01, 0.01, -0.01, 0.0],
+     [mi.RED, mi.GREEN, None, None, None]),
+    # QQQ, XLP: both up with XLP up more red; both down with QQQ down less green.
+    ("xlp_qqq", [0.01, 0.02, -0.01, -0.02, 0.01], [0.02, 0.01, -0.02, -0.01, -0.01],
+     [mi.RED, None, mi.GREEN, None, None]),
+])
+def test_anomaly_flags_are_the_dashboards_rules(key, first, second, flags):
+    got = mi.anomaly_flags(key, _days(first), _days(second))
+    assert list(got) == flags
+
+
+def test_an_anomaly_read_counts_the_last_twenty_sessions():
+    spy = _days([100 * 1.01 ** i for i in range(30)])              # up every day
+    vix = _days([20 + (i % 2) for i in range(30)])                 # up, down, up...
+    read = mi.anomaly_read("vix_spy", "VIX vs. SPY", ("SPY", "VIX"), spy, vix)
+    assert len(read.sessions) == mi.ANOMALY_SESSIONS
+    assert read.red == 10 and read.green == 0                      # every VIX up day
+    assert read.flag == (mi.RED if vix.iloc[-1] > vix.iloc[-2] else None)
+    assert read.changes[0] == pytest.approx(0.01)
+    assert read.date == read.sessions[-1][0] == spy.index[-1].strftime("%Y-%m-%d")
+    assert mi.anomaly_read("vix_spy", "t", ("a", "b"), spy, None) is None
+
+
+def test_anomalies_are_context_and_never_awaited():
+    frames = _universe()
+    frames["VIX"] = _walk(len(frames["QQQ"]), seed=99)
+    snap = mi.build_snapshot(_bars(frames))
+    assert [r.key for r in snap.anomalies] == [k for k, *_ in mi.ANOMALY_PAIRS]
+    del frames["VIX"]
+    without = mi.build_snapshot(_bars(frames))
+    assert [r.key for r in without.anomalies] == ["jnk_tlt", "xlp_qqq"]
+    assert "VIX" not in without.awaiting and mi.headline(without) == mi.headline(snap)

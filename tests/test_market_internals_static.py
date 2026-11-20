@@ -689,7 +689,8 @@ def test_the_headline_says_how_long_the_count_has_stood():
 def test_jump_links_name_only_the_sections_on_the_page():
     plain = st.render(_snap(), COLORS)
     links = re.findall(r'<a href="#([a-z]+)">', plain.split('<nav class="jumps"')[1].split("</nav>")[0])
-    assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.DETAIL_ID]
+    assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.ANOMALIES_ID,
+                     st.DETAIL_ID]
     assert all(f'id="{anchor}"' in plain for anchor in links)
     full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
     links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
@@ -820,3 +821,22 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
     assert [p["topColor"] == bad for p in fill] == [
         a is not None and v > a for v, a in zip(values, average)]
     assert "LC.AreaSeries" in page
+
+
+def test_the_anomaly_cards_draw_a_cell_a_session_and_shade_the_flagged_days():
+    snap = _snap()
+    assert snap.anomalies                       # JNK/TLT and XLP/QQQ; no VIX in the fixture
+    page = st.render(snap, COLORS)
+    assert f'id="{st.ANOMALIES_ID}"' in page and f'href="#{st.ANOMALIES_ID}"' in page
+    for read in snap.anomalies:
+        card = page.split(f'data-anomaly="{read.key}"')[1].split("</section>")[0]
+        assert card.count('class="ac"') == 2 * len(read.sessions)
+        flagged = sum(1 for s in read.sessions if s[3])
+        assert card.count('class="ac" title=') == 2 * len(read.sessions)
+        assert len(re.findall(r'class="ac" title="[^"]*" style="background:rgba\(', card)) \
+            == 2 * flagged
+        assert html.escape(view.anomaly_tally(read)) in card
+        assert html.escape(view.anomaly_tip(read, read.sessions[-1])) in card
+        assert '<details class="how">' in card
+    # Context: the count does not move.
+    assert view.anomaly_badge(snap.anomalies[0]) in ("Anomaly", "Normal")

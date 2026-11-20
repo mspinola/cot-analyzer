@@ -78,6 +78,7 @@ HISTORY_ID = "history"
 POSITIONING_ID = "positioning"
 SENTIMENT_ID = "sentiment"
 CONTEXT_ID, DETAIL_ID = "context", "detail"
+ANOMALIES_ID = "anomalies"
 #: A market's commercials chart is POSITIONING_PREFIX + its symbol in the payload.
 POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
@@ -340,6 +341,7 @@ def _across(cards):
 
 #: The page's sections in order, (anchor, label): the jump links under the title.
 JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CONTEXT_ID, "Context"),
+         (ANOMALIES_ID, "Anomalies"),
          (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"), (DETAIL_ID, "Detail"))
 
 
@@ -400,6 +402,46 @@ def appetite_card(read, credit, colors):
         _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
         _detail(view.appetite_status(read, credit)),
     )
+
+
+def anomaly_card(read, colors):
+    """One pair: today's state and changes, then a strip of the last sessions, a column
+    a session, each leg's close as a triangle and an anomaly day shaded."""
+    tone = {mi.RED: colors.bear, mi.GREEN: colors.bull}
+    verdict = {mi.RED: mi.NEGATIVE, mi.GREEN: mi.POSITIVE, None: mi.NEUTRAL}[read.flag]
+    changes = "".join(
+        f'<span class="detail" style="color:{colors.bull if c >= 0 else colors.bear}">'
+        f'{_esc(label)} {c * 100:+.2f}%</span>' for label, c in zip(read.labels, read.changes))
+    cells = []
+    for row, label in enumerate(read.labels):
+        cells.append(f'<span class="al">{_esc(label)}</span>')
+        for session in read.sessions:
+            change, flag = session[1 + row], session[3]
+            mark = "▲" if change > 0 else "▼" if change < 0 else "·"
+            shade = (f' style="background:{plot_colors.hex_to_rgba(tone[flag], 0.32)}"'
+                     if flag else "")
+            cells.append(f'<span class="ac" title="{_esc(view.anomaly_tip(read, session))}"'
+                         f'{shade}>{mark}</span>')
+    first, last = read.sessions[0][0], read.sessions[-1][0]
+    return (
+        f'<section class="card" data-anomaly="{_esc(read.key)}">'
+        f'<div class="between"><h2>{_esc(read.title)}</h2>'
+        f'{_badge(view.anomaly_badge(read), verdict, colors)}</div>\n'
+        + _how(view.ANOMALY_HOWS.get(read.key))
+        + f'<div class="row">{changes}</div>'
+        f'<div class="anom" style="grid-template-columns:4.6em repeat({len(read.sessions)}, '
+        f'minmax(0, 1fr))">{"".join(cells)}</div>'
+        f'<div class="between detail"><span>{_esc(view.day_text(first))}</span>'
+        f'<span>{_esc(view.day_text(last))}</span></div>'
+        + _detail(view.anomaly_tally(read)) + '</section>\n')
+
+
+def anomalies_section(snap, colors):
+    if not snap.anomalies:
+        return ""
+    return (_section(view.ANOMALIES_TITLE, view.ANOMALIES_SUBTITLE, view.ANOMALIES_HOW)
+            + f'<div class="cards{_across(snap.anomalies)}" id="{ANOMALIES_ID}">\n'
+            + "".join(anomaly_card(r, colors) for r in snap.anomalies) + '</div>\n')
 
 
 def volatility_card(read, colors):
@@ -698,6 +740,7 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)
                  + f'<div class="cards{_across(context)}" id="{CONTEXT_ID}">\n'
                  + "".join(context) + '</div>\n'
+                 + anomalies_section(snap, colors)
                  + sentiment_section(naaim, votes, allocation)
                  + positioning_section(positioning, colors, groups))
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
@@ -816,6 +859,10 @@ table.cot td small {{ color: var(--muted); }}
 .how ul {{ margin: 4px 0 0; padding-left: 18px; }}
 .how li {{ margin: 3px 0; line-height: 1.45; }}
 .card.hw .how {{ margin: 2px 0 4px; }}
+/* An anomaly strip: a label, then a cell a session; a shaded column is a flagged day. */
+.anom {{ display: grid; gap: 2px 1px; align-items: center; margin: 8px 0 2px; font-size: 0.7rem; }}
+.anom .al {{ color: var(--ink-2); font-size: 0.75rem; white-space: nowrap; }}
+.anom .ac {{ text-align: center; color: var(--ink-2); border-radius: 2px; line-height: 1.7; cursor: default; }}
 .card.hw .share {{ margin: 6px 0 2px; font-size: 0.8rem; }}
 .card.hw .share summary {{ cursor: pointer; color: var(--ink-2); }}
 .card.hw .share .mid {{ font-weight: 600; }}
