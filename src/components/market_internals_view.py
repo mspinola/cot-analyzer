@@ -254,20 +254,6 @@ FOMO_HOW = (
     "Caruso uses it as context for net new lows: with fear, usually a pause; without "
     "fear, a real breakdown. Between the named zones it offers no edge either way.",
 )
-APPETITE_TITLE = (f"Credit appetite · {mi.APPETITE_JUNK} against {mi.APPETITE_TREASURY}")
-APPETITE_SUBTITLE = ("Junk bonds against Treasuries, ranked on their own past year. "
-                     "Context: not one of the headwinds.")
-APPETITE_HOW = (
-    f"The {mi.APPETITE_JUNK}/{mi.APPETITE_TREASURY} ratio's distance from its "
-    f"{indicators.CREDIT_AVERAGE_DAYS}-day average, ranked against the previous "
-    f"{indicators.CREDIT_RANK_DAYS} sessions, 0 to 100. Under "
-    f"{indicators.CREDIT_STRESS_MAX:.0f}, money has rarely preferred Treasuries this "
-    f"hard all year (stress); over {indicators.CREDIT_COMFORT_MIN:.0f} is comfort. Dots "
-    "are divergence days: Treasuries up and junk down by an unusual margin (risk-off), "
-    "or the reverse (risk-on). Both funds price off rates, so on such a day rates did "
-    "not move junk: the market's view of credit risk did. It describes credit now, not "
-    "next month: tested, a stress reading was not followed by a worse month, which is "
-    "why it is drawn here and not counted.")
 NET_HIGHS_TITLE = "Net new highs by exchange"
 NET_HIGHS_SUBTITLE = ("Each exchange's own daily count of new 52-week highs less new lows. "
                       "The two net new highs headwinds above read these same counts.")
@@ -391,20 +377,6 @@ def fomo_recent(read, sessions=5):
     """"Last 5 sessions: 70 → 45 → 33 → 24 → 10", the dashboard's line under the gauge."""
     values = read.path[1][-sessions:]
     return (f"Last {len(values)} sessions: " + " → ".join(f"{v:.0f}" for v in values) + ".")
-
-
-def appetite_status(read, credit=None):
-    """The pane's status line: the zone and number, JNK against its average when the
-    credit read is on the page, and the divergence days."""
-    parts = [f"Credit: {read.label.upper()} {read.value:.0f}"]
-    if credit is not None:
-        parts.append(f"{credit.symbol} {'above' if credit.above else 'below'} its "
-                     f"{credit.average_sessions}-day")
-    if read.divergence:
-        parts.append(f"{mi.DIVERGENCE_WORDS[read.divergence]} today")
-    if read.last_risk_off:
-        parts.append(f"last risk-off divergence {day_text(read.last_risk_off)}")
-    return " · ".join(parts)
 
 
 def net_highs_awaiting(awaiting):
@@ -539,16 +511,6 @@ def fomo_chart(read, colors):
     return line_chart(220, [(INK, 1, dates, values)],
                       levels=((indicators.FOMO_EXHAUSTION_MIN, colors.bear),
                               (indicators.FOMO_FEAR_MAX, colors.bull)),
-                      value_range=(0, 100), decimals=0)
-
-
-def appetite_chart(read, colors):
-    dates, values = read.path
-    dot = {"risk_off": colors.bear, "risk_on": colors.bull}
-    return line_chart(220, [(INK, 1.5, dates, values)],
-                      levels=((indicators.CREDIT_COMFORT_MIN, colors.bull),
-                              (indicators.CREDIT_STRESS_MAX, colors.bear)),
-                      markers=[(d, dot[kind]) for d, kind in read.markers],
                       value_range=(0, 100), decimals=0)
 
 

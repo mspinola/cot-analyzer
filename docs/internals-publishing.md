@@ -14,8 +14,8 @@ the app's own `/internals` page was removed in favour of a 301 to the subdomain.
 
 `src/components/market_internals_static.py` lays the page out. Every number, label and
 cutoff comes from `components/market_internals.py` (which takes the FOMO zones and the
-net-highs regime from `cotmetrics.indicators`, and the credit appetite gauge and its
-divergence days from the same module), and every title, text, tile and chart series from
+net-highs regime from `cotmetrics.indicators`), and every title, text, tile and chart
+series from
 `components/market_internals_view.py`.
 
 ## How it looks, and what draws the charts (since 2026-11-15)
@@ -31,10 +31,11 @@ divergence days from the same module), and every title, text, tile and chart ser
   and link are in the footer, which is why the per-chart logo is off. To move to a
   newer release, change the constant, build locally and look at the page: nothing else
   pins it. The table's sparklines are inline SVG.
-- **Credit appetite** (JNK against TLT, npf's `credit_xray.pine`) is a seventh card and
-  card, drawn and described but not counted among the headwinds: a stress reading was
-  not followed by a worse month when tested. The arithmetic was checked against the
-  TradingView pane on 2026-11-15 (cotmetrics #58 has the comparison).
+- **Credit appetite** (JNK against TLT, 0 to 100, npf's `credit_xray.pine`) was a
+  context card from 2026-11-15 to 2026-11-20. It went when the pane dropped the gauge
+  (npf #567): a stress reading was not followed by a worse month in any era tested (agi
+  docs/96-98). `cotmetrics.indicators.credit_appetite` still computes it, and cotmetrics
+  #58 still holds the check against TradingView.
 
 ## What it counts (since 2026-11-18)
 
@@ -43,7 +44,7 @@ Conditions", compared against its page for 2026-11-17): Nasdaq plus NYSE net new
 as a 5-day average below zero, QQQ and SPY up/down volume each below 1, JNK's 20-day EMA
 falling, and XLP/QQQ above its 50-day average. Each card says what would flip it, how
 many sessions it has stood, and whether it is better or worse than five sessions ago.
-FOMO, the advancing share and credit appetite are on the page and outside the count.
+FOMO and the advancing share are on the page and outside the count.
 
 Before that the page counted six "reads" on definitions restated from agi, three of
 which differed from the dashboard (JNK as price under a simple average, net highs as

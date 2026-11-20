@@ -23,8 +23,7 @@ from routing import external_page_path
 from tests.test_market_internals import _bars, _universe
 from tests.test_sentiment import COLORS
 
-#: Sessions in the synthetic store: enough for the credit appetite gauge, which needs its
-#: 20-day average and then 252 previous sessions to rank against.
+#: Sessions in the synthetic store: more than a year, so every year-long chart is full.
 N = 320
 
 
@@ -44,7 +43,7 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     page = st.render(snap, COLORS)
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
-    assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
+    assert wanted == set(data) == {st.FOMO_KEY, st.HIGHS_LOWS_KEY,
                                    st.NET_HISTORY_KEY,
                                    *(st.LOWS_SHARE_PREFIX + x.lower() for x, _, _ in mi.NET_HIGHS_SYMBOLS),
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
@@ -65,8 +64,7 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     from cotmetrics import indicators
     assert [lv["value"] for lv in data[st.FOMO_KEY]["levels"]] == [
         indicators.FOMO_EXHAUSTION_MIN, indicators.FOMO_FEAR_MAX]
-    assert [lv["value"] for lv in data[st.APPETITE_KEY]["levels"]] == [80.0, 20.0]
-    assert data[st.FOMO_KEY]["range"] == data[st.APPETITE_KEY]["range"] == [0, 100]
+    assert data[st.FOMO_KEY]["range"] == [0, 100]
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
     # A level read draws one line against the level it turns on; a read against its
     # own average draws the two lines and no level.
@@ -106,7 +104,6 @@ def test_fomo_is_on_the_page_but_outside_the_count():
     uncounted = page.split(f"<h2>{view.UNCOUNTED_TITLE}</h2>")[1].split(
         f"<h2>{view.DETAIL_TITLE}</h2>")[0]
     assert f"<h2>{html.escape(view.FOMO_TITLE)}</h2>" in uncounted
-    assert f"<h2>{html.escape(view.APPETITE_TITLE)}</h2>" in uncounted
     assert view.fomo_recent(snap.fomo) in uncounted
     assert view.fomo_recent(snap.fomo).count("→") == 4
 
@@ -121,17 +118,14 @@ def test_the_sparklines_are_inline_svg_one_per_table_row():
     assert min(ys) >= 0 and max(ys) <= view.SPARK_HEIGHT
 
 
-def test_credit_appetite_is_drawn_and_described_but_not_counted():
+def test_the_credit_appetite_card_is_gone():
+    """Removed 2026-11-20 with the pane's gauge (a null in agi docs/96-98): no card,
+    no chart, no field on the snapshot."""
     snap = _snap()
-    assert snap.appetite is not None
     page = st.render(snap, COLORS)
-    assert f"<h2>{html.escape(view.APPETITE_TITLE)}</h2>" in page
-    assert html.escape(view.appetite_status(snap.appetite, snap.credit)) in page
-    assert "appetite" not in mi.HEADWIND_KEYS
-    without = mi.build_snapshot(_bars({k: v for k, v in _universe(N).items()
-                                       if k != mi.APPETITE_TREASURY}))
-    assert without.appetite is None
-    assert mi.headline(without) == mi.headline(snap)
+    assert "credit appetite" not in page.lower()
+    assert "appetite" not in _payload(page)
+    assert not hasattr(snap, "appetite")
 
 
 def test_the_page_opens_with_the_surveys_stylesheet():
@@ -168,7 +162,7 @@ def test_the_page_says_what_the_snapshot_says():
     for row in snap.assets:
         assert f'<td class="name num">{row.last:,.2f}</td>' in page
     for title in (view.HEADWINDS_TITLE, view.UNCOUNTED_TITLE, view.DETAIL_TITLE,
-                  view.FOMO_TITLE, view.APPETITE_TITLE, view.NET_HIGHS_TITLE,
+                  view.FOMO_TITLE, view.NET_HIGHS_TITLE,
                   view.ASSETS_TITLE):
         assert f"<h2>{html.escape(title)}</h2>" in page
     assert f"<h3>{view.ADVANCE_DECLINE_TITLE}</h3>" in page

@@ -85,7 +85,7 @@ ANOMALIES_ID = "anomalies"
 POSITIONING_PREFIX = "cot:"
 #: Payload keys of the charts, each the `data-chart` of the element it draws in. A
 #: headwind's is HEADWIND_PREFIX + its key.
-FOMO_KEY, APPETITE_KEY, VOLATILITY_KEY = "fomo", "appetite", "volatility"
+FOMO_KEY, VOLATILITY_KEY = "fomo", "volatility"
 BOND_VOLATILITY_KEY = "bond_volatility"
 HIGHS_LOWS_KEY, NET_HISTORY_KEY = "highs_lows", "net_history"
 HEADWIND_PREFIX = "headwind:"
@@ -138,8 +138,6 @@ def charts(snap, colors, positioning=(), groups=None):
            for r in positioning or ()}
     if snap.fomo is not None:
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
-    if snap.appetite is not None:
-        out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
     for share in snap.lows_shares:
         out[LOWS_SHARE_PREFIX + share.exchange.lower()] = view.lows_share_chart(share, colors)
     if snap.breadth is not None:
@@ -429,22 +427,6 @@ def _fomo_gauge(read):
             f'<div class="fl"><span>0</span><span style="left:{fear:.0f}%">{fear:.0f}</span>'
             f'<span>50</span><span style="left:{stretched:.0f}%">{stretched:.0f}</span>'
             f'<span>100</span></div>')
-
-
-def appetite_card(read, credit, colors):
-    if read is None:
-        return _card(view.APPETITE_TITLE, None, None,
-                     _awaiting([mi.APPETITE_JUNK, mi.APPETITE_TREASURY]))
-    change = view.verdict_color(mi.POSITIVE if read.change >= 0 else mi.NEGATIVE, colors)
-    return _card(
-        view.APPETITE_TITLE, view.APPETITE_SUBTITLE, view.APPETITE_HOW,
-        f'<div class="row"><span class="big">{read.value:.0f}</span>'
-        f'{_badge(read.label, read.tone, colors)}'
-        f'<span class="detail push" style="color:{change}">'
-        f'{_esc(view.signed(read.change, ".0f"))} on the day</span></div>',
-        _chart(APPETITE_KEY, view.appetite_chart(read, colors)["height"]),
-        _detail(view.appetite_status(read, credit)),
-    )
 
 
 def anomaly_card(read, colors):
@@ -828,7 +810,6 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     context = [card for card in (
         fomo_card(snap.fomo, colors, _prov(snap, "fomo")),
-        appetite_card(snap.appetite, snap.credit, colors),
         volatility_card(snap.volatility, colors),
         bond_volatility_card(snap.volatility, colors)) if card]
     uncounted = (_section(view.UNCOUNTED_TITLE, view.UNCOUNTED_SUBTITLE)

@@ -40,12 +40,12 @@ FOMO left the count: the dashboard files it as a tactical check on short-term ex
 ADD to this page's tally. The advancing share was never on the dashboard and is
 context now. The older reads below (1 to 6) still exist as the cards' detail.
 
-A further card is context, not a read: CREDIT APPETITE, the junk-against-Treasuries
-gauge of npf's `credit_xray.pine` (`cotmetrics.indicators.credit_appetite`, checked
-against the TradingView pane on 2026-11-15). It is drawn and described but stays OUT
-of the count of reads, on the evidence in that module's header: a stress reading was
-not followed by a worse month in any era tested, so counting it as a negative would
-claim something the measurement refused. Its JNK-against-20-day half is read 4.
+A CREDIT APPETITE card (JNK against TLT, 0 to 100, the gauge of npf's
+`credit_xray.pine`) was drawn here as context until 2026-11-20. It went when the pane
+dropped it: a stress reading was not followed by a worse month in any era tested (agi
+docs/96-98), so it described credit without saying anything about what came next.
+`cotmetrics.indicators.credit_appetite` still computes it. JNK against its 20-day,
+the part with a lead, is read 4.
 
 **The newest breadth reading may be PROVISIONAL.** marketdata holds an evening's
 newest TradingView bar out of the official series until a later pull confirms it (the
@@ -141,9 +141,6 @@ CREDIT_SYMBOL, CREDIT_TIER, CREDIT_AVERAGE = "JNK", "total", 20
 # The ratio on the total tier, the tape_context rule: XLP distributes ~2.5%/yr
 # against QQQ's <1%, so a split-tier ratio drifts in QQQ's favor.
 ROTATION_NUMER, ROTATION_DENOM, ROTATION_TIER, ROTATION_AVERAGE = "XLP", "QQQ", "total", 50
-# Credit appetite: JNK over TLT, both dividend-adjusted (the pane requests both that
-# way, and the credit leg above says why it matters for JNK).
-APPETITE_JUNK, APPETITE_TREASURY, APPETITE_TIER = "JNK", "TLT", "total"
 # Up/down volume and the asset table stay on the split tier: an up session is a
 # close above the prior close, and the classification is what a reader would see on
 # a chart. Checked rather than assumed, since the credit leg above turned on exactly
@@ -158,7 +155,6 @@ ASSET_TIER = "split"
 # read exists to locate are only legible against a year of them.
 PATH_SESSIONS = 63
 FOMO_PATH_SESSIONS = 252
-APPETITE_PATH_SESSIONS = 252
 
 # ── this page's own cutoffs (no rulebook source; see the module docstring) ─────
 
@@ -289,10 +285,6 @@ FOMO_VERDICTS = {
 }
 
 
-APPETITE_LABELS = {"stress": "Stress", "neutral": "Neutral", "comfort": "Comfort"}
-# The colour of the badge and nothing else: this card is not one of the six reads.
-APPETITE_TONES = {"stress": NEGATIVE, "neutral": NEUTRAL, "comfort": POSITIVE}
-DIVERGENCE_WORDS = {"risk_off": "risk-off divergence", "risk_on": "risk-on divergence"}
 
 
 # ── the reads ─────────────────────────────────────────────────────────────────
@@ -435,22 +427,6 @@ class EquityPositioning:
 
 
 @dataclass(frozen=True)
-class CreditAppetiteRead:
-    """Context beside the reads: junk against Treasuries, ranked on its own year."""
-    value: float            # 0 to 100
-    change: float           # on the day, in points of the gauge
-    zone: str               # cotmetrics' zone key
-    label: str
-    tone: str               # badge colour only; never counted
-    deviation: float        # the JNK/TLT ratio against its 20-day average, percent
-    divergence: Optional[str]        # today's: "risk_off", "risk_on" or None
-    last_risk_off: Optional[str]     # date of the newest risk-off divergence day
-    path: tuple             # (date strings, values), the last year
-    markers: tuple          # ((date string, "risk_off" | "risk_on"), ...) on the path
-    date: str
-
-
-@dataclass(frozen=True)
 class AnomalyRead:
     """One pair's last ANOMALY_SESSIONS: each leg's daily change and the session's flag."""
     key: str
@@ -498,7 +474,6 @@ class Snapshot:
     history: Optional["HeadwindHistory"]   # the strips; None unless all six are served
     volatility: Optional[VolatilityRead]
     breadth: Optional[BreadthHistory]
-    appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
     #: The market anomalies the store could serve, in ANOMALY_PAIRS order.
@@ -1151,36 +1126,6 @@ def equity_positioning(get_positioning=None):
     return tuple(out)
 
 
-def credit_appetite_read(junk, treasuries):
-    """The credit x-ray's Glance reading and its divergence days, or None before the
-    history exists (the gauge needs its 20-day average and a year of ranks)."""
-    if junk is None or treasuries is None:
-        return None
-    appetite = indicators.credit_appetite(junk, treasuries).dropna()
-    if len(appetite) < 2:
-        return None
-    deviation = indicators.credit_ratio_deviation(junk, treasuries)
-    flags = indicators.credit_divergence(junk, treasuries)
-    zone = indicators.credit_zone(appetite.iloc[-1])
-    path = appetite.tail(APPETITE_PATH_SESSIONS)
-    on_path = flags.reindex(path.index).dropna()
-    risk_off = flags[flags == "risk_off"]
-    last = appetite.index[-1]
-    return CreditAppetiteRead(
-        value=float(appetite.iloc[-1]),
-        change=float(appetite.iloc[-1] - appetite.iloc[-2]),
-        zone=zone,
-        label=APPETITE_LABELS[zone],
-        tone=APPETITE_TONES[zone],
-        deviation=float(deviation.loc[last]),
-        divergence=flags.loc[last],
-        last_risk_off=_stamp_of(risk_off.index) if len(risk_off) else None,
-        path=(_dates(path.index), tuple(float(v) for v in path)),
-        markers=tuple(zip(_dates(on_path.index), on_path.tolist())),
-        date=_stamp_of(appetite.index),
-    )
-
-
 def updown_label(ratio):
     """The badge and the verdict. The verdict turns at UPDOWN_CENTRE, agi's
     definition; the heavy tiers are this page's emphasis and change nothing."""
@@ -1416,11 +1361,6 @@ def build_snapshot(get_bars=None):
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
         fomo=_fomo_frame(get_bars))
 
-    # Read with _closes directly: both symbols are already asked for above (JNK as the
-    # credit leg, TLT in the table), and a miss there has named them as awaiting.
-    appetite = credit_appetite_read(_closes(get_bars, APPETITE_JUNK, APPETITE_TIER),
-                                    _closes(get_bars, APPETITE_TREASURY, APPETITE_TIER))
-
     def quiet(symbol):
         # Context only: a miss here is no card, not a symbol the count is waiting for.
         try:
@@ -1467,7 +1407,7 @@ def build_snapshot(get_bars=None):
         ("advance_decline", advance_decline, (ADVANCING_SYMBOL, DECLINING_SYMBOL)),
     ) if rests_on_provisional(read, *symbols)]
 
-    dates = [r.date for r in [fomo, advance_decline, credit, rotation, appetite,
+    dates = [r.date for r in [fomo, advance_decline, credit, rotation,
                               *net_highs, *updown, *assets, *headwinds] if r is not None]
     return Snapshot(
         fomo=fomo,
@@ -1481,7 +1421,6 @@ def build_snapshot(get_bars=None):
         history=history,
         volatility=volatility,
         breadth=breadth,
-        appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
         provisional=tuple(provisional),
@@ -1509,7 +1448,6 @@ def stale_notes(snap, max_days=3):
     for label, read in (("FOMO", snap.fomo),
                         ("advancing / declining", snap.advance_decline),
                         ("credit", snap.credit), ("rotation", snap.rotation),
-                        ("credit appetite", snap.appetite),
                         ("volatility", snap.volatility)):
         if read is not None and pd.Timestamp(read.date) < cutoff:
             named.append(f"{label} last read {read.date}")
