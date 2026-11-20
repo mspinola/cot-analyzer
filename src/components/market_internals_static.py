@@ -37,7 +37,7 @@ from pathlib import Path
 
 import components.market_internals as mi
 import components.market_internals_view as view
-from components import board_traces, plot_colors, sentiment
+from components import board_traces, macro_calendar, plot_colors, sentiment
 from components import sentiment_static as surveys
 
 TITLE = "Market Internals"
@@ -61,7 +61,8 @@ LOWS_SHARE_PREFIX = "lows-share:"
 #: Every source a section of the page draws on, not only the breadth and the bars: the
 #: line named two of them until 2026-11-19, after volatility, the surveys and the COT
 #: had joined the page.
-SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE); ETF daily bars "
+SOURCES = ("Sources: TradingView daily breadth series (Nasdaq and NYSE) and economic "
+           "calendar; ETF daily bars "
            "from Yahoo Finance; volatility indices (VIX, VIX3M, VXN, ICE BofA MOVE) from "
            "Cboe and Yahoo Finance; NAAIM Exposure Index; AAII sentiment and asset "
            "allocation surveys; CFTC Commitments of Traders.")
@@ -75,6 +76,7 @@ ATTRIBUTION_URL = "https://www.tradingview.com/"
 DATA_ID = "internals-data"
 HEADWINDS_ID = "headwinds"
 HISTORY_ID = "history"
+CALENDAR_ID = "calendar"
 POSITIONING_ID = "positioning"
 SENTIMENT_ID = "sentiment"
 CONTEXT_ID, DETAIL_ID = "context", "detail"
@@ -356,8 +358,8 @@ def _across(cards):
 
 
 #: The page's sections in order, (anchor, label): the jump links under the title.
-JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CONTEXT_ID, "Context"),
-         (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"),
+JUMPS = ((HEADWINDS_ID, "Headwinds"), (HISTORY_ID, "History"), (CALENDAR_ID, "Calendar"),
+         (CONTEXT_ID, "Context"), (SENTIMENT_ID, "Sentiment"), (POSITIONING_ID, "Positioning"),
          (ANOMALIES_ID, "Anomalies"), (DETAIL_ID, "Detail"))
 
 
@@ -535,6 +537,55 @@ def _block(block):
             f'<span class="foot">{_esc(block["foot"])}</span></div>'
             f'<div class="value">{_esc(block["value"])}</div>{note}'
             f'<div class="rails">{rails}</div></div>')
+
+
+def _cal_event(e):
+    tip = " ".join(x for x in (e.about, f"Previous {e.prev}." if e.prev else "",
+                               f"Period: {e.period}." if e.period else "") if x)
+    nums = "".join(f'<span><i>{label}</i> {_esc(v)}</span>'
+                   for label, v in (("Est", e.est), ("Act", e.act)) if v)
+    high = (f'<b class="hi" title="{_esc(view.CALENDAR_HIGH_LABEL)}" '
+            f'aria-label="{_esc(view.CALENDAR_HIGH_LABEL)}"></b>' if e.high else "")
+    return (f'<li class="ev{" high" if e.high else ""}{" out" if e.act else ""}">'
+            f'<span class="t">{e.when.hour % 12 or 12}:{e.when:%M}'
+            f'{"a" if e.when.hour < 12 else "p"}</span>'
+            f'<span class="n" title="{_esc(tip)}">{high}{_esc(e.name)}</span>'
+            + (f'<span class="v">{nums}</span>' if nums else "") + '</li>')
+
+
+def calendar_section(cal):
+    """This week's and next week's releases (`macro_calendar.read()`), Monday to Friday,
+    with the next FOMC, CPI and payrolls beyond. None, no section: context only."""
+    if cal is None:
+        return ""
+    weeks = []
+    for label, days in cal.weeks:
+        cols = []
+        for d in days:
+            when = ("today" if d.day == cal.today
+                    else "past" if d.day < cal.today else "")
+            items = "".join(_cal_event(e) for e in d.events)
+            cols.append(f'<div class="cday {when}"><div class="dh">{d.day:%a} '
+                        f'<b>{d.day:%b} {d.day.day}</b></div>'
+                        + (f'<ul>{items}</ul>' if items else '<div class="none">No '
+                           'listed releases</div>') + '</div>')
+        weeks.append(f'<div class="cweek"><div class="wl">{_esc(label)}</div>'
+                     f'<div class="cgrid">{"".join(cols)}</div></div>')
+    coming = ""
+    if cal.coming_up:
+        coming = ('<p class="coming"><b>Coming up</b> '
+                  + " &middot; ".join(f'{_esc(name)} {d:%a} {d:%b} {d.day}'
+                                      for name, d in cal.coming_up) + '</p>')
+    key = "".join(f'<dt>{_esc(n)}</dt><dd>{_esc(a)}</dd>' for n, a in cal.keyed)
+    old = (f'<p class="stale">Calendar captured {_date(cal.captured)}; times and '
+           f'estimates may have moved since.</p>' if cal.stale else "")
+    return (_section(view.CALENDAR_TITLE, view.CALENDAR_SUBTITLE, view.CALENDAR_HOW)
+            + f'<section class="card cal" id="{CALENDAR_ID}">{old}{"".join(weeks)}{coming}'
+            + f'<details class="how ckey"><summary>What these are</summary><dl>{key}</dl>'
+            + f'<p>{_esc(macro_calendar.NOTE)}</p></details>'
+            + '<div class="detail">TradingView economic calendar, captured '
+            + f'{_date(cal.captured)}. <b class="hi"></b> high impact, by the '
+            + 'calendar\'s own rating.</div></section>\n')
 
 
 def sentiment_section(naaim, votes, allocation):
@@ -752,14 +803,16 @@ def _headline(snap, colors):
 
 
 def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=None,
-           positioning=None, palette=None):
+           positioning=None, palette=None, calendar=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
     palette's verdict pair (`plot_colors.grid_colors`), toned here by `page_colors`.
 
     `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
     (`aaii_allocation.read()`) fill the sentiment section; `positioning`
     (`market_internals.equity_positioning()`) the positioning section. Each is
-    optional, and a section is left out with nothing to show. `palette` is the app
+    optional, and a section is left out with nothing to show. `calendar`
+    (`macro_calendar.read()`) is the macro calendar after the history, likewise
+    optional. `palette` is the app
     palette the trader groups take their colours from, the configured one when None.
 
     Raises ValueError when the snapshot holds no read at all, so a store that could not
@@ -788,7 +841,8 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
               + breadth_charts(snap, colors)
               + f'<div class="cards" id="{DETAIL_ID}">\n' + breadth_card(snap, colors)
               + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
-    body = headwinds_section(snap, colors) + uncounted + detail
+    body = (headwinds_section(snap, colors) + calendar_section(calendar) + uncounted
+            + detail)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -822,6 +876,40 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
 .sec .how[open] {{ display: block; margin-top: 2px; }}
 .sec .how summary {{ cursor: pointer; width: fit-content; color: var(--ink); }}
 .sec .how p {{ margin: 4px 0 0; }}
+/* The macro calendar: a week is five day columns, Monday to Friday; on a phone the
+   days stack. A release is its time, name and numbers; a high-impact one carries a dot
+   in the defensive tone. Past days dim, today is outlined. */
+.cal .cweek {{ margin: 4px 0 10px; }}
+.cal .wl {{ font-size: 0.78rem; color: var(--ink-2); font-weight: 600; margin: 0 0 4px; }}
+.cgrid {{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }}
+.cday {{ border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; min-width: 0; }}
+.cday.past {{ opacity: 0.62; }}
+.cday.today {{ border-color: var(--ticker); box-shadow: inset 0 0 0 1px var(--ticker); }}
+.cday .dh {{ font-size: 0.75rem; color: var(--muted); margin-bottom: 3px; }}
+.cday .dh b {{ color: var(--ink); font-weight: 600; }}
+.cday ul {{ list-style: none; margin: 0; padding: 0; }}
+.cday .none {{ font-size: 0.72rem; color: var(--muted); }}
+.ev {{ font-size: 0.74rem; line-height: 1.3; padding: 3px 0; border-top: 1px solid var(--line); }}
+.ev:first-child {{ border-top: 0; }}
+.ev .t {{ font-family: var(--mono); color: var(--muted); margin-right: 5px; font-size: 0.7rem; }}
+.ev .n {{ color: var(--ink-2); cursor: help; }}
+.ev.high .n {{ color: var(--ink); font-weight: 600; }}
+.ev .v {{ display: block; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
+.ev .v span {{ margin-right: 8px; white-space: nowrap; }}
+.ev .v i {{ font-style: normal; color: var(--muted); }}
+.ev.out .v span:last-child {{ color: var(--ink); }}
+b.hi {{ display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin: 0 4px 1px 0;
+  background: {colors.bear}; vertical-align: middle; }}
+.coming {{ font-size: 0.82rem; margin: 2px 0 6px; }}
+.coming b {{ color: var(--ink); font-weight: 600; margin-right: 4px; }}
+.ckey dl {{ display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 6px 0 0; }}
+.ckey dt {{ color: var(--ink); }}
+.ckey dd {{ margin: 0; }}
+@media (max-width: 700px) {{
+  .cgrid {{ grid-template-columns: minmax(0, 1fr); }}
+  .ckey dl {{ grid-template-columns: minmax(0, 1fr); }}
+  .ckey dd {{ margin-bottom: 4px; }}
+}}
 /* The history: a label column and a plot column; on a phone the label sits over its
    strip. Every SVG is one unit a session wide, so the rows line up to the session. */
 .hgrid {{ display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 8px 0; }}

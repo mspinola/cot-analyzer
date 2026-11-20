@@ -131,6 +131,18 @@ VOLATILITY_HOW = (
     "places today's VIX in its own history since 1990: how unusual the level is, not "
     "whether it is good or bad. Nothing here has been tested as a signal, so it "
     "is drawn and not counted.")
+CALENDAR_TITLE = "Macro calendar"
+CALENDAR_SUBTITLE = ("This week's and next week's scheduled US releases, Eastern time, "
+                     "with the consensus estimate and, once out, the actual.")
+CALENDAR_HOW = (
+    "Context, not part of the count. Times, estimates and actuals are TradingView's "
+    "economic calendar as captured the evening the page was built; an estimate can move "
+    "before the release. Marked releases are the ones the calendar itself rates high "
+    "impact. Only the releases in the key below are listed: the calendar also carries "
+    "Treasury auctions, mortgage rates and weekly energy stocks, left out here. Hover a "
+    "name for the previous reading and what it measures.")
+CALENDAR_HIGH_LABEL = "High impact"
+
 SENTIMENT_TITLE = "Sentiment"
 SENTIMENT_SUBTITLE = ("Each survey's current reading, and its percentile on three "
                       "histories.")

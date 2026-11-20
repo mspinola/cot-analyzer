@@ -711,7 +711,9 @@ def test_jump_links_name_only_the_sections_on_the_page():
     assert links == [st.HEADWINDS_ID, st.HISTORY_ID, st.CONTEXT_ID, st.ANOMALIES_ID,
                      st.DETAIL_ID]
     assert all(f'id="{anchor}"' in plain for anchor in links)
-    full = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    from tests.test_macro_calendar import calendar
+    full = st.render(_snap(), COLORS, positioning=_positioning(), calendar=calendar(),
+                     **_survey_parts())
     links = re.findall(r'<a href="#([a-z]+)">', full.split('<nav class="jumps"')[1].split("</nav>")[0])
     assert links == [anchor for anchor, _ in st.JUMPS]
 
@@ -862,9 +864,13 @@ def test_the_anomaly_cards_draw_a_cell_a_session_and_shade_the_flagged_days():
 
 
 def test_the_anomalies_sit_below_sentiment_and_positioning():
-    page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
+    from tests.test_macro_calendar import calendar
+    page = st.render(_snap(), COLORS, positioning=_positioning(), calendar=calendar(),
+                     **_survey_parts())
     at = {anchor: page.index(f'id="{anchor}"') for anchor, _ in st.JUMPS}
     assert at[st.SENTIMENT_ID] < at[st.POSITIONING_ID] < at[st.ANOMALIES_ID] < at[st.DETAIL_ID]
+    assert at[st.HISTORY_ID] < at[st.CALENDAR_ID] < at[st.CONTEXT_ID]
+    assert [at[a] for a, _ in st.JUMPS] == sorted(at.values())
 
 
 def test_the_fomo_card_has_a_gauge_the_last_closes_and_the_days_range():
