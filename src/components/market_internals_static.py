@@ -383,9 +383,34 @@ def fomo_card(read, colors, chip=""):
         f'{_badge(read.label, read.verdict, colors)}{chip}'
         f'<span class="detail push" style="color:{change}">'
         f'{_esc(view.signed(read.change, ".1f"))} on the day</span></div>',
+        _fomo_gauge(read),
+        _detail(view.fomo_recent(read)),
+        _detail(view.fomo_day(read)) if read.bar else "",
         _chart(FOMO_KEY, view.fomo_chart(read, colors)["height"]),
-        _detail(f"{view.FOMO_ZONES} · {view.fomo_recent(read)}"),
+        _detail(view.FOMO_ZONES),
     )
+
+
+def _fomo_gauge(read):
+    """0 to 100 with the two named extremes shaded, washed out (cool) at the low end
+    and stretched (warm) at the high, and today's reading marked; the day's range,
+    when the bar holds one, as a band under the mark."""
+    from cotmetrics import indicators
+    fear, stretched = indicators.FOMO_FEAR_MAX, indicators.FOMO_EXHAUSTION_MIN
+    span = ""
+    if read.bar is not None:
+        lo, hi = read.bar[2], read.bar[1]
+        span = (f'<i class="fr" style="left:{lo:.1f}%;width:{max(hi - lo, 0.5):.1f}%" '
+                f'title="Day\'s range {lo:.1f} to {hi:.1f}"></i>')
+    return (f'<div class="fg" role="img" aria-label="FOMO {read.value:.1f} on a 0 to 100 '
+            f'scale; under {fear:.0f} is washed out, {stretched:.0f} and over stretched">'
+            f'<i class="fz" style="left:0;width:{fear:.0f}%;background:{surveys.TONE_LOW}"></i>'
+            f'<i class="fz" style="left:{stretched:.0f}%;width:{100 - stretched:.0f}%;'
+            f'background:{surveys.TONE_HIGH}"></i>{span}'
+            f'<i class="fm" style="left:{read.value:.1f}%"></i></div>'
+            f'<div class="fl"><span>0</span><span style="left:{fear:.0f}%">{fear:.0f}</span>'
+            f'<span>50</span><span style="left:{stretched:.0f}%">{stretched:.0f}</span>'
+            f'<span>100</span></div>')
 
 
 def appetite_card(read, credit, colors):
@@ -859,6 +884,19 @@ table.cot td small {{ color: var(--muted); }}
 .how ul {{ margin: 4px 0 0; padding-left: 18px; }}
 .how li {{ margin: 3px 0; line-height: 1.45; }}
 .card.hw .how {{ margin: 2px 0 4px; }}
+/* The FOMO gauge: 0 to 100, the extremes shaded, the reading a mark, its day a band. */
+.fg {{ position: relative; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.10); margin: 10px 0 2px; }}
+.fg i {{ position: absolute; top: 0; height: 100%; }}
+.fg .fz {{ opacity: 0.45; }}
+.fg .fz:first-child {{ border-radius: 4px 0 0 4px; }}
+.fg .fz:nth-child(2) {{ border-radius: 0 4px 4px 0; }}
+.fg .fr {{ top: 2px; height: 4px; background: var(--ink-2); opacity: 0.6; }}
+.fg .fm {{ top: -3px; width: 3px; height: 14px; margin-left: -1.5px; background: var(--ink); border-radius: 1px; }}
+.fl {{ position: relative; height: 1.1em; font-size: 0.7rem; color: var(--ink-2); margin-bottom: 4px; }}
+.fl span {{ position: absolute; transform: translateX(-50%); }}
+.fl span:nth-child(1) {{ left: 0; transform: none; }}
+.fl span:nth-child(3) {{ left: 50%; }}
+.fl span:nth-child(5) {{ right: 0; left: auto; transform: none; }}
 /* An anomaly strip: a label, then a cell a session; a shaded column is a flagged day. */
 .anom {{ display: grid; gap: 2px 1px; align-items: center; margin: 8px 0 2px; font-size: 0.7rem; }}
 .anom .al {{ color: var(--ink-2); font-size: 0.75rem; white-space: nowrap; }}

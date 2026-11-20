@@ -846,3 +846,18 @@ def test_the_anomalies_sit_below_sentiment_and_positioning():
     page = st.render(_snap(), COLORS, positioning=_positioning(), **_survey_parts())
     at = {anchor: page.index(f'id="{anchor}"') for anchor, _ in st.JUMPS}
     assert at[st.SENTIMENT_ID] < at[st.POSITIONING_ID] < at[st.ANOMALIES_ID] < at[st.DETAIL_ID]
+
+
+def test_the_fomo_card_has_a_gauge_the_last_closes_and_the_days_range():
+    import dataclasses
+    snap = _snap()
+    fomo = dataclasses.replace(snap.fomo, value=14.4, bar=(41.6, 41.6, 14.4, 14.4))
+    page = st.render(dataclasses.replace(snap, fomo=fomo), COLORS)
+    card = page.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
+    assert '<div class="fg"' in card and 'class="fm" style="left:14.4%"' in card
+    assert 'class="fr" style="left:14.4%;width:27.2%"' in card
+    assert view.fomo_day(fomo) == "Day: open 41.6 · high 41.6 · low 14.4 · close 14.4"
+    assert html.escape(view.fomo_day(fomo)) in card and html.escape(view.fomo_recent(fomo)) in card
+    bare = st.render(snap, COLORS)
+    card = bare.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
+    assert '<div class="fg"' in card and "Day: open" not in card and 'class="fr"' not in card

@@ -796,3 +796,23 @@ def test_anomalies_are_context_and_never_awaited():
     without = mi.build_snapshot(_bars(frames))
     assert [r.key for r in without.anomalies] == ["jnk_tlt", "xlp_qqq"]
     assert "VIX" not in without.awaiting and mi.headline(without) == mi.headline(snap)
+
+
+def test_fomo_carries_the_newest_sessions_range_from_its_source():
+    frames = _universe(200)
+    idx = frames[mi.FOMO_SYMBOL].index
+    frames[mi.FOMO_SYMBOL] = pd.DataFrame(
+        {"Open": 50.0, "High": 60.0, "Low": 40.0, "Close": frames[mi.FOMO_SYMBOL]["Close"]},
+        index=idx)
+    snap = mi.build_snapshot(_bars(frames))
+    assert snap.fomo.bar == (50.0, 60.0, 40.0, frames[mi.FOMO_SYMBOL]["Close"].iloc[-1])
+    # A provisional session's range comes from the sibling, not yesterday's bar.
+    nxt = idx[-1] + pd.offsets.BDay(1)
+    frames[mi.FOMO_SYMBOL + mi.PROVISIONAL_SUFFIX] = pd.DataFrame(
+        {"Open": [41.6], "High": [41.6], "Low": [14.4], "Close": [14.4]},
+        index=pd.DatetimeIndex([nxt], name="Date"))
+    snap = mi.build_snapshot(_bars(frames))
+    assert snap.fomo.value == 14.4 and snap.fomo.bar == (41.6, 41.6, 14.4, 14.4)
+    # A close-only series has no range, and the card simply leaves the line out.
+    plain = mi.build_snapshot(_bars(_universe(200)))
+    assert plain.fomo.bar is None

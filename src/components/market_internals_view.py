@@ -362,6 +362,14 @@ def headwind_streak(headwind):
     return f"{headwind_badge(headwind)} for {n} session{'' if n == 1 else 's'}"
 
 
+def fomo_day(read):
+    """The session's range: "Day: open 41.6 · high 41.6 · low 14.4 · close 14.4"."""
+    if read.bar is None:
+        return ""
+    o, h, lo, c = read.bar
+    return f"Day: open {o:.1f} · high {h:.1f} · low {lo:.1f} · close {c:.1f}"
+
+
 def fomo_recent(read, sessions=5):
     """"Last 5 sessions: 70 → 45 → 33 → 24 → 10", the dashboard's line under the gauge."""
     values = read.path[1][-sessions:]

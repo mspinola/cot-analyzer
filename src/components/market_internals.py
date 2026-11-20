@@ -306,6 +306,9 @@ class FomoRead:
     verdict: str
     path: tuple            # (date strings, values), the last month
     date: str
+    #: The newest session's (open, high, low, close), when the store holds the bar's
+    #: range: how far the share swung within the day, the dashboard's "Today" line.
+    bar: Optional[tuple] = None
 
 
 @dataclass(frozen=True)
@@ -593,7 +596,26 @@ def signed_streak(net):
     return n * last
 
 
-def fomo_read(series):
+def _fomo_bar(get_bars, date):
+    """FOMO's (open, high, low, close) on `date`, from the provisional sibling when that
+    is the session's source, else the official series; None when neither holds it."""
+    for symbol in (FOMO_SYMBOL + PROVISIONAL_SUFFIX, FOMO_SYMBOL):
+        try:
+            frame = get_bars(symbol)
+        except Exception:  # noqa: BLE001
+            continue
+        if frame is None or frame.empty or not {"Open", "High", "Low", "Close"} <= set(frame):
+            continue
+        frame = frame.copy()
+        frame.index = pd.DatetimeIndex(frame.index)
+        row = frame[frame.index.strftime("%Y-%m-%d") == date]
+        if not row.empty:
+            r = row.iloc[-1]
+            return tuple(float(r[c]) for c in ("Open", "High", "Low", "Close"))
+    return None
+
+
+def fomo_read(series, bar=None):
     if series is None or len(series) < 2:
         return None
     zones = indicators.fomo_zones(series)
@@ -607,6 +629,7 @@ def fomo_read(series):
         verdict=FOMO_VERDICTS[zone],
         path=(_dates(path.index), tuple(float(v) for v in path)),
         date=_stamp_of(series.index),
+        bar=bar,
     )
 
 
@@ -1305,6 +1328,8 @@ def build_snapshot(get_bars=None):
         return read is not None and any(held.get(s) == read.date for s in symbols)
 
     fomo = fomo_read(series(FOMO_SYMBOL))
+    if fomo is not None:
+        fomo = fomo_read(series(FOMO_SYMBOL), bar=_fomo_bar(get_bars, fomo.date))
 
     net_highs = []
     for exchange, hi, lo in NET_HIGHS_SYMBOLS:
