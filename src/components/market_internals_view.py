@@ -31,8 +31,7 @@ HEADWINDS_HOW = (
     "Each card is one trend measure, a headwind or not, and opens its own How to read "
     "this. The definitions are the Caruso Insights member dashboard's.",
     "Caruso's use of the count: the more headwinds are on, the more defensive to be, "
-    "stepping exposure up or down as they change rather than all in or all out. This "
-    "page shows the count; it has not tested that use.",
+    "stepping exposure up or down as they change rather than all in or all out.",
     "Every card says what would flip it, how long it has been in its state, and whether "
     "it is better or worse than five sessions ago.",
 )
