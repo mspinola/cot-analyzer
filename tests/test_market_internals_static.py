@@ -69,9 +69,13 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
     # A level read draws one line against the level it turns on; a read against its
     # own average draws the two lines and no level.
+    # Net new highs is columns from zero, red on the sessions below it.
     for key in ("nasdaq_net_highs", "nyse_net_highs"):
         assert [lv["value"] for lv in by_key[key]["levels"]] == [0.0]
-        assert len(by_key[key]["series"]) == 1
+        (cols,) = by_key[key]["series"]
+        assert cols["type"] == "histogram" and cols["color"] == colors.bull
+        assert all(p.get("color", colors.bull) == (colors.bear if p["value"] < 0 else colors.bull)
+                   for p in cols["data"])
     assert [lv["value"] for lv in by_key["qqq_updown"]["levels"]] == [1.0]
     for key in ("credit", "rotation"):
         assert len(by_key[key]["series"]) == 2 and by_key[key]["levels"] == []

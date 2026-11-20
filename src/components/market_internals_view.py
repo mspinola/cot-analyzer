@@ -505,10 +505,19 @@ def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
 
 def headwind_chart(headwind, colors):
     """A headwind's quarter: its series against the level it turns on, or, where the
-    read is a series against its own average, the two lines."""
+    read is a series against its own average, the two lines. Net new highs, a daily
+    count, is columns."""
     dates, values, second = headwind.path
     tone = colors.bear if headwind.on else colors.bull
-    decimals = 4 if headwind.key == "rotation" else 2 if not headwind.key.endswith("net_highs") else 0
+    if headwind.key.endswith("net_highs"):
+        # A daily count reads as columns: one a session from zero, red on the
+        # sessions it was a headwind (below the level), green on the others.
+        cols = bars(colors.bull, dates, values)
+        for point in cols["data"]:
+            if point["value"] < headwind.level:
+                point["color"] = colors.bear
+        return chart(120, [cols], levels=((headwind.level, INK_2),))
+    decimals = 4 if headwind.key == "rotation" else 2
     if second is None:
         return line_chart(120, [(INK, 1.5, dates, values)],
                           levels=((headwind.level, tone),), decimals=decimals)
