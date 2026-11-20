@@ -745,7 +745,7 @@ HISTORY_TICK_YEARS = 2
 HISTORY_DAILY_SESSIONS = 3 * 252
 #: The card's windows, (label, sessions back from the newest; 0 is everything). Max is
 #: what the page opens on and what a reader without JavaScript sees.
-HISTORY_WINDOWS = (("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
+HISTORY_WINDOWS = (("3M", 63), ("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
 HISTORY_DEFAULT_WINDOW = "Max"
 
 
