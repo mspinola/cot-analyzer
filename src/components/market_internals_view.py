@@ -52,8 +52,9 @@ HEADWIND_HOWS = {
         "The same count for NYSE stocks: new 52-week highs minus new lows on the day. "
         "Below zero is a headwind.",
         "Caruso cites a study by Larry Williams and Ralph Vince on the NYSE: new lows "
-        "reaching 4% or more of issues marked a market in serious trouble. The card's "
-        "last line is that share: new lows over issues advancing plus declining. "
+        "reaching 4% or more of issues marked a market in serious trouble. The second "
+        "chart is that share: new lows over issues advancing plus declining, with the "
+        "4% line dashed. "
         "Unchanged issues are not counted, so it reads slightly high. Context only, "
         "not part of the headwind.",
         "The chart is the last quarter, a column a session, red where it was below zero.",
@@ -597,11 +598,23 @@ def positioning_spark(read, width=SPARK_WIDTH, height=SPARK_HEIGHT, pad=3):
 STATE_FILL = 0.16
 
 
-def nyse_lows_share_text(share):
-    """The NYSE card's context line: today's share against the line Caruso cites."""
-    return (f"New lows {share.value:.1f}% of issues traded "
-            f"({mi.NYSE_LOWS_SHARE_LINE:.0f}% line) · at or above it on "
-            f"{share.above_last_year} sessions in the past year")
+LOWS_SHARE_TITLE = "New lows, % of issues traded"
+
+
+def lows_share_side(share):
+    """The words beside the share's number: which side of the line it is on."""
+    line = f"{mi.NYSE_LOWS_SHARE_LINE:.0f}%"
+    return f"over the {line} line" if share.value >= mi.NYSE_LOWS_SHARE_LINE else f"under the {line} line"
+
+
+def lows_share_chart(share, colors):
+    """A column a session, red at or over the line Caruso cites, grey under it."""
+    dates, values = share.path
+    cols = bars(INK_2, dates, values)
+    for point in cols["data"]:
+        if point["value"] >= mi.NYSE_LOWS_SHARE_LINE:
+            point["color"] = colors.bear
+    return chart(80, [cols], levels=((mi.NYSE_LOWS_SHARE_LINE, colors.bear),), decimals=1)
 
 
 def headwind_chart(headwind, colors):

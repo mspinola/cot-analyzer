@@ -45,7 +45,7 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
     assert wanted == set(data) == {st.FOMO_KEY, st.APPETITE_KEY, st.HIGHS_LOWS_KEY,
-                                   st.NET_HISTORY_KEY,
+                                   st.NET_HISTORY_KEY, st.LOWS_SHARE_KEY,
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
         assert spec["series"] and all(s["data"] for s in spec["series"])
@@ -714,19 +714,15 @@ def test_the_history_names_the_session_under_the_pointer():
     assert "localStorage.getItem(KEY)" in page and "localStorage.setItem(KEY" in page
 
 
-def test_a_shared_link_has_a_preview_and_the_net_highs_card_points_at_its_year():
+def test_a_shared_link_has_a_preview_and_no_card_carries_a_jump_link():
     page = st.render(_snap(), COLORS)
     assert f'<link rel="canonical" href="{st.URL}">' in page
     assert st.URL == "https://internals.bluemagicai.com/"
     for name in ("og:title", "og:description", "og:url", "og:type", "og:site_name"):
         assert f'<meta property="{name}" content="' in page
-    for key in ("nasdaq_net_highs", "nyse_net_highs"):
-        card = page.split(f'data-key="{key}"')[1].split("</section>")[0]
-        assert f'<a class="jump" href="#{st.BREADTH_ID}">' in card
-    assert f'id="{st.BREADTH_ID}"' in page
-    # Without the year of counts there is nothing to point at.
-    bare = st.render(_snap(drop=("NASDAQ_NH52W",)), COLORS)
-    assert f'href="#{st.BREADTH_ID}"' not in bare
+    # The year of counts is still on the page, under Detail; the cards no longer
+    # link down to it (dropped as clutter).
+    assert f'id="{st.BREADTH_ID}"' in page and '<a class="jump"' not in page
 
 
 def test_an_old_page_says_so_from_the_readers_own_clock():
@@ -787,8 +783,20 @@ def test_the_nyse_card_carries_the_lows_share_and_the_fills_are_the_states():
     colors = st.page_colors(COLORS)
     page = st.render(snap, COLORS)
     card = page.split('data-key="nyse_net_highs"')[1].split("</section>")[0]
-    assert html.escape(view.nyse_lows_share_text(snap.nyse_lows_share)) in card
+    share = snap.nyse_lows_share
+    assert "data-lows-share" in card and f"{share.value:.1f}%" in card
+    assert html.escape(view.lows_share_side(share)) in card
+    assert f'data-chart="{st.LOWS_SHARE_KEY}"' in card
+    # The second chart sits between the net columns and what would flip the card.
+    assert card.index(f'data-chart="{st.HEADWIND_PREFIX}nyse_net_highs"') < card.index(
+        f'data-chart="{st.LOWS_SHARE_KEY}"') < card.index("Flips at")
     assert "data-lows-share" not in page.split('data-key="nasdaq_net_highs"')[1].split("</section>")[0]
+    spec = _payload(page)[st.LOWS_SHARE_KEY]
+    assert [lv["value"] for lv in spec["levels"]] == [mi.NYSE_LOWS_SHARE_LINE]
+    (cols,) = spec["series"]
+    assert cols["type"] == "histogram" and len(cols["data"]) == len(share.path[0])
+    assert all((p.get("color") == colors.bear) == (p["value"] >= mi.NYSE_LOWS_SHARE_LINE)
+               for p in cols["data"])
     data = _payload(page)
     up = data[st.HEADWIND_PREFIX + "qqq_updown"]["series"][0]
     assert up["type"] == "baseline" and up["base"] == 1.0 and up["top"] and up["shade"]

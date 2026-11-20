@@ -736,7 +736,8 @@ def test_the_nyse_lows_share_is_lows_over_issues_advancing_plus_declining():
     assert share.value == pytest.approx(130 / 3000 * 100)
     assert (share.lows, share.traded) == (130, 3000)
     assert share.above_last_year == 2          # 4.0% and 4.33%; 0.4% and 1.6% are under
-    assert share.date == lows.index[-1].strftime("%Y-%m-%d")
+    assert share.date == lows.index[-1].strftime("%Y-%m-%d") == share.path[0][-1]
+    assert share.path[1][-1] == share.value and len(share.path[0]) == 4
     assert mi.lows_share_read(lows, adv, None) is None
 
 

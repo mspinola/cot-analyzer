@@ -279,6 +279,7 @@ class LowsShare:
     lows: int
     traded: int
     above_last_year: int   # sessions at or above NYSE_LOWS_SHARE_LINE in the last 252
+    path: tuple            # (date strings, percents), the quarter the cards draw
     date: str
 
 
@@ -835,6 +836,8 @@ def lows_share_read(lows, advancing, declining):
                      traded=int(table["traded"].iloc[-1]),
                      above_last_year=int((share.tail(BREADTH_HISTORY_SESSIONS)
                                           >= NYSE_LOWS_SHARE_LINE).sum()),
+                     path=(_dates(share.tail(PATH_SESSIONS).index),
+                           tuple(float(v) for v in share.tail(PATH_SESSIONS))),
                      date=_stamp_of(table.index))
 
 

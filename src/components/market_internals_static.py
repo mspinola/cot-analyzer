@@ -55,6 +55,8 @@ SURVEYS_URL = dict(surveys.SITES)["Surveys"]
 URL = dict(surveys.SITES)[CURRENT]
 SITE_NAME = "Blue Magic AI monitors"
 BREADTH_ID = "breadth"
+#: The NYSE card's second chart: new lows as a share of issues traded.
+LOWS_SHARE_KEY = "lows-share"
 #: Every source a section of the page draws on, not only the breadth and the bars: the
 #: line named two of them until 2026-11-19, after volatility, the surveys and the COT
 #: had joined the page.
@@ -134,6 +136,8 @@ def charts(snap, colors, positioning=(), groups=None):
         out[FOMO_KEY] = view.fomo_chart(snap.fomo, colors)
     if snap.appetite is not None:
         out[APPETITE_KEY] = view.appetite_chart(snap.appetite, colors)
+    if snap.nyse_lows_share is not None:
+        out[LOWS_SHARE_KEY] = view.lows_share_chart(snap.nyse_lows_share, colors)
     if snap.breadth is not None:
         out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
         out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
@@ -210,7 +214,7 @@ def _split_bar(left_pct, colors, cls="bar"):
 
 # ── cards ─────────────────────────────────────────────────────────────────────
 
-def headwind_card(h, colors, chip="", more=""):
+def headwind_card(h, colors, chip="", extra=""):
     """One headwind: its name and state, the number, the quarter behind it, what would
     flip it and how long it has stood. The tile's left edge takes the state's colour."""
     tone = colors.bear if h.on else colors.bull
@@ -225,9 +229,9 @@ def headwind_card(h, colors, chip="", more=""):
            if versus else "")
         + f'</div>{_detail(h.subtitle)}{_how(view.HEADWIND_HOWS.get(h.key))}'
         + _chart(HEADWIND_PREFIX + h.key, view.headwind_chart(h, colors)["height"])
-        + _detail(h.flip)
+        + extra + _detail(h.flip)
         + f'<div class="detail" style="color:{tone}">{_esc(view.headwind_streak(h))}</div>'
-        f'{more}</section>\n')
+        '</section>\n')
 
 
 def _marks(flags, height, fill, opacity=1.0, y=0):
@@ -349,20 +353,20 @@ def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
-    # The net-highs cards point at the year of counts behind them, far down the page.
-    jump = f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'
-    more = ({mi.net_highs_key(x): jump for x, _, _ in mi.NET_HIGHS_SYMBOLS}
-            if snap.breadth is not None else {})
+    # The NYSE card's second chart: its new lows against the 4% line Caruso cites.
+    extra = {}
     share = snap.nyse_lows_share
     if share is not None:
         tone = colors.bear if share.value >= mi.NYSE_LOWS_SHARE_LINE else "var(--ink-2)"
-        line = (f'<div class="detail" data-lows-share style="color:{tone}">'
-                f'{_esc(view.nyse_lows_share_text(share))}</div>')
-        key = mi.net_highs_key("NYSE")
-        more[key] = line + more.get(key, "")
+        extra[mi.net_highs_key("NYSE")] = (
+            f'<div class="share" data-lows-share>{_detail(view.LOWS_SHARE_TITLE)}'
+            f'<div class="row"><span class="mid" style="color:{tone}">{share.value:.1f}%</span>'
+            f'{_detail(view.lows_share_side(share))}</div>'
+            + _chart(LOWS_SHARE_KEY, view.lows_share_chart(share, colors)["height"])
+            + '</div>')
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
-            + "".join(headwind_card(h, colors, _prov(snap, h.key), more.get(h.key, ""))
+            + "".join(headwind_card(h, colors, _prov(snap, h.key), extra.get(h.key, ""))
                       for h in snap.headwinds) + f'</div>\n{note}'
             + history_card(snap.history, colors))
 
@@ -803,7 +807,6 @@ table.cot td small {{ color: var(--muted); }}
    A sideways drag on the plots reads sessions, an up-and-down one still scrolls. */
 .hread {{ margin: 8px 0 0; min-height: 1.4em; }}
 .hp {{ touch-action: pan-y; }}
-.card a.jump {{ font-size: 0.78rem; color: var(--ink-2); }}
 @media (max-width: 700px) {{
   .hgrid {{ grid-template-columns: minmax(0, 1fr); gap: 2px; }}
   .hl {{ margin-top: 5px; font-size: 0.72rem; }}
@@ -813,6 +816,8 @@ table.cot td small {{ color: var(--muted); }}
 .how ul {{ margin: 4px 0 0; padding-left: 18px; }}
 .how li {{ margin: 3px 0; line-height: 1.45; }}
 .card.hw .how {{ margin: 2px 0 4px; }}
+.card.hw .share {{ margin-top: 10px; }}
+.card.hw .share .mid {{ font-size: 1.05rem; font-weight: 600; }}
 .card.hw {{ border-left: 3px solid var(--line); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}
