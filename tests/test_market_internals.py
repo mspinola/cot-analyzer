@@ -324,53 +324,6 @@ def test_stale_notes_name_reads_priced_before_the_newest():
     assert notes == ["FOMO last read 2026-09-01"]
 
 
-# ── credit appetite: context beside the reads ─────────────────────────────────
-
-def test_credit_appetite_is_cotmetrics_gauge_with_its_divergence_days():
-    from cotmetrics import indicators
-    frames = _universe(320)
-    junk = frames[mi.APPETITE_JUNK]["Close"]
-    treasuries = frames[mi.APPETITE_TREASURY]["Close"]
-    read = mi.credit_appetite_read(junk, treasuries)
-    appetite = indicators.credit_appetite(junk, treasuries).dropna()
-    flags = indicators.credit_divergence(junk, treasuries)
-    assert read.value == appetite.iloc[-1]
-    assert read.change == appetite.iloc[-1] - appetite.iloc[-2]
-    assert read.zone == indicators.credit_zone(read.value)
-    assert read.label == mi.APPETITE_LABELS[read.zone]
-    assert read.date == "2027-06-22" == appetite.index[-1].strftime("%Y-%m-%d")
-    # The path is every ranked session (at most a year), the markers the divergence
-    # days that fall on it.
-    assert len(read.path[0]) == len(read.path[1]) == min(len(appetite), 252)
-    on_path = flags.reindex(appetite.tail(252).index).dropna()
-    assert read.markers == tuple(zip(on_path.index.strftime("%Y-%m-%d"), on_path))
-    assert set(dict(read.markers).values()) <= {"risk_off", "risk_on"}
-    assert read.divergence == flags.iloc[-1]
-
-
-def test_credit_appetite_waits_for_its_history_and_never_joins_the_count():
-    """Under 20 + 252 + 1 sessions there is nothing to rank against: no read, no error.
-    With one, the old verdicts and the headline are exactly what they were."""
-    short = mi.build_snapshot(_bars(_universe(120)))
-    assert short.appetite is None
-    assert mi.APPETITE_TREASURY not in short.awaiting      # the bars are there
-    frames = _universe(320)
-    full = mi.build_snapshot(_bars(frames))
-    assert full.appetite is not None
-    without = mi.build_snapshot(_bars({**frames, mi.APPETITE_TREASURY:
-                                       frames[mi.APPETITE_TREASURY].iloc[:50]}))
-    assert without.appetite is None
-    assert mi.read_verdicts(without) == mi.read_verdicts(full)
-    assert mi.headline(without) == mi.headline(full)
-
-
-def test_a_stale_credit_appetite_is_named():
-    frames = _universe(320)
-    frames[mi.APPETITE_TREASURY] = frames[mi.APPETITE_TREASURY].iloc[:-10]
-    snap = mi.build_snapshot(_bars(frames))
-    assert any(n.startswith("credit appetite last read") for n in mi.stale_notes(snap))
-
-
 # ── the six headwinds (the Caruso dashboard's definitions) ────────────────────
 
 def _days(values, start="2026-04-01"):
@@ -455,7 +408,7 @@ def test_the_headline_counts_headwinds_and_fomo_is_not_one_of_them():
     snap = mi.build_snapshot(_bars(_universe()))
     on = sum(h.on for h in snap.headwinds)
     assert mi.headline(snap)[0] == f"{on} of 6 headwinds on"
-    # FOMO, the advancing share and credit appetite cannot move the count.
+    # FOMO and the advancing share cannot move the count.
     frames = _universe()
     frames[mi.FOMO_SYMBOL] = frames[mi.FOMO_SYMBOL] * 0 + 5.0       # deeply washed out
     frames[mi.ADVANCING_SYMBOL] = frames[mi.ADVANCING_SYMBOL] * 0 + 1.0
