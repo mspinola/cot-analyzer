@@ -586,8 +586,12 @@ def test_every_headwind_row_is_a_switch_and_fomo_is_the_bottom_row_of_bars():
     assert card.index("data-all-label") < card.index('class="hfomo"') < card.index("hyears")
     row = card.split('class="hfomo"')[1].split("</svg>")[0]
     bars, first = h.fomo
-    path = row.split(' d="')[1].split('"')[0]
+    path = row.split('data-fomo="bars"')[1].split(' d="')[1].split('"')[0]
     assert path.count("M") == 3 * sum(b is not None for b in bars)
+    assert f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none"' in row
+    washed, over = view.history_fomo_extremes(h)
+    marks = row.split('<g data-fomo="extremes">')[1].split("</g>")[0]
+    assert marks.count("<rect") == len(view.runs(washed)) + len(view.runs(over))
     assert f'fill="{surveys.TONE_LOW}"' in row and f'fill="{surveys.TONE_HIGH}"' in row
     for level in (indicators.FOMO_FEAR_MAX, indicators.FOMO_EXHAUSTION_MIN):
         assert f'y1="{view.HISTORY_FOMO_UNITS - level:g}"' in row
@@ -873,3 +877,12 @@ def test_the_fomo_card_has_a_gauge_the_last_closes_and_the_days_range():
     bare = st.render(snap, COLORS)
     card = bare.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
     assert '<div class="fg"' in card and "Day: open" not in card and 'class="fr"' not in card
+
+
+def test_the_long_windows_mark_fomos_extreme_closes():
+    import dataclasses
+    h = _snap().history
+    bars = ((30.0, 35.0, 20.0, 19.9), None, (14.0, 85.0, 14.0, 80.0), (41.6, 41.6, 14.4, 50.0))
+    h = dataclasses.replace(h, dates=h.dates[:4], fomo=(bars, 0))
+    assert view.history_fomo_extremes(h) == ((True, False, False, False),
+                                             (False, False, True, False))

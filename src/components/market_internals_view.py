@@ -99,11 +99,13 @@ HISTORY_HOW = (
     "Select a row's name to switch it off or on: the bottom row and the shading then "
     "count only the rows that are on, so you can ask when any set of them lined up. "
     "\"Only all on at once\" drops the lighter band.",
-    "The bottom row is FOMO, the share of Nasdaq stocks above their 5-day average, as a "
-    f"daily bar on 0 to 100: its high-to-low line, the open a tick left, the close a "
-    f"tick right. Under {indicators.FOMO_FEAR_MAX:.0f} (shaded cool) is washed out, "
-    f"{indicators.FOMO_EXHAUSTION_MIN:.0f} and over (shaded warm) stretched. It is "
-    "never in the count, and starts in late 2018 where its series does.",
+    "The bottom row is FOMO, the share of Nasdaq stocks above their 5-day average, on 0 "
+    f"to 100. Under {indicators.FOMO_FEAR_MAX:.0f} (the cool band) is washed out, "
+    f"{indicators.FOMO_EXHAUSTION_MIN:.0f} and over (the warm band) stretched. On a "
+    "window of a year or so it is a daily bar: the high-to-low line, the open a tick "
+    "left, the close a tick right. On longer windows a daily bar is too thin to read, "
+    "so the row marks only the sessions that closed in either band. It is never in the "
+    "count, and starts in late 2018 where its series does.",
     "The window buttons zoom every row together. Point at a session (or tap it) for its "
     "date and the rows that were on. Your window, shading and rows are remembered on "
     "this device.",
@@ -812,6 +814,15 @@ HISTORY_FOMO_LABEL = "FOMO, 0 to 100"
 HISTORY_FOMO_UNITS = 100.0
 
 
+#: Longest window, in sessions, that draws FOMO's daily bars. Past it a bar is under a
+#: pixel wide and the row is a solid band; a coarser bar does not help either, because
+#: the share crosses most of its range inside a week, so a weekly or monthly bar is
+#: nearly full height every time (tried 2026-11-19). A longer window draws the
+#: extremes instead: a mark in the washed-out band for every session that closed under
+#: it, and in the stretched band for every session that closed in it.
+HISTORY_FOMO_DAILY_UPTO = 400
+
+
 def history_fomo_path(history):
     """One SVG path of FOMO's daily bars, a session a unit wide on a 0 to 100 scale
     flipped for SVG: the high-to-low line, the open a tick to the left, the close a
@@ -828,6 +839,16 @@ def history_fomo_path(history):
         x = i + 0.5
         parts.append(f"M{x} {h:g}V{lo:g}M{i + 0.15:g} {o:g}H{x}M{x} {c:g}H{i + 0.85:g}")
     return "".join(parts)
+
+
+def history_fomo_extremes(history):
+    """(washed-out flags, stretched flags) per session, from each session's close:
+    the long windows' marks."""
+    if history.fomo is None:
+        return (), ()
+    closes = [None if bar is None else bar[3] for bar in history.fomo[0]]
+    return (tuple(c is not None and c < indicators.FOMO_FEAR_MAX for c in closes),
+            tuple(c is not None and c >= indicators.FOMO_EXHAUSTION_MIN for c in closes))
 
 
 def history_fomo_closes(history):

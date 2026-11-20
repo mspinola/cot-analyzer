@@ -260,6 +260,7 @@ def history_card(history, colors):
     if history.fomo is not None:
         from cotmetrics import indicators
         _, first = history.fomo
+        washed, over = view.history_fomo_extremes(history)
         u = view.HISTORY_FOMO_UNITS
         fear, stretched = u - indicators.FOMO_FEAR_MAX, u - indicators.FOMO_EXHAUSTION_MIN
         # The two extremes as faint bands and dashed lines, the sessions before the
@@ -278,9 +279,16 @@ def history_card(history, colors):
             f'<div class="hp"><svg class="hfomo" viewBox="0 0 {n} {u:g}" '
             f'preserveAspectRatio="none" role="img" aria-label="FOMO daily bars, 0 to 100" '
             f'data-closes="{view.history_fomo_closes(history)}">{zones}{unread}'
-            f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
-            f'vector-effect="non-scaling-stroke" d="{view.history_fomo_path(history)}"/>'
-            '</svg></div>')
+            + f'<path fill="none" stroke="{surveys.INK}" stroke-width="1" '
+            f'vector-effect="non-scaling-stroke" data-fomo="bars" '
+            f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none" '
+            f'd="{view.history_fomo_path(history)}"/>'
+            # Without the script the card shows its full history, so the marks.
+            + '<g data-fomo="extremes">'
+            + _marks(washed, f"{u - fear:g}", surveys.TONE_LOW, 0.9, y=f"{fear:g}")
+            + _marks(over, f"{stretched:g}", surveys.TONE_HIGH, 0.9)
+            + '</g>'
+            + '</svg></div>')
     rows = [
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
@@ -1137,6 +1145,13 @@ footer a {{ color: var(--ink-2); }}
         : svg === fomo ? [0, {view.HISTORY_FOMO_UNITS:g}] : [0, 1];
       svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
     }});
+    // FOMO: daily bars while they are wide enough to read, else the extremes.
+    if (fomo) {{
+      var bars = fomo.querySelector('[data-fomo="bars"]');
+      var daily = len <= +bars.dataset.upto;
+      bars.setAttribute('display', daily ? 'inline' : 'none');
+      fomo.querySelector('[data-fomo="extremes"]').setAttribute('display', daily ? 'none' : 'inline');
+    }}
     axis.textContent = '';
     ticks(start, len).forEach(function (t) {{
       var span = document.createElement('span');
