@@ -43,7 +43,7 @@ from components import sentiment_static as surveys
 TITLE = "Market Internals"
 EYEBROW = "Breadth · credit · rotation · volume · daily"
 H1_TICKER, H1_REST = "Market", "internals"
-DESCRIPTION = ("Five market headwinds, daily: net new 52-week highs, QQQ and SPY up/down "
+DESCRIPTION = ("Six market headwinds, daily: Nasdaq and NYSE net new 52-week highs, QQQ and SPY up/down "
                "volume, high-yield credit's 20-day EMA, and staples over Nasdaq against "
                "its 50-day, each with what would flip it. Beside them, Nasdaq FOMO, a "
                "junk-against-Treasuries credit gauge, the day's breadth and an ETF table.")
@@ -256,7 +256,8 @@ def history_card(history, colors):
         f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
         f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
-        f'price with the sessions four or five headwinds were on shaded">'
+        f'price with the sessions {history.total - 1} or {history.total} headwinds were on '
+        f'shaded">'
         # Taller than the panel: a zoom pads the price's y range past 0 and the units.
         f'<g data-band="most">{_marks(most, tall, mark, 0.18, y=top)}</g>'
         f'<g data-band="every">{_marks(every, tall, mark, 0.45, y=top)}</g>{fomo_bands}'
@@ -333,8 +334,9 @@ def headwinds_section(snap, colors):
     missing = [k for k in mi.HEADWIND_KEYS if k not in {h.key for h in snap.headwinds}]
     note = (_detail("Awaiting data for: " + ", ".join(missing).replace("_", " ") + ".")
             if missing else "")
-    # The net-highs card points at the year of counts behind it, far down the page.
-    more = ({"net_highs": f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'}
+    # The net-highs cards point at the year of counts behind them, far down the page.
+    jump = f'<a class="jump" href="#{BREADTH_ID}">A year of highs and lows &darr;</a>'
+    more = ({mi.net_highs_key(x): jump for x, _, _ in mi.NET_HIGHS_SYMBOLS}
             if snap.breadth is not None else {})
     return (_section(view.HEADWINDS_TITLE, view.HEADWINDS_SUBTITLE, view.HEADWINDS_HOW)
             + f'<div class="cards{_across(snap.headwinds)}" id="{HEADWINDS_ID}">\n'
@@ -507,8 +509,8 @@ def positioning_section(positioning, colors, groups=None):
 
 
 def breadth_charts(snap, colors):
-    """The year behind the net-highs headwind: the two counts, then their net. No
-    cards without the counts (the headwind card already says it is awaiting them)."""
+    """The year behind the net-highs headwinds: the two counts, then their net. No
+    cards without the counts (the headwind cards already say they are awaiting them)."""
     if snap.breadth is None:
         return ""
     b = snap.breadth
@@ -789,7 +791,7 @@ table.cot td small {{ color: var(--muted); }}
 .card.hw.on {{ border-left-color: {colors.bear}; }}
 .card.hw.off {{ border-left-color: {colors.bull}; }}
 .card.hw .big {{ font-size: 1.6rem; }}
-/* Cards two across from 900px, the five headwinds three across from 1100px; one
+/* Cards two across from 900px, the six headwinds three across from 1100px; one
    column on a phone. */
 .cards {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }}
 @media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}

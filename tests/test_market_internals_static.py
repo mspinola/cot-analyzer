@@ -69,9 +69,10 @@ def test_the_charts_are_the_view_modules_own_and_carry_their_levels():
     by_key = {h.key: data[st.HEADWIND_PREFIX + h.key] for h in snap.headwinds}
     # A level read draws one line against the level it turns on; a read against its
     # own average draws the two lines and no level.
-    assert [lv["value"] for lv in by_key["net_highs"]["levels"]] == [0.0]
+    for key in ("nasdaq_net_highs", "nyse_net_highs"):
+        assert [lv["value"] for lv in by_key[key]["levels"]] == [0.0]
+        assert len(by_key[key]["series"]) == 1
     assert [lv["value"] for lv in by_key["qqq_updown"]["levels"]] == [1.0]
-    assert len(by_key["net_highs"]["series"]) == 1
     for key in ("credit", "rotation"):
         assert len(by_key[key]["series"]) == 2 and by_key[key]["levels"] == []
 
@@ -80,7 +81,7 @@ def test_each_headwind_card_says_its_state_what_flips_it_and_for_how_long():
     snap = _snap()
     page = st.render(snap, COLORS)
     section = page.split(f'id="{st.HEADWINDS_ID}"')[1].split('<div class="sec">')[0]
-    assert section.count('<section class="card hw ') == len(snap.headwinds) == 5
+    assert section.count('<section class="card hw ') == len(snap.headwinds) == 6
     for h in snap.headwinds:
         card = section.split(f'data-key="{h.key}"')[1].split("</section>")[0]
         assert f'<span class="big">{html.escape(h.display)}</span>' in card
@@ -559,8 +560,8 @@ def test_no_breadth_charts_without_both_exchanges_counts():
 
 
 def test_every_history_row_is_a_switch_and_fomo_starts_off():
-    """A row's name is a button. The five headwinds start on and are what the count is
-    made of (`data-headwind`); FOMO is a sixth row that starts off, drawn in the tiles'
+    """A row's name is a button. The six headwinds start on and are what the count is
+    made of (`data-headwind`); FOMO is a seventh row that starts off, drawn in the tiles'
     cool and warm tones, with its marks over the price hidden until it is switched on."""
     snap = _snap()
     h = snap.history
@@ -630,8 +631,8 @@ def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
     chip = '<span class="prov"'
     fomo = page.split(f"<h2>{html.escape(view.FOMO_TITLE)}</h2>")[1].split("</section>")[0]
     assert chip in fomo and ">provisional</span>" in fomo
-    net = page.split('data-key="net_highs"')[1].split("</section>")[0]
-    assert chip in net
+    for key in ("nasdaq_net_highs", "nyse_net_highs"):
+        assert chip in page.split(f'data-key="{key}"')[1].split("</section>")[0]
     for key in ("qqq_updown", "credit", "rotation"):       # prices, never provisional
         assert chip not in page.split(f'data-key="{key}"')[1].split("</section>")[0]
     assert html.escape(view.provisional_note(snap)) in page
@@ -643,11 +644,14 @@ def test_provisional_readings_are_marked_on_their_cards_and_in_the_notes():
 
 
 def test_a_row_of_cards_never_leaves_a_hole():
-    """Five headwinds are three across and then two sharing the row; the four context
-    cards (with the MOVE) are two across; three are three across."""
+    """Six headwinds are three across, twice; five (one awaiting data) are three and
+    then two sharing the row; the four context cards (with the MOVE) are two across."""
     assert [st._across([0] * n) for n in (2, 3, 4, 5, 6)] == ["", " three", "", " five", " three"]
     page = st.render(_snap(), COLORS)
-    assert f'<div class="cards five" id="{st.HEADWINDS_ID}">' in page
+    assert f'<div class="cards three" id="{st.HEADWINDS_ID}">' in page
+    short = st.render(_snap(drop=("NYSE_NL52W",)), COLORS)
+    assert f'<div class="cards five" id="{st.HEADWINDS_ID}">' in short
+    assert "Awaiting data for: nyse net highs." in short
     assert ".cards.five > :nth-child(n+4) { grid-column: span 3; }" in page
 
 
@@ -712,8 +716,10 @@ def test_a_shared_link_has_a_preview_and_the_net_highs_card_points_at_its_year()
     assert st.URL == "https://internals.bluemagicai.com/"
     for name in ("og:title", "og:description", "og:url", "og:type", "og:site_name"):
         assert f'<meta property="{name}" content="' in page
-    card = page.split('data-key="net_highs"')[1].split("</section>")[0]
-    assert f'<a class="jump" href="#{st.BREADTH_ID}">' in card and f'id="{st.BREADTH_ID}"' in page
+    for key in ("nasdaq_net_highs", "nyse_net_highs"):
+        card = page.split(f'data-key="{key}"')[1].split("</section>")[0]
+        assert f'<a class="jump" href="#{st.BREADTH_ID}">' in card
+    assert f'id="{st.BREADTH_ID}"' in page
     # Without the year of counts there is nothing to point at.
     bare = st.render(_snap(drop=("NASDAQ_NH52W",)), COLORS)
     assert f'href="#{st.BREADTH_ID}"' not in bare

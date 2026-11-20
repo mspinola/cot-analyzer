@@ -22,11 +22,11 @@ from components.sentiment_static import INK, INK_2
 AVERAGE_COLOR = "#5B8DD6"
 
 HEADWINDS_TITLE = "Market headwinds"
-HEADWINDS_SUBTITLE = ("Five trend measures, each a headwind or not. The count is how many "
+HEADWINDS_SUBTITLE = ("Six trend measures, each a headwind or not. The count is how many "
                       "are on.")
 HEADWINDS_HOW = (
-    "Net new highs: Nasdaq plus NYSE 52-week highs minus lows, as a 5-day average; below "
-    "zero is a headwind. Up/down volume: over the last 20 sessions, volume on up-close "
+    "Net new highs: each day's new 52-week highs minus new lows, for the Nasdaq and for "
+    "the NYSE; below zero is a headwind. Up/down volume: over the last 20 sessions, volume on up-close "
     "days over volume on down-close days, for QQQ and for SPY; below 1 is net selling. "
     "JNK: the 20-day EMA of dividend-adjusted high-yield credit; falling is a headwind. "
     "XLP/QQQ: staples over Nasdaq above the ratio's 50-day average is defensives "
@@ -36,8 +36,8 @@ HEADWINDS_HOW = (
 HISTORY_TITLE = "When the headwinds lined up"
 HISTORY_HOW = (
     "One row per headwind, marked on every session it was on, under the price. The "
-    "bottom row marks the sessions all five were on at once, and the shading behind the "
-    "price is the same count: light for four, darker for all five. Select a row's name "
+    "bottom row marks the sessions all six were on at once, and the shading behind the "
+    "price is the same count: light for five, darker for all six. Select a row's name "
     "to switch it off or on: the bottom row and the shading then count only the rows "
     "that are on, so you can ask when any set of them lined up. \"Only all on at once\" "
     "drops the lighter band, leaving the price shaded only where every row that is on "
@@ -125,21 +125,23 @@ APPETITE_HOW = (
     "why it is drawn here and not counted.")
 NET_HIGHS_TITLE = "Net new highs by exchange"
 NET_HIGHS_SUBTITLE = ("Each exchange's own daily count of new 52-week highs less new lows. "
-                      "The headwind above reads both summed, as a 5-day average.")
+                      "The two net new highs headwinds above read these same counts.")
 NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS} sessions in "
                  "a row on one side is marked by the bar at the row's left, anything else "
-                 "is mixed. The headwind above is a different cut of the same counts: both "
-                 "exchanges summed, as a 5-day average.")
+                 "is mixed. The headwinds above read the same counts a session at a "
+                 "time: an exchange's is on whenever its net is below zero today.")
 HIGHS_LOWS_TITLE = "New highs vs. new lows"
 HIGHS_LOWS_SUBTITLE = ("Nasdaq plus NYSE 52-week highs above the line, lows below it. "
                        "Daily counts, past year.")
 NET_HISTORY_TITLE = "Net new highs, past year"
-NET_HISTORY_SUBTITLE = (f"Highs minus lows, daily and as the {mi.NET_HIGHS_AVERAGE}-day "
-                        "average the headwind reads. Below zero is the headwind's zone.")
-NET_HISTORY_HOW = ("The thin line is each session's highs minus lows; the heavy line is "
-                   f"its {mi.NET_HIGHS_AVERAGE}-day average, the number on the Net new "
-                   "highs card above. The headwind is on while the average is below "
-                   "zero, the shaded side.")
+NET_HISTORY_SUBTITLE = ("Nasdaq plus NYSE highs minus lows, daily and as a "
+                        f"{mi.NET_HIGHS_AVERAGE}-day average. Shaded where the average "
+                        "is below zero.")
+NET_HISTORY_HOW = ("The thin line is each session's highs minus lows, both exchanges "
+                   f"summed; the heavy line is its {mi.NET_HIGHS_AVERAGE}-day average, "
+                   "drawn to steady the eye. Neither is a headwind's own number: the two "
+                   "net new highs headwinds above read each exchange's daily figure on "
+                   "its own, so one can be on while this line is above zero.")
 ADVANCE_DECLINE_TITLE = "Nasdaq issues advancing vs declining"
 ASSETS_TITLE = "Index and asset overview"
 ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo")
@@ -341,8 +343,8 @@ def highs_lows_chart(breadth, colors):
 
 
 def net_highs_chart(breadth, colors):
-    """The daily net, thin, under its 5-day average; under zero the average is in the
-    headwind's zone, shaded."""
+    """The daily net, thin, under its 5-day average, shaded where the average is under
+    zero. Both exchanges summed; no headwind reads this line."""
     from components import plot_colors
     daily = {"color": plot_colors.hex_to_rgba(INK_2, 0.55), "width": 1,
              "data": [{"time": d, "value": v} for d, v in zip(breadth.dates, breadth.net)]}
@@ -506,7 +508,7 @@ def headwind_chart(headwind, colors):
     read is a series against its own average, the two lines."""
     dates, values, second = headwind.path
     tone = colors.bear if headwind.on else colors.bull
-    decimals = 4 if headwind.key == "rotation" else 2 if headwind.key != "net_highs" else 0
+    decimals = 4 if headwind.key == "rotation" else 2 if not headwind.key.endswith("net_highs") else 0
     if second is None:
         return line_chart(120, [(INK, 1.5, dates, values)],
                           levels=((headwind.level, tone),), decimals=decimals)

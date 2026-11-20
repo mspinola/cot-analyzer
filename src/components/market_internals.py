@@ -16,14 +16,19 @@ and the ETF bars the equities task fetches nightly. Six reads, each one card:
 6. Up/down volume: over the last 20 sessions, an ETF's volume on up-close days over
    its volume on down-close days, QQQ and SPY.
 
-**The count is of HEADWINDS, five of them, and the definitions are Caruso's own**
+**The count is of HEADWINDS, six of them, and the definitions are Caruso's own**
 (since 2026-11-18). Until then this page counted six "reads", restated from agi; the
 Caruso Insights member dashboard ("Market Conditions", data through 2026-11-17) is a
 more direct statement of the same measures, and three of ours differed from it. The
-five, each either a headwind or not (`headwinds`):
+six, each either a headwind or not (`headwinds`):
 
-- net new highs: Nasdaq plus NYSE, highs minus lows, 5-day average below zero (this
-  page had the Nasdaq alone on a three-in-a-row rule);
+- net new highs, the Nasdaq's and the NYSE's as TWO headwinds: each exchange's own
+  daily highs minus lows, below zero. From 2026-11-18 to 2026-11-19 this page read
+  ONE headwind here, both exchanges summed as a 5-day average, and called it
+  Caruso's; the dashboard itself (data through 2026-11-19: Nasdaq -180, NYSE -133,
+  "6 / 6") reads them apart and unsmoothed, so that was a restatement that had
+  drifted and it is corrected here. Before that the page had the Nasdaq alone on a
+  three-in-a-row rule;
 - QQQ up/down volume below 1.00, and SPY's, as TWO headwinds (they were one read that
   needed both to agree);
 - JNK's 20-day EMA falling, dividend-adjusted (this page had price under its 20-day
@@ -157,15 +162,23 @@ UPDOWN_CENTRE = 1.0
 #: pair is symmetric in log terms (1.5 and 1/1.5) and moves no verdict.
 UPDOWN_HEAVY_ACCUMULATION, UPDOWN_HEAVY_DISTRIBUTION = 1.5, 1 / 1.5
 
-# ── the five headwinds (the Caruso dashboard's definitions; see the docstring) ──
+# ── the six headwinds (the Caruso dashboard's definitions; see the docstring) ──
 
-#: Sessions the net-highs average runs over, and the level under which it is a headwind.
+#: The level under which an exchange's daily net new highs is a headwind, and the
+#: sessions of the average the year-of-counts chart draws over the daily bars. The
+#: average is a line for the eye only: no headwind reads it (one did until 2026-11-19).
 NET_HIGHS_AVERAGE, NET_HIGHS_LEVEL = 5, 0.0
 #: JNK's average for the headwind: an EMA whose DIRECTION is the read.
 CREDIT_EMA_SPAN = 20
 #: "Better / worse vs 5d": the comparison every headwind card carries.
 COMPARE_SESSIONS = 5
-HEADWIND_KEYS = ("net_highs", "qqq_updown", "spy_updown", "credit", "rotation")
+HEADWIND_KEYS = ("nasdaq_net_highs", "nyse_net_highs", "qqq_updown", "spy_updown",
+                 "credit", "rotation")
+
+
+def net_highs_key(exchange):
+    """The headwind key of an exchange's net new highs: "nasdaq_net_highs"."""
+    return f"{exchange.lower()}_net_highs"
 #: The price line over the history strips. QQQ, not the Nasdaq Composite the dashboard
 #: draws: the store holds no index series, and QQQ is the Nasdaq this page already reads.
 HISTORY_PRICE_SYMBOL = "QQQ"
@@ -282,11 +295,11 @@ class TrendRead:
 
 @dataclass(frozen=True)
 class Headwind:
-    """One of the five trend measures: a headwind today or not, how far from flipping,
+    """One of the six trend measures: a headwind today or not, how far from flipping,
     for how long, and whether it is better or worse than five sessions ago."""
     key: str
-    title: str             # "Net new highs"
-    subtitle: str          # "Nasdaq + NYSE · 5-day average"
+    title: str             # "Nasdaq net new highs"
+    subtitle: str          # "New highs minus new lows · daily"
     display: str           # the value as the card prints it: "-131", "0.64", "Falling"
     on: bool               # a headwind today
     flip: str              # what turns it: "Flips at 0 · needs +131"
@@ -309,12 +322,12 @@ class BondVolatility:
 
 @dataclass(frozen=True)
 class BreadthHistory:
-    """A year of the counts behind the net-highs headwind, both exchanges summed."""
+    """A year of the counts behind the two net-highs headwinds, both exchanges summed."""
     dates: tuple           # date strings
     highs: tuple           # new 52-week highs, Nasdaq + NYSE
     lows: tuple            # new 52-week lows, Nasdaq + NYSE
     net: tuple             # highs minus lows, daily
-    average: tuple         # the headwind's own 5-day average of `net`; None before it fills
+    average: tuple         # a 5-day average of `net`, for the eye; None before it fills
 
 
 @dataclass(frozen=True)
@@ -395,15 +408,16 @@ class Snapshot:
     updown: tuple
     assets: tuple
     headwinds: tuple       # the Headwinds the store could serve, in HEADWIND_KEYS order
-    history: Optional["HeadwindHistory"]   # the strips; None unless all five are served
+    history: Optional["HeadwindHistory"]   # the strips; None unless all six are served
     volatility: Optional[VolatilityRead]
     breadth: Optional[BreadthHistory]
     appetite: Optional[CreditAppetiteRead]
     awaiting: tuple        # symbols the store could not serve
     date: Optional[str]    # the newest session across the reads
     #: The reads whose newest session is a provisional bar, by key: "fomo",
-    #: "net_highs" (the headwind and the year of counts), an exchange's name for its
-    #: row, "advance_decline". Empty when every breadth series has settled.
+    #: "net_highs" (the year of counts), an exchange's headwind key for its headwind,
+    #: an exchange's name for its row, "advance_decline". Empty when every breadth
+    #: series has settled.
     provisional: tuple = ()
 
 
@@ -638,10 +652,10 @@ BREADTH_HISTORY_SESSIONS = 252
 
 
 def breadth_history(pairs):
-    """The daily highs and lows behind the net-highs headwind, summed across the
-    exchanges on their shared sessions, with the net and the headwind's own 5-day
-    average (`_net_highs_average`, so the chart's line and the card's number are one
-    series). None unless every leg is served: half a sum is a different number."""
+    """The daily highs and lows behind the two net-highs headwinds, summed across the
+    exchanges on their shared sessions, with the net and its 5-day average
+    (`_net_highs_average`, a smoothing line and no headwind's read). None unless every
+    leg is served: half a sum is a different number."""
     if not pairs or any(h is None or lo is None for h, lo in pairs):
         return None
     table = pd.concat([pd.concat([h for h, _ in pairs], axis=1, join="inner").sum(axis=1),
@@ -660,14 +674,23 @@ def breadth_history(pairs):
     )
 
 
-def headwind_flags(pairs, frames, credit, ratio):
+def _net_highs_daily(highs, lows):
+    """One exchange's daily highs minus lows on the sessions both legs were read."""
+    if highs is None or lows is None:
+        return None
+    return (highs - lows).dropna()
+
+
+def headwind_flags(legs, frames, credit, ratio):
     """Each headwind's on/off at every session it can be read, keyed as HEADWIND_KEYS:
     the SAME expressions the cards read their last value from, so the history strip and
-    today's card cannot disagree. A headwind the store cannot serve is absent."""
+    today's card cannot disagree. A headwind the store cannot serve is absent. `legs`
+    is {exchange: (highs, lows)}."""
     out = {}
-    average = _net_highs_average(pairs)
-    if average is not None and len(average):
-        out["net_highs"] = average < NET_HIGHS_LEVEL
+    for exchange, (highs, lows) in legs.items():
+        net = _net_highs_daily(highs, lows)
+        if net is not None and len(net):
+            out[net_highs_key(exchange)] = net < NET_HIGHS_LEVEL
     for symbol, frame in frames.items():
         if frame is not None and not frame.empty and "Volume" in frame:
             series = updown_ratio_series(frame)
@@ -683,7 +706,8 @@ def headwind_flags(pairs, frames, credit, ratio):
 
 #: The history's row labels: each headwind as the condition that turns it on.
 HEADWIND_CONDITIONS = {
-    "net_highs": "Net new highs below 0",
+    "nasdaq_net_highs": "Nasdaq net new highs below 0",
+    "nyse_net_highs": "NYSE net new highs below 0",
     "qqq_updown": "QQQ up/down volume below 1",
     "spy_updown": "SPY up/down volume below 1",
     "credit": f"{CREDIT_SYMBOL} {CREDIT_EMA_SPAN} EMA falling",
@@ -725,7 +749,7 @@ def _fomo_extremes(fomo, index):
 
 def headwind_history(flags, price, price_symbol, fomo=None):
     """The strips under the price: None unless every headwind in HEADWIND_KEYS has a
-    state series, because a count of four possible is not a shorter count of five."""
+    state series, because a count of five possible is not a shorter count of six."""
     if price is None or any(k not in flags for k in HEADWIND_KEYS):
         return None
     table = pd.concat([flags[k].rename(k) for k in HEADWIND_KEYS], axis=1, join="inner")
@@ -762,20 +786,20 @@ def all_on_stretches(history, gap=STRETCH_GAP_SESSIONS):
     return out
 
 
-def net_highs_headwind(pairs):
-    """Both exchanges' highs minus lows, summed, as a 5-day average: below zero is the
-    headwind. `pairs` is [(highs, lows), ...]; any missing leg and there is no read,
-    because half the sum is a different number, not an approximation of it."""
-    average = _net_highs_average(pairs)
-    if average is None or len(average) < 2:
+def net_highs_headwind(exchange, highs, lows):
+    """One exchange's new 52-week highs minus new lows on the day: below zero is the
+    headwind. The daily count, unsmoothed, and each exchange its own headwind, as the
+    dashboard reads them. Either leg missing and there is no read."""
+    net = _net_highs_daily(highs, lows)
+    if net is None or len(net) < 2:
         return None
-    value = float(average.iloc[-1])
+    value = float(net.iloc[-1])
     return _headwind(
-        "net_highs", "Net new highs",
-        f"Nasdaq + NYSE · {NET_HIGHS_AVERAGE}-day average", f"{value:+.0f}",
-        average < NET_HIGHS_LEVEL,
+        net_highs_key(exchange), f"{exchange} net new highs",
+        "New highs minus new lows · daily", f"{value:+.0f}",
+        net < NET_HIGHS_LEVEL,
         f"Flips at {NET_HIGHS_LEVEL:.0f} · needs {_needs(NET_HIGHS_LEVEL - value, '.0f')}",
-        _versus(average, higher_is_better=True), average, level=NET_HIGHS_LEVEL)
+        _versus(net, higher_is_better=True), net, level=NET_HIGHS_LEVEL)
 
 
 def updown_ratio_series(frame, sessions=UPDOWN_SESSIONS):
@@ -1051,7 +1075,7 @@ def has_reads(snapshot):
 
 
 def headline(snapshot):
-    """`(count, lean)`: "4 of 5 headwinds on" and one sentence. The count is of the
+    """`(count, lean)`: "4 of 6 headwinds on" and one sentence. The count is of the
     headwinds the store could serve; one awaiting data is named in the count's
     denominator shrinking, never guessed at."""
     total = len(snapshot.headwinds)
@@ -1104,6 +1128,12 @@ def summary_sentences(snapshot):
     for r in snapshot.updown:
         out.append(f"{r.symbol} is under {r.label.lower()} on {UPDOWN_SESSIONS}-day volume")
     return out
+
+
+@dataclass(frozen=True)
+class _Dated:
+    """A read's newest session, for a read that carries its dates as a tuple."""
+    date: str
 
 
 # ── assembly ──────────────────────────────────────────────────────────────────
@@ -1184,15 +1214,17 @@ def build_snapshot(get_bars=None):
             frames[symbol] = get_bars(symbol, ASSET_TIER)
         except Exception:  # noqa: BLE001 -- already named as awaiting by the loop above
             frames[symbol] = None
-    pairs = [(series(hi), series(lo)) for _, hi, lo in NET_HIGHS_SYMBOLS]
-    built = {"net_highs": net_highs_headwind(pairs),
-             "credit": credit_headwind(_closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER)),
+    legs = {exchange: (series(hi), series(lo)) for exchange, hi, lo in NET_HIGHS_SYMBOLS}
+    pairs = list(legs.values())
+    built = {"credit": credit_headwind(_closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER)),
              "rotation": rotation_headwind(ratio)}
+    for exchange, (highs, lows) in legs.items():
+        built[net_highs_key(exchange)] = net_highs_headwind(exchange, highs, lows)
     for symbol in UPDOWN_SYMBOLS:
         built[f"{symbol.lower()}_updown"] = updown_headwind(symbol, frames[symbol])
     headwinds = tuple(built[k] for k in HEADWIND_KEYS if built.get(k) is not None)
     history = headwind_history(
-        headwind_flags(pairs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
+        headwind_flags(legs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
         fomo=series(FOMO_SYMBOL))
 
@@ -1212,11 +1244,13 @@ def build_snapshot(get_bars=None):
                                  quiet(VOLATILITY_NASDAQ_SYMBOL),
                                  quiet(VOLATILITY_BOND_SYMBOL))
 
+    breadth = breadth_history(pairs)
     exchanges = {exchange: (hi, lo) for exchange, hi, lo in NET_HIGHS_SYMBOLS}
     every_leg = [s for legs in exchanges.values() for s in legs]
     provisional = [key for key, read, symbols in (
         ("fomo", fomo, (FOMO_SYMBOL,)),
-        ("net_highs", built["net_highs"], every_leg),
+        ("net_highs", _Dated(breadth.dates[-1]) if breadth else None, every_leg),
+        *((net_highs_key(x), built[net_highs_key(x)], exchanges[x]) for x in exchanges),
         *((r.exchange, r, exchanges[r.exchange]) for r in net_highs),
         ("advance_decline", advance_decline, (ADVANCING_SYMBOL, DECLINING_SYMBOL)),
     ) if rests_on_provisional(read, *symbols)]
@@ -1234,7 +1268,7 @@ def build_snapshot(get_bars=None):
         headwinds=headwinds,
         history=history,
         volatility=volatility,
-        breadth=breadth_history(pairs),
+        breadth=breadth,
         appetite=appetite,
         awaiting=tuple(dict.fromkeys(awaiting)),
         date=max(dates) if dates else None,
