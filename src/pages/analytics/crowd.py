@@ -37,6 +37,11 @@ least-short week. The shorter the window the worse it bites, so the 3M column is
 statement about the recent range only, never about whether the market is long. The
 caption carries this, because the board's whole selling point (a fast sweep) is
 exactly what makes the misread cheap.
+
+**No model selector** (removed 2026-11-21, "on the home page ... I don't think the
+model selector is necessary"). The board always reads `models.DEFAULT_MODEL`, and the
+caption names it. It no longer follows `global_model_store` either: a model picked on
+another page would otherwise redraw this one with no control here to show or undo it.
 """
 
 import functools
@@ -89,18 +94,17 @@ dash.register_page(
 
 # Layout runs per request; the wiring must not.
 class_filter.register('crowd_class_selector')
-controls.register_model('crowd_model_selector')
 controls.register_target_date('crowd_date_selector')
 
 # The PNG export, the Strip's machinery exactly (see exportBoardImage in
 # clientside.js): the board snapshotted at on-screen size, the caption and the
 # how-to-read fold opened in the clone. Model and date ride along only to name
-# the file.
+# the file; the model is always the default now, held in a store for that.
 clientside_callback(
     "window.dash_clientside.clientside.export_crowd_image",
     Output('crowd_download_img_btn', 'n_clicks'),
     Input('crowd_download_img_btn', 'n_clicks'),
-    State('crowd_model_selector', 'value'),
+    State('crowd_model', 'data'),
     State('crowd_date_selector', 'value'),
     prevent_initial_call=True,
 )
@@ -282,6 +286,8 @@ def help_text(model):
 def layout(**kwargs):
     # Built per request, not at import, so importing this page needs no store.
     return html.Div([
+        # Names the exported PNG; the board's model is fixed (module docstring).
+        dcc.Store(id='crowd_model', data=models.DEFAULT_MODEL.key),
         dbc.Container([
             dbc.Row([
                 dbc.Col([
@@ -293,15 +299,6 @@ def layout(**kwargs):
                                     controls.target_date_dropdown(
                                         'crowd_date_selector'),
                                 ], xs=12, md=3, className="mb-3 mb-md-0 px-md-2"),
-
-                                dbc.Col([
-                                    controls.label("Model"),
-                                    # persistence=None: the value rides the global
-                                    # store, as it did before the shared kit.
-                                    controls.model_select(
-                                        'crowd_model_selector', size="sm",
-                                        persistence=None),
-                                ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
                                     html.Label("Order",
@@ -328,7 +325,7 @@ def layout(**kwargs):
                                     class_filter.control(
                                         'crowd_class_selector',
                                         get_indexer().get_asset_classes(include_combined=True)),
-                                ], xs=12, md=3, className="px-md-2"),
+                                ], xs=12, md=5, className="px-md-2"),
                             ], align="center")),
                         ]),
                         className="mb-2 shadow-sm",
@@ -442,17 +439,16 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
     Output('crowd_caption', 'children'),
     Output('crowd_help', 'children'),
     [Input('crowd_class_selector', 'value'),
-     Input('global_model_store', 'data'),
      Input('crowd_order_selector', 'value'),
      Input('session_palette_theme_asset_store', 'data'),
      Input('crowd_date_selector', 'value')],
 )
-def render_board(asset_classes, model_key, order, palette_name, target_date):
+def render_board(asset_classes, order, palette_name, target_date):
     empty = html.P("Select an asset class to draw the board.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     # Resolved before the early exits so the fold teaches even over an empty
     # board; the teaching does not depend on the data being present.
-    model = models.resolve(model_key)
+    model = models.DEFAULT_MODEL
     if not asset_classes:
         return empty, "", help_text(model)
 
