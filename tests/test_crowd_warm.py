@@ -39,6 +39,11 @@ def test_warm_touches_every_market_on_every_basis(monkeypatch):
         lambda asset, basis, newest: warmed.append((asset, basis, newest)))
 
     crowd.warm_caches()
+    # The public half reads only the default model's basis ...
+    assert {(a, b) for a, b, _ in warmed} == {
+        (a, models.DEFAULT_MODEL.basis) for a in ("Gold", "Silver")}
+    # ... and the signed-in half covers the rest, so between them every basis is warm.
+    crowd.warm_private_caches()
 
     bases = {m.basis for m in models.MODELS}
     assert {(a, b) for a, b, _ in warmed} == {
