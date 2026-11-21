@@ -95,7 +95,11 @@ def external_page_path(key):
 #: Operator surfaces and internal viewers: out of the sitemap, disallowed in
 #: robots.txt. A search result should never land a visitor on the admin login
 #: or a raw parquet browser.
-NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view', '/news-failure'})
+#: The login-gated NPF pages (phase 2 of docs/design/2026-11-21-public-lookbacks-npf-
+#: behind-login.md). A crawler gets their sign-in note, so they are not indexed.
+PRIVATE_PATHS = frozenset({'/setups', '/scorecard', '/divergence'})
+
+NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view', '/news-failure'}) | PRIVATE_PATHS
 
 #: The weekly report pages: /weekly and /weekly/<date>. The one dynamic family
 #: this guard admits, and only in date SHAPE: whether a well-formed week is

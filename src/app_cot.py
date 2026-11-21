@@ -745,11 +745,13 @@ navbar = dbc.Navbar(
                     # that is the word a visitor looks for to get back to the
                     # start, and the board is simply what the start shows.
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Setups", href="/setups", active="exact")),
+                    dbc.NavItem(dbc.NavLink("Setups", href="/setups", active="exact"),
+                                id="nav_private_setups"),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="exact")),
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
                     dbc.NavItem(dbc.NavLink("Scorecard", href="/scorecard",
-                                            active="exact")),
+                                            active="exact"),
+                                id="nav_private_scorecard"),
                     # What stays top level is the boards: the one-screen sweeps
                     # across every market, which is what a visit opens with.
                     # Exposure and OI Alignment are per-market reads and moved
@@ -897,6 +899,24 @@ def update_theme(theme_value):
     return "theme-solarized-dark"
 
 
+# ── Private nav entries ───────────────────────────────────────────────────────
+#
+# The login-gated pages' links, shown only to a request that may open them. The
+# navbar is built once at start-up, so this is a callback on every navigation
+# rather than a branch in the layout. The pages refuse a public visitor on their own
+# (controls.private_page_stub); this only stops the menu pointing at a sign-in note.
+
+@app.callback(
+    Output('nav_private_setups', 'style'),
+    Output('nav_private_scorecard', 'style'),
+    Output({'type': 'nav_dropdown_item', 'href': '/divergence'}, 'style'),
+    Input('url', 'pathname'),
+)
+def show_private_nav(_pathname):
+    shown = {} if controls.private_allowed() else {'display': 'none'}
+    return shown, shown, shown
+
+
 # ── URL deep links ────────────────────────────────────────────────────────────
 #
 # Two halves of one contract: a pasted link SETS the shared state, and the
@@ -911,28 +931,32 @@ def update_theme(theme_value):
     Output('global_lookback_store', 'data', allow_duplicate=True),
     Input('url', 'search'),
     State('global_lookback_store', 'data'),
+    State('global_model_store', 'data'),
     # 'initial_duplicate', because the initial call is the whole point: a deep
     # link does its work on document load. Later fires are navbar navigations,
     # whose bare URLs deep_link_params answers with "leave everything alone".
     prevent_initial_call='initial_duplicate',
 )
-def apply_deep_link(search, stored_lookback):
+def apply_deep_link(search, stored_lookback, stored_model=None):
     """?date= / ?model= / ?lookback= into the global stores; see deep_link_params
     for what is honoured and why absence never resets anything.
 
     One exception to that: a stored lookback this request may not use (a session
     that logged out, or one from a local run) is reset to the default. Every reader
     already resolves it to 52, but left in the store the URL writer below would keep
-    printing it in the address bar."""
+    printing it in the address bar. The same holds for a stored model: a public
+    request reads the default model, so a gated one is reset to it."""
     params = controls.deep_link_params(
         search, dates=get_indexer().get_available_dates())
     lookback = params.get('global_lookback_store', no_update)
     if (lookback is no_update and stored_lookback is not None
             and controls.canon_lookback(stored_lookback) != stored_lookback):
         lookback = controls.LOOKBACK_DEFAULT
-    return (params.get('global_week_store', no_update),
-            params.get('global_model_store', no_update),
-            lookback)
+    model = params.get('global_model_store', no_update)
+    if (model is no_update and stored_model is not None
+            and controls.gate_model(stored_model) != stored_model):
+        model = models.DEFAULT_MODEL.key
+    return (params.get('global_week_store', no_update), model, lookback)
 
 
 # The write half. replaceState, not pushState: this is view state, and a

@@ -21,7 +21,7 @@ SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 
 #: Every page a search result should be able to land on. NOINDEX_PATHS is the
 #: complement; between them they cover the registry.
-PUBLIC_PAGES = {
+REGISTERED_PAGES = {
     '/': 'analytics/crowd.py',
     '/setups': 'setups.py',
     '/heatmap': 'analytics/heatmap.py',
@@ -38,6 +38,12 @@ PUBLIC_PAGES = {
     '/options': 'system/options.py',
 }
 
+#: The login-gated pages still register a title and description (a signed-in tab is
+#: named like any other), but a crawler only ever gets their sign-in note, so they are
+#: not in the sitemap.
+PUBLIC_PAGES = {path: f for path, f in REGISTERED_PAGES.items()
+                if path not in routing.PRIVATE_PATHS}
+
 
 def _register_call(page_file):
     text = (SRC / "pages" / page_file).read_text()
@@ -46,7 +52,7 @@ def _register_call(page_file):
     return match.group(1)
 
 
-@pytest.mark.parametrize("path,page_file", sorted(PUBLIC_PAGES.items()))
+@pytest.mark.parametrize("path,page_file", sorted(REGISTERED_PAGES.items()))
 def test_every_public_page_registers_a_title_and_description(path, page_file):
     """Dash serves the description (and og:/twitter: tags) per path from the
     registry, and app_cot's interpolate_index wrapper serves the title. A page

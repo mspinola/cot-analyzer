@@ -67,6 +67,15 @@ COMPARE_LABELS = {strip_traces.COMPARE_PRIOR: f"{const.MOMENTUM_PERIOD}w ago",
                   strip_traces.COMPARE_DOLLARS: "Dollars",
                   strip_traces.COMPARE_BASIS: "Other basis",
                   strip_traces.COMPARE_NONE: "None"}
+def compare_labels():
+    """The comparisons this request may draw. "Other basis" puts the OI-normalized
+    reading beside the raw one, so it is behind the login with the rest of the NPF
+    layer."""
+    if controls.private_allowed():
+        return COMPARE_LABELS
+    return {k: v for k, v in COMPARE_LABELS.items() if k != strip_traces.COMPARE_BASIS}
+
+
 SHOW_LABELS = {strip_traces.SHOW_ALL: "All",
                strip_traces.SHOW_SETUPS: "Setups",
                strip_traces.SHOW_SETUPS_NEAR: "+ Near"}
@@ -165,7 +174,7 @@ def dollar_table(df, lookback, newest_date):
 
 def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
                      n_classes, n_all, hidden=0, skipped=0,
-                     compare=strip_traces.COMPARE_PRIOR):
+                     compare=strip_traces.COMPARE_PRIOR, verdicts=True):
     """One line saying what the folded controls are set to.
 
     Folding the card hides seven controls, and a board drawn on a filter you cannot see
@@ -182,11 +191,14 @@ def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
     class fraction and the column count because this line truncates on a narrow
     viewport and they are the two segments least worth losing.
     """
-    bits = [target_date or "latest", vc.MODEL_LABELS.get(model.key, model.key)]
+    bits = [target_date or "latest"]
+    if verdicts:
+        bits.append(vc.MODEL_LABELS.get(model.key, model.key))
     label = controls.family_label(lookback)
     bits.append(label if lookback in controls.PUBLIC_LOOKBACKS else f"{label} lookback")
     bits.append(ORDER_LABELS.get(sort_by, sort_by))
-    bits.append(SHOW_LABELS.get(show, show))
+    if verdicts:
+        bits.append(SHOW_LABELS.get(show, show))
     bits.append(SIDE_LABELS.get(side, side))
     bits.append(f"vs {COMPARE_LABELS.get(compare, compare)}")
     if hidden:
@@ -199,7 +211,7 @@ def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
 
 
 def caption(report_date, lookback, model, skipped, hidden=0,
-            compare=strip_traces.COMPARE_PRIOR, disagree=0, unpriced=0):
+            compare=strip_traces.COMPARE_PRIOR, disagree=0, unpriced=0, verdicts=True):
     """The two lines under the controls.
 
     Everything here is a fact the picture cannot carry on its own, and the list grew by
@@ -221,7 +233,9 @@ def caption(report_date, lookback, model, skipped, hidden=0,
                   "rows")
     legs = [strip_traces.LEG_LABELS[leg] for leg in model.spec_legs
             if leg in strip_traces.LEG_LABELS]
-    if legs:
+    if legs and not verdicts:
+        tick_note = f"Ticks are the other legs ({', '.join(legs)}). "
+    elif legs:
         tick_note = (f"Ticks are the other legs this gate reads ({', '.join(legs)}); "
                      f"they light with their row, and the hover says whether one is "
                      f"through its own gate. ")
@@ -271,6 +285,13 @@ def caption(report_date, lookback, model, skipped, hidden=0,
                  f"{const.MOMENTUM_PERIOD} weeks ago.")
     else:
         money = ""
+    if not verdicts:
+        return (
+            f"Positioning as of Tuesday {pretty}, in net contracts, measured over "
+            f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the "
+            f"stem hangs from neutral (50), so length is distance from neutral; hover "
+            f"any head for the exact figures, or click it to open the market's detail "
+            f"page. {tick_note}{money}{dropped}")
     return (
         f"Positioning as of Tuesday {pretty}, gated on {model.title}, measured over "
         f"{window}. The lollipop is the COMMERCIAL positioning index, 0-100 — the stem "
@@ -282,7 +303,7 @@ def caption(report_date, lookback, model, skipped, hidden=0,
         f"leg blocking it.{money}{dropped}")
 
 
-def legend(model, colors, palette, compare=strip_traces.COMPARE_PRIOR):
+def legend(model, colors, palette, compare=strip_traces.COMPARE_PRIOR, verdicts=True):
     """The figure key, rendered as one line of page chrome above both columns.
 
     `strip_traces.legend_items` says what the entries are; this only turns them into
@@ -297,7 +318,8 @@ def legend(model, colors, palette, compare=strip_traces.COMPARE_PRIOR):
         strip_traces.GLYPH_SQUARE: "□",
     }
     groups = []
-    for title, entries in strip_traces.legend_items(model, colors, palette, compare):
+    for title, entries in strip_traces.legend_items(model, colors, palette, compare,
+                                                     verdicts=verdicts):
         bits = [html.Span(f"{title}:",
                           style={"color": vc.TEXT_COLOR, "marginRight": "0.6rem"})]
         for label, colour, glyph in entries:
@@ -392,7 +414,8 @@ def layout(**kwargs):
                                     controls.model_select(
                                         'strip_model_selector', size="sm",
                                         persistence=None)
-                                ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2"),
+                                ], xs=6, md=2, className="mb-3 mb-md-0 px-md-2",
+                                    style=controls.private_style()),
 
                                 dbc.Col([
                                     controls.label("Lookback"),
@@ -423,7 +446,8 @@ def layout(**kwargs):
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
                                     )
-                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2",
+                                    style=controls.private_style()),
 
                                 dbc.Col([
                                     html.Label("Columns", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
@@ -455,7 +479,7 @@ def layout(**kwargs):
                                     dbc.RadioItems(
                                         persistence='session',
                                         id='strip_compare_selector',
-                                        options=_options(COMPARE_LABELS),
+                                        options=_options(compare_labels()),
                                         value=strip_traces.COMPARE_PRIOR,
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
@@ -562,21 +586,30 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         return empty, "", [], f"No asset class selected · 0/{len(all_classes)} classes"
     lookback = controls.resolve(lookback)
 
-    model = models.resolve(model_key)
-    show = show or strip_traces.SHOW_ALL
+    # A public request (phase 2 of docs/design/2026-11-21-public-lookbacks-npf-behind-
+    # login.md) reads the default model's legs on net contracts and draws no verdict:
+    # no verdict colour, no Setups filter, no other-basis comparison.
+    verdicts = controls.private_allowed()
+    model = models.resolve(controls.gate_model(model_key))
+    show = (show or strip_traces.SHOW_ALL) if verdicts else strip_traces.SHOW_ALL
     side = side or strip_traces.SIDE_BOTH
     compare = compare or strip_traces.COMPARE_PRIOR
+    if not verdicts and compare == strip_traces.COMPARE_BASIS:
+        compare = strip_traces.COMPARE_PRIOR
 
     def summarise(hidden=0, skipped=0):
         return controls_summary(target_date, model, lookback, sort_by, show, side,
                                 columns, len(asset_classes), len(all_classes),
-                                hidden=hidden, skipped=skipped, compare=compare)
+                                hidden=hidden, skipped=skipped, compare=compare,
+                                verdicts=verdicts)
 
     df = get_matrix_data(asset_classes, lookback, target_date)
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
                 "", [], summarise())
+    if not verdicts:
+        df = df.assign(**{strip_traces.SETUP_COLUMN[model.key]: const.SETUP_NONE})
 
     # Only when the mark is on. The dollar join reads the price store market by
     # market, and paying for it on every render of a board that is not drawing it
@@ -599,7 +632,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
     colors = grid_colors(palette)
     chunks = strip_traces.split_columns(rows, int(columns or 1))
     figures = [strip_traces.build_figure(chunk, model, colors, palette,
-                                         compare=compare)
+                                         compare=compare, verdicts=verdicts)
                for chunk in chunks]
 
     report_date = target_date or df.iloc[0]["Date"]
@@ -629,8 +662,8 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         # different densities on one board.
         ], className="g-0", align="start"),
         caption(report_date, lookback, model, skipped, hidden, compare=compare,
-                disagree=disagree, unpriced=unpriced),
-        legend(model, colors, palette, compare),
+                disagree=disagree, unpriced=unpriced, verdicts=verdicts),
+        legend(model, colors, palette, compare, verdicts=verdicts),
         summarise(hidden=hidden, skipped=len(skipped)),
     )
 

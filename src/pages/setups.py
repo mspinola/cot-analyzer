@@ -18,7 +18,7 @@ import cotmetrics.utils as utils
 import dash
 import dash_bootstrap_components as dbc
 from cotmetrics.indexer import get_indexer
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
 import components.plot_helpers as helpers
@@ -111,6 +111,15 @@ active_setups_panel = html.Div(
 )
 
 def layout(**kwargs):
+    """Login-gated (docs/design/2026-11-21-public-lookbacks-npf-behind-login.md, phase
+    2): the page is NPF model output, so a public visitor gets the sign-in note and
+    every callback below is a `controls.private_callback`."""
+    if not controls.private_allowed():
+        return controls.private_page_stub("Setups")
+    return _layout(**kwargs)
+
+
+def _layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
     asset_list = tuple(get_indexer().get_asset_classes())
@@ -294,7 +303,7 @@ def _cached_build_asset_class_cards(db_time, ac, lookback, palette_name, filter_
                                           model=models.resolve(model_key),
                                           filter_types=filter_types)
 
-@callback(
+@controls.private_callback(
     Output('dummy-home-session-saver', 'data'),
     [Input('global_lookback_store', 'data'),
      Input('session_palette_theme_asset_store', 'data'),
@@ -326,7 +335,7 @@ def update_home_signals(lookback, palette_name, filter_types, model_key):
 
 
 
-@callback(
+@controls.private_callback(
     Output({"type": "accordion-body", "index": ALL}, "children"),
     Output('loaded_accordions_store', 'data'),
     Input("home_signals_accordion", "active_item"),
@@ -423,7 +432,7 @@ def warm_caches():
         utils.cot_logger.error(f"Error prewarming cache: {e}")
 
 
-@callback(
+@controls.private_callback(
     Output('home_signals_accordion', 'active_item'),
     Input('expand_all_btn', 'n_clicks'),
     Input('collapse_all_btn', 'n_clicks'),
@@ -443,7 +452,7 @@ def toggle_all_accordions(expand_clicks, collapse_clicks):
 # compute each row's setup state twice, which is how a class tally came to disagree
 # with the strip above it. This mattered more when there were two strips here; it still
 # matters, because the accordion titles carry the same tallies.
-@callback(
+@controls.private_callback(
     Output('home_setups_header', 'children'),
     Output('home_active_setups', 'children'),
     Output({"type": "accordion-item", "index": ALL}, 'title'),

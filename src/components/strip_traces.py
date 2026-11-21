@@ -739,13 +739,18 @@ def _other_basis_name(model):
             else "net contracts")
 
 
-def _hover(row, model, compare=COMPARE_PRIOR):
+def _hover(row, model, compare=COMPARE_PRIOR, verdicts=True):
     legs = "".join(
         f"<br>{LEG_LABELS[leg]}: {value:.0f}"
-        f"{' (through its gate)' if gate else ''}"
+        f"{' (through its gate)' if gate and verdicts else ''}"
         for leg, value, gate in row.legs if value is not None)
     verdict = STATE_LABELS.get(row.state)
-    tail = f"<br><br>{model.title}: {verdict}" if verdict else f"<br><br>{model.title}: no setup"
+    if not verdicts:
+        tail = ""
+    elif verdict:
+        tail = f"<br><br>{model.title}: {verdict}"
+    else:
+        tail = f"<br><br>{model.title}: no setup"
     equity = "<br>Equity index: gated on Commercials alone" if row.is_equity else ""
     # Only when the mark is on screen. A hover naming a dollar reading with no mark
     # beside it is a claim about a comparison the reader cannot see.
@@ -777,7 +782,7 @@ GLYPH_DIAMOND = "diamond"  # the hollow dollar mark
 GLYPH_SQUARE = "square"    # the hollow other-basis mark
 
 
-def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
+def legend_items(model, colors, palette, compare=COMPARE_PRIOR, verdicts=True):
     """The legend, as data: `[(group title, [(label, colour, glyph), ...]), ...]`.
 
     This used to be empty traces inside the first figure, the idiom plot_traces uses.
@@ -805,20 +810,28 @@ def legend_items(model, colors, palette, compare=COMPARE_PRIOR):
     }.get(compare, [])
     # The neutral keys are as dim as the marks they stand for: a full-strength
     # "No setup" swatch would promise a colour the plot never draws.
+    ticks = [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
+             for leg in model.spec_legs if leg in LEG_LABELS]
+    if not verdicts:
+        # The public strip (no model verdicts): every head is the quiet colour, so
+        # the key names the mark rather than verdicts the figure never draws.
+        return [
+            ("Lollipop: Commercial index",
+             [("Commercial index", colors.dim, GLYPH_MARK)] + reference),
+            ("Ticks: the other legs", ticks),
+        ]
     return [
         ("Lollipop: Commercial index",
          [("Bull setup", colors.bull, GLYPH_MARK),
           ("Bear setup", colors.bear, GLYPH_MARK),
           ("Near", colors.bull_near, GLYPH_MARK),
           ("No setup", colors.dim, GLYPH_MARK)] + reference),
-        ("Ticks: the legs this gate also reads",
-         [(LEG_LABELS[leg], palette[LEG_PALETTE_SLOT[leg]], GLYPH_TICK)
-          for leg in model.spec_legs if leg in LEG_LABELS]),
+        ("Ticks: the legs this gate also reads", ticks),
     ]
 
 
 def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
-                 compare=COMPARE_PRIOR):
+                 compare=COMPARE_PRIOR, verdicts=True):
     """The strip, as one figure.
 
     `rows` comes from build_rows. Nothing here reads a store, so a caller can hand it
@@ -927,7 +940,7 @@ def build_figure(rows, model, colors, palette, background=vc.BACKGROUND_COLOR,
                         size=[HEAD_SIZE if _verdict_colour(r, colors) else
                               QUIET_HEAD_SIZE for _, r in markets],
                         color=heads, line=dict(width=1, color=heads)),
-            hovertext=[_hover(r, model, compare) for _, r in markets],
+            hovertext=[_hover(r, model, compare, verdicts) for _, r in markets],
             hoverinfo="text",
             # The market's name rides on the point so a click can name its
             # destination without the page re-deriving row order; the head is

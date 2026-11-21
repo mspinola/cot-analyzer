@@ -97,7 +97,7 @@ def _make_signal_card(title, value_text, value_color, subtitle, tooltip):
 
 
 def build_signal_panel(df, asset, color_palette, target_date=None, is_equity=False,
-                       model=None):
+                       model=None, verdicts=True):
     # The band travels with the model rather than as two loose numbers, so a caller
     # cannot pair one model's thresholds with another's basis. models.resolve tolerates
     # a stale key from a browser session store.
@@ -165,6 +165,12 @@ def build_signal_panel(df, asset, color_palette, target_date=None, is_equity=Fal
         else:
             pos_color, pos_text, pos_state = NEUT_COLOR, "NEUTRAL", const.SETUP_NONE
         pos_tooltip = vc.positioning_tooltip(pos_state, model, setup_comms_only)
+        if not verdicts:
+            # The public panel (phase 2 of docs/design/2026-11-21-public-lookbacks-npf-
+            # behind-login.md): the three index readings, with no model verdict on them.
+            pos_color, pos_text, pos_state = NEUT_COLOR, "COT INDEX", const.SETUP_NONE
+            pos_tooltip = ("Each leg's COT index: where its net position sits in its "
+                           "own range over the lookback, 0 at the low and 100 at the high.")
 
         def _colored_span(value, bull_cond, bear_cond, fmt=".0f"):
             color = BULL_COLOR if bull_cond else (BEAR_COLOR if bear_cond else vc.BRIGHTER_TEXT_COLOR)

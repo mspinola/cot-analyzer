@@ -19,11 +19,13 @@ Builders take `**overrides` merged over the shared kwargs. Semantic fields
 `className=` and friends are the page's business.
 """
 
+import functools
 import urllib.parse
 
 import cotmetrics.models as models
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, callback, clientside_callback, dcc, html, no_update
+from dash.exceptions import PreventUpdate
 
 import viz_constants as vc
 
@@ -62,13 +64,49 @@ def _merged(base, overrides):
 
 # ── Lookback ──────────────────────────────────────────────────────────────────
 
-def lookback_allowed():
-    """May THIS request use the per-market lookbacks? The same gate as the other
-    login-gated views (`local_pages.allowed`): a local run, or a browser logged in at
-    /admin. Outside a request (a script, a layout built at start-up) the answer is no,
-    unless this is a local run."""
+def private_allowed():
+    """May THIS request see the private views: the per-market lookbacks, the NPF model
+    layer (setup verdicts, setup ages, the OI-normalized basis) and the pages built on
+    them? The same gate as every other login-gated view (`local_pages.allowed`): a local
+    run, or a browser logged in at /admin. Outside a request (a script, a layout built
+    at start-up) the answer is no, unless this is a local run.
+
+    docs/design/2026-11-21-public-lookbacks-npf-behind-login.md, phases 1 and 2."""
     import local_pages
     return local_pages.allowed()
+
+
+def lookback_allowed():
+    """The lookback half of `private_allowed`, kept as its own name so the lookback
+    control reads as asking about lookbacks."""
+    return private_allowed()
+
+
+def private_callback(*args, **kwargs):
+    """`dash.callback` for a login-gated page: a public request gets PreventUpdate.
+
+    The page's layout already renders nothing for a public visitor, but every callback
+    answers on the one shared /_dash-update-component endpoint, so a browser can post to
+    one whose components it was never sent. This is that check, once, instead of a line
+    at the top of every callback on the page."""
+    def decorate(fn):
+        @functools.wraps(fn)
+        def guarded(*a, **k):
+            if not private_allowed():
+                raise PreventUpdate
+            return fn(*a, **k)
+        return callback(*args, **kwargs)(guarded)
+    return decorate
+
+
+def private_page_stub(what):
+    """What a gated page's layout shows a public visitor."""
+    return html.Div(
+        [html.H4(what, style={"color": vc.TEXT_COLOR}),
+         html.P(["This view is available to signed-in users. ",
+                 html.A("Sign in", href="/admin"), "."],
+                style={"color": vc.TEXT_COLOR})],
+        className="container py-5", id="private_page_stub")
 
 
 def lookback_options():
@@ -219,6 +257,24 @@ def model_options(choices):
     disappeared at runtime on exactly the pages that narrow them."""
     return [{"label": vc.MODEL_LABELS[k], "value": k,
              "title": vc.MODEL_TOOLTIPS[k]} for k in choices]
+
+
+def gate_model(model_key):
+    """The model key this request may use. A public request always reads the default
+    model (Raw PF, net contracts): the model choice is the NPF layer, and the
+    OI-normalized basis behind the other choices is gated with it (phase 2 of
+    docs/design/2026-11-21-public-lookbacks-npf-behind-login.md). Callers that also
+    draw verdicts gate those separately, on `private_allowed`."""
+    return model_key if private_allowed() else models.DEFAULT_MODEL.key
+
+
+def private_style(style=None):
+    """`style` for a control that only a signed-in request should see. For layouts:
+    the component stays in the tree (its callbacks still wire up) but is not drawn."""
+    style = dict(style or {})
+    if not private_allowed():
+        style["display"] = "none"
+    return style
 
 
 def model_select(control_id, choices=vc.MODEL_CHOICES, **overrides):
@@ -392,7 +448,7 @@ def deep_link_params(search, dates=()):
     if date and date in dates:
         out['global_week_store'] = week_for_store(date, dates)
     model = parsed.get('model', [None])[0]
-    if model in vc.MODEL_VIEW_CHOICES:
+    if model in vc.MODEL_VIEW_CHOICES and gate_model(model) == model:
         out['global_model_store'] = model
     lookback = parsed.get('lookback', [None])[0]
     if lookback in LOOKBACK_CHOICES and canon_lookback(lookback) == lookback:

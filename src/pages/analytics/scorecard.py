@@ -65,7 +65,7 @@ import pandas as pd
 from cotmetrics.indexer import get_indexer
 from cotmetrics.indicators import calculate_range_index
 from cotmetrics.reports import get_matrix_data
-from dash import Input, Output, State, callback, clientside_callback, dcc, html
+from dash import Input, Output, State, clientside_callback, dcc, html
 
 import components.scorecard_rows as scorecard_rows
 import viz_config
@@ -425,6 +425,15 @@ def help_text(model):
 
 
 def layout(**kwargs):
+    """Login-gated (docs/design/2026-11-21-public-lookbacks-npf-behind-login.md, phase
+    2): the page is NPF model output, so a public visitor gets the sign-in note and
+    every callback below is a `controls.private_callback`."""
+    if not controls.private_allowed():
+        return controls.private_page_stub("Scorecard")
+    return _layout(**kwargs)
+
+
+def _layout(**kwargs):
     # Built per request, not at import, so importing this page needs no store.
     return html.Div([
         dbc.Container([
@@ -541,7 +550,7 @@ def layout(**kwargs):
     ])
 
 
-@callback(
+@controls.private_callback(
     Output('scorecard_container', 'children'),
     Output('scorecard_caption', 'children'),
     Output('scorecard_help', 'children'),

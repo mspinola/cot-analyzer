@@ -157,11 +157,21 @@ def test_an_empty_index_changes_nothing():
 
 # ── URL deep links ────────────────────────────────────────────────────────────
 
-def test_a_full_deep_link_sets_all_three_stores():
+def test_a_full_deep_link_sets_all_three_stores(monkeypatch):
+    monkeypatch.setattr(controls, "private_allowed", lambda: True)
     params = controls.deep_link_params(
         "?date=2026-07-28&model=npf&lookback=26", dates=WEEKS)
     assert params == {'global_week_store': "2026-07-28",
                       'global_model_store': "npf",
+                      'global_lookback_store': "26"}
+
+
+def test_a_public_deep_link_drops_a_gated_model(monkeypatch):
+    """The model choice is the NPF layer (phase 2): a public link keeps the default."""
+    monkeypatch.setattr(controls, "private_allowed", lambda: False)
+    params = controls.deep_link_params(
+        "?date=2026-07-28&model=npf&lookback=26", dates=WEEKS)
+    assert params == {'global_week_store': "2026-07-28",
                       'global_lookback_store': "26"}
 
 
@@ -191,12 +201,16 @@ def test_garbage_params_are_dropped_not_stored():
     assert controls.deep_link_params("?lookback=13", dates=WEEKS) == {}
 
 
-def test_the_overlay_view_is_a_legal_model_param():
+def test_the_overlay_view_is_a_legal_model_param(monkeypatch):
     """MODEL_BOTH is honoured: the chart pages draw it, and the board pages'
     own sync resolves it to the baseline model, exactly as when another page
-    writes it to the store."""
+    writes it to the store. Behind the login only: it overlays the OI-normalized
+    basis."""
+    monkeypatch.setattr(controls, "private_allowed", lambda: True)
     params = controls.deep_link_params("?model=both", dates=WEEKS)
     assert params == {'global_model_store': "both"}
+    monkeypatch.setattr(controls, "private_allowed", lambda: False)
+    assert controls.deep_link_params("?model=both", dates=WEEKS) == {}
 
 
 def test_asset_from_search_decodes_the_name():

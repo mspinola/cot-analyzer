@@ -105,6 +105,14 @@ def resolve_basis_plot(plot_id, default_basis=const.BASIS_RAW):
 
 
 
+def plot_options():
+    """The panels this request may stack. The "% of OI" and "Raw vs %OI" variants draw
+    the OI-normalized basis, which is behind the login with the rest of the NPF layer
+    (phase 2 of docs/design/2026-11-21-public-lookbacks-npf-behind-login.md)."""
+    plots = AVAILABLE_PLOTS if controls.private_allowed() else BASE_PLOTS
+    return [{'label': v, 'value': k} for k, v in plots.items()]
+
+
 def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
@@ -219,7 +227,7 @@ def layout(**kwargs):
                             dcc.Dropdown(
                                 persistence=True,
                                 id='analysis_plot_selector',
-                                options=[{'label': v, 'value': k} for k, v in AVAILABLE_PLOTS.items()],
+                                options=plot_options(),
                                 # The options-fed panels stay in the picker but out
                                 # of the default stack; see DEFAULT_OFF_PLOTS.
                                 value=[p for p in BASE_PLOTS
@@ -280,7 +288,7 @@ def layout(**kwargs):
                             html.Div(id='graphs_model_note',
                                      className="text-muted",
                                      style={'fontSize': '0.7rem', 'marginTop': '2px'}),
-                        ], xs=12, md="auto"),
+                        ], xs=12, md="auto", style=controls.private_style()),
                     ], className="g-1 align-items-start")),
                     ], className="g-1 align-items-start"),
                     ]),
@@ -487,8 +495,12 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
 
     show_price = True
     lookback = controls.resolve(lookback)
+    # A public request draws raw net contracts only and no verdict (phase 2).
+    verdicts = controls.private_allowed()
+    model_view = controls.gate_model(model_view)
 
-    selected_plots = registry.sanitize_selection(selected_plots, AVAILABLE_PLOTS)
+    selected_plots = registry.sanitize_selection(
+        selected_plots, AVAILABLE_PLOTS if verdicts else BASE_PLOTS)
 
     if not asset or not selected_plots or selected_plots == 0:
         return html.P("SELECT ASSET AND PLOTS", style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
@@ -613,9 +625,9 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
         # Default to standard text color
         title_color = vc.BRIGHTER_TEXT_COLOR
 
-        state = app_model.setup_state(
+        state = (app_model.setup_state(
             latest_comm, latest_lrg, latest_sml, get_indexer().is_equity(asset)
-        )
+        ) if verdicts else const.SETUP_NONE)
         if state == const.SETUP_BULL:
             title_color = color_palette[3]
         elif state == const.SETUP_BEAR:
@@ -792,6 +804,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
         return []
     utils.cot_logger.info(f"Generating graphs for Selected Assets: {selected_assets}, Plot: {selected_plot}, Lookback: {lookback}, Model: {model_view}, Columns: {num_cols}")
     lookback = controls.resolve(lookback)
+    model_view = controls.gate_model(model_view)
     # The selector persists per session, so a saved value can name a plot that no
     # longer exists (e.g. the retired synthesis plot). Fall back to the first option.
     if selected_plot not in GRID_PLOTS:

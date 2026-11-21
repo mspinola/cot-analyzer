@@ -122,6 +122,16 @@ def layout(**kwargs):
     ])
 
 
+def public_table(df):
+    """The positioning table this request may receive. The OI-normalized columns are
+    the NPF basis, behind the login (phase 2 of docs/design/2026-11-21-public-lookbacks-
+    npf-behind-login.md); dropped from the frame because the grid ships all of its
+    rowData and the CSV is the frame itself."""
+    if controls.private_allowed() or df is None or df.empty:
+        return df
+    return df.drop(columns=[c for c in df.columns if const.NORMALIZED in str(c)])
+
+
 @callback(
     Output('cot_positioning', 'children'),
     [Input('page_positioning_asset_selector', 'value'),
@@ -140,7 +150,8 @@ def get_CFTC_df_selection(assets, selected_columns, lookback, palette_name, targ
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     asset_list = (assets,) if isinstance(assets, str) else tuple(assets)
 
-    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date)
+    df = public_table(
+        get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date))
 
     if df.empty:
         return html.P("No data available for the selected asset classes.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
@@ -314,7 +325,8 @@ def download_positioning_table(n_clicks, selected_columns, lookback, target_date
     asset_list = (assets,) if isinstance(assets, str) else tuple(assets)
 
     # Fetch the dataframe
-    df = get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date)
+    df = public_table(
+        get_indexer().get_positioning_table_by_asset_class(asset_list, lookback, target_date))
     if not df.empty:
         df = df.sort_values(by=['Asset Class', 'Name'], ascending=[True, True])
 

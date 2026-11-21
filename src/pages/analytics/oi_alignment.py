@@ -253,7 +253,7 @@ def layout(**kwargs):
                     html.Div(id='oi_alignment_model_note',
                              className="text-muted",
                              style={'fontSize': '0.7rem', 'marginTop': '-10px'}),
-                ], xs=12, md="auto"),
+                ], xs=12, md="auto", style=controls.private_style()),
 
                 dbc.Col([
                     controls.label("Cols"),
@@ -562,7 +562,7 @@ def sync_signal_board_to_crosshair(click_data, zoom, palette_name, lookback,
     triggered = dash.callback_context.triggered
     by_zoom = bool(triggered) and triggered[0]["prop_id"].endswith("zoom_sink.data")
 
-    model = _panel_model(model_view)
+    model = _panel_model(controls.gate_model(model_view))
     if not by_zoom and (not click_data or 'points' not in click_data):
         return no_update, no_update
 
@@ -577,6 +577,7 @@ def sync_signal_board_to_crosshair(click_data, zoom, palette_name, lookback,
         signal_row = helpers.build_signal_panel(
             df=df, asset=asset, color_palette=color_palette,
             target_date=target_date, model=model,
+            verdicts=controls.private_allowed(),
         )
         exec_card, _ = build_executive_synthesis_card(
             df, color_palette, target_date=target_date, asset=asset)
@@ -598,6 +599,7 @@ def sync_signal_board_to_crosshair(click_data, zoom, palette_name, lookback,
             color_palette=color_palette,
             target_date=hovered_date,
             model=model,
+            verdicts=controls.private_allowed(),
         )
 
         exec_card, is_neutral = build_executive_synthesis_card(df, color_palette, target_date=hovered_date, asset=asset)
@@ -661,6 +663,8 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
         empty_message = html.P('SELECT ASSET AND PLOTS', style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})
         return empty_message, html.Div()
 
+    # A public request draws raw net contracts only (phase 2): no model choice.
+    model_view = controls.gate_model(model_view)
     if model_view not in vc.MODEL_VIEW_CHOICES:
         model_view = models.DEFAULT_MODEL.key
     # Nothing on the stack responds, or nothing can overlay: fall back to the default
@@ -787,7 +791,8 @@ def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num
 
     # Generate the signal panel based on the latest data and thresholds
     is_equity = get_indexer().is_equity(asset)
-    signal_row = helpers.build_signal_panel(df, asset, color_palette, is_equity=is_equity, model=model)
+    signal_row = helpers.build_signal_panel(df, asset, color_palette, is_equity=is_equity,
+                                            model=model, verdicts=controls.private_allowed())
 
     exec_card, is_neutral = build_executive_synthesis_card(df, color_palette, asset=asset)
 
