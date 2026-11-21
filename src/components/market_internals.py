@@ -44,7 +44,7 @@ A CREDIT APPETITE card (JNK against TLT, 0 to 100, the gauge of npf's
 `credit_xray.pine`) was drawn here as context until 2026-11-20. It went when the pane
 dropped it: a stress reading was not followed by a worse month in any era tested (agi
 docs/96-98), so it described credit without saying anything about what came next.
-`cotmetrics.indicators.credit_appetite` still computes it. JNK against its 20-day,
+cotmetrics dropped the function too (0.17.0). JNK against its 20-day,
 the part with a lead, is read 4.
 
 **The newest breadth reading may be PROVISIONAL.** marketdata holds an evening's

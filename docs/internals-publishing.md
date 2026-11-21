@@ -34,8 +34,8 @@ series from
 - **Credit appetite** (JNK against TLT, 0 to 100, npf's `credit_xray.pine`) was a
   context card from 2026-11-15 to 2026-11-20. It went when the pane dropped the gauge
   (npf #567): a stress reading was not followed by a worse month in any era tested (agi
-  docs/96-98). `cotmetrics.indicators.credit_appetite` still computes it, and cotmetrics
-  #58 still holds the check against TradingView.
+  docs/96-98). cotmetrics removed `credit_appetite` in 0.17.0 (cotmetrics #61); #58
+  holds the check against TradingView in its history.
 
 ## What it counts (since 2026-11-18)
 
