@@ -127,6 +127,7 @@ def warm_page_caches():
     """
     import weekly_reports
     from pages.analytics.crowd import warm_caches as warm_crowd_caches
+    from pages.analytics.crowd import warm_private_caches as warm_crowd_private_caches
     from pages.analytics.divergence import warm_caches as warm_divergence_caches
     from pages.analytics.heatmap import warm_caches as warm_heatmap_caches
     from pages.analytics.scorecard import warm_caches as warm_scorecard_caches
@@ -142,8 +143,13 @@ def warm_page_caches():
     # following it, because the page nobody warmed is the page the first visitor
     # after a restart or a release pays the cold render for.
     warm_crowd_caches()
-    warm_setups_caches()
+    # Every public page before anything only a signed-in visitor reads (2026-11-21,
+    # docs/design/2026-11-21-public-lookbacks-npf-behind-login.md): the heatmap's
+    # joins (the Strip rides on the same 52-week matrix), then the signed-in half of
+    # the home board, then the login-gated pages.
     warm_heatmap_caches()
+    warm_crowd_private_caches()
+    warm_setups_caches()
     warm_divergence_caches()
     # Last: its frames are the uniform-window twins of the ones above rather than
     # the same entries, so unlike the others it does not ride on a warm cache.

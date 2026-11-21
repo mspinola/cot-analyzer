@@ -199,9 +199,15 @@ def warm_caches():
     this the first visitor afterwards pays it all. Measured 2026-08-27 on the
     42-market universe: ~2.3s for the Signal Matrix (also the Heatmap's and the
     Strip's first-render cost, so they ride along) plus ~2.2s per basis for the
-    window indices, against ~0.2s for a warm render. Both bases, so the first model
-    switch is warm too. Failures are logged and swallowed: a warmer that can take
-    the server down is worse than a slow first visitor.
+    window indices, against ~0.2s for a warm render. Failures are logged and
+    swallowed: a warmer that can take the server down is worse than a slow first
+    visitor.
+
+    Public half only (2026-11-21): the 52-week matrix and the default model's basis,
+    which is everything a public visitor's board reads. The signed-in half (the
+    frozen-table matrix and the other basis) is `warm_private_caches`, run by
+    main.warm_page_caches after every public page is warm, so the visitors who
+    cannot see it are not left waiting behind it.
     """
     try:
         indexer = get_indexer()
@@ -209,20 +215,38 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        # Both matrices the board reads: 52 for a public request, Custom (the frozen
-        # NPF table, the verdicts' window) behind the login.
-        get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
         df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "52", None)
-        # Distinct bases, not one per model: the cache is keyed on the basis, and two
-        # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
         for record in df.to_dict("records"):
-            for basis in dict.fromkeys(m.basis for m in models.MODELS):
-                _market_indices(record.get("Asset"), basis, newest)
+            _market_indices(record.get("Asset"), models.DEFAULT_MODEL.basis, newest)
         utils.cot_logger.info(
             f"crowd: warmed window indices for {len(df)} markets ({newest}).")
         tape_context.warm()
     except Exception as e:
         utils.cot_logger.warning(f"crowd: cache warm failed, first render pays: {e}")
+
+
+def warm_private_caches():
+    """The signed-in half of `warm_caches`: the matrix on Custom (the frozen NPF table,
+    the verdicts' window) and every other model basis, so the first signed-in visit
+    and the first model switch are warm too."""
+    try:
+        indexer = get_indexer()
+        available = indexer.get_available_dates()
+        if not available:
+            return
+        newest = available[0]
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
+        # Distinct bases, not one per model: the cache is keyed on the basis, and two
+        # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
+        others = [b for b in dict.fromkeys(m.basis for m in models.MODELS)
+                  if b != models.DEFAULT_MODEL.basis]
+        for record in df.to_dict("records"):
+            for basis in others:
+                _market_indices(record.get("Asset"), basis, newest)
+        utils.cot_logger.info(
+            f"crowd: warmed the signed-in board for {len(df)} markets ({newest}).")
+    except Exception as e:
+        utils.cot_logger.warning(f"crowd: signed-in warm failed, first render pays: {e}")
 
 
 def caption(report_date, model, skipped, awaiting=(), stale=(), verdicts=True):
