@@ -53,7 +53,7 @@ def test_the_public_site_says_nothing_about_cmr(monkeypatch):
         assert not any("CMR" in label for label in labels)
 
 
-@pytest.mark.parametrize("value", ["custom", "npf", "CMR", "Custom", "bogus", None])
+@pytest.mark.parametrize("value", ["custom", "npf", "CMR", "NPF", "Custom", "bogus", None])
 def test_a_gated_or_unknown_value_from_a_public_request_is_52_weeks(monkeypatch, value):
     """Hiding the option is not the gate: every callback answers on the one shared
     endpoint, so a public browser can post any value. resolve() is the gate."""
@@ -64,9 +64,11 @@ def test_a_gated_or_unknown_value_from_a_public_request_is_52_weeks(monkeypatch,
 def test_behind_the_login_the_control_values_map_to_the_cotmetrics_families(monkeypatch):
     monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
     assert [controls.resolve(v) for v in ("26", "52", "custom", "npf")] == \
-        ["26", "52", "CMR", "Custom"]
+        ["26", "52", "CMR", "NPF"]
     # The family names themselves are not control values, even when logged in.
-    assert controls.resolve("CMR") == "52" and controls.resolve("Custom") == "52"
+    assert controls.resolve("CMR") == "52" and controls.resolve("NPF") == "52"
+    # Nor is the NPF family's pre-cotmetrics-0.19.0 name.
+    assert controls.resolve("Custom") == "52"
 
 
 def test_outside_a_request_the_gate_is_shut(monkeypatch):
@@ -256,13 +258,13 @@ def test_forced_assets_resolves_names_and_their_classes(monkeypatch):
 def test_family_labels_never_say_cmr():
     assert controls.family_label("52") == "52-week"
     assert controls.family_label("CMR") == "Custom"
-    assert controls.family_label("Custom") == "NPF research"
+    assert controls.family_label("NPF") == "NPF research"
 
 
 def test_column_labels_swap_the_family_token_for_the_control_word():
     assert controls.column_label("Comm CMR Idx", "CMR") == "Comm Custom Idx"
     assert controls.column_label("Willco CMR", "CMR") == "Willco Custom"
-    assert controls.column_label("Comm Custom Idx", "Custom") == "Comm NPF research Idx"
+    assert controls.column_label("Comm NPF Idx", "NPF") == "Comm NPF research Idx"
     assert controls.column_label("Comm 52 Idx", "52") == "Comm 52 Idx"
 
 

@@ -32,7 +32,7 @@ import viz_constants as vc
 #: The lookback control's values. The public site offers two uniform windows. The two
 #: per-market tables are login-gated (docs/design/2026-11-21-public-lookbacks-npf-
 #: behind-login.md): "custom" is each market's CmrLookbackWeeks (fitted to reproduce a
-#: licensed third-party index), "npf" is CustomLookbackWeeks (the frozen table the NPF
+#: licensed third-party index), "npf" is NpfLookbackWeeks (the frozen table the NPF
 #: research and livebook were validated on). The control's values are deliberately not
 #: cotmetrics' family names, so a family name posted to a callback is just unknown.
 LOOKBACK_DEFAULT = "52"
@@ -42,7 +42,7 @@ LOOKBACK_CHOICES = PUBLIC_LOOKBACKS + GATED_LOOKBACKS
 
 #: Control value -> cotmetrics lookback family (the column names, e.g. "Comm CMR Index").
 #: The one place the two vocabularies meet.
-_FAMILY = {"26": "26", "52": "52", "custom": "CMR", "npf": "Custom"}
+_FAMILY = {"26": "26", "52": "52", "custom": "CMR", "npf": "NPF"}
 
 _LOOKBACK_LABELS = {"26": "26 Weeks", "52": "52 Weeks",
                     "custom": "Custom", "npf": "NPF research"}
@@ -141,14 +141,14 @@ def resolve(lookback):
 
     Every callback that reads `global_lookback_store` (or a page's lookback control)
     calls this first and hands only its result to cotmetrics. Below this line the code
-    speaks cotmetrics' families ("26", "52", "CMR", "Custom").
+    speaks cotmetrics' families ("26", "52", "CMR", "NPF").
     """
     return _FAMILY[canon_lookback(lookback)]
 
 
 def family_label(family):
     """What to call a resolved family in text a reader sees: "52-week", "Custom". The
-    cotmetrics family names ("CMR", "Custom") are column-name vocabulary, not copy."""
+    cotmetrics family names ("CMR", "NPF") are column-name vocabulary, not copy."""
     if family in PUBLIC_LOOKBACKS:
         return f"{family}-week"
     for key, fam in _FAMILY.items():
@@ -171,22 +171,22 @@ def column_label(column, family):
 def lookback_weeks(family, asset):
     """A resolved lookback family (`resolve`'s result) as a number of weeks for one market.
 
-    "26" and "52" name themselves; "CMR" and "Custom" are per instrument, from
-    params.yaml (CmrLookbackWeeks and CustomLookbackWeeks).
+    "26" and "52" name themselves; "CMR" and "NPF" are per instrument, from
+    params.yaml (CmrLookbackWeeks and NpfLookbackWeeks).
     Resolved here because the control owns what its values mean, and the indexer's
     frames do not stamp it: `get_symbols_data` records the basis in `attrs` but not
     the window. Returns None for an unknown market, so a caller can draw nothing
     rather than guess.
     """
     from cotmetrics.indexer import get_indexer
-    if family not in ("CMR", "Custom"):
+    if family not in ("CMR", "NPF"):
         return int(family if family in PUBLIC_LOOKBACKS else LOOKBACK_DEFAULT)
     instrument = get_indexer().get_instrument_from_name(asset) if asset else None
     if instrument is None:
         return None
     if family == "CMR":
         return int(instrument.cmr_lookback)
-    return int(instrument.custom_lookback)
+    return int(instrument.npf_lookback)
 
 
 def other_contracts_frame(asset, lookback, basis, indexer=None):

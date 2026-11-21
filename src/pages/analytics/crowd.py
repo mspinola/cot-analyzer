@@ -226,7 +226,7 @@ def warm_caches():
 
 
 def warm_private_caches():
-    """The signed-in half of `warm_caches`: the matrix on Custom (the frozen NPF table,
+    """The signed-in half of `warm_caches`: the matrix on NPF (the frozen NPF table,
     the verdicts' window) and every other model basis, so the first signed-in visit
     and the first model switch are warm too."""
     try:
@@ -235,7 +235,7 @@ def warm_private_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "NPF", None)
         # Distinct bases, not one per model: the cache is keyed on the basis, and two
         # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
         others = [b for b in dict.fromkeys(m.basis for m in models.MODELS)
@@ -433,11 +433,11 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
     and why); the callback keeps only HOW it is drawn.
     """
     # The matrix drives the universe and carries the verdict. With verdicts, the
-    # Custom lookback (the frozen NPF table) is the models' own window, the same one
+    # NPF lookback (the frozen NPF table) is the models' own window, the same one
     # every other verdict surface gates on. Without them (a public request, phase 2 of
     # docs/design/2026-11-21-public-lookbacks-npf-behind-login.md) nothing reads the
     # verdict, so nothing reads the frozen table either.
-    df = get_matrix_data(asset_classes, "Custom" if verdicts else "52", target_date)
+    df = get_matrix_data(asset_classes, "NPF" if verdicts else "52", target_date)
     if df.empty:
         return None
 

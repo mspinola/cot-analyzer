@@ -138,7 +138,7 @@ def load_panel(include_heldout: bool = True) -> tuple[dict, dict]:
     for cls in ci.get_asset_classes(include_heldout=include_heldout):
         for name in ci.get_assets_for_asset_class(cls, include_heldout=include_heldout):
             try:
-                df = ci.get_symbols_data(name, "Custom")
+                df = ci.get_symbols_data(name, "NPF")
             except Exception as exc:  # a market with no price history is not a failure
                 print(f"  skip {name}: {exc}", file=sys.stderr)
                 continue

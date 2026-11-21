@@ -78,7 +78,7 @@ def directions(row, frame, symbol):
     }
 
 
-def measure(model, weeks, lookback="Custom"):
+def measure(model, weeks, lookback="NPF"):
     comm_col, _, _ = model.leg_columns(lookback)
     tally = {k: {"agree": 0, "conflict": 0, "flat": 0} for k in READINGS}
     conflicts, gate_rows, ages, longest = [], 0, {}, {}
@@ -139,7 +139,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weeks", type=int, default=52,
                         help="how many weeks back to sweep (default 52)")
-    parser.add_argument("--lookback", default="Custom")
+    parser.add_argument("--lookback", default="NPF")
     parser.add_argument("--out", type=Path, help="write the full result as JSON")
     args = parser.parse_args()
 

@@ -179,7 +179,7 @@ def test_accounting_style_formatting(value, text):
 
 
 class _Instrument:
-    custom_lookback = 39
+    npf_lookback = 39
 
 
 class _Indexer:
@@ -192,7 +192,7 @@ def test_lookback_weeks_names_the_window_the_control_means(monkeypatch):
     monkeypatch.setattr(indexer_mod, "get_indexer", lambda: _Indexer())
     assert controls.lookback_weeks("26", "Gold") == 26
     assert controls.lookback_weeks("52", "Gold") == 52
-    assert controls.lookback_weeks("Custom", "Gold") == 39
+    assert controls.lookback_weeks("NPF", "Gold") == 39
     assert controls.lookback_weeks(None, "Gold") == 52
     assert controls.lookback_weeks("bogus", "Gold") == 52
-    assert controls.lookback_weeks("Custom", "Nowhere") is None
+    assert controls.lookback_weeks("NPF", "Nowhere") is None

@@ -63,7 +63,7 @@ def market_panel(name, lookback):
     """One market's four readings on one index, plus the volatility index behind them.
 
     Returns `(frame, weeks)` or `(None, reason)`. The window is the market's own tuned
-    lookback under "Custom", which is what the page draws, so the dollar reading is
+    lookback under "NPF", which is what the page draws, so the dollar reading is
     measured over exactly the window the contract reading was.
     """
     indexer = get_indexer()
@@ -73,7 +73,7 @@ def market_panel(name, lookback):
     if lookback in ("26", "52"):
         window = int(lookback)
     else:
-        window = int(instrument.custom_lookback)
+        window = int(instrument.npf_lookback)
 
     weekly = indexer.get_symbols_data(name, lookback)
     if weekly.empty:
@@ -86,7 +86,7 @@ def market_panel(name, lookback):
     if not ex["risk_usd"].notna().any():
         return None, "no contract multiplier or no bars"
 
-    prefix = f"Comm {lookback} " if lookback in ("26", "52") else "Comm Custom "
+    prefix = f"Comm {lookback} " if lookback in ("26", "52") else "Comm NPF "
     panel = pd.DataFrame({
         "raw": pd.to_numeric(weekly[prefix + "Idx"], errors="coerce").to_numpy(),
         "norm": pd.to_numeric(weekly[prefix + "Idx Norm"], errors="coerce").to_numpy(),
@@ -181,10 +181,10 @@ def oi_share_identity(names):
     indexer = get_indexer()
     for name in names:
         instrument = indexer.get_instrument_from_name(name)
-        weekly = indexer.get_symbols_data(name, "Custom")
+        weekly = indexer.get_symbols_data(name, "NPF")
         try:
             ex = exposure.market_exposure(name, leg=exposure.LEG_COMM,
-                                          lookback="Custom", frame=weekly,
+                                          lookback="NPF", frame=weekly,
                                           symbol=instrument.symbol)
         except Exception:  # noqa: BLE001
             continue
@@ -202,8 +202,8 @@ def oi_share_identity(names):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lookback", default="Custom",
-                        choices=("26", "52", "Custom"),
+    parser.add_argument("--lookback", default="NPF",
+                        choices=("26", "52", "NPF"),
                         help="the index window, as the page's control names it")
     parser.add_argument("--out", help="write the full result to this JSON path")
     args = parser.parse_args(argv)
