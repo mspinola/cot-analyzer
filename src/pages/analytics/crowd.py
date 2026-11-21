@@ -63,7 +63,6 @@ from dash import (
 
 import app_utils
 import components.board_traces as board_traces
-import components.breadth_panel as breadth_panel
 import components.tape_context as tape_context
 import viz_config
 import viz_constants as vc
@@ -214,7 +213,6 @@ def warm_caches():
         utils.cot_logger.info(
             f"crowd: warmed window indices for {len(df)} markets ({newest}).")
         tape_context.warm()
-        breadth_panel.warm()
     except Exception as e:
         utils.cot_logger.warning(f"crowd: cache warm failed, first render pays: {e}")
 
@@ -275,8 +273,8 @@ def help_text(model):
         f"on top so a high cell is the fearful or broad side and a low cell the "
         f"crowded, complacent side, the same way round as the markets above. "
         f"Equal-over-cap-weight is a weekly breadth proxy on the board's own "
-        f"frame; the exact daily breadth reads (FOMO, net new highs) are the "
-        f"panel below the board, on their own zones, because a weekly sample "
+        f"frame; the exact daily breadth reads (FOMO, net new highs) are on the "
+        f"Market Internals page, on their own zones, because a weekly sample "
         f"misses most of their visits. Context, not a signal, and not a composite."
     )
 
@@ -392,58 +390,8 @@ def layout(**kwargs):
                 ]),
             ]),
 
-            # The breadth panel: FOMO and net new highs, DAILY, against their
-            # published zones. Outside the export container on purpose: the PNG is
-            # the board, and this is a different cadence with its own caption.
-            # components.breadth_panel says why it is not a fifth context row.
-            dbc.Row([
-                dbc.Col([
-                    html.P(id='crowd_breadth_caption',
-                           style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                                  'fontStyle': 'italic', 'marginBottom': '4px'}),
-                    help_fold.wrap('crowd_breadth', html.P(
-                        id='crowd_breadth_help',
-                        style={'color': vc.TEXT_COLOR, 'fontSize': '0.85rem',
-                               'fontStyle': 'italic', 'marginBottom': '4px'})),
-                ], xs=12),
-            ], className="mt-4", align="center"),
-            dbc.Row([
-                dbc.Col(html.Div(id='crowd_breadth_container'), width=12),
-            ]),
         ], fluid=True),
     ])
-
-
-@callback(
-    Output('crowd_breadth_container', 'children'),
-    Output('crowd_breadth_caption', 'children'),
-    Output('crowd_breadth_help', 'children'),
-    [Input('session_palette_theme_asset_store', 'data'),
-     Input('crowd_date_selector', 'value')],
-)
-def render_breadth(palette_name, target_date):
-    """The daily panel, on the board's palette. A series the store cannot serve
-    draws nothing and says so in the caption, the tape-context rule.
-
-    The board's date selector defaults to the newest COT Tuesday, which for a DAILY
-    panel is up to a week stale on the default view. So the panel runs to the last
-    session unless the reader has chosen an older week, in which case it ends there
-    so the two agree about which week is on screen.
-    """
-    cut = breadth_panel.cut_date(target_date, _newest_report_date())
-    r, awaiting = breadth_panel.read(cut)
-    if r is None:
-        return (html.Div(), breadth_panel.caption(None, awaiting),
-                breadth_panel.help_text())
-    colors = grid_colors(viz_config.get_palette(palette_name))
-    fig = breadth_panel.build_figure(r, colors)
-    return (
-        dcc.Graph(id='crowd_breadth_graph', figure=fig,
-                  config={"displayModeBar": False, "responsive": True},
-                  style={"width": "100%", "maxWidth": "1100px", "margin": "0 auto"}),
-        breadth_panel.caption(r, report_date=cut),
-        breadth_panel.help_text(),
-    )
 
 
 def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_date=None):
@@ -487,14 +435,6 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
         stale=tape_context.stale_notes(context_reads, report_date),
         reads=reads,
     )
-
-
-def _newest_report_date():
-    try:
-        available = get_indexer().get_available_dates()
-    except Exception:  # noqa: BLE001 -- the panel must draw even if the indexer cannot
-        return None
-    return available[0] if available else None
 
 
 @callback(
