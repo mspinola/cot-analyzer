@@ -548,6 +548,7 @@ def test_equity_positioning_is_the_crowd_boards_row_for_each_market():
     assert len(large) == len(small) == 156 and (large[-1], small[-1]) == (-19.0, 9.5)
     assert mi.equity_positioning(lambda market: pd.DataFrame()) == ()
     assert [s for s, _ in mi.EQUITY_MARKETS] == ["ES", "NQ"]
+    assert [s for s, _ in mi.EQUITY_MARKETS_FOLDED] == ["YM", "RTY"]
 
 
 def test_bond_volatility_is_the_move_index_on_its_own_history():

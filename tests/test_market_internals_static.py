@@ -380,7 +380,7 @@ def _positioning():
     others = (tuple(-v for v in series[1]), tuple(v / 4 for v in series[1]))
     return (mi.EquityPositioning("ES", "S&P 500", (81.0, 59.0, 59.0, 58.0), -10.9, path,
                                  "1986-01-15", 51234.0, series, "2026-11-10", others),
-            mi.EquityPositioning("RTY", "Russell", (0.0, 1.0, 26.0, None), 0.4,
+            mi.EquityPositioning("NQ", "Nasdaq", (0.0, 1.0, 26.0, None), 0.4,
                                  path[:-1] + (20.0,), "2002-08-13", -3300.0, series, "2026-11-10", others))
 
 
@@ -415,7 +415,7 @@ def test_each_survey_block_is_its_reading_over_the_surveys_pages_own_percentiles
 
 
 def test_positioning_is_its_own_section_with_the_boards_row_per_market():
-    """ES, YM, NQ and RTY as the crowd board draws them: the commercial index on four
+    """ES and NQ as the crowd board draws them: the commercial index on four
     lookbacks in filled cells, the six-week change, and the 52-week path."""
     from components import board_traces
     reads = _positioning()
@@ -433,11 +433,11 @@ def test_positioning_is_its_own_section_with_the_boards_row_per_market():
     assert f"background:{fill};" in es
     assert f'<span style="color:{colors.bear}">▼</span> -11' in es
     assert "<polyline" in es and "<circle" in es
-    rty = card.split('data-key="RTY"')[1].split("</tr>")[0]
+    nq = card.split('data-key="NQ"')[1].split("</tr>")[0]
     # A lookback the history cannot fill is a dash, not a zero; a flat change is a dot.
-    assert rty.count('class="cell none"') == 1 and ">0</span>" in rty
-    assert f'<span style="color:{surveys.MUTED}">•</span> +0' in rty
-    assert f'fill="{colors.bear}"' in rty                 # the path ends under 50
+    assert nq.count('class="cell none"') == 1 and ">0</span>" in nq
+    assert f'<span style="color:{surveys.MUTED}">•</span> +0' in nq
+    assert f'fill="{colors.bear}"' in nq                  # the path ends under 50
     assert "report of Nov 10, 2026" in card
 
 
@@ -889,3 +889,24 @@ def test_the_long_windows_mark_fomos_extreme_closes():
     h = dataclasses.replace(h, dates=h.dates[:4], fomo=(bars, 0))
     assert view.history_fomo_extremes(h) == ((True, False, False, False),
                                              (False, False, True, False))
+
+
+def test_ym_and_rty_sit_in_a_closed_fold_under_es_and_nq():
+    import dataclasses
+    es, nq = _positioning()
+    ym = dataclasses.replace(nq, symbol="YM", name="DOW")
+    rty = dataclasses.replace(nq, symbol="RTY", name="Russell")
+    page = st.render(_snap(), COLORS, positioning=(es, nq, ym, rty))
+    card = page.split(f'id="{st.POSITIONING_ID}"')[1].split("</section>")[0]
+    shown, fold = card.split('<details class="pmore" data-positioning-more>')
+    assert "<details class=\"pmore\" data-positioning-more open" not in card
+    assert fold.startswith("<summary>YM · DOW, RTY · Russell</summary>")
+    for symbol in ("ES", "NQ"):
+        assert f'data-chart="{st.POSITIONING_PREFIX}{symbol}"' in shown
+    for symbol in ("YM", "RTY"):
+        assert f'data-chart="{st.POSITIONING_PREFIX}{symbol}"' in fold
+        assert f'data-chart="{st.POSITIONING_PREFIX}{symbol}"' not in shown
+    assert shown.count("<tr") == fold.count("<tr") == 3            # head + two rows each
+    # Without them, no fold.
+    plain = st.render(_snap(), COLORS, positioning=(es, nq))
+    assert "data-positioning-more" not in plain
