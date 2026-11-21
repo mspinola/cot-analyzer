@@ -95,7 +95,7 @@ def external_page_path(key):
 #: Operator surfaces and internal viewers: out of the sitemap, disallowed in
 #: robots.txt. A search result should never land a visitor on the admin login
 #: or a raw parquet browser.
-NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view'})
+NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view', '/news-failure'})
 
 #: The weekly report pages: /weekly and /weekly/<date>. The one dynamic family
 #: this guard admits, and only in date SHAPE: whether a well-formed week is

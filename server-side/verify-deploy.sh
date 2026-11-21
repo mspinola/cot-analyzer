@@ -73,7 +73,31 @@ check "install icon serves"            "$BASE/assets/icon-512.png"  200
 # Local-only pages draw licensed data (src/local_pages.py). A 200 here means
 # COT_ANALYZER_LOCAL_PAGES is set on the server, which publishes that data.
 check "local-only sentiment page is absent" "$BASE/sentiment"  404
-check "local-only news-failure scan is absent"  "$BASE/news-failure" 404
+
+# The news-failure scan may be served (COT_ANALYZER_PRIVATE_PAGES), but only to a
+# browser logged in at /admin. Unregistered it 404s; registered, the page shell is
+# public like every Dash page, so the check is on its DATA: the callback, asked with
+# no session, must refuse (204, Dash's answer to PreventUpdate). A 200 here means the
+# board went to anyone who POSTs. Nothing is logged in, written or sent.
+nf_status=$(curl -s -o /dev/null --max-time 30 -w '%{http_code}' "$BASE/news-failure")
+if [ "$nf_status" = "404" ]; then
+    echo "pass  news-failure scan is not served (flag off)"
+    PASS=$((PASS+1))
+elif [ "$nf_status" = "200" ]; then
+    nf_cb=$(curl -s -o /dev/null --max-time 30 -w '%{http_code}' \
+        -H 'Content-Type: application/json' -X POST "$BASE/_dash-update-component" \
+        --data '{"output":"..news_failure_body.children...news_failure_date.disabled...news_failure_window_wrap.style..","outputs":[{"id":"news_failure_body","property":"children"},{"id":"news_failure_date","property":"disabled"},{"id":"news_failure_window_wrap","property":"style"}],"inputs":[{"id":"news_failure_date","property":"value","value":null},{"id":"news_failure_market","property":"value","value":"NG"},{"id":"news_failure_window","property":"value","value":0},{"id":"news_failure_model","property":"value","value":null}],"changedPropIds":["news_failure_market.value"]}')
+    if [ "$nf_cb" = "204" ]; then
+        echo "pass  news-failure scan refuses a logged-out callback"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL  news-failure scan: logged-out callback got HTTP $nf_cb, expected 204"
+        FAIL=$((FAIL+1))
+    fi
+else
+    echo "FAIL  news-failure scan: expected HTTP 404 or 200, got $nf_status"
+    FAIL=$((FAIL+1))
+fi
 
 # The subscription endpoints exist and refuse garbage; nothing here subscribes,
 # confirms or sends anything.

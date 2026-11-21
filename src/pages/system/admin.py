@@ -16,25 +16,9 @@ from flask import session
 
 import subscribers
 import viz_constants as vc
+from admin_session import SESSION_FLAG, is_admin  # noqa: F401 (re-exported)
 
 dash.register_page(__name__, path='/admin')
-
-#: The flag a correct password sets in Flask's session. Server-signed (see the
-#: secret_key note in app_cot), so a request cannot simply claim it the way it
-#: could claim the old store value.
-SESSION_FLAG = 'cot_admin'
-
-
-def is_admin():
-    """Did THIS request come from a browser that logged in?
-
-    Read from the signed session cookie, never from a callback Input. The browser's
-    `session_admin_auth` store still carries "AUTHORIZED" after a login, but only
-    to decide which half of the page to show: it is request data, and anything a
-    request says about itself is exactly what a forged request would say.
-    """
-    return session.get(SESSION_FLAG) is True
-
 
 def _require_admin():
     """Stop an admin callback here unless the request is from a logged-in browser.

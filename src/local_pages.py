@@ -6,8 +6,10 @@ sentiment history is a member download, both licensed to the operator, and a pag
 the public site would hand them to every visitor, so in THIS app the page is local-only.
 
 The second is the news-failure scan (`/news-failure`, 2026-11-18): it sorts markets by a
-third-party positioning index licensed to the operator (a paid product), and reads `cmrdata_store`, which
-only the operator's machine has. It is not published anywhere.
+third-party positioning index licensed to the operator (a paid product), and reads
+`cmrdata_store`. It is not published anywhere, but since 2026-11-21 the deployed app
+may SERVE it to the operator alone, behind the admin login (`private_enabled`, below),
+so the page does not need a local run to be read.
 
 The operator has since cleared publishing them (2026-11-09), and they are published,
 but not from here: `components.sentiment_static` renders the page as one static file
@@ -38,10 +40,36 @@ _TRUE = ("1", "true", "yes", "on")
 MONITOR_ENTRIES = (("Sentiment (local)", "/sentiment"), ("News Failure Scan (local)", "/news-failure"))
 
 
-def enabled(env=None):
-    """True only when the flag is explicitly on."""
+#: The server's flag for the one gated page it may serve, and only to a browser that
+#: logged in at /admin. Separate from ENV on purpose: ENV also turns on the sentiment
+#: page and lifts the login, and neither may happen on the server. Unlinked is not
+#: private (a URL is guessable and gets passed around), and a password on the path in
+#: nginx would not do either: the page's data comes back through the one shared
+#: /_dash-update-component endpoint, so the check has to be in the page's own layout
+#: and callback (`allowed`).
+PRIVATE_ENV = "COT_ANALYZER_PRIVATE_PAGES"
+
+
+def _flag(name, env):
     env = os.environ if env is None else env
-    return str(env.get(ENV, "")).strip().lower() in _TRUE
+    return str(env.get(name, "")).strip().lower() in _TRUE
+
+
+def enabled(env=None):
+    """True only when the local flag is explicitly on."""
+    return _flag(ENV, env)
+
+
+def private_enabled(env=None):
+    """True only when the server flag for login-gated pages is explicitly on."""
+    return _flag(PRIVATE_ENV, env)
+
+
+def allowed(env=None):
+    """May THIS request see a login-gated page? Always on a local run; otherwise only
+    from a browser that logged in at /admin."""
+    from admin_session import is_admin
+    return enabled(env) or is_admin()
 
 
 def monitor_entries(env=None):
