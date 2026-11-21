@@ -627,27 +627,46 @@ def positioning_section(positioning, colors, groups=None):
     then each market's net position through time. No section without the COT store."""
     if not positioning:
         return ""
+    folded = {s for s, _ in mi.EQUITY_MARKETS_FOLDED}
+    shown = [r for r in positioning if r.symbol not in folded]
+    more = [r for r in positioning if r.symbol in folded]
+    if not shown:
+        shown, more = more, []
     head = ('<th></th><th class="name"></th>'
             + "".join(f"<th>{_esc(c)}</th>" for c in view.POSITIONING_COLUMNS)
             + f'<th>{_esc(view.POSITIONING_CHANGE)}</th>'
             f'<th class="path">{_esc(view.POSITIONING_PATH)}</th>')
-    table = ('<div class="scroll"><table class="cot"><thead><tr>' + head + '</tr></thead><tbody>'
-             + "".join(_cot_row(r, colors) for r in positioning) + '</tbody></table></div>')
-    asof = _detail(f"Commercial index, 0 to 100 · report of {_date(positioning[0].date)}",
-                   "detail small")
+
+    def table(rows):
+        return ('<div class="scroll"><table class="cot"><thead><tr>' + head
+                + '</tr></thead><tbody>' + "".join(_cot_row(r, colors) for r in rows)
+                + '</tbody></table></div>')
+
     groups = groups or group_colors()
-    drawn = len(positioning[0].others) + 1
+
+    def charts_of(rows):
+        return '<div class="pcharts">' + "".join(
+            f'<div class="pchart"><div class="label">{_esc(r.symbol)} · {_esc(r.name)}</div>'
+            + _chart(POSITIONING_PREFIX + r.symbol,
+                     view.positioning_chart(r, groups)["height"]) + '</div>'
+            for r in rows) + '</div>'
+
+    asof = _detail(f"Commercial index, 0 to 100 · report of {_date(shown[0].date)}",
+                   "detail small")
+    drawn = len(shown[0].others) + 1
     legend = "".join(f'<span class="key" style="color:{color}">■ {_esc(label)}</span>'
                      for label, color in list(zip(view.POSITIONING_GROUPS, groups))[:drawn])
-    charts_html = "".join(
-        f'<div class="pchart"><div class="label">{_esc(r.symbol)} · {_esc(r.name)}</div>'
-        + _chart(POSITIONING_PREFIX + r.symbol, view.positioning_chart(r, groups)["height"]) + '</div>'
-        for r in positioning)
+    # The Dow and the Russell: the same rows and charts, closed until asked for.
+    fold = ""
+    if more:
+        names = ", ".join(f"{r.symbol} · {r.name}" for r in more)
+        fold = (f'<details class="pmore" data-positioning-more><summary>{_esc(names)}</summary>'
+                + table(more) + charts_of(more) + '</details>')
     return (_section(view.POSITIONING_TITLE, view.POSITIONING_SUBTITLE, view.POSITIONING_HOW)
-            + f'<section class="card" id="{POSITIONING_ID}">{table}{asof}'
+            + f'<section class="card" id="{POSITIONING_ID}">{table(shown)}{asof}'
             '<h3>Net position by trader group, contracts · weekly, three years</h3>'
             f'<div class="detail legend">{legend}</div>'
-            f'<div class="pcharts">{charts_html}</div></section>\n')
+            f'{charts_of(shown)}{fold}</section>\n')
 
 
 def breadth_charts(snap, colors):
@@ -949,6 +968,9 @@ table.cot td small {{ color: var(--muted); }}
 }}
 .pcharts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; }}
 .pchart .label {{ font-size: 0.8rem; }}
+.pmore {{ margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }}
+.pmore summary {{ cursor: pointer; font-size: 0.85rem; color: var(--ink-2); }}
+.pmore[open] summary {{ margin-bottom: 6px; }}
 .more a {{ color: var(--ink-2); }}
 .hp svg {{ display: block; width: 100%; }}
 .hprice {{ height: 190px; }}
