@@ -34,7 +34,7 @@ dash.register_page(
 # Layout runs per request; the wiring must not.
 controls.register_lookback('analysis_lookback_selector')
 class_filter.register('graphs_asset_class_selector',
-                      classes=lambda: sorted(get_indexer().get_asset_classes()))
+                      classes=lambda: sorted(get_indexer().get_asset_classes(include_combined=True)))
 controls.register_model('graphs_model_selector', choices=vc.MODEL_VIEW_CHOICES)
 
 # The two views. Wire-format values (session-persisted control), so renaming one
@@ -108,7 +108,7 @@ def resolve_basis_plot(plot_id, default_basis=const.BASIS_RAW):
 def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
-    asset_classes = sorted(get_indexer().get_asset_classes())
+    asset_classes = sorted(get_indexer().get_asset_classes(include_combined=True))
     default_class = get_indexer().get_default_asset_class()
     default_assets = sorted(get_indexer().get_assets_for_asset_class(default_class))
 

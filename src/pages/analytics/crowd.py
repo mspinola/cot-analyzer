@@ -205,7 +205,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
         # Distinct bases, not one per model: the cache is keyed on the basis, and two
         # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
         for record in df.to_dict("records"):
@@ -329,7 +329,7 @@ def layout(**kwargs):
                                                       "textTransform": "uppercase"}),
                                     class_filter.control(
                                         'crowd_class_selector',
-                                        get_indexer().get_asset_classes()),
+                                        get_indexer().get_asset_classes(include_combined=True)),
                                 ], xs=12, md=3, className="px-md-2"),
                             ], align="center")),
                         ]),

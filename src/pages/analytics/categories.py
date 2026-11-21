@@ -77,7 +77,7 @@ def _report_note(asset, available):
 def layout(**kwargs):
     # Built per request, not at import: resolving these at module scope would make
     # importing this page require a populated COTDATA_STORE.
-    asset_classes = sorted(get_indexer().get_asset_classes())
+    asset_classes = sorted(get_indexer().get_asset_classes(include_combined=True))
     default_class = get_indexer().get_default_asset_class()
     assets = sorted(get_indexer().get_assets_for_asset_class(default_class))
 

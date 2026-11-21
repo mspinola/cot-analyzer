@@ -293,7 +293,7 @@ def warm_caches():
         count = 0
         # Distinct bases, not one per model: two models share the OI-normalized basis
         # and would warm the same entries.
-        for asset_class in indexer.get_asset_classes():
+        for asset_class in indexer.get_asset_classes(include_combined=True):
             for asset in indexer.get_assets_for_asset_class(asset_class):
                 for basis in dict.fromkeys(m.basis for m in models.MODELS):
                     _market_frame(asset, basis, newest)
@@ -476,7 +476,7 @@ def layout(**kwargs):
                                                       "textTransform": "uppercase"}),
                                     class_filter.control(
                                         'scorecard_class_selector',
-                                        get_indexer().get_asset_classes()),
+                                        get_indexer().get_asset_classes(include_combined=True)),
                                 ], xs=12, md=4, lg=3, className="px-md-2"),
                             ], align="center")),
                         ]),

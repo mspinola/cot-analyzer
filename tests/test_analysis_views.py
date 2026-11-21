@@ -44,7 +44,7 @@ SHARED_CONTROL_IDS = {
 
 
 class _StubIndexer:
-    def get_asset_classes(self):
+    def get_asset_classes(self, include_combined=False):
         return ["Equities", "Grains", "Metals"]
 
     def get_default_asset_class(self):

@@ -44,7 +44,7 @@ AVAILABLE_PLOTS = registry.labels_for(PLOT_IDS, overrides={
 def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
-    asset_classes = sorted(get_indexer().get_asset_classes())
+    asset_classes = sorted(get_indexer().get_asset_classes(include_combined=True))
 
     return html.Div([
         dbc.Container([

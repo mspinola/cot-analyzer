@@ -78,8 +78,8 @@ def layout(**kwargs):
                                 persistence='session',
                                 id='page_positioning_asset_selector',
                                 options=[{'label': x, 'value': x}
-                                        for x in get_indexer().get_asset_classes()],
-                                value=get_indexer().get_asset_classes(),  # This selects every item in the list by default
+                                        for x in get_indexer().get_asset_classes(include_combined=True)],
+                                value=get_indexer().get_asset_classes(include_combined=True),  # This selects every item in the list by default
                                 multi=True,
                                 className="mb-3 dash-dropdown bg-dark text-white",
                                 searchable=False,

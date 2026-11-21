@@ -122,7 +122,7 @@ def register(checklist_id, classes=None):
     """
     if classes is None:
         def classes():
-            return get_indexer().get_asset_classes()
+            return get_indexer().get_asset_classes(include_combined=True)
 
     def every():
         return list(classes() if callable(classes) else classes)

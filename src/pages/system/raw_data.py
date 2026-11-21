@@ -47,6 +47,8 @@ def layout(**kwargs):
                         options=[
                             {"label": f"{instr.name} ({code})", "value": code}
                             for code, instr in get_indexer().instruments.items()
+                            # A Combined twin is its market's own frame again.
+                            if getattr(instr, "twin_of", None) is None
                         ],
                         value=list(get_indexer().instruments.keys())[0] if get_indexer().instruments else None,
                         className="mb-3 bg-dark text-white border-secondary control-mobile-full",

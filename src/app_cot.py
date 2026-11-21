@@ -26,11 +26,12 @@ utils.launch_logger.warning("Launch app_cot")
 # Equity index futures read the E-mini alone by default here, which is how CMR and
 # most COT readers count them. The package default stays the combined series (E-mini
 # + full-size + micro), because that is what the NPF research and the livebook paper
-# book were validated on; this only changes what this app shows. A viewer can switch
-# to Combined in the navbar, which sets CONTRACTS_COOKIE and reloads. See
-# cotmetrics.contracts.
+# book were validated on; this only changes what this app shows. The combined series
+# is still here, as its own asset class ("Equities Combined") whose markets every grid
+# can show beside the E-minis. See cotmetrics.contracts. Set before anything builds
+# the indexer, which is when the class is added.
 contracts.set_default_contracts(contracts.EMINI)
-CONTRACTS_COOKIE = "cot_contracts"
+contracts.enable_combined_class()
 
 app = Dash(
     __name__,
@@ -199,17 +200,6 @@ def _interpolate_index_with_page_title(**kwargs):
 
 
 app.interpolate_index = _interpolate_index_with_page_title
-
-
-@app.server.before_request
-def apply_contracts_choice():
-    """Every request, including each callback, reads the viewer's contracts switch.
-
-    Set on EVERY request, to None when there is no cookie: a worker thread serves many
-    requests in turn, and a value left over from the previous viewer would otherwise
-    leak into this one's page.
-    """
-    contracts.set_request_contracts(request.cookies.get(CONTRACTS_COOKIE))
 
 
 @app.server.before_request
@@ -781,19 +771,6 @@ navbar = dbc.Navbar(
                     # whether to trust the site looks for About, and burying it
                     # between Admin and Raw Data Viewer said it was operator chrome.
                     dbc.NavItem(dbc.NavLink("About", href="/about", active="exact")),
-                    # Equity index futures only: every other market has one series.
-                    dbc.NavItem(html.Div(
-                        dbc.Select(
-                            id="contracts_select",
-                            options=[{"label": "Equities: E-mini", "value": contracts.EMINI},
-                                     {"label": "Equities: Combined", "value": contracts.COMBINED}],
-                            size="sm",
-                            className="bg-dark text-white border-secondary ms-md-2 my-1",
-                            style={"width": "auto"},
-                        ),
-                        title=("Equity index futures counted on the E-mini alone, or "
-                               "combined with the full-size and micro contracts"),
-                    )),
                 ],
                 className="ms-auto",
                 navbar=True,
@@ -852,7 +829,6 @@ app.layout = html.Div(
                 # is the navbar's own behaviour; browser-driven changes are
                 # untouched either way.
                 dcc.Location(id='url', refresh='callback-nav'),
-                dcc.Store(id='contracts_sink'),
                 navbar,
                 dash.page_container
             ],
@@ -963,41 +939,6 @@ app.clientside_callback(
     Input('global_model_store', 'data'),
     Input('global_lookback_store', 'data'),
     Input('url', 'pathname'),
-)
-
-# The equities contracts switch. The choice lives in a cookie rather than a Store
-# because the server reads it (apply_contracts_choice) for every callback on every
-# page, and a reload is what makes every panel on screen redraw on the new basis at
-# once instead of only the ones whose own inputs happened to change.
-app.clientside_callback(
-    f"""
-    function(_pathname) {{
-        const m = document.cookie.match(/(?:^|; ){CONTRACTS_COOKIE}=([^;]*)/);
-        const v = m ? decodeURIComponent(m[1]) : '';
-        return (v === '{contracts.EMINI}' || v === '{contracts.COMBINED}') ? v : '{contracts.EMINI}';
-    }}
-    """,
-    Output('contracts_select', 'value'),
-    Input('url', 'pathname'),
-)
-
-app.clientside_callback(
-    f"""
-    function(value) {{
-        if (!value) {{ return window.dash_clientside.no_update; }}
-        const m = document.cookie.match(/(?:^|; ){CONTRACTS_COOKIE}=([^;]*)/);
-        const current = m ? decodeURIComponent(m[1]) : '{contracts.EMINI}';
-        if (value !== current) {{
-            document.cookie = '{CONTRACTS_COOKIE}=' + encodeURIComponent(value)
-                + '; path=/; max-age=31536000; SameSite=Lax';
-            window.location.reload();
-        }}
-        return window.dash_clientside.no_update;
-    }}
-    """,
-    Output('contracts_sink', 'data'),
-    Input('contracts_select', 'value'),
-    prevent_initial_call=True,
 )
 
 # The dropdown pages' active state. NavLinks match the URL themselves via

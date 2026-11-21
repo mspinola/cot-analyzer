@@ -183,7 +183,7 @@ def build_executive_synthesis_card(df, color_palette, target_date=None, asset=No
 def layout(**kwargs):
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
-    asset_classes = sorted(get_indexer().get_asset_classes())
+    asset_classes = sorted(get_indexer().get_asset_classes(include_combined=True))
 
     return html.Div([
         dbc.Container([

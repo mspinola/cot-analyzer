@@ -87,10 +87,6 @@ PRESET_LABELS = {
 }
 
 
-#: Marks a row whose setup verdict depends on which contracts are counted.
-CONTRACTS_MARK = " \u25c6"
-
-
 def apply_column_preset(column_defs, preset):
     """The column groups a preset keeps, with the tag key stripped from all.
 
@@ -197,7 +193,7 @@ def layout(**kwargs):
                                     # `page_heatmap_selector` is untouched.
                                     class_filter.control(
                                         'page_heatmap_selector',
-                                        get_indexer().get_asset_classes()),
+                                        get_indexer().get_asset_classes(include_combined=True)),
                                 ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
 
                                 dbc.Col([
@@ -573,7 +569,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
         for record in df.to_dict("records"):
             _spec_risk(record.get("Asset"), newest)
             _leg_offside(record.get("Asset"), newest)
@@ -684,9 +680,6 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
                     "width": 150,
                     "cellRenderer": "markdown",
                     "valueFormatter": {"function": "params.value ? params.value.replace(/^\\\\[(.+?)\\\\]\\\\(.+?\\\\)$/, '$1') : params.value"},
-                    # Equity index futures: both contract bases' indexes, and which
-                    # model's setup changes between them (cotmetrics.contracts).
-                    "tooltipField": const.CONTRACTS_NOTE_COL,
                 },
                 {"field": "Tape Bias", "pinned": "left", "width": 90, "cellStyle": {"styleConditions": setup_styles}},
                 {"field": "Signals", "pinned": "left", "width": 160, "cellRenderer": "SignalBadgesRenderer", "headerClass": "group-border-right", "cellClass": "group-border-right"},
@@ -911,14 +904,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
                 if child.get("pinned") and child["field"] != "Asset":
                     del child["pinned"]
 
-    # Convert asset column to markdown links. A market whose setup verdict changes
-    # with the contracts counted (E-mini alone vs combined) carries a marker inside the
-    # link text, so the valueFormatter that strips the link still keeps it.
-    differ = (df[const.CONTRACTS_DIFFER_COL].fillna(False).astype(bool)
-              if const.CONTRACTS_DIFFER_COL in df.columns
-              else pd.Series(False, index=df.index))
-    df['Asset'] = [f"[{x}{CONTRACTS_MARK if d else ''}](/oi_alignment?asset={urllib.parse.quote(x)})"
-                   for x, d in zip(df['Asset'], differ)]
+    # Convert asset column to markdown links
+    df['Asset'] = df['Asset'].apply(lambda x: f"[{x}](/oi_alignment?asset={urllib.parse.quote(x)})")
 
     grid = dag.AgGrid(
         id="heatmap-matrix-grid",
@@ -951,10 +938,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         "it gates on through its band; bright text is a leg at its gate; faint tinted "
         "text is a leg approaching it, with the blocking leg left grey. Risk %ile and "
         "OI Z light at extremes of the market's own history and render no verdict. "
-        "Hover any header for its definition and thresholds. "
-        f"{CONTRACTS_MARK.strip()} on an equity index market: its setup verdict changes "
-        "if you count the other contracts (E-mini alone vs combined with the full-size "
-        "and micro); hover the name for both readings.",
+        "Hover any header for its definition and thresholds.",
         style={'color': vc.TEXT_COLOR, 'fontSize': '0.8rem', 'fontStyle': 'italic',
                'marginTop': '8px', 'marginBottom': '4px'})
 
