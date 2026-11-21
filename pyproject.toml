@@ -109,7 +109,12 @@ dependencies = [
     # 0.16.0 was set for the credit appetite card's `indicators.credit_appetite` /
     # `credit_zone`. The card went in #231 and cotmetrics 0.17.0 removed both, so that
     # reason is gone; the floor stays where it was rather than being lowered blind.
-    "cotmetrics[options]>=0.16.0",
+    #
+    # 0.19.0 renamed the frozen research table's family from "Custom" to "NPF"
+    # (`NpfLookbackWeeks`, `Instrument.npf_lookback`, "Comm NPF Idx"). The pages pass
+    # "NPF" and read `npf_lookback`; against 0.18.0 neither exists, so every gated
+    # NPF research view and the scorecard KeyError rather than degrade.
+    "cotmetrics[options]>=0.19.0",
 ]
 
 [project.optional-dependencies]

@@ -1,6 +1,6 @@
 # Public site on 26/52, per-market lookbacks and NPF behind the login
 
-Status: **phases 1 and 2 built 2026-11-21** (phase 1: cot-analyzer #240 and #242; phase 2: branch `claude/npf-behind-login`). Phase 3 not started.
+Status: **phases 1 and 2 built 2026-11-21** (phase 1: cot-analyzer #240 and #242; phase 2: branch `claude/npf-behind-login`). Phase 3 step 1 (the cotmetrics rename) **in review 2026-11-21**, see Phase 3 below; step 2 (npf on 26/52) not started.
 
 ## Why
 
@@ -197,6 +197,32 @@ Not cot-analyzer work. Listed so phases 1 and 2 do not pre-empt it.
   not a straight rename. About 60 npf scripts and research reproducers read the old
   names and stay runnable as the historical record. The derived cache
   (`COTMETRICS_CACHE`) rebuilds.
+  **Step 1 status (2026-11-21): built, in review.** Name confirmed with the user:
+  `NpfLookbackWeeks`, family `"NPF"` (`"Comm NPF Idx"`, `const.COMM_NPF_IDX`,
+  `Instrument.npf_lookback`, `lookback="NPF"`). `CmrLookbackWeeks` / `"CMR"`
+  unchanged. One PR per repo, merge in this order:
+
+  | PR | what |
+  |---|---|
+  | mspinola/cotmetrics#66 | 0.19.0. Emits the `NPF` family plus an identical `Custom` copy (a column copy, not a recompute). `"Custom"`, `CustomLookbackWeeks`, `custom_lookback` and the `*_CUSTOM_*` constants all still work and warn (`DeprecationWarning`), removal not before 0.20.0. A params line whose two keys disagree raises. `METRICS_CACHE_VERSION` 3 -> 4, so `COTMETRICS_CACHE` rebuilds itself on the first run after deploy |
+  | mspinola/cotmetrics-config#5 | every line carries `NpfLookbackWeeks` beside `CustomLookbackWeeks`, same value, so 0.18.0 and 0.19.0 both run on it. Safe in either order |
+  | mspinola/cot-analyzer#246 | `_FAMILY["npf"] = "NPF"`, scorecard and crowd pass `"NPF"`, floor `cotmetrics>=0.19.0`. No visible change |
+  | mspinola/npf#581 | src, tests and the reproducers in `scripts/` on the new names, floor `cotmetrics>=0.19.0`. Its `test_sibling_floors` needs the cotmetrics `v0.19.0` tag |
+  | livebook | no change needed (it reads through npf) |
+
+  Values: on the real store, every `NPF` column and its `Custom` copy equal 0.18.0's
+  `Custom` column exactly (47 instruments, 52 frames including the E-mini frames,
+  5,974,888 cells; reproducer `cotmetrics/scripts/analysis/npf_rename_2026-11-21/`).
+  livebook `bin/daily.py --dry-run` against the real store is identical for old
+  trees, new trees, and the old code on the new dual-key config, each from a cold
+  cache (`daily.py` run directly with `daily.sh`'s environment, so a failure could
+  not reach the notifier). Suites with the worktrees shadowed on `PYTHONPATH`:
+  cotmetrics 552 passed (also with `-W error::DeprecationWarning`), cot-analyzer
+  1584, npf 779 (2 failures are the missing tag), livebook 217.
+
+  Left for later: tag and publish cotmetrics 0.19.0; once nothing runs < 0.19.0, drop
+  `CustomLookbackWeeks` from cotmetrics-config; at 0.20.0, drop the `Custom` copy and
+  the aliases.
 - **npf on 26/52.** New research, governed by npf/AGENTS.md: a new pre-registration and
   the gauntlet, with every variant in the `SearchSpaceLog`. The frozen spec is not
   edited. livebook keeps the frozen table until a 26/52 book is promoted.

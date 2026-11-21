@@ -15,8 +15,8 @@ predicted for it), so the two boards started at different heights.
 The caption is load-bearing rather than decorative. It carries the report date, which
 the printed reports this was modelled on leave off entirely, and it says which window
 each row was measured over, which matters here in a way it does not on a per-market
-page: `CustomLookbackWeeks` is tuned per market, so a cross-asset ranking taken on the
-Custom lookback compares markets measured over different windows. That is fine for a
+page: `NpfLookbackWeeks` is tuned per market, so a cross-asset ranking taken on the
+NPF lookback compares markets measured over different windows. That is fine for a
 per-market signal and is a hazard for a ranking, so the caption says so rather than
 letting the page imply a uniform basis it does not have.
 """

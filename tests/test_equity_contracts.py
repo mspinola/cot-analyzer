@@ -18,11 +18,11 @@ from components.plot_traces import add_contracts_overlay
 class _Indexer:
     def __init__(self):
         self.calls = []
-        self.es = types.SimpleNamespace(custom_lookback=28, cmr_lookback=26,
+        self.es = types.SimpleNamespace(npf_lookback=28, cmr_lookback=26,
                                         emini_df=pd.DataFrame({"x": [1]}), twin_of=None)
-        self.es_c = types.SimpleNamespace(custom_lookback=28, cmr_lookback=26,
+        self.es_c = types.SimpleNamespace(npf_lookback=28, cmr_lookback=26,
                                           emini_df=None, twin_of="13874A")
-        self.gc = types.SimpleNamespace(custom_lookback=26, cmr_lookback=24, emini_df=None,
+        self.gc = types.SimpleNamespace(npf_lookback=26, cmr_lookback=24, emini_df=None,
                                         twin_of=None)
 
     def get_instrument_from_name(self, name):
@@ -47,7 +47,7 @@ def test_the_per_market_families_resolve_per_market(monkeypatch):
     assert controls.lookback_weeks(controls.resolve("custom"), "S&P 500") == 26
     assert controls.lookback_weeks(controls.resolve("npf"), "S&P 500") == 28
     assert controls.lookback_weeks("CMR", "S&P 500") == 26
-    assert controls.lookback_weeks("Custom", "S&P 500") == 28
+    assert controls.lookback_weeks("NPF", "S&P 500") == 28
 
 
 def test_other_contracts_frame_is_the_other_reading_of_the_market(monkeypatch):

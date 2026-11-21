@@ -21,7 +21,7 @@ them. Order by size also lets the grid flow in source order, where the dense pac
 it used to need had Energies jumping above Currencies.
 
 **Two windows, split by what each row is for.** `cotmetrics-config` tunes
-`CustomLookbackWeeks` per market (the pound at 30 weeks, the euro at 90), which is
+`NpfLookbackWeeks` per market (the pound at 30 weeks, the euro at 90), which is
 right for a gate and wrong for a comparison row: nine differently-defined numbers side
 by side invite exactly the comparison they do not support. So the descriptive rows
 (the Commercial move, price, open interest) read a uniform 52-week lookback. The gate
@@ -169,13 +169,13 @@ def _setup_age(asset, model_key, newest_date, target_date):
     """How many consecutive weeks the chip's story has held, or 0.
 
     The SAME call the Setups badge makes, on the same frame (the model's basis, its
-    own Custom window), so the two surfaces cannot disagree about a market's age.
+    own NPF window), so the two surfaces cannot disagree about a market's age.
     `newest_date` is the cache-buster, as on `_market_frame`; the target date is a
     key because the walk starts at the week the card shows.
     """
     model = models.resolve(model_key)
     try:
-        df = get_indexer().get_symbols_data(asset, "Custom", basis=model.basis)
+        df = get_indexer().get_symbols_data(asset, "NPF", basis=model.basis)
     except Exception as e:  # noqa: BLE001 -- one market must not break the card
         utils.cot_logger.warning(f"scorecard: no age for {asset}: {e}")
         return 0
@@ -183,7 +183,7 @@ def _setup_age(asset, model_key, newest_date, target_date):
         return 0
     if target_date:
         df = df.loc[df.index <= pd.Timestamp(target_date)]
-    return int(model.setup_age_from(df, "Custom", get_indexer().is_equity(asset)))
+    return int(model.setup_age_from(df, "NPF", get_indexer().is_equity(asset)))
 
 
 def _read_for(asset, record, basis, model, newest_date, target_date, palette):
@@ -568,10 +568,10 @@ def render_scorecard(asset_classes, model_key, palette_name, target_date, column
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
                 "", help_text(model))
 
-    # The matrix drives the universe and carries the verdict. The Custom lookback is
+    # The matrix drives the universe and carries the verdict. The NPF lookback is
     # the models' own window, the same one every other verdict surface gates on; the
     # rows below the gate deliberately use a different one. See the module docstring.
-    df = get_matrix_data(asset_classes, "Custom", target_date)
+    df = get_matrix_data(asset_classes, "NPF", target_date)
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
