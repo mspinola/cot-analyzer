@@ -910,19 +910,29 @@ def update_theme(theme_value):
     Output('global_model_store', 'data', allow_duplicate=True),
     Output('global_lookback_store', 'data', allow_duplicate=True),
     Input('url', 'search'),
+    State('global_lookback_store', 'data'),
     # 'initial_duplicate', because the initial call is the whole point: a deep
     # link does its work on document load. Later fires are navbar navigations,
     # whose bare URLs deep_link_params answers with "leave everything alone".
     prevent_initial_call='initial_duplicate',
 )
-def apply_deep_link(search):
+def apply_deep_link(search, stored_lookback):
     """?date= / ?model= / ?lookback= into the global stores; see deep_link_params
-    for what is honoured and why absence never resets anything."""
+    for what is honoured and why absence never resets anything.
+
+    One exception to that: a stored lookback this request may not use (a session
+    that logged out, or one from a local run) is reset to the default. Every reader
+    already resolves it to 52, but left in the store the URL writer below would keep
+    printing it in the address bar."""
     params = controls.deep_link_params(
         search, dates=get_indexer().get_available_dates())
+    lookback = params.get('global_lookback_store', no_update)
+    if (lookback is no_update and stored_lookback is not None
+            and controls.canon_lookback(stored_lookback) != stored_lookback):
+        lookback = controls.LOOKBACK_DEFAULT
     return (params.get('global_week_store', no_update),
             params.get('global_model_store', no_update),
-            params.get('global_lookback_store', no_update))
+            lookback)
 
 
 # The write half. replaceState, not pushState: this is view state, and a

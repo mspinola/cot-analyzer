@@ -87,7 +87,7 @@ def lookback_select(control_id, **overrides):
     ), overrides))
 
 
-def _canon_lookback(value):
+def canon_lookback(value):
     """A control value this request may use, else the default. The server-side half of
     the gate: hiding an option is not gating, because every callback answers on the one
     shared /_dash-update-component endpoint and a browser can post any value."""
@@ -105,7 +105,7 @@ def resolve(lookback):
     calls this first and hands only its result to cotmetrics. Below this line the code
     speaks cotmetrics' families ("26", "52", "CMR", "Custom").
     """
-    return _FAMILY[_canon_lookback(lookback)]
+    return _FAMILY[canon_lookback(lookback)]
 
 
 def family_label(family):
@@ -197,7 +197,7 @@ def register_lookback(control_id):
         prevent_initial_call=True,
     )
     def to_global(value, current):
-        new_val = _canon_lookback(value)
+        new_val = canon_lookback(value)
         return no_update if new_val == current else new_val
 
     @callback(
@@ -206,7 +206,7 @@ def register_lookback(control_id):
         State(control_id, 'value'),
     )
     def from_global(value, current):
-        new_val = _canon_lookback(value)
+        new_val = canon_lookback(value)
         return no_update if new_val == current else new_val
 
 
@@ -395,9 +395,10 @@ def deep_link_params(search, dates=()):
     if model in vc.MODEL_VIEW_CHOICES:
         out['global_model_store'] = model
     lookback = parsed.get('lookback', [None])[0]
-    if lookback in LOOKBACK_CHOICES:
-        # Canonicalised again by every reader, so a gated value in a public link
-        # lands as the default rather than as a window.
+    if lookback in LOOKBACK_CHOICES and canon_lookback(lookback) == lookback:
+        # Only a value this request may use. Every reader re-canonicalises anyway, so
+        # a gated value could never become a window; storing it would still leave it
+        # in the address bar on pages with no lookback control to reset it.
         out['global_lookback_store'] = lookback
     return out
 

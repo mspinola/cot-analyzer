@@ -250,3 +250,19 @@ def test_column_labels_swap_the_family_token_for_the_control_word():
     assert controls.column_label("Willco CMR", "CMR") == "Willco Custom"
     assert controls.column_label("Comm Custom Idx", "Custom") == "Comm NPF research Idx"
     assert controls.column_label("Comm 52 Idx", "52") == "Comm 52 Idx"
+
+
+@pytest.mark.parametrize("value", ["custom", "npf"])
+def test_a_gated_lookback_in_a_public_link_is_dropped(monkeypatch, value):
+    """Not stored, so the URL writer cannot echo it back into the address bar."""
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: False)
+    assert controls.deep_link_params(f"?lookback={value}", dates=WEEKS) == {}
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
+    assert controls.deep_link_params(f"?lookback={value}", dates=WEEKS) == \
+        {"global_lookback_store": value}
+
+
+def test_a_public_lookback_in_a_link_is_kept(monkeypatch):
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: False)
+    assert controls.deep_link_params("?lookback=26", dates=WEEKS) == \
+        {"global_lookback_store": "26"}
