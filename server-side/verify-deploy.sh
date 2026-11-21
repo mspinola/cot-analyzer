@@ -99,6 +99,20 @@ else
     FAIL=$((FAIL+1))
 fi
 
+# The private timeline dashboard (step 13): its data never goes to a logged-out
+# request, whether or not this box serves the page. The manifest is the one file
+# that always exists when the page does. The page itself is 404 (not served) or
+# 403 (served, asks for the login); a 200 means it went to anyone.
+check "timeline data refuses a logged-out request" "$BASE/timeline/data/manifest.json" 404
+tl_status=$(curl -s -o /dev/null --max-time 30 -w '%{http_code}' "$BASE/timeline")
+if [ "$tl_status" = "404" ] || [ "$tl_status" = "403" ]; then
+    echo "pass  timeline page is not served logged out (HTTP $tl_status)"
+    PASS=$((PASS+1))
+else
+    echo "FAIL  timeline page: logged-out request got HTTP $tl_status, expected 404 or 403"
+    FAIL=$((FAIL+1))
+fi
+
 # The subscription endpoints exist and refuse garbage; nothing here subscribes,
 # confirms or sends anything.
 check "confirm rejects a bad token"    "$BASE/confirm?token=verify-deploy-probe"     404 "not valid"

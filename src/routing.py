@@ -104,6 +104,12 @@ NOINDEX_PATHS = frozenset({'/admin', '/raw_data', '/citpy', '/citpy/view', '/new
 #: back as a 200 app shell.
 WEEKLY_RE = re.compile(r'^/weekly(/\d{4}-\d{2}-\d{2})?$')
 
+#: The private timeline dashboard (`timeline_site`): the page and its data files,
+#: in file-name SHAPE only. The route itself decides whether this request may
+#: see them, and answers the themed 404 when not, so admitting the shape here
+#: reveals nothing. Deliberately not in NOINDEX_PATHS: robots.txt would name it.
+TIMELINE_RE = re.compile(r'^/timeline(/data/[a-z][a-z_]*\.(csv|json))?$')
+
 
 def robots_txt(base_url):
     """The crawl policy: everything public, the operator surfaces excluded, and
@@ -164,6 +170,8 @@ def is_known_path(path: str, page_paths, dash_routes) -> bool:
     if normalized in EXTRA_PATHS:
         return True
     if WEEKLY_RE.match(normalized):
+        return True
+    if TIMELINE_RE.match(path):
         return True
     if normalized in {_normalize(route) for route in dash_routes}:
         return True
@@ -289,6 +297,10 @@ def cache_policy(path, fingerprinted, content_type):
     # expensive page this app serves, so a day of public caching is cheap
     # honesty. The /weekly index is excluded: it gains a row per release and
     # must not read stale on a Friday.
+    # The private timeline (page and data) is never stored by anyone: it is
+    # served per login, and a shared cache must not hand it to the next caller.
+    if TIMELINE_RE.match(path):
+        return 'private, no-store'
     if WEEKLY_RE.match(path) and path != '/weekly':
         return 'public, max-age=86400'
     if content_type.startswith('text/html'):
