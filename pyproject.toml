@@ -106,9 +106,9 @@ dependencies = [
     # nothing says why, which is the quiet kind of wrong a floor exists to
     # prevent. All three reasons stand; the higher number covers them.
     #
-    # 0.16.0 for `indicators.credit_appetite` / `credit_divergence` / `credit_zone`,
-    # which the market internals page's credit appetite card calls. Against 0.15.1
-    # they do not exist and the nightly export dies on AttributeError.
+    # 0.16.0 was set for the credit appetite card's `indicators.credit_appetite` /
+    # `credit_zone`. The card went in #231 and cotmetrics 0.17.0 removed both, so that
+    # reason is gone; the floor stays where it was rather than being lowered blind.
     "cotmetrics[options]>=0.16.0",
 ]
 
