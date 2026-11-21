@@ -9,7 +9,13 @@ import threading
 import time
 import zoneinfo
 
+import cotmetrics.contracts as contracts
 import cotmetrics.utils as utils
+
+# The app shows equity index futures on the E-mini alone (see app_cot). Set here too,
+# at process start, so the weekly report and email jobs, which run before or without
+# importing app_cot, read the same series the pages do.
+contracts.set_default_contracts(contracts.EMINI)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

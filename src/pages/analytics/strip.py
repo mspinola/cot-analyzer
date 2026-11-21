@@ -109,7 +109,7 @@ def _window_weeks(asset, lookback):
     if lookback in ("26", "52"):
         return int(lookback)
     instrument = get_indexer().get_instrument_from_name(asset)
-    custom = getattr(instrument, "custom_lookback", None)
+    custom = getattr(instrument, "cmr_lookback" if lookback == "CMR" else "custom_lookback", None)
     try:
         return int(custom)
     except (TypeError, ValueError):
@@ -188,7 +188,7 @@ def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
     viewport and they are the two segments least worth losing.
     """
     bits = [target_date or "latest", vc.MODEL_LABELS.get(model.key, model.key)]
-    bits.append(f"{lookback}-week" if lookback in ("26", "52") else "Custom lookback")
+    bits.append(f"{lookback}-week" if lookback in ("26", "52") else f"{lookback} lookback")
     bits.append(ORDER_LABELS.get(sort_by, sort_by))
     bits.append(SHOW_LABELS.get(show, show))
     bits.append(SIDE_LABELS.get(side, side))
@@ -218,6 +218,9 @@ def caption(report_date, lookback, model, skipped, hidden=0,
         pretty = "an unknown date"
     if lookback in ("26", "52"):
         window = f"a uniform {lookback}-week window"
+    elif lookback == "CMR":
+        window = ("each market's CMR lookback (the windows CMR publishes with), so the "
+                  "windows differ between rows")
     else:
         window = ("each market's own tuned lookback, so the windows differ between "
                   "rows")

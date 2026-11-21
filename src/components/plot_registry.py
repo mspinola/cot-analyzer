@@ -90,6 +90,11 @@ class PlotCtx:
     # this asset and category_traces.category_series over it. Set by the page, since
     # which report a market has is a store question. None draws an empty-state note.
     category: object = None
+    # The index panel on the OTHER contract basis, for equity index futures with two
+    # (cotmetrics.contracts), and the basis's label ("Combined"). Set by the page;
+    # None everywhere else draws the panel exactly as before.
+    alt_df: object = None
+    alt_label: str = None
 
 
 # When a panel needs a secondary y-axis.
@@ -160,6 +165,10 @@ def _index(ctx):
     fig = h.get_index_plot(ctx.fig, ctx.df, comm, lrg, sml, ctx.row, ctx.col,
                            ctx.palette, low, high, ctx.show_price,
                            ctx.smooth_indexing)
+    if ctx.alt_df is not None and ctx.alt_label:
+        fig = h.add_contracts_overlay(fig, ctx.alt_df, comm, lrg, sml, ctx.row, ctx.col,
+                                      ctx.palette, ctx.alt_label,
+                                      showlegend=ctx.showlegend)
     if ctx.flow is not None:
         import components.flow_strip as fs
         fig = fs.add_flow_strip(fig, ctx.flow, ctx.row, ctx.col)
