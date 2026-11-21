@@ -356,7 +356,7 @@ def render_category_stack(palette_name, asset, report, selected_categories,
     if report not in cot_categories.REPORT_CHOICES:
         return layout_helpers.get_no_data_html_p()
 
-    lookback = lookback or "Custom"
+    lookback = controls.resolve(lookback)
     df = get_indexer().get_category_data(asset, report, lookback)
     if df is None or df.empty:
         return layout_helpers.get_no_data_html_p()
@@ -371,7 +371,7 @@ def render_category_stack(palette_name, asset, report, selected_categories,
 
     plots = ct.sanitize_selection(selected_plots)
     show_price = True
-    lookback_header = df.attrs.get("lookback_header", " Custom")
+    lookback_header = df.attrs.get("lookback_header", " " + lookback)
     faceted = layout_mode == vc.LAYOUT_FACET
 
     if faceted:

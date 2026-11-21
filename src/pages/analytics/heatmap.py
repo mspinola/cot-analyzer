@@ -392,7 +392,7 @@ def _spec_risk(asset, newest_date):
 
     Keyed by the store's newest date purely as a cache-buster: a Friday release must
     invalidate this, and nothing else does. Lookback is deliberately NOT a key and the
-    computation always passes "Custom", because the risk series reads net contracts,
+    computation always passes "52", because the risk series reads net contracts,
     price and volatility, none of which the index-window control touches (the weekly
     frame is full-history under every lookback, only its index columns differ).
 
@@ -405,7 +405,7 @@ def _spec_risk(asset, newest_date):
     not take the other 41 rows down with it.
     """
     try:
-        ex = exposure.market_exposure(asset, leg=exposure.LEG_SPEC, lookback="Custom")
+        ex = exposure.market_exposure(asset, leg=exposure.LEG_SPEC, lookback="52")
         risk = ex["risk_usd"]
         rank = exposure.expanding_pct_rank(risk)
     except Exception as e:
@@ -462,7 +462,7 @@ def _leg_offside(asset, newest_date):
 
     Keyed by the store's newest date purely as a cache-buster, exactly as `_spec_risk`
     is: a Friday release must invalidate this and nothing else does. Lookback is not a
-    key and the computation always passes "Custom", because a cost basis reads net
+    key and the computation always passes "52", because a cost basis reads net
     contracts and prices, none of which the index-window control touches.
 
     No percentile here, unlike the dollar-risk column, and the asymmetry is the point.
@@ -477,7 +477,7 @@ def _leg_offside(asset, newest_date):
     display join, and one market without prices must not take the other rows down.
     """
     try:
-        r = offside.market_offside(asset, leg=OFFSIDE_LEG, lookback="Custom")
+        r = offside.market_offside(asset, leg=OFFSIDE_LEG, lookback="52")
     except Exception as e:
         utils.cot_logger.warning(f"heatmap: no offside reading for {asset}: {e}")
         return None
@@ -569,7 +569,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "52", None)
         for record in df.to_dict("records"):
             _spec_risk(record.get("Asset"), newest)
             _leg_offside(record.get("Asset"), newest)
@@ -597,8 +597,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
 
     if not assest_classes:
         return html.P("Select an asset class to view the signal matrix.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     df = get_matrix_data(assest_classes, lookback, target_date)
     if df.empty:

@@ -75,51 +75,25 @@ LEG_OPTIONS = [{"label": LEG_SHORT[k], "value": k}
 #: ever"; the rest are the app's own lookback vocabulary, where an index is a range over
 #: a trailing window.
 LOOKBACK_ALL = "all"
-LOOKBACK_CUSTOM = "custom"
 
 LOOKBACK_OPTIONS = [
     {"label": "All history", "value": LOOKBACK_ALL},
     {"label": "26 weeks", "value": "26"},
     {"label": "52 weeks", "value": "52"},
-    {"label": "Custom", "value": LOOKBACK_CUSTOM},
 ]
-
-
-def custom_window(names):
-    """The tuned window these markets share, or None if they do not share one.
-
-    `CustomLookbackWeeks` is tuned PER MARKET and the universe spends 25 distinct values
-    on it, from 8 weeks to 216. A total is one summed series with one rank, so "Custom"
-    only means something when every member agrees: ranking a sum of markets tuned to 10
-    and 126 weeks over either number would be a choice the data does not support, and
-    averaging them would invent a number nobody tuned.
-
-    It is not a rare case. The page's own default, the four deploy equity markets, all
-    carry 28, and Fixed Income and Live Stock are single-valued classes.
-    """
-    indexer = get_indexer()
-    windows = set()
-    for name in names or ():
-        instrument = indexer.get_instrument_from_name(name)
-        if instrument is None or not instrument.custom_lookback:
-            return None
-        windows.add(int(instrument.custom_lookback))
-    return windows.pop() if len(windows) == 1 else None
+#: The windows `resolve_window` honours. The per-market "Custom" choice left on
+#: 2026-11-21 (docs/design/2026-11-21-public-lookbacks-npf-behind-login.md): it read the
+#: frozen NPF research table, and it could only ever apply where every selected market
+#: shared one value.
+_WINDOWS = ("26", "52")
 
 
 def resolve_window(choice, names):
-    """(weeks or None, what to tell the reader). None means rank against all history."""
-    if choice in (None, LOOKBACK_ALL):
-        return None, ""
-    if choice == LOOKBACK_CUSTOM:
-        weeks = custom_window(names)
-        if weeks is None:
-            # Refuse rather than pick. The alternative is a number nobody chose sitting
-            # under a control that says the markets were tuned.
-            return None, ("these markets do not share one tuned lookback, so Custom "
-                          "cannot apply to their total; ranked against all history")
-        return weeks, ""
-    return int(choice), ""
+    """(weeks or None, what to tell the reader). None means rank against all history.
+    Anything but a uniform window (an old session value, a forged post) is all history."""
+    if choice in _WINDOWS:
+        return int(choice), ""
+    return None, ""
 
 
 def window_phrase(window):
@@ -821,10 +795,7 @@ def how_to_read(unit):
          "What a percentile is measured against. All history ranks each week among "
          "every week before it, which is the only setting that can say a thing has "
          "never been bigger; 26 and 52 weeks are the app's own lookback vocabulary, a "
-         "range over a trailing window; Custom is the per-market tuned window and is "
-         "available only where every selected market shares one, since the universe "
-         "spends 25 different values on it from 8 weeks to 216 and a total has one "
-         "rank. A window renormalises every week, so it answers "
+         "range over a trailing window. A window renormalises every week, so it answers "
          "\u201cextreme lately\u201d rather than \u201cextreme ever\u201d, and it "
          "hides the side: on 52 weeks a reading above 50 is a net SHORT position 12.5% "
          "of the time at the median market and 62% on the Russell, against 0.2% on all "
@@ -1472,7 +1443,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
     names = list(members) if members else _names_in(asset_classes)
     window, window_note = resolve_window(lookback, names)
     agg = exposure.aggregate_exposure(
-        names, leg=leg, numeraire=numeraire, rank_window=window,
+        names, leg=leg, numeraire=numeraire, rank_window=window, lookback="52",
         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     composite = exposure.composite_price_index(
         list(agg.coverage), dates=agg.frame.index,
@@ -1484,7 +1455,7 @@ def render_exposure(asset_classes, members, leg, unit, scale, lookback, in_gold,
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(
-            names, leg=part_leg, numeraire=numeraire, rank_window=window,
+            names, leg=part_leg, numeraire=numeraire, rank_window=window, lookback="52",
             min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 
@@ -1600,7 +1571,7 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lo
 
     window, window_note = resolve_window(lookback, names)
     agg = exposure.aggregate_exposure(
-        names, leg=leg, numeraire=numeraire, rank_window=window,
+        names, leg=leg, numeraire=numeraire, rank_window=window, lookback="52",
         min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
     if agg.frame.empty:
         return (no_update,) * 10
@@ -1608,7 +1579,7 @@ def select_week(click_data, _reset, asset_classes, members, leg, unit, scale, lo
     part_frames = {}
     for part_leg in exposure_traces.COMPANION_LEGS.get(leg, ()):
         part = exposure.aggregate_exposure(
-            names, leg=part_leg, numeraire=numeraire, rank_window=window,
+            names, leg=part_leg, numeraire=numeraire, rank_window=window, lookback="52",
             min_rank_periods=exposure_traces.MIN_RANK_PERIODS)
         part_frames[part_leg] = part.frame[unit] if not part.frame.empty else None
 

@@ -8,6 +8,7 @@ against a daily price cannot show.
 import dash
 import numpy as np
 import pandas as pd
+import pytest
 from cotmetrics.exposure import LEG_COMM, LEG_SPEC, AggregateExposure
 
 dash.Dash(__name__, use_pages=True, pages_folder='')
@@ -1019,23 +1020,11 @@ def test_a_named_window_is_just_weeks():
     assert resolve_window("26", ["A"]) == (26, "")
 
 
-def test_custom_refuses_rather_than_picks_when_markets_disagree(monkeypatch):
-    """CustomLookbackWeeks is tuned PER MARKET and the universe spends 25 values on it
-    from 8 weeks to 216. A total is one summed series with one rank, so ranking markets
-    tuned to 10 and 126 weeks over either is a choice the data does not support."""
-    import pages.analytics.exposure as page
-    monkeypatch.setattr(page, "custom_window", lambda names: None)
-    window, note = page.resolve_window(page.LOOKBACK_CUSTOM, ["A", "B"])
-    assert window is None
-    assert "do not share one tuned lookback" in note
-
-
-def test_custom_is_the_shared_window_when_they_agree(monkeypatch):
-    """Not a rare case: the page's own default, the four deploy equity markets, all
-    carry 28."""
-    import pages.analytics.exposure as page
-    monkeypatch.setattr(page, "custom_window", lambda names: 28)
-    assert page.resolve_window(page.LOOKBACK_CUSTOM, ["A", "B"]) == (28, "")
+@pytest.mark.parametrize("choice", ["custom", "Custom", "bogus", None, "all"])
+def test_anything_but_a_uniform_window_ranks_against_all_history(choice):
+    """The per-market Custom choice left on 2026-11-21 (it read the frozen NPF table).
+    An old session value or a forged post falls back to all history, never to it."""
+    assert resolve_window(choice, ["A", "B"]) == (None, "")
 
 
 def test_the_headline_names_the_window_it_ranked_against():
@@ -1069,7 +1058,6 @@ def test_the_explanation_says_what_a_window_costs():
     body = " ".join(b for _, b in how_to_read(et.UNIT_RISK))
     assert "extreme lately" in body
     assert "12.5%" in body
-    assert "8 weeks to 216" in body
 
 
 def test_the_headline_does_not_say_weeks_twice():

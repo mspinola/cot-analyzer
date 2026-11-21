@@ -103,17 +103,12 @@ def _window_weeks(asset, lookback):
 
     The dollar reading has to use the SAME window, or the wedge between the two marks
     stops being a comparison of two units and becomes one of two stretches of time.
-    Under Custom that is the market's own tuned lookback, which is why this asks the
-    instrument rather than the control.
+    Under a per-market family that is the market's own lookback, which is why this
+    asks the instrument (through `controls.lookback_weeks`) rather than the control.
+    `lookback` is a resolved family (`controls.resolve`).
     """
-    if lookback in ("26", "52"):
-        return int(lookback)
-    instrument = get_indexer().get_instrument_from_name(asset)
-    custom = getattr(instrument, "cmr_lookback" if lookback == "CMR" else "custom_lookback", None)
-    try:
-        return int(custom)
-    except (TypeError, ValueError):
-        return 52
+    weeks = controls.lookback_weeks(lookback, asset)
+    return 52 if weeks is None else weeks
 
 
 @functools.lru_cache(maxsize=512)
@@ -121,7 +116,7 @@ def _dollar_reads(asset, window, newest_date):
     """One market's weekly dollar readings, keyed by report date.
 
     `newest_date` is a cache-buster and nothing else: a Friday release must invalidate
-    this and nothing else does. `market_exposure` is always asked for "Custom" because
+    this and nothing else does. `market_exposure` is always asked for "52" because
     the lookback control does not touch what it reads (net contracts, price and
     volatility); the window belongs to the index computed here, and it IS a cache key.
 
@@ -131,7 +126,7 @@ def _dollar_reads(asset, window, newest_date):
     not take the other forty rows down with it.
     """
     try:
-        ex = exposure.market_exposure(asset, leg=exposure.LEG_COMM, lookback="Custom")
+        ex = exposure.market_exposure(asset, leg=exposure.LEG_COMM, lookback="52")
         risk, notional = ex["risk_usd"], ex["notional_usd"]
         if not risk.notna().any():
             return None
@@ -188,7 +183,8 @@ def controls_summary(target_date, model, lookback, sort_by, show, side, columns,
     viewport and they are the two segments least worth losing.
     """
     bits = [target_date or "latest", vc.MODEL_LABELS.get(model.key, model.key)]
-    bits.append(f"{lookback}-week" if lookback in ("26", "52") else f"{lookback} lookback")
+    label = controls.family_label(lookback)
+    bits.append(label if lookback in controls.PUBLIC_LOOKBACKS else f"{label} lookback")
     bits.append(ORDER_LABELS.get(sort_by, sort_by))
     bits.append(SHOW_LABELS.get(show, show))
     bits.append(SIDE_LABELS.get(side, side))
@@ -219,10 +215,9 @@ def caption(report_date, lookback, model, skipped, hidden=0,
     if lookback in ("26", "52"):
         window = f"a uniform {lookback}-week window"
     elif lookback == "CMR":
-        window = ("each market's CMR lookback (the windows CMR publishes with), so the "
-                  "windows differ between rows")
+        window = ("each market's custom lookback, so the windows differ between rows")
     else:
-        window = ("each market's own tuned lookback, so the windows differ between "
+        window = ("each market's NPF research lookback, so the windows differ between "
                   "rows")
     legs = [strip_traces.LEG_LABELS[leg] for leg in model.spec_legs
             if leg in strip_traces.LEG_LABELS]
@@ -565,8 +560,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
     all_classes = get_indexer().get_asset_classes(include_combined=True)
     if not asset_classes:
         return empty, "", [], f"No asset class selected · 0/{len(all_classes)} classes"
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     model = models.resolve(model_key)
     show = show or strip_traces.SHOW_ALL

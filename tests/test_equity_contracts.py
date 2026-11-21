@@ -41,9 +41,11 @@ def _stub(monkeypatch):
     return ix
 
 
-def test_cmr_is_a_lookback_choice_resolved_per_market(monkeypatch):
+def test_the_per_market_families_resolve_per_market(monkeypatch):
     _stub(monkeypatch)
-    assert "CMR" in controls.LOOKBACK_CHOICES
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
+    assert controls.lookback_weeks(controls.resolve("custom"), "S&P 500") == 26
+    assert controls.lookback_weeks(controls.resolve("npf"), "S&P 500") == 28
     assert controls.lookback_weeks("CMR", "S&P 500") == 26
     assert controls.lookback_weeks("Custom", "S&P 500") == 28
 

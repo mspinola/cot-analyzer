@@ -193,6 +193,6 @@ def test_lookback_weeks_names_the_window_the_control_means(monkeypatch):
     assert controls.lookback_weeks("26", "Gold") == 26
     assert controls.lookback_weeks("52", "Gold") == 52
     assert controls.lookback_weeks("Custom", "Gold") == 39
-    assert controls.lookback_weeks(None, "Gold") == 39
-    assert controls.lookback_weeks("bogus", "Gold") == 39
+    assert controls.lookback_weeks(None, "Gold") == 52
+    assert controls.lookback_weeks("bogus", "Gold") == 52
     assert controls.lookback_weeks("Custom", "Nowhere") is None

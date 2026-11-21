@@ -190,8 +190,7 @@ def set_default_columns(pathname, current_val):
 def update_agg_stack(palette_name, selected_assets, lookback, selected_plots, num_cols):
     print(f"Updating aggregation stack with assets={selected_assets}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
     utils.cot_logger.info(f"Updating aggregation stack with assets={selected_assets}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     if not selected_assets or len(selected_assets) == 0:
         return html.P("SELECT ASSETS TO AGGREGATE", style={'textAlign': 'center', 'color': vc.BRIGHTER_TEXT_COLOR})

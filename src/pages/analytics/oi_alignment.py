@@ -555,6 +555,7 @@ def sync_signal_board_to_crosshair(click_data, zoom, palette_name, lookback,
     The zoom arrives on a store the browser writes, not from relayoutData directly. See
     the note above the clientside autoscale for why reading relayoutData here loses.
     """
+    lookback = controls.resolve(lookback)
     if not asset:
         return no_update, no_update
 
@@ -649,6 +650,7 @@ def sync_signal_board_to_crosshair(click_data, zoom, palette_name, lookback,
 )
 def update_oi_alignment_stack(palette_name, asset, lookback, selected_plots, num_cols,
                               price_overlay, model_view):
+    lookback = controls.resolve(lookback)
     print(f"Updating oi_alignment stack with asset={asset}, lookback={lookback}, price_overlay={price_overlay}")
     utils.cot_logger.info(f"Updating oi_alignment stack with asset={asset}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
 

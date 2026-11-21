@@ -305,8 +305,7 @@ def update_home_signals(lookback, palette_name, filter_types, model_key):
     if filter_types is None:
         filter_types = []
 
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     import json
     import os
@@ -360,8 +359,7 @@ def lazy_load_accordion(active_items, lookback, palette_name, filter_types, mode
     if filter_types is None:
         filter_types = []
 
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
     filter_types_tuple = tuple(filter_types)
     db_time = get_indexer().last_known_db_time
 
@@ -398,7 +396,7 @@ def warm_caches():
         db_time = get_indexer().last_known_db_time
 
         assets = tuple(get_indexer().get_asset_classes())
-        lookback = 'Custom'
+        lookback = controls.LOOKBACK_DEFAULT
         palette_name = None
         filter_types = ()
         model_key = models.DEFAULT_MODEL.key
@@ -408,7 +406,7 @@ def warm_caches():
             try:
                 with open(cache_path, "r") as f:
                     state = json.load(f)
-                lookback = state.get("lookback", "Custom")
+                lookback = controls.resolve(state.get("lookback"))
                 palette_name = state.get("palette_name")
                 filter_types = tuple(state.get("filter_types", []))
                 model_key = state.get("model", models.DEFAULT_MODEL.key)
@@ -460,8 +458,7 @@ def update_home_board(lookback, palette_name, filter_types, model_key, show_near
                       item_ids):
     from cotmetrics.movers import get_board
 
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
     palette = viz_config.get_palette(palette_name)
     model = vc.resolve_model_view(model_key)[0]
 

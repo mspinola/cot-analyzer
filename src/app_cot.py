@@ -809,7 +809,7 @@ app.layout = html.Div(
             [
                 dcc.Store(id='session_admin_auth', storage_type='session'),
                 dcc.Store(id='session_palette_theme_asset_store', storage_type='session'),
-                dcc.Store(id='global_lookback_store', storage_type='session', data='Custom'),
+                dcc.Store(id='global_lookback_store', storage_type='session', data=controls.LOOKBACK_DEFAULT),
                 dcc.Store(id='global_model_store', storage_type='session', data=models.DEFAULT_MODEL.key),
                 # The as-of week, shared by every page with a Target Date the way
                 # model and lookback already are: park the Heatmap on an old week
@@ -941,7 +941,7 @@ app.clientside_callback(
         const set = (k, v) => v ? params.set(k, v) : params.delete(k);
         set('date', week || '');
         set('model', (model && model !== '{models.DEFAULT_MODEL.key}') ? model : '');
-        set('lookback', (lookback && lookback !== 'Custom') ? lookback : '');
+        set('lookback', (lookback && lookback !== '{controls.LOOKBACK_DEFAULT}') ? lookback : '');
         const q = params.toString();
         const next = window.location.pathname + (q ? '?' + q : '');
         if (next !== window.location.pathname + window.location.search) {{
