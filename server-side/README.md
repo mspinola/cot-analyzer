@@ -224,6 +224,11 @@ runs where `COT_WEEKLY_EMAIL` is set, same as the operator copy.
 
 ```bash
 COT_ADMIN_PASSWORD=...       # gates the Admin page; that page is unusable without it
+COT_ADMIN_SESSION_KEY=...    # signs the admin login cookie. Unset, it is random per
+                             # process and every restart logs you out. Make one with
+                             # `python3 -c "import secrets; print(secrets.token_hex(32))"`
+COT_ANALYZER_PRIVATE_PAGES=1 # serve /news-failure to a logged-in admin. See step 12
+CMRDATA_STORE=/root/cmrdata_store  # where step 12's push lands; needed with the line above
 PORT=5001                    # defaults to 5001
 HOST=127.0.0.1               # set this on the server. Defaults to 0.0.0.0 for LAN
                              # dev use; here nginx proxies from loopback, so a
@@ -609,6 +614,39 @@ The static copy of the Market Internals page goes up the same way, an hour later
 into a `/root/internals-dashboard` clone. Setup and failure notes:
 [docs/internals-publishing.md](../docs/internals-publishing.md). The crontab line is
 `server-side/publish-internals.cron`.
+
+## 12. The News Failure Scan (admin login only)
+
+`/news-failure` draws a licensed positioning index and paywalled headlines, so it is
+never public. With `COT_ANALYZER_PRIVATE_PAGES=1` the app serves it to a browser that
+has logged in at `/admin`, and to nobody else: the page's layout and its callback both
+check the signed session (`src/local_pages.py`, `allowed`). It is in no menu and not in
+the sitemap. Do NOT set `COT_ANALYZER_LOCAL_PAGES` here instead: that flag lifts the
+login and turns on the sentiment page too.
+
+Nginx needs nothing. A password on the path there would not protect it anyway, since
+the data comes back through the shared `/_dash-update-component` endpoint.
+
+The alerts are written on the operator's Mac and pushed here by
+`cmrdata_store/push_alerts.sh` (launchd, a few times a day) with a dedicated key that
+the server pins to write-only rsync into one directory. Once, on the server:
+
+```bash
+mkdir -p /root/cmrdata_store/alerts
+command -v rrsync || ls /usr/share/doc/rsync/scripts/   # rsync >= 3.2.4 ships /usr/bin/rrsync
+```
+
+Then add the Mac's PUBLIC key (`~/.ssh/news_failure_push.pub`) to
+`/root/.ssh/authorized_keys` as one line, restricted:
+
+```
+command="/usr/bin/rrsync -wo /root/cmrdata_store/alerts",restrict ssh-ed25519 AAAA... news-failure-push
+```
+
+`-wo` is write-only and `restrict` turns off forwarding and the pty, so the key can
+drop files into that one directory and do nothing else. Then set the three `.env`
+lines in step 5 and restart. `verify-deploy.sh` checks that a logged-out request for
+the page's data is refused.
 
 ## Upgrading
 

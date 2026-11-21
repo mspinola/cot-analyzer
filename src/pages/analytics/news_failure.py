@@ -1,9 +1,12 @@
 """News Failure Scan: the daily news-failure scan, one day at a time. LOCAL ONLY.
 
-Registered only when `local_pages.enabled()`: the scan is built on a third-party
-positioning index licensed to the operator (a paid product), and reads `cmrdata_store`, which only the
-operator's machine has. Unregistered, the path 404s and the navbar omits it
-(`local_pages`).
+Registered on a local run (`local_pages.enabled()`), and on the server only with
+`local_pages.private_enabled()`, where the layout and the callback both answer nothing
+until the browser has logged in at /admin (`local_pages.allowed`). The scan is built on a third-party
+positioning index licensed to the operator (a paid product), and reads `cmrdata_store`, which lives
+on the operator's machine and is pushed to the server. Unregistered, the path 404s.
+The navbar lists it only on a local run, so on the server it is unlinked as well as
+gated.
 
 Added 2026-11-18 at the user's request ("can we put these results on a cot-analyzer
 page, with formatting for easier reading"). The alert files are long markdown: a
@@ -27,6 +30,7 @@ of the app uses.
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, callback, dcc, html
+from dash.exceptions import PreventUpdate
 
 import components.news_failure as nf
 import local_pages
@@ -46,7 +50,9 @@ BODY = "news_failure_body"
 WINDOWS = ((10, "Last 10 scan days"), (20, "Last 20"), (40, "Last 40"), (0, "All"))
 DEFAULT_WINDOW = 10
 
-if local_pages.enabled():
+REGISTERED = local_pages.enabled() or local_pages.private_enabled()
+
+if REGISTERED:
     dash.register_page(
         __name__,
         path=PATH,
@@ -101,7 +107,19 @@ def body_for(date, market, window, model=None):
     return nf.render_day(nf.read_day(date, book=model)) if date else html.Div()
 
 
+def login_prompt():
+    return dbc.Container(html.Div([
+        html.H4("News failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR}),
+        html.P(["Log in on the ", html.A("admin page", href="/admin"),
+                " first, then come back here."], style=NOTE_STYLE),
+    ]), fluid=True, className="py-3")
+
+
 def layout(**_):
+    # Before anything reads the store: a logged-out request gets no dates, no market
+    # names and no counts, not just no board.
+    if not local_pages.allowed():
+        return login_prompt()
     dates = nf.available_dates()
     head = html.Div([
         html.Div([
@@ -123,11 +141,13 @@ def layout(**_):
                          fluid=True, className="py-3", style={"maxWidth": "1400px"})
 
 
-if local_pages.enabled():
+if REGISTERED:
     @callback(Output(BODY, "children"), Output(DATE, "disabled"),
               Output(WINDOW_WRAP, "style"),
               Input(DATE, "value"), Input(MARKET, "value"), Input(WINDOW, "value"),
               Input(MODEL, "value"), prevent_initial_call=True)
     def _pick(date, market, window, model):
+        if not local_pages.allowed():
+            raise PreventUpdate      # a forged POST gets a 204, not a board
         return (body_for(date, market, window, model), bool(market),
                 {} if market else {"display": "none"})
