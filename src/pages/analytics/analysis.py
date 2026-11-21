@@ -587,7 +587,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
                           else None))
                 if p == "index":
                     ctx.alt_df, ctx.alt_label = controls.other_contracts_frame(
-                        asset, lookback, basis_view)
+                        asset, lookback, basis_view, indexer=get_indexer())
                 fig = spec.build(ctx) or fig
                 if spec.decorate:
                     ctx.fig = fig
@@ -888,7 +888,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
                     showlegend=(plot_idx == 0))
                 if selected_plot == "index":
                     ctx.alt_df, ctx.alt_label = controls.other_contracts_frame(
-                        assets[plot_idx], lookback, basis)
+                        assets[plot_idx], lookback, basis, indexer=get_indexer())
                 fig = spec.build(ctx) or fig
                 if spec.decorate:
                     ctx.fig = fig

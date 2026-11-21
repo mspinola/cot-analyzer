@@ -90,15 +90,18 @@ def lookback_weeks(lookback, asset):
     return int(instrument.custom_lookback)
 
 
-def other_contracts_frame(asset, lookback, basis):
+def other_contracts_frame(asset, lookback, basis, indexer=None):
     """`(frame, label)` of `asset` on the contract basis the viewer did NOT choose.
 
     Only equity index futures have a second basis (cotmetrics.contracts); every other
     market returns (None, None), which is what makes the overlay a no-op there.
+    `indexer` is the caller's: a page passes the one it already reads from, so a test
+    that stubs the page's indexer stubs this read too.
     """
     import cotmetrics.contracts as contracts
-    from cotmetrics.indexer import get_indexer
-    indexer = get_indexer()
+    if indexer is None:
+        from cotmetrics.indexer import get_indexer
+        indexer = get_indexer()
     instrument = indexer.get_instrument_from_name(asset) if asset else None
     if getattr(instrument, "emini_df", None) is None:
         return None, None
