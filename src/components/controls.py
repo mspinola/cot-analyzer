@@ -91,23 +91,32 @@ def lookback_weeks(lookback, asset):
 
 
 def other_contracts_frame(asset, lookback, basis, indexer=None):
-    """`(frame, label)` of `asset` on the contract basis the viewer did NOT choose.
+    """`(frame, label)` of the same equity market counted on the other contracts.
 
-    Only equity index futures have a second basis (cotmetrics.contracts); every other
-    market returns (None, None), which is what makes the overlay a no-op there.
-    `indexer` is the caller's: a page passes the one it already reads from, so a test
-    that stubs the page's indexer stubs this read too.
+    An Equities market (the E-mini) gets its Combined reading; an Equities Combined
+    market (cotmetrics.contracts) gets its E-mini one. Every other market returns
+    (None, None), which is what makes the overlay a no-op there. `indexer` is the
+    caller's: a page passes the one it already reads from, so a test that stubs the
+    page's indexer stubs this read too.
     """
     import cotmetrics.contracts as contracts
     if indexer is None:
         from cotmetrics.indexer import get_indexer
         indexer = get_indexer()
     instrument = indexer.get_instrument_from_name(asset) if asset else None
-    if getattr(instrument, "emini_df", None) is None:
+    if instrument is None:
         return None, None
-    there = (contracts.COMBINED if contracts.current_contracts() == contracts.EMINI
-             else contracts.EMINI)
-    frame = indexer.get_symbols_data(asset, lookback, basis, contracts=there)
+    if getattr(instrument, "twin_of", None) is not None:
+        other = asset[:-len(contracts.COMBINED_SUFFIX)] if asset.endswith(
+            contracts.COMBINED_SUFFIX) else None
+        there = contracts.EMINI
+    elif getattr(instrument, "emini_df", None) is not None:
+        other, there = asset, contracts.COMBINED
+    else:
+        return None, None
+    if other is None:
+        return None, None
+    frame = indexer.get_symbols_data(other, lookback, basis, contracts=there)
     if frame is None or frame.empty:
         return None, None
     return frame, CONTRACT_LABELS[there]

@@ -474,7 +474,7 @@ def layout(**kwargs):
                                     # to a second line. Same switches, collapsed.
                                     class_filter.control(
                                         'strip_class_selector',
-                                        get_indexer().get_asset_classes()),
+                                        get_indexer().get_asset_classes(include_combined=True)),
                                 ], xs=12, md=2, className="px-md-2"),
 
                             ], align="center")
@@ -562,7 +562,7 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
                  compare, palette_name, target_date):
     empty = html.P("Select an asset class to draw the strip.",
                    style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
-    all_classes = get_indexer().get_asset_classes()
+    all_classes = get_indexer().get_asset_classes(include_combined=True)
     if not asset_classes:
         return empty, "", [], f"No asset class selected · 0/{len(all_classes)} classes"
     if not lookback:

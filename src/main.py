@@ -12,10 +12,12 @@ import zoneinfo
 import cotmetrics.contracts as contracts
 import cotmetrics.utils as utils
 
-# The app shows equity index futures on the E-mini alone (see app_cot). Set here too,
-# at process start, so the weekly report and email jobs, which run before or without
-# importing app_cot, read the same series the pages do.
+# The app shows equity index futures on the E-mini alone, with the combined series as
+# its own asset class (see app_cot). Set here too, at process start, so the weekly
+# report and email jobs, which run before or without importing app_cot, read the same
+# series the pages do, and so the indexer is built with the class whichever builds it.
 contracts.set_default_contracts(contracts.EMINI)
+contracts.enable_combined_class()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

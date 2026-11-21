@@ -23,7 +23,7 @@ class _Indexer:
     def get_available_dates(self):
         return ["2026-08-18", "2026-08-11"]
 
-    def get_asset_classes(self):
+    def get_asset_classes(self, include_combined=False):
         return ["Metals"]
 
 
@@ -53,7 +53,7 @@ def test_warm_survives_an_empty_store(monkeypatch):
         def get_available_dates(self):
             return []
 
-        def get_asset_classes(self):
+        def get_asset_classes(self, include_combined=False):
             return []
 
     monkeypatch.setattr(crowd, "get_indexer", lambda: _Empty())

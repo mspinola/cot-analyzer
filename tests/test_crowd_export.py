@@ -34,7 +34,7 @@ class _Indexer:
     def get_available_dates(self):
         return ["2026-10-20", "2026-10-13"]
 
-    def get_asset_classes(self):
+    def get_asset_classes(self, include_combined=False):
         return ["Metals", "Grains"]
 
 

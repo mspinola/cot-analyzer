@@ -45,6 +45,7 @@ layout is testable without a store, a palette file or a browser.
 from dataclasses import dataclass
 
 import cotmetrics.constants as const
+import cotmetrics.contracts as contracts
 import plotly.graph_objects as go
 
 import viz_constants as vc
@@ -252,6 +253,11 @@ def crowding_score(read):
     return sum(values) / len(values)
 
 
+def read_is_twin(read):
+    """A read of the Combined equity class, a second reading of an Equities market."""
+    return read.asset_class == contracts.COMBINED_CLASS
+
+
 def build_rows(reads, order=ORDER_CLASS):
     """`(rows, skipped)` for one week's list of MarketReads.
 
@@ -272,10 +278,26 @@ def build_rows(reads, order=ORDER_CLASS):
             scored.append((score, read))
 
     if order == ORDER_FLAT:
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        return [BoardRow(kind="market", label=read.asset,
+        # The Combined equity class (cotmetrics.contracts) is a second reading of
+        # markets already on the board, so it stays out of the one ranking and follows
+        # it as its own block, the way the tape context follows the markets.
+        twins = [pair for pair in scored if read_is_twin(pair[1])]
+        ranked = sorted((pair for pair in scored if not read_is_twin(pair[1])),
+                        key=lambda pair: pair[0], reverse=True)
+        rows = [BoardRow(kind="market", label=read.asset,
                          asset_class=read.asset_class, read=read)
-                for _, read in scored], skipped
+                for _, read in ranked]
+        if twins:
+            twins.sort(key=lambda pair: pair[0], reverse=True)
+            if rows:
+                rows.append(BoardRow(kind="spacer", label="",
+                                     asset_class=contracts.COMBINED_CLASS))
+            rows.append(BoardRow(kind="class", label=contracts.COMBINED_CLASS,
+                                 asset_class=contracts.COMBINED_CLASS))
+            rows.extend(BoardRow(kind="market", label=read.asset,
+                                 asset_class=read.asset_class, read=read)
+                        for _, read in twins)
+        return rows, skipped
 
     by_class = {}
     for score, read in scored:

@@ -187,7 +187,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
         for record in df.to_dict("records"):
             _gap_history(record.get("Asset"), newest)
         utils.cot_logger.info(
@@ -486,7 +486,7 @@ def layout(**kwargs):
                                                       "textTransform": "uppercase"}),
                                     class_filter.control(
                                         'divergence_class_selector',
-                                        get_indexer().get_asset_classes()),
+                                        get_indexer().get_asset_classes(include_combined=True)),
                                 ], xs=12, md=3, className="px-md-2"),
                             ], align="center")),
                         ]),
