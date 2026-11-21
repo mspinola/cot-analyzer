@@ -120,6 +120,35 @@ def filter_by_setup(df, mode):
               | df[const.SETUP_NPF_COL].isin(wanted)]
 
 
+#: Matrix columns that carry the NPF model layer: the setup verdicts and every reading
+#: on the OI-normalized basis. Dropped from the frame before a public grid is built,
+#: because AG Grid ships the whole of rowData to the browser, shown or not.
+_SETUP_COLS = (const.SETUP_CLS_COL, const.SETUP_NPF_COL, const.SETUP_NPF_CLS_COL)
+
+
+def public_matrix(df):
+    """The Signal Matrix frame a public request may receive (phase 2 of
+    docs/design/2026-11-21-public-lookbacks-npf-behind-login.md)."""
+    private = [c for c in df.columns if c in _SETUP_COLS or str(c).endswith(" Norm")]
+    return df.drop(columns=private)
+
+
+def public_column_defs(column_defs):
+    """The grid's groups for a public request: no NPF block, and the raw block named
+    as positioning rather than as a model's gate."""
+    out = []
+    for group in column_defs:
+        title = group.get("headerName", "")
+        if title == f"Positioning · {models.NPF.title}":
+            continue
+        if title == f"Positioning · {models.RAW_PF.title}":
+            group = {**group, "headerName": "Positioning", "children": [
+                {k: v for k, v in child.items() if k != "headerTooltip"}
+                for child in group["children"]]}
+        out.append(group)
+    return out
+
+
 def snapshot_caption(report_date):
     """The line under the title, for whichever week the grid is actually showing.
 
@@ -219,7 +248,8 @@ def layout(**kwargs):
                                         className="bg-dark text-white border-secondary",
                                         style={'borderRadius': '8px'},
                                     )
-                                ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md"),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 border-end border-secondary px-md-3 hide-border-below-md",
+                                    style=controls.private_style()),
 
                                 dbc.Col([
                                     html.Label(
@@ -598,6 +628,9 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
     if not assest_classes:
         return html.P("Select an asset class to view the signal matrix.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
     lookback = controls.resolve(lookback)
+    verdicts = controls.private_allowed()
+    if not verdicts:
+        setup_filter = SETUP_FILTER_ALL
 
     df = get_matrix_data(assest_classes, lookback, target_date)
     if df.empty:
@@ -611,7 +644,7 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
             f"No market in the selected asset classes is {wording} under either model "
             f"on this date.",
             style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
-    df = matched
+    df = matched if verdicts else public_matrix(matched)
 
     available = get_indexer().get_available_dates()
     df = attach_spec_risk(df, available[0] if available else None)
@@ -877,6 +910,8 @@ def render_heatmap_layout(assest_classes, lookback, palette_name, target_date,
         }
     ]
 
+    if not verdicts:
+        columnDefs = public_column_defs(columnDefs)
     columnDefs = apply_column_preset(columnDefs, columns_preset)
 
     # Every column past the pinned four is a number, and numbers compare by their

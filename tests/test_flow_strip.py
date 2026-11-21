@@ -215,6 +215,8 @@ def test_page_fetches_the_flow_only_for_a_raw_index_panel(monkeypatch):
 
     monkeypatch.setattr(page, "get_indexer", lambda: _Indexer())
     monkeypatch.setattr(controls, "lookback_weeks", lambda lookback, asset: 26)
+    # The "% of OI" panel is the NPF basis, behind the login (phase 2).
+    monkeypatch.setattr(controls, "private_allowed", lambda: True)
     palette = sorted(viz_config.get_palette_names())[0]
     model = models.DEFAULT_MODEL.key
 
@@ -232,3 +234,8 @@ def test_page_fetches_the_flow_only_for_a_raw_index_panel(monkeypatch):
                                             model))
     assert calls == []
     assert not [t for t in fig.data if t.type == "heatmap"]
+
+    # A public request never draws the normalized panel, even when it posts for one.
+    monkeypatch.setattr(controls, "private_allowed", lambda: False)
+    out = page.update_analysis_stack(palette, "Gold", "26", ["index_oinorm"], "1", model)
+    assert "SELECT ASSET AND PLOTS" in str(out)

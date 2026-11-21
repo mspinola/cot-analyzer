@@ -21,9 +21,15 @@ Three decisions:
   changes shape, the extraction falls back to serving the email document
   whole: still crawlable, just less dressed.
 * **Every page carries unique prose.** A summary sentence naming this week's
-  full setups per model is computed from the frame, so no two weeks read
+  Commercial extremes is computed from the frame, so no two weeks read
   identically and the page says something a table scan would take minutes to
-  learn. The interactive links carry ?date=<week>, the app's own deep-link
+  learn.
+
+**No models (2026-11-21).** These pages are public, cached and identical for
+every visitor, so they cannot follow the login the NPF model layer now sits
+behind (docs/design/2026-11-21-public-lookbacks-npf-behind-login.md). The table
+is the email builder's `verdicts=False` form (no OI-normalized block, no
+verdict colouring) and the prose names positioning extremes, not setups. The interactive links carry ?date=<week>, the app's own deep-link
   param, so "explore this week" lands the reader on the same week the page
   describes.
 """
@@ -32,9 +38,8 @@ import re
 import threading
 from datetime import datetime
 
-import cotmetrics.constants as const
-import cotmetrics.models as models
 import cotmetrics.utils as utils
+import pandas as pd
 from cotmetrics.indexer import get_indexer
 from cotmetrics.reports import generate_matrix_html, get_matrix_data
 
@@ -80,27 +85,31 @@ def _extract(email_html):
     return style, table
 
 
-def _setup_summary(df):
-    """This week's full setups, in a sentence per model. The page's unique prose."""
-    def names(state_col):
-        out = []
-        for row in df.to_dict("records"):
-            state = row.get(state_col)
-            if state == const.SETUP_BULL:
-                out.append(f"{row['Asset']} (bullish)")
-            elif state == const.SETUP_BEAR:
-                out.append(f"{row['Asset']} (bearish)")
-        return out
+#: How far into its 52-week range the Commercial index must sit to be named in the
+#: summary. A plain positioning fact, not a model's gate: the same 0-100 index the
+#: table shows, at its two ends.
+EXTREME_HIGH, EXTREME_LOW = 95, 5
 
+
+def _extremes_summary(df):
+    """This week's Commercial extremes on the 52-week index. The page's unique prose."""
+    longs, shorts = [], []
+    for row in df.to_dict("records"):
+        value = row.get("Comm Index")
+        if value is None or pd.isna(value):
+            continue
+        if value >= EXTREME_HIGH:
+            longs.append(row["Asset"])
+        elif value <= EXTREME_LOW:
+            shorts.append(row["Asset"])
     parts = []
-    for title, col in ((models.RAW_PF.title, const.SETUP_CLS_COL),
-                       (models.NPF.title, const.SETUP_NPF_COL)):
-        markets = names(col)
-        if markets:
-            parts.append(f"{title} full setups: {', '.join(markets)}.")
+    if longs:
+        parts.append(f"Commercials at the top of their 52-week range: {', '.join(longs)}.")
+    if shorts:
+        parts.append(f"Commercials at the bottom of their 52-week range: "
+                     f"{', '.join(shorts)}.")
     if not parts:
-        return ("No market finished the week at a full setup under either "
-                "model.")
+        return "No market's Commercials finished the week at a 52-week extreme."
     return " ".join(parts)
 
 
@@ -196,7 +205,7 @@ def _rendered(week, newest_date):
     weeks = published_weeks()
     # asset_classes=None is "every class", the same call the weekly email makes.
     df = get_matrix_data(asset_classes=None, lookback="52", target_date=week)
-    email_html = generate_matrix_html(df, report_date=week)
+    email_html = generate_matrix_html(df, report_date=week, verdicts=False)
     style, table = _extract(email_html)
     if style is None or table is None:
         utils.cot_logger.warning(
@@ -218,15 +227,14 @@ def _rendered(week, newest_date):
     body = f"""<h1>COT Signal Matrix &#8212; week of {pretty}</h1>
 <p class="sub">Commitments of Traders positioning for {len(df)} futures
 markets as reported by the CFTC for Tuesday {pretty}: Commercial, Non-Commercial
-and Non-Reportable positioning indexes on raw and OI-normalized bases, index momentum,
-WILLCO, sentiment and open-interest readings, with each model's setup verdict.</p>
-<p class="sub">{_setup_summary(df)}</p>
+and Non-Reportable positioning indexes over 52 weeks, index momentum, WILLCO,
+sentiment and open-interest readings.</p>
+<p class="sub">{_extremes_summary(df)}</p>
 <p class="nav">{' &middot; '.join(steps)}</p>
 <p class="nav">Explore this week interactively:
 <a href="/heatmap?date={week}">Signal Heatmap</a> &middot;
 <a href="/strip?date={week}">Crowding Strip</a> &middot;
-<a href="/?date={week}">Crowdedness Board</a> &middot;
-<a href="/divergence?date={week}">Model Divergence</a></p>
+<a href="/?date={week}">Crowdedness Board</a></p>
 {style}
 <div class="table-wrap">{table}</div>
 <p class="sub" style="margin-top:14px"><a href="/">COT Analyzer</a> &middot;
@@ -236,8 +244,8 @@ free weekly Commitments of Traders charts and signals &middot;
     return _shell(
         f"COT Report Signal Matrix, {pretty} | COT Analyzer",
         f"Commitments of Traders signal matrix for the week of {pretty}: "
-        f"Commercial, Non-Commercial and Non-Reportable positioning indexes, momentum and setup "
-        f"verdicts for {len(df)} futures markets.",
+        f"Commercial, Non-Commercial and Non-Reportable positioning indexes, momentum and "
+        f"open interest for {len(df)} futures markets.",
         f"{base}/weekly/{week}", body)
 
 
@@ -258,7 +266,7 @@ def index_page():
 
     body = f"""<h1>Weekly COT Reports</h1>
 <p class="sub">The Signal Matrix for every Commitments of Traders release of
-the last two years: positioning indexes, momentum and setup verdicts for 40+
+the last two years: positioning indexes, momentum and open interest for 40+
 futures markets, one page per CFTC reporting week. The newest is
 {'<a href="/weekly/' + weeks[0] + '">' + _pretty(weeks[0]) + '</a>' if weeks
  else 'not yet available'}.</p>

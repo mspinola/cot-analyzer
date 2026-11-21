@@ -4,7 +4,7 @@ What is pinned: only weeks inside the published window render (the rest answer
 None, which the route turns into a 404 rather than a redirect to something the
 reader did not ask for), the page wraps the EMAIL builder's table rather than a
 second implementation, every page carries its own canonical URL and unique
-setups prose, and a changed email format degrades to serving the email whole
+extremes prose, no page carries a model, and a changed email format degrades to serving the email whole
 instead of a broken slice.
 
 Stubbed at the seams (indexer dates, matrix frame, email HTML), so no store.
@@ -25,13 +25,17 @@ class _Indexer:
 
 def _frame():
     return pd.DataFrame([
-        {"Asset": "Gold", const.SETUP_CLS_COL: const.SETUP_BULL,
+        {"Asset": "Gold", "Comm Index": 98, const.SETUP_CLS_COL: const.SETUP_BULL,
          const.SETUP_NPF_COL: const.SETUP_NONE},
-        {"Asset": "Coffee", const.SETUP_CLS_COL: const.SETUP_NONE,
+        {"Asset": "Coffee", "Comm Index": 2, const.SETUP_CLS_COL: const.SETUP_NONE,
          const.SETUP_NPF_COL: const.SETUP_BEAR},
-        {"Asset": "Corn", const.SETUP_CLS_COL: const.SETUP_NONE,
+        {"Asset": "Corn", "Comm Index": 50, const.SETUP_CLS_COL: const.SETUP_NONE,
          const.SETUP_NPF_COL: const.SETUP_NONE},
     ])
+
+
+#: Every generate_matrix_html call the page makes, so a test can say how it was asked.
+CALLS = []
 
 
 EMAIL_DOC = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
@@ -50,8 +54,12 @@ def stubbed(monkeypatch):
     monkeypatch.setattr(weekly_reports, "get_indexer", lambda: _Indexer())
     monkeypatch.setattr(weekly_reports, "get_matrix_data",
                         lambda **kw: _frame())
-    monkeypatch.setattr(weekly_reports, "generate_matrix_html",
-                        lambda df, report_date=None: EMAIL_DOC)
+    CALLS.clear()
+
+    def fake_html(df, report_date=None, **kw):
+        CALLS.append(kw)
+        return EMAIL_DOC
+    monkeypatch.setattr(weekly_reports, "generate_matrix_html", fake_html)
     monkeypatch.setenv("COT_PUBLIC_BASE_URL", "https://example.test")
 
 
@@ -78,9 +86,14 @@ def test_a_published_week_renders_the_email_table_in_a_web_shell(stubbed):
     # A crawler's essentials: canonical, title, description.
     assert '<link rel="canonical" href="https://example.test/weekly/2026-08-18">' in page
     assert "<title>COT Report Signal Matrix, August 18, 2026 | COT Analyzer</title>" in page
-    # The unique prose: this week's setups by name and direction.
-    assert "Gold (bullish)" in page
-    assert "Coffee (bearish)" in page
+    # The unique prose: this week's Commercial extremes, by name and end.
+    assert "top of their 52-week range: Gold." in page
+    assert "bottom of their 52-week range: Coffee." in page
+    # No model on a public page (phase 2): the table is the model-free form, and
+    # nothing names a setup, a verdict or the gated Divergence page.
+    assert CALLS and all(kw.get("verdicts") is False for kw in CALLS)
+    for word in ("setup", "verdict", "Raw PF", "NPF", "/divergence", "normalized"):
+        assert word not in page, word
     # Dated navigation and the deep links into the live app.
     assert 'href="/weekly/2026-08-25"' in page
     assert 'href="/weekly/2026-08-11"' in page
@@ -97,7 +110,7 @@ def test_unpublished_weeks_answer_none(stubbed):
 
 def test_a_changed_email_format_degrades_to_the_whole_email(stubbed, monkeypatch):
     monkeypatch.setattr(weekly_reports, "generate_matrix_html",
-                        lambda df, report_date=None: "<p>tables? never heard of them</p>")
+                        lambda df, report_date=None, **kw: "<p>tables? never heard of them</p>")
     page = weekly_reports.report_page("2026-08-25")
     assert page == "<p>tables? never heard of them</p>"
 
@@ -110,14 +123,12 @@ def test_the_index_lists_every_published_week(stubbed):
     assert "<script" not in page
 
 
-def test_no_setups_still_reads_as_a_sentence(stubbed, monkeypatch):
+def test_no_extremes_still_reads_as_a_sentence(stubbed, monkeypatch):
     monkeypatch.setattr(
         weekly_reports, "get_matrix_data",
-        lambda **kw: pd.DataFrame([
-            {"Asset": "Corn", const.SETUP_CLS_COL: const.SETUP_NONE,
-             const.SETUP_NPF_COL: const.SETUP_NONE}]))
+        lambda **kw: pd.DataFrame([{"Asset": "Corn", "Comm Index": 50}]))
     page = weekly_reports.report_page("2026-08-25")
-    assert "No market finished the week at a full setup" in page
+    assert "No market's Commercials finished the week at a 52-week extreme." in page
 
 
 def test_a_release_rebuilds_a_cached_page(stubbed, monkeypatch):

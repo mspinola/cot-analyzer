@@ -1,6 +1,6 @@
 # Public site on 26/52, per-market lookbacks and NPF behind the login
 
-Status: **phase 1 built 2026-11-21** (branch `claude/public-lookbacks-26-52`). Phases 2 and 3 not started.
+Status: **phases 1 and 2 built 2026-11-21** (phase 1: cot-analyzer #240 and #242; phase 2: branch `claude/npf-behind-login`). Phase 3 not started.
 
 ## Why
 
@@ -130,13 +130,61 @@ Two kinds of change:
 The branch `claude/home-no-model-selector` (2026-11-21, home page always reads the
 default model) is already a step this way. Phase 2 builds on it rather than beside it.
 
-**Open decision: what is the public home page** once the setups board is private?
-Candidates: the positioning strip, the heatmap, or a plain positioning board on 52
-weeks. Needs a call before phase 2 starts.
+**Correction (2026-11-21):** the home page (`/`) is the Crowdedness Board
+(`pages/analytics/crowd.py`), not the setups board, so there was no home-page decision
+to make. It stays public without its SETUP chip.
 
 **Done when** a logged-out browser can reach no model verdict, setup age or setups
 board, including through direct callback posts, and the logged-in site is unchanged
 from today.
+
+### As built (2026-11-21)
+
+Decisions taken: the OI-normalized basis is gated with the verdicts (it is the NPF
+basis), and Strip and home stay public without verdicts rather than being gated whole.
+
+- **One gate:** `controls.private_allowed()` (`lookback_allowed` now delegates to it).
+  `controls.gate_model(key)` makes a public request read the default model (Raw PF, net
+  contracts). `controls.private_style()` hides a control from a public layout.
+- **Whole pages:** `/setups`, `/scorecard`, `/divergence` render
+  `controls.private_page_stub` for a public visitor, and every callback on them is a
+  `controls.private_callback`, which answers a public request with PreventUpdate (204).
+  Their nav entries are hidden by a callback (`show_private_nav`), and the three paths
+  are in `routing.PRIVATE_PATHS`, so they are noindexed and out of the sitemap.
+- **Home (Crowdedness Board):** public: no SETUP chip, caption and help without the
+  model, matrix on 52. Signed in: chip back, matrix on Custom (the frozen table), which
+  restores the verdict window phase 1 had moved to 52.
+- **Strip:** public: default model, no verdict colour, no verdict hover, no Show
+  filter, no "Other basis" comparison, legend without setup entries.
+- **Heatmap:** public: no Setups filter, no NPF block, raw block titled "Positioning".
+  The setup and normalized columns are dropped from the frame (`public_matrix`), since
+  AG Grid ships all of rowData whether a column is shown or not.
+- **Analysis / OI Alignment:** public: default model, no model selector, no "% of OI"
+  or "Raw vs %OI" panels, no verdict colour on the Analysis title, and the signal
+  panel's POSITIONING card reads "COT INDEX" without a verdict.
+- **Positioning table:** the normalized columns are dropped for public requests (grid
+  and CSV).
+- **Model links:** `?model=` is honoured only when the request may use it, and a stored
+  gated model is reset to the default on load (the phase 1 lookback rule).
+
+Verified in deployed mode: the gated pages render the stub, posting to their callbacks
+returns 204, the heatmap rowData carries no NPF or setup columns even with a forged
+"gate" filter, and no public page shows a model selector. In local mode (the login's
+gate): the nav links show, and Setups, Scorecard and Divergence render.
+
+**Left public, deliberately:** "Net Position % of OI" (`oi_pct`), a standard COT
+metric, not the normalized index. The OI Alignment "Algorithmic setup" synthesis card
+(OI and price action, not a model gate). The generic signal badges on the heatmap.
+
+**Still open:**
+- ~~`/weekly/<date>` pages~~ **Done:** they render `generate_matrix_html(...,
+  verdicts=False)` (cotmetrics #65: no NPF block, raw block titled "Positioning", no
+  verdict colouring), the summary names Commercial 52-week extremes (95/5 on the
+  index) instead of setups, and the Divergence link is gone. Needs cotmetrics #65 on
+  `main` first: cot-analyzer's CI checks out cotmetrics `main`, and the VPS needs
+  cotmetrics pulled with cot-analyzer.
+- **The weekly crowd email** (`crowd_email.py`) still prints the SETUP chips. It goes
+  to subscribers, of whom there are none today.
 
 ## Phase 3: data layer and npf (separate, later)
 

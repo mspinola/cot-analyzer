@@ -157,7 +157,7 @@ def _symbol_for(asset):
     return getattr(instrument, "symbol", "") or ""
 
 
-def _read_for(asset, record, basis, model, newest_date, target_date):
+def _read_for(asset, record, basis, model, newest_date, target_date, verdicts=True):
     """A MarketRead at the week the board is showing, or None.
 
     Row by row on each market's own dates rather than one global row position, the
@@ -183,7 +183,8 @@ def _read_for(asset, record, basis, model, newest_date, target_date):
         start=frame.attrs.get("start"),
         move=_clean(latest["move"]),
         path=path,
-        state=record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE,
+        state=((record.get(SETUP_COLUMN[model.key]) or const.SETUP_NONE) if verdicts
+               else const.SETUP_NONE),
         is_equity=bool(record.get(const.IS_EQUITY_COL)),
         date=frame.index[-1].strftime('%Y-%m-%d'),
     )
@@ -208,6 +209,9 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
+        # Both matrices the board reads: 52 for a public request, Custom (the frozen
+        # NPF table, the verdicts' window) behind the login.
+        get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
         df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "52", None)
         # Distinct bases, not one per model: the cache is keyed on the basis, and two
         # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
@@ -221,7 +225,7 @@ def warm_caches():
         utils.cot_logger.warning(f"crowd: cache warm failed, first render pays: {e}")
 
 
-def caption(report_date, model, skipped, awaiting=(), stale=()):
+def caption(report_date, model, skipped, awaiting=(), stale=(), verdicts=True):
     """The line under the board: the FACTS of this render, and nothing a reader
     already taught can skip. What the series is measured as and which week, plus
     what could not be shown; the teaching moved to `help_text` behind the fold
@@ -246,6 +250,9 @@ def caption(report_date, model, skipped, awaiting=(), stale=()):
                    f"{', '.join(awaiting)}.")
     if stale:
         context += f" Tape context trailing the board: {'; '.join(stale)}."
+    if not verdicts:
+        return (f"Commercial positioning as of Tuesday {pretty}, measured as {basis}. "
+                f"Color is the cell's own value.{dropped}{context}")
     return (
         f"Commercial positioning as of Tuesday {pretty}, measured as {basis} "
         f"({model.title}'s basis). Color is the cell's own value, not the "
@@ -253,19 +260,20 @@ def caption(report_date, model, skipped, awaiting=(), stale=()):
     )
 
 
-def help_text(model):
+def help_text(model, verdicts=True):
     """The teaching: what a cell means, how the windows line up with the rest of
     the app, and the trailing-window trap. Model-aware (the chip carries the
     current model's verdict), which is why this is rendered per callback rather
     than baked into the layout."""
     return (
-        f"Each cell is the range index of that one series within its own window "
-        f"(0 at the window's low, 100 at its high) over 13, 26 and 52 weekly "
-        f"reports, then the market's full history (each market's history starts "
-        f"where its data does; hover the Full cell for the span). The SETUP chip "
-        f"at the left edge (and its fainter NEAR tier) is {model.title}'s verdict "
-        f"on its own window, and a crowded row with no chip is a market whose "
-        f"other legs block the gate. A trailing window renormalises every week, "
+        "Each cell is the range index of that one series within its own window "
+        "(0 at the window's low, 100 at its high) over 13, 26 and 52 weekly "
+        "reports, then the market's full history (each market's history starts "
+        "where its data does; hover the Full cell for the span). "
+        + (f"The SETUP chip at the left edge (and its fainter NEAR tier) is "
+           f"{model.title}'s verdict on its own window, and a crowded row with no "
+           f"chip is a market whose other legs block the gate. " if verdicts else "")
+        + f"A trailing window renormalises every week, "
         f"so a short column says where this week sits in the RECENT range, not "
         f"whether the market is net long: the 3M column especially moves in "
         f"coarse steps and pins at 0 or 100 often. The {vc.MOMENTUM_LABEL} "
@@ -391,7 +399,8 @@ def layout(**kwargs):
     ])
 
 
-def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_date=None):
+def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_date=None,
+                verdicts=True):
     """The board for one week, or None when the matrix has nothing for it.
 
     Split out of the render callback on 2026-10-29 for the weekly email, which
@@ -399,9 +408,12 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
     (the universe, the reads, the order, the tape-context block, what was dropped
     and why); the callback keeps only HOW it is drawn.
     """
-    # The matrix drives the universe and carries the verdict; the Custom lookback is
-    # the models' own window, the same one every other verdict surface gates on.
-    df = get_matrix_data(asset_classes, "52", target_date)
+    # The matrix drives the universe and carries the verdict. With verdicts, the
+    # Custom lookback (the frozen NPF table) is the models' own window, the same one
+    # every other verdict surface gates on. Without them (a public request, phase 2 of
+    # docs/design/2026-11-21-public-lookbacks-npf-behind-login.md) nothing reads the
+    # verdict, so nothing reads the frozen table either.
+    df = get_matrix_data(asset_classes, "Custom" if verdicts else "52", target_date)
     if df.empty:
         return None
 
@@ -411,7 +423,8 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
     reads, unreadable = [], []
     for record in df.to_dict("records"):
         asset = record.get("Asset")
-        read = _read_for(asset, record, model.basis, model, newest, target_date)
+        read = _read_for(asset, record, model.basis, model, newest, target_date,
+                         verdicts=verdicts)
         if read is None:
             unreadable.append(asset)
         else:
@@ -449,16 +462,17 @@ def render_board(asset_classes, order, palette_name, target_date):
     # Resolved before the early exits so the fold teaches even over an empty
     # board; the teaching does not depend on the data being present.
     model = models.DEFAULT_MODEL
+    verdicts = controls.private_allowed()
     if not asset_classes:
-        return empty, "", help_text(model)
+        return empty, "", help_text(model, verdicts)
 
     order = order if order in ORDER_LABELS else board_traces.ORDER_CLASS
 
-    board = build_board(asset_classes, model, order, target_date)
+    board = build_board(asset_classes, model, order, target_date, verdicts=verdicts)
     if board is None:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
-                "", help_text(model))
+                "", help_text(model, verdicts))
 
     palette = viz_config.get_palette(palette_name)
     colors = grid_colors(palette)
@@ -469,8 +483,8 @@ def render_board(asset_classes, order, palette_name, target_date):
                   style={"width": "100%", "maxWidth": "1100px",
                          "margin": "0 auto"}),
         caption(board.report_date, model, board.skipped,
-                awaiting=board.awaiting, stale=board.stale),
-        help_text(model),
+                awaiting=board.awaiting, stale=board.stale, verdicts=verdicts),
+        help_text(model, verdicts),
     )
 
 
