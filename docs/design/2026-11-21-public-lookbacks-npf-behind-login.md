@@ -177,11 +177,12 @@ metric, not the normalized index. The OI Alignment "Algorithmic setup" synthesis
 (OI and price action, not a model gate). The generic signal badges on the heatmap.
 
 **Still open:**
-- **`/weekly/<date>` pages** publish the matrix email table, which carries the NPF
-  block and both models' setup verdicts, plus a setup summary sentence. They are
-  cached and identical for every visitor, so they cannot follow the login. Removing
-  the NPF part needs either an option on cotmetrics' `generate_matrix_html` or a table
-  built here.
+- ~~`/weekly/<date>` pages~~ **Done:** they render `generate_matrix_html(...,
+  verdicts=False)` (cotmetrics #65: no NPF block, raw block titled "Positioning", no
+  verdict colouring), the summary names Commercial 52-week extremes (95/5 on the
+  index) instead of setups, and the Divergence link is gone. Needs cotmetrics #65 on
+  `main` first: cot-analyzer's CI checks out cotmetrics `main`, and the VPS needs
+  cotmetrics pulled with cot-analyzer.
 - **The weekly crowd email** (`crowd_email.py`) still prints the SETUP chips. It goes
   to subscribers, of whom there are none today.
 
