@@ -27,7 +27,7 @@ from dash import Input, Output, State, callback, clientside_callback, dcc, html,
 
 import viz_constants as vc
 
-LOOKBACK_CHOICES = ("26", "52", "Custom")
+LOOKBACK_CHOICES = ("26", "52", "Custom", "CMR")
 
 #: The one caption style for a control label. Seven pages already used exactly
 #: this dict inline; the H6 variant the chart pages carried was the same idea in
@@ -54,6 +54,9 @@ def lookback_select(control_id, **overrides):
             {"label": "26 Weeks", "value": "26"},
             {"label": "52 Weeks", "value": "52"},
             {"label": "Custom", "value": "Custom"},
+            # Each market's CmrLookbackWeeks: the windows that reproduce the CMR
+            # sheet's pre-algo index. Display only; the books read Custom.
+            {"label": "CMR", "value": "CMR"},
         ],
         value="Custom",
         className="bg-dark text-white border-secondary",
@@ -67,7 +70,8 @@ def _canon_lookback(value):
 def lookback_weeks(lookback, asset):
     """The lookback control's value as a number of weeks for one market.
 
-    "26" and "52" name themselves; "Custom" is per instrument, from params.yaml.
+    "26" and "52" name themselves; "Custom" and "CMR" are per instrument, from
+    params.yaml (CustomLookbackWeeks and CmrLookbackWeeks).
     Resolved here because the control owns what its values mean, and the indexer's
     frames do not stamp it: `get_symbols_data` records the basis in `attrs` but not
     the window. Returns None for an unknown market, so a caller can draw nothing
@@ -76,12 +80,40 @@ def lookback_weeks(lookback, asset):
     from cotmetrics.indexer import get_indexer
     indexer = get_indexer()
     lookback = _canon_lookback(lookback or "Custom")
-    if lookback != "Custom":
+    if lookback not in ("Custom", "CMR"):
         return int(lookback)
     instrument = indexer.get_instrument_from_name(asset) if asset else None
     if instrument is None:
         return None
+    if lookback == "CMR":
+        return int(instrument.cmr_lookback)
     return int(instrument.custom_lookback)
+
+
+def other_contracts_frame(asset, lookback, basis, indexer=None):
+    """`(frame, label)` of `asset` on the contract basis the viewer did NOT choose.
+
+    Only equity index futures have a second basis (cotmetrics.contracts); every other
+    market returns (None, None), which is what makes the overlay a no-op there.
+    `indexer` is the caller's: a page passes the one it already reads from, so a test
+    that stubs the page's indexer stubs this read too.
+    """
+    import cotmetrics.contracts as contracts
+    if indexer is None:
+        from cotmetrics.indexer import get_indexer
+        indexer = get_indexer()
+    instrument = indexer.get_instrument_from_name(asset) if asset else None
+    if getattr(instrument, "emini_df", None) is None:
+        return None, None
+    there = (contracts.COMBINED if contracts.current_contracts() == contracts.EMINI
+             else contracts.EMINI)
+    frame = indexer.get_symbols_data(asset, lookback, basis, contracts=there)
+    if frame is None or frame.empty:
+        return None, None
+    return frame, CONTRACT_LABELS[there]
+
+
+CONTRACT_LABELS = {"emini": "E-mini", "combined": "Combined"}
 
 
 def register_lookback(control_id):

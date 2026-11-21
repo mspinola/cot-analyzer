@@ -651,6 +651,32 @@ def get_index_plot(fig, df, comms_col, lrg_col, sml_col, row, col, color_palette
     return fig
 
 
+def add_contracts_overlay(fig, alt_df, comms_col, lrg_col, sml_col, row, col,
+                          color_palette, label, showlegend=True):
+    """The same three index legs on the OTHER contract basis, dashed and tinted.
+
+    Equity index futures only (cotmetrics.contracts): the solid lines are the basis the
+    viewer chose, these are the other one, so a gap between a solid line and its dashed
+    twin is exactly how much the full-size and micro contracts move that leg. One legend
+    entry toggles all three, because the comparison is the unit, not any single leg.
+    """
+    group = f"{label.lower()} contracts"
+    for i, (column, name) in enumerate(((comms_col, COMM_LABEL), (lrg_col, LRG_LABEL),
+                                        (sml_col, SML_LABEL))):
+        if column not in alt_df.columns:
+            continue
+        fig.add_trace(go.Scattergl(
+            x=alt_df.index, y=alt_df[column],
+            name=f"{label} contracts" if i == 0 else f"{name} ({label})",
+            legendgroup=group, showlegend=showlegend and i == 0,
+            hovertemplate=f"{name} ({label}): %{{y:.0f}}<extra></extra>",
+            opacity=0.85,
+            line=dict(color=lighten_hex(color_palette[i], vc.BASIS_OVERLAY_TINT),
+                      width=1, dash=vc.BASIS_OVERLAY_DASH),
+        ), row=row, col=col, secondary_y=False)
+    return fig
+
+
 def get_basis_overlay_plot(fig, df_raw, df_norm, value_col, row, col, color_palette,
                            y_title, y_range=None, zero_line=False):
     """Draw one series on both positioning bases with the gap between them shaded.

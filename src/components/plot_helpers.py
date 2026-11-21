@@ -40,6 +40,7 @@ from components.plot_options import (  # noqa: F401
     get_max_pain_plot,
 )
 from components.plot_traces import (  # noqa: F401
+    add_contracts_overlay,
     add_legend_lines,
     add_legend_markers,
     add_open_interest_legend,
