@@ -134,8 +134,7 @@ def get_CFTC_df_selection(assets, selected_columns, lookback, palette_name, targ
     """Dash callback to update the positioning table"""
     print(f"Updating positioning table with assets={assets}, selected_columns={selected_columns}, lookback={lookback}, target_date={target_date}")
     utils.cot_logger.info(f"Updating positioning table with assets={assets}, selected_columns={selected_columns}, lookback={lookback}, target_date={target_date}")
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     if not assets:
         return html.P("Select an asset class to view positioning data.", style={'textAlign': 'center', 'color': vc.TEXT_COLOR})
@@ -246,7 +245,7 @@ def get_asset_class_accordions(df, lookback, start_collapsed=False):
         for col in group_df.columns:
             if col == "Asset Class":
                 continue
-            col_def = {"field": col}
+            col_def = {"field": col, "headerName": controls.column_label(col, lookback)}
             if col == "Symbol":
                 col_def["pinned"] = "left"
             elif col == "Max Pain":
@@ -310,8 +309,7 @@ def download_positioning_table(n_clicks, selected_columns, lookback, target_date
     if not n_clicks or not assets:
         return None
 
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     asset_list = (assets,) if isinstance(assets, str) else tuple(assets)
 
@@ -320,5 +318,6 @@ def download_positioning_table(n_clicks, selected_columns, lookback, target_date
     if not df.empty:
         df = df.sort_values(by=['Asset Class', 'Name'], ascending=[True, True])
 
+    df = df.rename(columns=lambda c: controls.column_label(c, lookback))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H%M')
     return dcc.send_data_frame(df.to_csv, f"COT_Positioning_{timestamp}.csv", index=False)

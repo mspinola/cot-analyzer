@@ -208,7 +208,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "52", None)
         # Distinct bases, not one per model: the cache is keyed on the basis, and two
         # models sharing one (NPF and NPF CLS 95/5) warm the same entries.
         for record in df.to_dict("records"):
@@ -401,7 +401,7 @@ def build_board(asset_classes, model, order=board_traces.ORDER_CLASS, target_dat
     """
     # The matrix drives the universe and carries the verdict; the Custom lookback is
     # the models' own window, the same one every other verdict surface gates on.
-    df = get_matrix_data(asset_classes, "Custom", target_date)
+    df = get_matrix_data(asset_classes, "52", target_date)
     if df.empty:
         return None
 

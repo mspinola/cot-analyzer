@@ -195,7 +195,7 @@ def _rendered(week, newest_date):
     """
     weeks = published_weeks()
     # asset_classes=None is "every class", the same call the weekly email makes.
-    df = get_matrix_data(asset_classes=None, lookback="Custom", target_date=week)
+    df = get_matrix_data(asset_classes=None, lookback="52", target_date=week)
     email_html = generate_matrix_html(df, report_date=week)
     style, table = _extract(email_html)
     if style is None or table is None:

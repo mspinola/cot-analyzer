@@ -30,18 +30,56 @@ def test_module_imports_without_the_data_layer():
     assert not any(m.startswith("cotmetrics.indexer") for m in sys.modules)
 
 
-def test_lookback_select_semantics():
+def test_lookback_select_semantics(monkeypatch):
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: False)
     sel = controls.lookback_select('x_lookback')
-    assert [o["value"] for o in sel.options] == list(controls.LOOKBACK_CHOICES)
-    assert sel.value == "Custom"
+    assert [o["value"] for o in sel.options] == ["26", "52"]
+    assert sel.value == "52"
     assert sel.persistence == 'session'
+
+
+def test_the_per_market_lookbacks_are_offered_only_behind_the_login(monkeypatch):
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
+    sel = controls.lookback_select('x_lookback')
+    assert [(o["value"], o["label"]) for o in sel.options] == [
+        ("26", "26 Weeks"), ("52", "52 Weeks"),
+        ("custom", "Custom"), ("npf", "NPF research")]
+
+
+def test_the_public_site_says_nothing_about_cmr(monkeypatch):
+    for allowed in (False, True):
+        monkeypatch.setattr(controls, "lookback_allowed", lambda a=allowed: a)
+        labels = [o["label"] for o in controls.lookback_select('x').options]
+        assert not any("CMR" in label for label in labels)
+
+
+@pytest.mark.parametrize("value", ["custom", "npf", "CMR", "Custom", "bogus", None])
+def test_a_gated_or_unknown_value_from_a_public_request_is_52_weeks(monkeypatch, value):
+    """Hiding the option is not the gate: every callback answers on the one shared
+    endpoint, so a public browser can post any value. resolve() is the gate."""
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: False)
+    assert controls.resolve(value) == "52"
+
+
+def test_behind_the_login_the_control_values_map_to_the_cotmetrics_families(monkeypatch):
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
+    assert [controls.resolve(v) for v in ("26", "52", "custom", "npf")] == \
+        ["26", "52", "CMR", "Custom"]
+    # The family names themselves are not control values, even when logged in.
+    assert controls.resolve("CMR") == "52" and controls.resolve("Custom") == "52"
+
+
+def test_outside_a_request_the_gate_is_shut(monkeypatch):
+    monkeypatch.delenv("COT_ANALYZER_LOCAL_PAGES", raising=False)
+    assert controls.lookback_allowed() is False
 
 
 def test_overrides_touch_geometry_not_semantics():
     sel = controls.lookback_select('x_lookback', size="sm",
                                    style={'width': '120px'})
     assert sel.size == "sm" and sel.style == {'width': '120px'}
-    assert [o["value"] for o in sel.options] == list(controls.LOOKBACK_CHOICES)
+    assert [o["value"] for o in sel.options] == [
+        o["value"] for o in controls.lookback_options()]
     # And an explicit persistence=None turns the browser copy off (the Strip and
     # Crowd ride the global store instead).
     assert controls.lookback_select('x', persistence=None).persistence is None
@@ -199,3 +237,16 @@ def test_forced_assets_resolves_names_and_their_classes(monkeypatch):
     assert controls.forced_assets("?assets=Nothing%20Real") is None
     assert controls.forced_assets("?asset=Gold") is None
     assert controls.forced_assets("") is None
+
+
+def test_family_labels_never_say_cmr():
+    assert controls.family_label("52") == "52-week"
+    assert controls.family_label("CMR") == "Custom"
+    assert controls.family_label("Custom") == "NPF research"
+
+
+def test_column_labels_swap_the_family_token_for_the_control_word():
+    assert controls.column_label("Comm CMR Idx", "CMR") == "Comm Custom Idx"
+    assert controls.column_label("Willco CMR", "CMR") == "Willco Custom"
+    assert controls.column_label("Comm Custom Idx", "Custom") == "Comm NPF research Idx"
+    assert controls.column_label("Comm 52 Idx", "52") == "Comm 52 Idx"

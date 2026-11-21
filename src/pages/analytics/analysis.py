@@ -486,8 +486,7 @@ def update_analysis_stack(palette_name, asset, lookback, selected_plots, num_col
     utils.cot_logger.info(f"Updating analysis stack with asset={asset}, lookback={lookback}, selected_plots={selected_plots}, num_cols={num_cols}")
 
     show_price = True
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
 
     selected_plots = registry.sanitize_selection(selected_plots, AVAILABLE_PLOTS)
 
@@ -792,8 +791,7 @@ def get_cot_graphs(palette_name, selected_assets, selected_plot, lookback,
     if view != VIEW_GRID:
         return []
     utils.cot_logger.info(f"Generating graphs for Selected Assets: {selected_assets}, Plot: {selected_plot}, Lookback: {lookback}, Model: {model_view}, Columns: {num_cols}")
-    if not lookback:
-        lookback = "Custom"
+    lookback = controls.resolve(lookback)
     # The selector persists per session, so a saved value can name a plot that no
     # longer exists (e.g. the retired synthesis plot). Fall back to the first option.
     if selected_plot not in GRID_PLOTS:

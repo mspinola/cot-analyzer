@@ -27,7 +27,23 @@ from dash import Input, Output, State, callback, clientside_callback, dcc, html,
 
 import viz_constants as vc
 
-LOOKBACK_CHOICES = ("26", "52", "Custom", "CMR")
+#: The lookback control's values. The public site offers two uniform windows. The two
+#: per-market tables are login-gated (docs/design/2026-11-21-public-lookbacks-npf-
+#: behind-login.md): "custom" is each market's CmrLookbackWeeks (fitted to reproduce a
+#: licensed third-party index), "npf" is CustomLookbackWeeks (the frozen table the NPF
+#: research and livebook were validated on). The control's values are deliberately not
+#: cotmetrics' family names, so a family name posted to a callback is just unknown.
+LOOKBACK_DEFAULT = "52"
+PUBLIC_LOOKBACKS = ("26", "52")
+GATED_LOOKBACKS = ("custom", "npf")
+LOOKBACK_CHOICES = PUBLIC_LOOKBACKS + GATED_LOOKBACKS
+
+#: Control value -> cotmetrics lookback family (the column names, e.g. "Comm CMR Index").
+#: The one place the two vocabularies meet.
+_FAMILY = {"26": "26", "52": "52", "custom": "CMR", "npf": "Custom"}
+
+_LOOKBACK_LABELS = {"26": "26 Weeks", "52": "52 Weeks",
+                    "custom": "Custom", "npf": "NPF research"}
 
 #: The one caption style for a control label. Seven pages already used exactly
 #: this dict inline; the H6 variant the chart pages carried was the same idea in
@@ -46,46 +62,91 @@ def _merged(base, overrides):
 
 # ── Lookback ──────────────────────────────────────────────────────────────────
 
+def lookback_allowed():
+    """May THIS request use the per-market lookbacks? The same gate as the other
+    login-gated views (`local_pages.allowed`): a local run, or a browser logged in at
+    /admin. Outside a request (a script, a layout built at start-up) the answer is no,
+    unless this is a local run."""
+    import local_pages
+    return local_pages.allowed()
+
+
+def lookback_options():
+    """The choices this request may see. Called from `layout()`, so per request."""
+    keys = LOOKBACK_CHOICES if lookback_allowed() else PUBLIC_LOOKBACKS
+    return [{"label": _LOOKBACK_LABELS[k], "value": k} for k in keys]
+
+
 def lookback_select(control_id, **overrides):
     return dbc.Select(**_merged(dict(
         id=control_id,
         persistence='session',
-        options=[
-            {"label": "26 Weeks", "value": "26"},
-            {"label": "52 Weeks", "value": "52"},
-            {"label": "Custom", "value": "Custom"},
-            # Each market's CmrLookbackWeeks: the windows that reproduce the CMR
-            # sheet's pre-algo index. Display only; the books read Custom.
-            {"label": "CMR", "value": "CMR"},
-        ],
-        value="Custom",
+        options=lookback_options(),
+        value=LOOKBACK_DEFAULT,
         className="bg-dark text-white border-secondary",
     ), overrides))
 
 
 def _canon_lookback(value):
-    return value if value in LOOKBACK_CHOICES else "Custom"
+    """A control value this request may use, else the default. The server-side half of
+    the gate: hiding an option is not gating, because every callback answers on the one
+    shared /_dash-update-component endpoint and a browser can post any value."""
+    if value in PUBLIC_LOOKBACKS:
+        return value
+    if value in GATED_LOOKBACKS and lookback_allowed():
+        return value
+    return LOOKBACK_DEFAULT
 
 
-def lookback_weeks(lookback, asset):
-    """The lookback control's value as a number of weeks for one market.
+def resolve(lookback):
+    """The cotmetrics lookback family for a control value, gated for this request.
 
-    "26" and "52" name themselves; "Custom" and "CMR" are per instrument, from
-    params.yaml (CustomLookbackWeeks and CmrLookbackWeeks).
+    Every callback that reads `global_lookback_store` (or a page's lookback control)
+    calls this first and hands only its result to cotmetrics. Below this line the code
+    speaks cotmetrics' families ("26", "52", "CMR", "Custom").
+    """
+    return _FAMILY[_canon_lookback(lookback)]
+
+
+def family_label(family):
+    """What to call a resolved family in text a reader sees: "52-week", "Custom". The
+    cotmetrics family names ("CMR", "Custom") are column-name vocabulary, not copy."""
+    if family in PUBLIC_LOOKBACKS:
+        return f"{family}-week"
+    for key, fam in _FAMILY.items():
+        if fam == family:
+            return _LOOKBACK_LABELS[key]
+    return f"{LOOKBACK_DEFAULT}-week"
+
+
+def column_label(column, family):
+    """A cotmetrics column name as a reader should see it: the family token inside it
+    ("Comm CMR Idx") becomes the control's word ("Comm Custom Idx"). Uniform windows
+    and columns without the token pass through unchanged."""
+    import re
+    if family in PUBLIC_LOOKBACKS or family not in _FAMILY.values():
+        return column
+    word = family_label(family)
+    return re.sub(rf"(?<![A-Za-z]){re.escape(family)}(?![A-Za-z])", word, column)
+
+
+def lookback_weeks(family, asset):
+    """A resolved lookback family (`resolve`'s result) as a number of weeks for one market.
+
+    "26" and "52" name themselves; "CMR" and "Custom" are per instrument, from
+    params.yaml (CmrLookbackWeeks and CustomLookbackWeeks).
     Resolved here because the control owns what its values mean, and the indexer's
     frames do not stamp it: `get_symbols_data` records the basis in `attrs` but not
     the window. Returns None for an unknown market, so a caller can draw nothing
     rather than guess.
     """
     from cotmetrics.indexer import get_indexer
-    indexer = get_indexer()
-    lookback = _canon_lookback(lookback or "Custom")
-    if lookback not in ("Custom", "CMR"):
-        return int(lookback)
-    instrument = indexer.get_instrument_from_name(asset) if asset else None
+    if family not in ("CMR", "Custom"):
+        return int(family if family in PUBLIC_LOOKBACKS else LOOKBACK_DEFAULT)
+    instrument = get_indexer().get_instrument_from_name(asset) if asset else None
     if instrument is None:
         return None
-    if lookback == "CMR":
+    if family == "CMR":
         return int(instrument.cmr_lookback)
     return int(instrument.custom_lookback)
 
@@ -335,6 +396,8 @@ def deep_link_params(search, dates=()):
         out['global_model_store'] = model
     lookback = parsed.get('lookback', [None])[0]
     if lookback in LOOKBACK_CHOICES:
+        # Canonicalised again by every reader, so a gated value in a public link
+        # lands as the default rather than as a window.
         out['global_lookback_store'] = lookback
     return out
 

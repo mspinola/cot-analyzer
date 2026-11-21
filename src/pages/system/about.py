@@ -60,7 +60,7 @@ participants_intro_md = textwrap.dedent("""
 """)
 
 core_metrics_intro_md = textwrap.dedent("""
-    The application normalizes raw position data over user-defined **Lookback Periods** (e.g., 26 weeks, 52 weeks, or Custom lengths) to create bounded oscillators and velocity metrics.
+    The application normalizes raw position data over user-defined **Lookback Periods** (26 or 52 weeks) to create bounded oscillators and velocity metrics.
 """)
 
 markers_intro_md = textwrap.dedent("""

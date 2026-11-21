@@ -103,14 +103,14 @@ def _gap_history(asset, newest_date):
 
     `newest_date` is a cache-buster and nothing else, the heatmap joins' rule: a
     Friday release must invalidate this and nothing else does. Both series come
-    from get_symbols_data on the Custom lookback, the exact quantity the Basis
+    from get_symbols_data on the 52-week lookback, the exact quantity the Basis
     gap column snapshots, so the sparkline and the number can never disagree
     about what the gap is. Returns ((date_str, gap), ...) or None when either
     basis is missing; the catch is broad on purpose, this is a display join.
     """
     try:
-        raw = get_indexer().get_symbols_data(asset, "Custom", const.BASIS_RAW)
-        norm = get_indexer().get_symbols_data(asset, "Custom",
+        raw = get_indexer().get_symbols_data(asset, "52", const.BASIS_RAW)
+        norm = get_indexer().get_symbols_data(asset, "52",
                                               const.BASIS_OI_NORM)
         gaps = (raw[const.COMMS_IDX] - norm[const.COMMS_IDX]).abs().dropna()
     except Exception:
@@ -187,7 +187,7 @@ def warm_caches():
         if not available:
             return
         newest = available[0]
-        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "Custom", None)
+        df = get_matrix_data(indexer.get_asset_classes(include_combined=True), "52", None)
         for record in df.to_dict("records"):
             _gap_history(record.get("Asset"), newest)
         utils.cot_logger.info(
@@ -573,7 +573,7 @@ def render_board(asset_classes, show, col1, col2, col3, palette_name, target_dat
 
     show = show if show in SHOW_LABELS else SHOW_DIFFERENCES
     # The models' own window, the same Custom lookback every verdict surface gates on.
-    df = get_matrix_data(asset_classes, "Custom", target_date)
+    df = get_matrix_data(asset_classes, "52", target_date)
     if df.empty:
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
