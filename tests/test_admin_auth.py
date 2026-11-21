@@ -200,3 +200,19 @@ def test_the_session_cookie_is_out_of_reach_of_page_scripts_and_other_sites(app_
 ])
 def test_status_reads_the_three_timestamps_one_way(confirmed, unsubscribed, status):
     assert subscribers.status_of(confirmed, unsubscribed) == status
+
+
+def test_a_stored_gated_lookback_is_reset_for_a_public_request(app_cot, monkeypatch):
+    """A session that logged out (or came from a local run) still holds "npf". Every
+    reader resolves it to 52, but the URL writer would keep it in the address bar."""
+    import components.controls as controls
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: False)
+    monkeypatch.setattr(app_cot, "get_indexer",
+                        lambda: type("I", (), {"get_available_dates": lambda self: []})())
+    _, _, lookback = app_cot.apply_deep_link("", "npf")
+    assert lookback == "52"
+    _, _, lookback = app_cot.apply_deep_link("", "26")
+    assert lookback is app_cot.no_update
+    monkeypatch.setattr(controls, "lookback_allowed", lambda: True)
+    _, _, lookback = app_cot.apply_deep_link("", "npf")
+    assert lookback is app_cot.no_update
