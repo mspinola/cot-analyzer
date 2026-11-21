@@ -229,6 +229,7 @@ COT_ADMIN_SESSION_KEY=...    # signs the admin login cookie. Unset, it is random
                              # `python3 -c "import secrets; print(secrets.token_hex(32))"`
 COT_ANALYZER_PRIVATE_PAGES=1 # serve /news-failure to a logged-in admin. See step 12
 CMRDATA_STORE=/root/cmrdata_store  # where step 12's push lands; needed with the line above
+TIMELINE_SITE_DIR=/root/timeline_site  # the private timeline dashboard, see step 13
 PORT=5001                    # defaults to 5001
 HOST=127.0.0.1               # set this on the server. Defaults to 0.0.0.0 for LAN
                              # dev use; here nginx proxies from loopback, so a
@@ -647,6 +648,40 @@ command="/usr/bin/rrsync -wo /root/cmrdata_store/alerts",restrict ssh-ed25519 AA
 drop files into that one directory and do nothing else. Then set the three `.env`
 lines in step 5 and restart. `verify-deploy.sh` checks that a logged-out request for
 the page's data is refused.
+
+## 13. The timeline dashboard (admin login only)
+
+`/timeline` serves the Market Event Timeline 2026 dashboard to a browser logged in at
+`/admin`, and to nobody else (`src/timeline_site.py`). It is the same gate as step 12:
+`COT_ANALYZER_PRIVATE_PAGES=1`, plus `TIMELINE_SITE_DIR` naming the folder the page
+lives in. Either one unset, and `/timeline` and every file under it answer the site's
+ordinary 404. Logged out with both set, the page says to log in (403) and every data
+file still answers 404. Nothing is cached (`private, no-store`) and nothing is in a menu,
+the sitemap or robots.txt.
+
+This app draws none of it. The page and its data files are built on the operator's Mac
+by npf's `scripts/build_timeline_site.py` (private repo) and pushed here, so a page or
+data change needs no deploy of this app. The folder holds licensed survey readings and
+text paraphrased from paid reports, which is why it sits behind the login and outside
+every checkout.
+
+The push uses its own key, pinned to write-only rsync into that one folder, exactly as
+step 12's. Once, on the server:
+
+```bash
+mkdir -p /root/timeline_site/data
+```
+
+Then add the Mac's PUBLIC key (`~/.ssh/timeline_push.pub`) to
+`/root/.ssh/authorized_keys` as one line:
+
+```
+command="/usr/bin/rrsync -wo /root/timeline_site",restrict ssh-ed25519 AAAA... timeline-push
+```
+
+Then the `.env` line in step 5 and a restart. The first push from the Mac fills the
+folder. `verify-deploy.sh` checks that a logged-out request for the page's data is
+refused.
 
 ## Upgrading
 

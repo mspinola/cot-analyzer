@@ -17,6 +17,7 @@ from flask_compress import Compress
 
 import local_pages
 import routing
+import timeline_site
 import visitors
 import viz_constants as vc
 from components import controls
@@ -375,6 +376,19 @@ def unsubscribe_subscription():
                       "This unsubscribe link is not valid.", status=404)
 
 
+# The private timeline dashboard: two routes, gated on the admin login. See
+# `timeline_site` for what each answer is and why.
+def _timeline_not_found():
+    body = routing.not_found_page(
+        vc.BACKGROUND_COLOR, vc.TEXT_COLOR, vc.BRIGHTER_TEXT_COLOR)
+    return body, 404, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+timeline_site.register(
+    app.server, _timeline_not_found,
+    lambda: _link_page("Log in first", timeline_site.LOGIN_BODY, status=403))
+
+
 @app.server.after_request
 def set_cache_policy(response):
     """Apply `routing.cache_policy`; see it for what is set and what it measured."""
@@ -572,6 +586,8 @@ def record_visit():
         # The external-page beacon logs its OWN rows (below); the request that
         # carries it is not a visit to this site.
         routing.BEACON_PATH,
+        # The timeline page's own data fetches: the page load is the visit.
+        timeline_site.PATH + '/data/',
     ]
 
     if not any(request.path.startswith(path) for path in ignored_paths):
