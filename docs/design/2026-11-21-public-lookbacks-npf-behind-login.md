@@ -1,6 +1,6 @@
 # Public site on 26/52, per-market lookbacks and NPF behind the login
 
-Status: **phases 1 and 2 built 2026-11-21** (phase 1: cot-analyzer #240 and #242; phase 2: branch `claude/npf-behind-login`). Phase 3 step 1 (the cotmetrics rename) **in review 2026-11-21**, see Phase 3 below; step 2 (npf on 26/52) not started.
+Status: **phases 1 and 2 built 2026-11-21** (phase 1: cot-analyzer #240 and #242; phase 2: branch `claude/npf-behind-login`). Phase 3 step 1 (the cotmetrics rename) **done 2026-11-21**: merged, cotmetrics 0.19.0 on PyPI, see Phase 3 below; step 2 (npf on 26/52) not started.
 
 ## Why
 
@@ -197,7 +197,10 @@ Not cot-analyzer work. Listed so phases 1 and 2 do not pre-empt it.
   not a straight rename. About 60 npf scripts and research reproducers read the old
   names and stay runnable as the historical record. The derived cache
   (`COTMETRICS_CACHE`) rebuilds.
-  **Step 1 status (2026-11-21): built, in review.** Name confirmed with the user:
+  **Step 1 status (2026-11-21): done.** All four PRs below are merged (cotmetrics
+  `cc3a6ac`, cotmetrics-config `9992aef`, cot-analyzer `8922f2d`, npf `5198e6a`) and
+  `v0.19.0` is published to PyPI. The previous PyPI release was 0.15.1: 0.16.0 to
+  0.18.0 were never uploaded, so a PyPI install jumps straight to 0.19.0. Name confirmed with the user:
   `NpfLookbackWeeks`, family `"NPF"` (`"Comm NPF Idx"`, `const.COMM_NPF_IDX`,
   `Instrument.npf_lookback`, `lookback="NPF"`). `CmrLookbackWeeks` / `"CMR"`
   unchanged. One PR per repo, merge in this order:
@@ -220,7 +223,9 @@ Not cot-analyzer work. Listed so phases 1 and 2 do not pre-empt it.
   cotmetrics 552 passed (also with `-W error::DeprecationWarning`), cot-analyzer
   1584, npf 779 (2 failures are the missing tag), livebook 217.
 
-  Left for later: tag and publish cotmetrics 0.19.0; once nothing runs < 0.19.0, drop
+  Deploy order: cotmetrics 0.19.0 must reach a host before cot-analyzer `8922f2d` or
+  npf `5198e6a` does (both floor on it; the VPS especially, see the 2026-11-20 outage).
+  Left for later: once nothing runs < 0.19.0, drop
   `CustomLookbackWeeks` from cotmetrics-config; at 0.20.0, drop the `Custom` copy and
   the aliases.
 - **npf on 26/52.** New research, governed by npf/AGENTS.md: a new pre-registration and
