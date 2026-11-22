@@ -186,6 +186,28 @@ metric, not the normalized index. The OI Alignment "Algorithmic setup" synthesis
 - **The weekly crowd email** (`crowd_email.py`) still prints the SETUP chips. It goes
   to subscribers, of whom there are none today.
 
+### Setups made public (2026-11-21, operator decision)
+
+Amends phase 2's "whole pages" line for `/setups` only. The operator asked that a
+logged-out visitor still see the setups board and screener, on 26 and 52 weeks.
+
+- The layout no longer renders the stub and its callbacks are plain `dash.callback`s.
+  The gate moved inside them: `controls.resolve` (a posted `custom`/`npf` lands on 52)
+  and `controls.gate_model` (any other model lands on Raw PF) run in every callback,
+  so a forged post gets the public answer, not a 204.
+- The Model column is drawn only for a signed-in request (`controls.private_style`).
+- The nav link is always shown, and `/setups` left `routing.PRIVATE_PATHS`, so it is
+  indexed and in the sitemap again.
+- The warmer builds the public view (52, default model, no filters) before the last
+  session's settings, and runs before the signed-in caches.
+
+What this does publish that phase 2 had hidden: Raw PF setup verdicts and setup ages
+on the uniform 26/52 windows. Not the frozen table and not the NPF model. Scorecard
+and Divergence stay gated, as does the home board's SETUP chip.
+Verified in deployed mode (`COT_ANALYZER_LOCAL_PAGES=0`): `/setups?lookback=npf`
+renders on 52 weeks with "Raw 3-leg 95/5", the lookback offers 26/52 only, switching
+to 26 changes the board, and no "CMR" on the page. Tests: `tests/test_npf_gate.py`.
+
 ## Phase 3: data layer and npf (separate, later)
 
 Not cot-analyzer work. Listed so phases 1 and 2 do not pre-empt it.

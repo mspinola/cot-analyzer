@@ -745,8 +745,7 @@ navbar = dbc.Navbar(
                     # that is the word a visitor looks for to get back to the
                     # start, and the board is simply what the start shows.
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Setups", href="/setups", active="exact"),
-                                id="nav_private_setups"),
+                    dbc.NavItem(dbc.NavLink("Setups", href="/setups", active="exact")),
                     dbc.NavItem(dbc.NavLink("Heatmap", href="/heatmap", active="exact")),
                     dbc.NavItem(dbc.NavLink("Strip", href="/strip", active="exact")),
                     dbc.NavItem(dbc.NavLink("Scorecard", href="/scorecard",
@@ -907,14 +906,13 @@ def update_theme(theme_value):
 # (controls.private_page_stub); this only stops the menu pointing at a sign-in note.
 
 @app.callback(
-    Output('nav_private_setups', 'style'),
     Output('nav_private_scorecard', 'style'),
     Output({'type': 'nav_dropdown_item', 'href': '/divergence'}, 'style'),
     Input('url', 'pathname'),
 )
 def show_private_nav(_pathname):
     shown = {} if controls.private_allowed() else {'display': 'none'}
-    return shown, shown, shown
+    return shown, shown
 
 
 # ── URL deep links ────────────────────────────────────────────────────────────
