@@ -34,6 +34,10 @@ announcement. No third-party earnings calendar feeds it: Nasdaq's terms forbid
 automated capture and republication, and the TradingView connector carries no earnings
 (both checked 2026-11-21). A company that has not announced its date is not shown.
 
+**Market holidays** are marked on their day: closed, or an early 1:00 pm close
+(`market_notes`, the NYSE's standing rules, computed here; no feed carries them). A
+one-off closure the exchange declares is not known to it.
+
 **Weeks.** Monday to Friday in US Eastern time, the week holding `today` and the one after;
 on a Saturday or Sunday "this week" is the coming one. `COMING_UP` names the next FOMC
 decision, CPI and payrolls after those two weeks, when the capture reaches them (the
@@ -227,11 +231,64 @@ def read_earnings(path=None) -> list:
     return out
 
 
+def _observed(d: date) -> Optional[date]:
+    """A fixed-date holiday's market day: Friday for a Saturday, Monday for a Sunday."""
+    return d - timedelta(days=1) if d.weekday() == 5 else (
+        d + timedelta(days=1) if d.weekday() == 6 else d)
+
+
+def _nth(year, month, weekday, n) -> date:
+    """The n-th `weekday` (Monday 0) of a month; n = -1 is the last."""
+    if n > 0:
+        first = date(year, month, 1)
+        return first + timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
+    last = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+    return last - timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def market_notes(year: int) -> dict:
+    """{date: (closed, label)} for the US stock market's standing holidays and early
+    closes in `year`, by the NYSE's rules. `closed` False is a 1:00 pm close."""
+    from dateutil.easter import easter
+    out = {}
+    thanksgiving = _nth(year, 11, 3, 4)
+    closed = [
+        (_nth(year, 1, 0, 3), "Martin Luther King Jr. Day"),
+        (_nth(year, 2, 0, 3), "Presidents' Day"),
+        (easter(year) - timedelta(days=2), "Good Friday"),
+        (_nth(year, 5, 0, -1), "Memorial Day"),
+        (_observed(date(year, 6, 19)), "Juneteenth"),
+        (_observed(date(year, 7, 4)), "Independence Day"),
+        (_nth(year, 9, 0, 1), "Labor Day"),
+        (thanksgiving, "Thanksgiving"),
+        (_observed(date(year, 12, 25)), "Christmas"),
+    ]
+    # New Year's Day on a Saturday is not observed on the Friday before.
+    new_year = date(year, 1, 1)
+    if new_year.weekday() != 5:
+        closed.append((_observed(new_year), "New Year's Day"))
+    for d, name in closed:
+        out[d] = (True, f"{name} · market closed")
+    early = [thanksgiving + timedelta(days=1)]
+    july4 = date(year, 7, 4)
+    if 1 <= july4.weekday() <= 4:            # Tuesday to Friday: the day before
+        early.append(july4 - timedelta(days=1))
+    elif july4.weekday() == 5:               # Saturday, observed Friday: the Thursday
+        early.append(july4 - timedelta(days=2))
+    if date(year, 12, 25).weekday() in (1, 2, 3, 4):   # Christmas Tuesday to Friday
+        early.append(date(year, 12, 24))
+    for d in early:
+        out.setdefault(d, (False, "Early close 1:00p"))
+    return out
+
+
 @dataclass
 class Day:
     day: date
     events: list = field(default_factory=list)
     earnings: list = field(default_factory=list)
+    #: A market holiday or early close on the day: (closed, label), or None.
+    market: Optional[tuple] = None
 
 
 @dataclass
@@ -328,6 +385,8 @@ def build(table: pd.DataFrame, today: date, earnings=()) -> Optional[Calendar]:
     weeks, shown = [], 0
     for label, start in (("This week", monday), ("Next week", monday + timedelta(days=7))):
         days = [Day(start + timedelta(days=i)) for i in range(5)]
+        for d in days:
+            d.market = market_notes(d.day.year).get(d.day)
         for e in events:
             k = (e.when.date() - start).days
             if 0 <= k < 5:

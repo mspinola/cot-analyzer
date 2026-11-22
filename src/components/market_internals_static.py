@@ -54,7 +54,6 @@ SURVEYS_URL = dict(surveys.SITES)["Surveys"]
 #: preview image: the page publishes one HTML file and no assets.
 URL = dict(surveys.SITES)[CURRENT]
 SITE_NAME = "Blue Magic AI monitors"
-BREADTH_ID = "breadth"
 #: Each net-highs card's folded chart: new lows as a share of issues traded. Its key
 #: is LOWS_SHARE_PREFIX + the exchange, lower case.
 LOWS_SHARE_PREFIX = "lows-share:"
@@ -87,7 +86,7 @@ POSITIONING_PREFIX = "cot:"
 #: headwind's is HEADWIND_PREFIX + its key.
 FOMO_KEY, VOLATILITY_KEY = "fomo", "volatility"
 BOND_VOLATILITY_KEY = "bond_volatility"
-HIGHS_LOWS_KEY, NET_HISTORY_KEY = "highs_lows", "net_history"
+HIGHS_LOWS_KEY = "highs_lows"
 HEADWIND_PREFIX = "headwind:"
 
 _esc = html.escape
@@ -142,7 +141,6 @@ def charts(snap, colors, positioning=(), groups=None):
         out[LOWS_SHARE_PREFIX + share.exchange.lower()] = view.lows_share_chart(share, colors)
     if snap.breadth is not None:
         out[HIGHS_LOWS_KEY] = view.highs_lows_chart(snap.breadth, colors)
-        out[NET_HISTORY_KEY] = view.net_highs_chart(snap.breadth, colors)
     if snap.volatility is not None:
         out[VOLATILITY_KEY] = view.volatility_chart(snap.volatility, colors)
         if snap.volatility.bonds is not None:
@@ -555,10 +553,21 @@ def calendar_section(cal):
                     else "past" if d.day < cal.today else "")
             items = ("".join(_cal_event(e) for e in d.events)
                      + "".join(_cal_earning(e) for e in d.earnings))
-            cols.append(f'<div class="cday {when}"><div class="dh">{d.day:%a} '
-                        f'<b>{d.day:%b} {d.day.day}</b></div>'
-                        + (f'<ul>{items}</ul>' if items else '<div class="none">No '
-                           'listed releases</div>') + '</div>')
+            n = len(d.events) + len(d.earnings)
+            market = (f'<div class="mk{" shut" if d.market[0] else ""}">{_esc(d.market[1])}'
+                      '</div>' if d.market else "")
+            # A past day's list is a fold: open on a wide screen, closed on a phone by
+            # the script below, so the week ahead is not a scroll away.
+            if items and when == "past":
+                listed = (f'<details class="pd" open><summary>{n} listed</summary>'
+                          f'<ul>{items}</ul></details>')
+            elif items:
+                listed = f'<ul>{items}</ul>'
+            else:
+                listed = "" if market else '<div class="none">No listed releases</div>'
+            cols.append(f'<div class="cday {when}{"" if items else " empty"}">'
+                        f'<div class="dh">{d.day:%a} <b>{d.day:%b} {d.day.day}</b></div>'
+                        + market + listed + '</div>')
         weeks.append(f'<div class="cweek"><div class="wl">{_esc(label)}</div>'
                      f'<div class="cgrid">{"".join(cols)}</div></div>')
     coming = ""
@@ -677,64 +686,36 @@ def positioning_section(positioning, colors, groups=None):
             f'{charts_of(shown)}{fold}</section>\n')
 
 
-def breadth_charts(snap, colors):
-    """The year behind the net-highs headwinds: the two counts, then their net. No
-    cards without the counts (the headwind cards already say they are awaiting them)."""
+def highs_lows_card(snap, colors):
+    """A year of the two counts behind the net-highs headwinds, highs above the line and
+    lows below. No card without the counts. (The summed net and its 5-day average, a
+    line no headwind reads, and the per-exchange rows the headwind cards repeat, were
+    both retired on 2026-11-21.)"""
     if snap.breadth is None:
         return ""
     b = snap.breadth
-    return (f'<div class="cards" id="{BREADTH_ID}">\n'
-            + _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
-                    f'<div class="detail legend"><span class="key" style="color:{colors.bull}">'
-                    f'▲ New highs {b.highs[-1]:.0f}</span><span class="key" style="color:{colors.bear}">'
-                    f'▼ New lows {b.lows[-1]:.0f}</span> {_prov(snap, "net_highs")}</div>',
-                    _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
-            + _card(view.NET_HISTORY_TITLE, view.NET_HISTORY_SUBTITLE, view.NET_HISTORY_HOW,
-                    '<div class="detail legend"><span class="key">— Daily</span>'
-                    f'<span class="name">— {mi.NET_HIGHS_AVERAGE}-day average</span></div>',
-                    _chart(NET_HISTORY_KEY, view.net_highs_chart(b, colors)["height"]))
-            + '</div>\n')
+    return _card(view.HIGHS_LOWS_TITLE, view.HIGHS_LOWS_SUBTITLE, None,
+                 f'<div class="detail legend"><span class="key" style="color:{colors.bull}">'
+                 f'▲ New highs {b.highs[-1]:.0f}</span><span class="key" style="color:{colors.bear}">'
+                 f'▼ New lows {b.lows[-1]:.0f}</span> {_prov(snap, "net_highs")}</div>',
+                 _chart(HIGHS_LOWS_KEY, view.highs_lows_chart(b, colors)["height"]))
 
 
-_ARROWS = {1: "▲", -1: "▼", 0: "•"}
-
-
-def _net_highs_row(read, colors, chip=""):
-    color = view.verdict_color(read.verdict, colors)
-    ink = {1: colors.bull, -1: colors.bear, 0: surveys.INK_2}
-    arrows = "".join(f'<span style="color:{ink[s]}">{_ARROWS[s]}</span> '
-                     for s in read.last_three)
-    edge = color if read.regime else "transparent"
-    return (f'<div class="between nh" style="border-left-color:{edge}"><div>'
-            f'<div class="name">{_esc(read.exchange)} {chip}</div>'
-            f'{_detail(f"{read.highs} highs, {read.lows} lows")}'
-            f'<div>{arrows}</div></div>'
-            f'<div class="right"><div class="big" style="color:{color}">'
-            f'{_esc(view.signed(read.net, "d"))}</div>'
-            f'<div class="gap">{_badge(read.label, read.verdict, colors)}</div></div></div>')
-
-
-def breadth_card(snap, colors):
-    """Net new highs on both exchanges, and the session's advancing share under them."""
-    rows = [_net_highs_row(r, colors, _prov(snap, r.exchange)) for r in snap.net_highs]
-    missing = view.net_highs_awaiting(snap.awaiting)
-    if missing:
-        rows.append(_awaiting(missing))
-    rows.append(f'<h3>{_esc(view.ADVANCE_DECLINE_TITLE)}</h3>')
+def advance_decline_card(snap, colors):
+    """The session's advancing share on the Nasdaq."""
     read = snap.advance_decline
     if read is None:
-        rows.append(_awaiting([mi.ADVANCING_SYMBOL, mi.DECLINING_SYMBOL]))
-    else:
-        share = read.share * 100
-        rows += [
-            _split_bar(share, colors, "bar round"),
-            f'<div class="between"><span style="color:{colors.bull}">{share:.0f}% advancing'
-            f'</span>{_badge(read.label, read.verdict, colors)}'
-            f'<span style="color:{colors.bear}">{100 - share:.0f}% declining</span></div>',
-            f'<div class="detail">{read.advancing:,} up, {read.declining:,} down '
-            f'{_prov(snap, "advance_decline")}</div>',
-        ]
-    return _card(view.NET_HIGHS_TITLE, view.NET_HIGHS_SUBTITLE, view.NET_HIGHS_HOW, *rows)
+        return _card(view.ADVANCE_DECLINE_TITLE, None, None,
+                     _awaiting([mi.ADVANCING_SYMBOL, mi.DECLINING_SYMBOL]))
+    share = read.share * 100
+    return _card(
+        view.ADVANCE_DECLINE_TITLE, None, None,
+        _split_bar(share, colors, "bar round"),
+        f'<div class="between"><span style="color:{colors.bull}">{share:.0f}% advancing'
+        f'</span>{_badge(read.label, read.verdict, colors)}'
+        f'<span style="color:{colors.bear}">{100 - share:.0f}% declining</span></div>',
+        f'<div class="detail">{read.advancing:,} up, {read.declining:,} down '
+        f'{_prov(snap, "advance_decline")}</div>')
 
 
 def _spark(row, colors):
@@ -751,14 +732,16 @@ def asset_table(rows, awaiting, colors):
     body = []
     for row in rows:
         day = colors.bull if row.day_change >= 0 else colors.bear
+        quarter = colors.bull if row.quarter_change >= 0 else colors.bear
         body.append(
             f'<tr><td class="name sym">{_esc(row.symbol)}</td>'
             f'<td class="name num">{row.last:,.2f}</td>'
             f'<td class="num" style="color:{day}">{_esc(view.pct(row.day_change))}</td>'
+            f'<td class="num" style="color:{quarter}">{_esc(view.pct(row.quarter_change))}</td>'
             f'<td class="num">{_spark(row, colors)}</td></tr>')
     for symbol in (s for s in mi.ASSET_SYMBOLS if s in awaiting):
         body.append(f'<tr><td>{_esc(symbol)}</td>'
-                    f'<td colspan="3" class="detail">awaiting data</td></tr>')
+                    f'<td colspan="4" class="detail">awaiting data</td></tr>')
     return _card(view.ASSETS_TITLE, None, None,
                  f'<table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>')
 
@@ -811,6 +794,18 @@ def _headline(snap, colors):
             f'{_esc(number)}</b> {_esc(rest)}</p><p class="lean">{_esc(lean)}</p>')
 
 
+def asset_strip(snap, colors):
+    """The day's moves, one chip per index and asset, under the headline: the first
+    thing a reader asks. The table in Detail has the levels and the three months."""
+    if not snap.assets:
+        return ""
+    chips = "".join(
+        f'<span class="chip"><b>{_esc(r.symbol)}</b> <span style="color:'
+        f'{colors.bull if r.day_change >= 0 else colors.bear}">{_esc(view.pct(r.day_change))}'
+        '</span></span>' for r in snap.assets)
+    return f'<div class="strip" data-asset-strip aria-label="On the day">{chips}</div>\n'
+
+
 def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=None,
            positioning=None, palette=None, calendar=None):
     """The page for `snap` (`market_internals.build_snapshot()`); `colors` is the
@@ -845,10 +840,11 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
                  + sentiment_section(naaim, votes, allocation)
                  + positioning_section(positioning, colors, groups)
                  + anomalies_section(snap, colors))
+    cards = [c for c in (highs_lows_card(snap, colors), advance_decline_card(snap, colors),
+                         asset_table(snap.assets, snap.awaiting, colors)) if c]
     detail = (_section(view.DETAIL_TITLE, view.DETAIL_SUBTITLE)
-              + breadth_charts(snap, colors)
-              + f'<div class="cards" id="{DETAIL_ID}">\n' + breadth_card(snap, colors)
-              + asset_table(snap.assets, snap.awaiting, colors) + '</div>\n')
+              + f'<div class="cards{_across(cards)}" id="{DETAIL_ID}">\n'
+              + "".join(cards) + '</div>\n')
     body = (headwinds_section(snap, colors) + calendar_section(calendar) + uncounted
             + detail)
     return f"""<!doctype html>
@@ -874,6 +870,11 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
    is on and the constructive green when it is not (the surveys cards' toned pair). */
 .stale {{ color: var(--ink); font-size: 0.85rem; margin: 0 0 12px; padding: 7px 12px; border: 1px solid {surveys.TONE_HIGH};
   border-left-width: 3px; border-radius: 6px; background: var(--wash); }}
+.strip {{ display: flex; flex-wrap: wrap; gap: 4px 6px; margin: -8px 0 14px; font-size: 0.8rem; }}
+.strip .chip {{ font-family: var(--mono); padding: 2px 8px; border: 1px solid var(--line); border-radius: 5px; white-space: nowrap; }}
+.strip .chip b {{ color: var(--ink); font-weight: 600; }}
+footer details summary {{ cursor: pointer; width: fit-content; }}
+footer details p {{ margin: 6px 0 0; }}
 .count {{ color: var(--ink); font-size: 1.05rem; font-weight: 500; margin: 0; }}
 .count b {{ font-size: 2.4rem; font-weight: 700; line-height: 1; margin-right: 4px; }}
 .lean {{ font-size: 0.9rem; margin: 2px 0 16px; }}
@@ -897,6 +898,9 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
 .cday .dh b {{ color: var(--ink); font-weight: 600; }}
 .cday ul {{ list-style: none; margin: 0; padding: 0; }}
 .cday .none {{ font-size: 0.72rem; color: var(--muted); }}
+.cday .mk {{ font-size: 0.72rem; color: var(--ink-2); margin-bottom: 2px; }}
+.cday .mk.shut {{ color: var(--ink); font-weight: 600; }}
+.pd > summary {{ display: none; }}
 .ev {{ font-size: 0.74rem; line-height: 1.3; padding: 3px 0; border-top: 1px solid var(--line); }}
 .ev:first-child {{ border-top: 0; }}
 .ev .t {{ font-family: var(--mono); color: var(--muted); margin-right: 5px; font-size: 0.7rem; }}
@@ -917,6 +921,10 @@ b.hi {{ display: inline-block; width: 7px; height: 7px; border-radius: 50%; marg
 .ckey dt {{ color: var(--ink); }}
 .ckey dd {{ margin: 0; }}
 @media (max-width: 700px) {{
+  /* A day with nothing listed is one line; a past day is a fold, closed by the script. */
+  .cday.empty {{ display: flex; gap: 8px; align-items: baseline; }}
+  .cday.empty .dh, .cday.empty .mk {{ margin: 0; }}
+  .pd > summary {{ display: block; cursor: pointer; font-size: 0.72rem; color: var(--muted); }}
   .cgrid {{ grid-template-columns: minmax(0, 1fr); }}
   .ckey dl {{ grid-template-columns: minmax(0, 1fr); }}
   .ckey dd {{ margin-bottom: 4px; }}
@@ -1096,9 +1104,12 @@ footer a {{ color: var(--ink-2); }}
 {_header(snap)}
 {_stale(snap)}
 {_headline(snap, colors)}
+{asset_strip(snap, colors)}
 {_jumps(body)}
 {body}<div class="notes"><p>{_esc(view.caption(snap))}</p></div>
-<footer>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></footer>
+<footer><details class="how"><summary>{_esc(view.METHOD_LABEL)}</summary>
+<p>{_esc(view.METHOD)}</p>
+<p>{_esc(SOURCES)} Charts: <a href="{ATTRIBUTION_URL}" rel="noopener">{_esc(ATTRIBUTION)}</a></p></details></footer>
 </main>
 <script>window.INTERNALS_META={{"generated_at":"{_esc(stamp)}"}};</script>
 <script>
@@ -1201,6 +1212,10 @@ footer a {{ color: var(--ink-2); }}
 }})();
 </script>
 <script>
+// On a phone the calendar's past days start closed.
+if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
+  document.querySelectorAll('details.pd').forEach(function (d) {{ d.open = false; }});
+}}
 // The history card's windows. Every row's SVG is one unit a session wide, so a window
 // is a viewBox: the same x range on all of them, and on the price the y range of what
 // is on screen, so a year of price is not a flat line on nineteen years' scale.
@@ -1419,8 +1434,14 @@ footer a {{ color: var(--ink-2); }}
     if (e.pointerType === 'mouse') {{ forget(); }}      // a tap's reading stays put
   }});
 
-  // Put back what the reader left: each choice goes through its own button.
+  // Put back what the reader left: each choice goes through its own button. With no
+  // window chosen yet, open on the default one (the markup is the full history, which
+  // is what a reader without the script sees).
   var kept = load();
+  if (typeof kept.window !== 'number') {{
+    var first = document.querySelector('.hwin button[aria-pressed="true"]');
+    if (first) {{ show(+first.dataset.sessions); }}
+  }}
   document.querySelectorAll('.hwin button').forEach(function (b) {{
     if (+b.dataset.sessions === kept.window && b.getAttribute('aria-pressed') !== 'true') {{ b.click(); }}
   }});

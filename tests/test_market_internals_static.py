@@ -44,7 +44,6 @@ def test_every_chart_element_has_its_data_and_nothing_is_embedded_unused():
     data = _payload(page)
     wanted = set(re.findall(r'data-chart="([^"]+)"', page))
     assert wanted == set(data) == {st.FOMO_KEY, st.HIGHS_LOWS_KEY,
-                                   st.NET_HISTORY_KEY,
                                    *(st.LOWS_SHARE_PREFIX + x.lower() for x, _, _ in mi.NET_HIGHS_SYMBOLS),
                                    *(st.HEADWIND_PREFIX + k for k in mi.HEADWIND_KEYS)}
     for spec in data.values():
@@ -157,16 +156,17 @@ def test_the_page_says_what_the_snapshot_says():
     snap = _snap()
     page = st.render(snap, COLORS)
     assert f'<span class="big">{snap.fomo.value:.1f}</span>' in page
-    for read in snap.net_highs:
-        assert f"{read.highs} highs, {read.lows} lows" in page
     for row in snap.assets:
         assert f'<td class="name num">{row.last:,.2f}</td>' in page
     for title in (view.HEADWINDS_TITLE, view.UNCOUNTED_TITLE, view.DETAIL_TITLE,
-                  view.FOMO_TITLE, view.NET_HIGHS_TITLE,
+                  view.FOMO_TITLE, view.ADVANCE_DECLINE_TITLE,
                   view.ASSETS_TITLE):
         assert f"<h2>{html.escape(title)}</h2>" in page
-    assert f"<h3>{view.ADVANCE_DECLINE_TITLE}</h3>" in page
-    assert html.escape(view.FOOTER) in page
+    # The disclaimer stays in view; the method and the sources sit in a closed fold.
+    assert html.escape(view.DISCLAIMER) in page.split("<footer>")[0]
+    footer = page.split("<footer>")[1].split("</footer>")[0]
+    assert f'<details class="how"><summary>{view.METHOD_LABEL}</summary>' in footer
+    assert html.escape(view.METHOD) in footer and html.escape(st.SOURCES) in footer
 
 
 def test_a_snapshot_with_no_reads_refuses_to_render(tmp_path):
@@ -296,17 +296,20 @@ def test_a_page_without_the_history_still_renders():
     assert view.HISTORY_TITLE not in st.render(snap, COLORS)
 
 
-def test_the_history_card_offers_windows_and_opens_on_everything():
-    """1Y to Max, zooming every row together. Max is pressed as rendered, so the page
-    without its script is the whole history; a window longer than the history is not
-    offered."""
+def test_the_history_card_offers_windows_and_opens_on_a_year():
+    """3M to Max, zooming every row together. 1Y is pressed and the script opens on it
+    unless the reader chose a window before; the markup itself is the whole history,
+    which is what a page without its script shows. A window longer than the history is
+    not offered."""
     snap = _snap()
     n = len(snap.history.dates)
     page = st.render(snap, COLORS)
     card = page.split(f"<h2>{view.HISTORY_TITLE}</h2>")[1].split("</section>")[0]
     offered = re.findall(r'<button type="button" data-sessions="(\d+)" aria-pressed="(\w+)">'
                          r'(\w+)</button>', card)
-    assert offered == [(str(sessions), "true" if label == "Max" else "false", label)
+    assert view.HISTORY_DEFAULT_WINDOW == "1Y"
+    assert "typeof kept.window !== 'number'" in page
+    assert offered == [(str(sessions), "true" if label == "1Y" else "false", label)
                        for label, sessions in view.HISTORY_WINDOWS if sessions < n]
     assert ("Max" in [label for _, _, label in offered]) and len(offered) >= 2
     assert f'id="{st.HISTORY_ID}" data-sessions="{n}"' in card
@@ -529,25 +532,24 @@ def test_the_volatility_card_carries_the_move_index_when_the_store_has_it():
     assert len(spec["series"]) == 1 and len(spec["series"][0]["data"]) == 252
 
 
-def test_the_detail_section_draws_a_year_of_highs_lows_and_their_net():
-    """The dashboard's two detail charts: highs above the line and lows below it as
-    bars, and the net with the 5-day average the headwind reads, its side below zero
-    shaded."""
+def test_the_detail_section_draws_a_year_of_highs_and_lows():
+    """Highs above the line and lows below it as bars. The summed net chart and the
+    per-exchange rows are gone: no headwind read the first, and the headwind cards
+    repeat the second."""
     snap = _snap()
     b = snap.breadth
     page = st.render(snap, COLORS)
     detail = page.split(f"<h2>{view.DETAIL_TITLE}</h2>")[1]
-    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" in detail and f"<h2>{view.NET_HISTORY_TITLE}</h2>" in detail
+    assert f"<h2>{view.HIGHS_LOWS_TITLE}</h2>" in detail
+    assert "Net new highs, past year" not in page and "Net new highs by exchange" not in page
+    assert 'class="between nh"' not in page
+    # Three cards, three across: the year of counts, the advancing share, the table.
+    assert f'<div class="cards three" id="{st.DETAIL_ID}">' in page
     data = _payload(page)
     up, down = data[st.HIGHS_LOWS_KEY]["series"]
     assert up["type"] == down["type"] == "histogram"
     assert [pt["value"] for pt in up["data"]] == list(b.highs)
     assert [pt["value"] for pt in down["data"]] == [-v for v in b.lows]      # drawn downward
-    daily, average = data[st.NET_HISTORY_KEY]["series"]
-    assert "type" not in daily and [pt["value"] for pt in daily["data"]] == list(b.net)
-    assert average["type"] == "baseline" and average["base"] == mi.NET_HIGHS_LEVEL
-    # An average before its window fills is dropped, not drawn at zero.
-    assert len(average["data"]) == sum(v is not None for v in b.average)
     assert f"New highs {b.highs[-1]:.0f}" in detail and f"New lows {b.lows[-1]:.0f}" in detail
     # The script knows the two new series kinds.
     assert "LC.HistogramSeries" in page and "LC.BaselineSeries" in page
@@ -737,9 +739,7 @@ def test_a_shared_link_has_a_preview_and_no_card_carries_a_jump_link():
     assert st.URL == "https://internals.bluemagicai.com/"
     for name in ("og:title", "og:description", "og:url", "og:type", "og:site_name"):
         assert f'<meta property="{name}" content="' in page
-    # The year of counts is still on the page, under Detail; the cards no longer
-    # link down to it (dropped as clutter).
-    assert f'id="{st.BREADTH_ID}"' in page and '<a class="jump"' not in page
+    assert '<a class="jump"' not in page
 
 
 def test_an_old_page_says_so_from_the_readers_own_clock():
@@ -776,7 +776,7 @@ def test_the_positioning_table_fits_a_phone_without_its_name_and_path_columns():
 
 def test_a_legend_wraps_whole_items():
     page = st.render(_snap(), COLORS, positioning=_positioning())
-    assert page.count('class="detail legend"') == 3
+    assert page.count('class="detail legend"') == 2
     assert "white-space: nowrap" in page.split(".key {")[1].split("}")[0]
 
 
@@ -910,3 +910,18 @@ def test_ym_and_rty_sit_in_a_closed_fold_under_es_and_nq():
     # Without them, no fold.
     plain = st.render(_snap(), COLORS, positioning=(es, nq))
     assert "data-positioning-more" not in plain
+
+
+def test_the_days_moves_lead_the_page_and_the_table_prints_three_months():
+    snap = _snap()
+    page = st.render(snap, COLORS)
+    strip = page.split("data-asset-strip")[1].split("</div>")[0]
+    assert strip.count('class="chip"') == len(snap.assets)
+    for row in snap.assets:
+        assert f"<b>{row.symbol}</b>" in strip and html.escape(view.pct(row.day_change)) in strip
+    # Above the first section, under the headline.
+    assert page.index("data-asset-strip") < page.index(f"<h2>{view.HEADWINDS_TITLE}</h2>")
+    table = page.split(f"<h2>{html.escape(view.ASSETS_TITLE)}</h2>")[1].split("</table>")[0]
+    for row in snap.assets:
+        assert f">{html.escape(view.pct(row.quarter_change))}</td>" in table
+    assert table.count("<th>") == len(view.ASSET_COLUMNS) == 5
