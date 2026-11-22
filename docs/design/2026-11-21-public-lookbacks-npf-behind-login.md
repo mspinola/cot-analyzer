@@ -208,6 +208,17 @@ Verified in deployed mode (`COT_ANALYZER_LOCAL_PAGES=0`): `/setups?lookback=npf`
 renders on 52 weeks with "Raw 3-leg 95/5", the lookback offers 26/52 only, switching
 to 26 changes the board, and no "CMR" on the page. Tests: `tests/test_npf_gate.py`.
 
+### Strip verdicts made public (2026-11-21, operator decision)
+
+Same terms as Setups above, applied to `/strip`: a public request draws the Raw PF
+verdicts (colour, hover, legend) and gets the Show filter, on 26/52 weeks.
+`controls.resolve` and `controls.gate_model` remain the gate; the Model selector stays
+hidden, and the "Other basis" comparison (the OI-normalized index, the NPF basis) stays
+signed-in only. Verified in deployed mode: hover reads "Raw 3-leg 95/5", Show=Setups at
+26 weeks leaves the same six markets the Setups page reports, "Other basis" is not
+offered. The `verdicts=False` paths in `strip_traces` (legend, hover) are now unused by
+the page and kept for the moment.
+
 ## Phase 3: data layer and npf (separate, later)
 
 Not cot-analyzer work. Listed so phases 1 and 2 do not pre-empt it.
