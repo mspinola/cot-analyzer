@@ -674,7 +674,8 @@ _MONITOR_PAGES = local_pages.monitor_entries()
 #: The two trend books sit together and the long/short equity book after them:
 #: DBMF and AHLT answer the same question off different funds (what is a
 #: managed-futures program positioned in), so reading one after the other is the
-#: comparison; ORR is a different question entirely. Surveys last: not a book but
+#: comparison; ORR is a different question entirely, and ALLW (Bridgewater's
+#: long-only risk parity book, sized not flipped) another again. Surveys last: not a book but
 #: the published copy of the sentiment page, the same order the monitor pages'
 #: own header row uses, so the menu and the row agree. Market Internals leads,
 #: where it stood when it was a page of this app: the one daily read of the tape.
@@ -683,6 +684,7 @@ _MONITOR_EXTERNAL_PAGES = (
     ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
     ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
     ("ORR Book", "https://orr.bluemagicai.com/"),
+    ("ALLW All Weather", "https://allw.bluemagicai.com/"),
     ("Sentiment Surveys", "https://surveys.bluemagicai.com/"),
 )
 

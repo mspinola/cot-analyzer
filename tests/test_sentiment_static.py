@@ -182,13 +182,14 @@ def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
     assert links == [("https://dbmf.bluemagicai.com/", "DBMF"),
                      ("https://ahlt.bluemagicai.com/", "AHLT"),
                      ("https://orr.bluemagicai.com/", "ORR"),
+                     ("https://allw.bluemagicai.com/", "ALLW"),
                      ("https://surveys.bluemagicai.com/", "Surveys"),
                      ("https://internals.bluemagicai.com/", "Market"),
                      ("https://bluemagicai.com/", "COT Analyzer &rarr;")]
     assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', st._nav()) == ["Surveys"]
     # The fund pages' placeholder for the monitor not yet published, in their slot.
     soon = re.search(r'<span class="soon"[^>]*>KISS <small>soon</small></span>', st._nav())
-    assert soon and st._nav().index("ORR</a>") < soon.start() < st._nav().index("Surveys")
+    assert soon and st._nav().index("ALLW</a>") < soon.start() < st._nav().index("Surveys")
 
 
 def test_the_header_is_the_fund_pages_header_with_the_surveys_dates():
