@@ -188,3 +188,37 @@ def test_the_committed_earnings_file_reads_cleanly():
     dated = frame[frame["date"] != ""]
     assert len(rows) == len(dated) and (dated["source"] != "").all()
     assert frame["symbol"].is_unique
+
+
+# ── market holidays and the phone layout ──────────────────────────────────────
+
+def test_market_notes_are_the_nyse_standing_rules():
+    n26 = mc.market_notes(2026)
+    assert n26[date(2026, 11, 26)] == (True, "Thanksgiving · market closed")
+    assert n26[date(2026, 11, 27)] == (False, "Early close 1:00p")
+    assert n26[date(2026, 4, 3)][1].startswith("Good Friday")
+    assert n26[date(2026, 7, 3)][0] is True          # July 4 on a Saturday, observed Friday
+    assert n26[date(2026, 7, 2)] == (False, "Early close 1:00p")
+    assert n26[date(2026, 12, 24)] == (False, "Early close 1:00p") and n26[date(2026, 12, 25)][0]
+    closed = sorted(d for d, (shut, _) in n26.items() if shut)
+    assert len(closed) == 10 and date(2026, 1, 1) in closed and date(2026, 6, 19) in closed
+    # New Year's Day on a Saturday is not observed; Christmas on a Saturday moves to Friday.
+    n22 = mc.market_notes(2022)
+    assert date(2021, 12, 31) not in n22 and date(2022, 1, 1) not in n22
+    assert mc.market_notes(2021)[date(2021, 12, 24)][0] is True
+
+
+def test_a_holiday_is_named_on_its_day_and_past_days_fold():
+    cal = mc.build(table(), date(2026, 11, 25))
+    days = {d.day: d for _, w in cal.weeks for d in w}
+    assert days[date(2026, 11, 26)].market == (True, "Thanksgiving · market closed")
+    assert days[date(2026, 11, 27)].market == (False, "Early close 1:00p")
+    page = st.calendar_section(cal)
+    thursday = page.split("<b>Nov 26</b>")[1].split("<b>Nov 27</b>")[0]
+    assert '<div class="mk shut">Thanksgiving · market closed</div>' in thursday
+    assert "No listed releases" not in thursday
+    # A past day with releases is a fold, open in the markup; a phone's script closes it.
+    assert page.count('<details class="pd" open>') == sum(
+        1 for d in days.values() if d.day < cal.today and (d.events or d.earnings))
+    from tests.test_market_internals_static import _snap
+    assert "details.pd" in st.render(_snap(), COLORS, calendar=cal)

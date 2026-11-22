@@ -241,7 +241,7 @@ def anomaly_tip(read, session):
 
 
 DETAIL_TITLE = "Detail"
-DETAIL_SUBTITLE = ("A year of new highs and lows, the day's breadth by exchange, and the "
+DETAIL_SUBTITLE = ("A year of new highs and lows, the day's advancing share, and the "
                    "index and asset table.")
 FOMO_TITLE = "Nasdaq stocks above their 5-day average · FOMO"
 FOMO_SUBTITLE = ("The share of Nasdaq Composite stocks above their own 5-day average, past "
@@ -257,39 +257,25 @@ FOMO_HOW = (
     "Caruso uses it as context for net new lows: with fear, usually a pause; without "
     "fear, a real breakdown. Between the named zones it offers no edge either way.",
 )
-NET_HIGHS_TITLE = "Net new highs by exchange"
-NET_HIGHS_SUBTITLE = ("Each exchange's own daily count of new 52-week highs less new lows. "
-                      "The two net new highs headwinds above read these same counts.")
-NET_HIGHS_HOW = (f"Each exchange on its own: {indicators.NET_HIGHS_CONFIRM_DAYS} sessions in "
-                 "a row on one side is marked by the bar at the row's left, anything else "
-                 "is mixed. The headwinds above read the same counts a session at a "
-                 "time: an exchange's is on whenever its net is below zero today.")
 HIGHS_LOWS_TITLE = "New highs vs. new lows"
 HIGHS_LOWS_SUBTITLE = ("Nasdaq plus NYSE 52-week highs above the line, lows below it. "
                        "Daily counts, past year.")
-NET_HISTORY_TITLE = "Net new highs, past year"
-NET_HISTORY_SUBTITLE = ("Nasdaq plus NYSE highs minus lows, daily and as a "
-                        f"{mi.NET_HIGHS_AVERAGE}-day average. Shaded where the average "
-                        "is below zero.")
-NET_HISTORY_HOW = ("The thin line is each session's highs minus lows, both exchanges "
-                   f"summed; the heavy line is its {mi.NET_HIGHS_AVERAGE}-day average, "
-                   "drawn to steady the eye. Neither is a headwind's own number: the two "
-                   "net new highs headwinds above read each exchange's daily figure on "
-                   "its own, so one can be on while this line is above zero.")
 ADVANCE_DECLINE_TITLE = "Nasdaq issues advancing vs declining"
 ASSETS_TITLE = "Index and asset overview"
-ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo")
+ASSET_COLUMNS = ("Symbol", "Last", "Day", "3 mo", "")
 FOMO_ZONES = (f"{indicators.FOMO_EXHAUSTION_MIN:.0f} stretched · "
               f"{indicators.FOMO_FEAR_MAX:.0f} washed out")
 
-FOOTER = ("Breadth counts and shares are TradingView's published daily series, "
+#: The line that stays on the page; the method sits in a closed fold under it.
+DISCLAIMER = ("Context, not signal: nothing on this page has been through the "
+              "evaluation ladder. Information only, not investment advice.")
+METHOD = ("Breadth counts and shares are TradingView's published daily series, "
           "delivered by the producer box's routine; prices are the equities store. "
           "The credit reads and the XLP/QQQ ratio are dividend-adjusted, because an "
           "ex-dividend notch in a raw price reads as a break of a moving average; "
           "the table and the up/down volume sessions are prices as traded. Up/down "
-          "volume covers the last 20 completed sessions. Context, not signal: "
-          "nothing on this page has been through the evaluation ladder. Information "
-          "only, not investment advice.")
+          "volume covers the last 20 completed sessions.")
+METHOD_LABEL = "Sources and method"
 
 #: Sparkline box, px.
 SPARK_WIDTH, SPARK_HEIGHT = 110, 30
@@ -382,10 +368,6 @@ def fomo_recent(read, sessions=5):
     return (f"Last {len(values)} sessions: " + " → ".join(f"{v:.0f}" for v in values) + ".")
 
 
-def net_highs_awaiting(awaiting):
-    return [s for _, hi, lo in mi.NET_HIGHS_SYMBOLS for s in (hi, lo) if s in awaiting]
-
-
 def awaiting_text(symbols):
     return f"Awaiting data for {', '.join(symbols)}."
 
@@ -412,9 +394,9 @@ def provisional_note(snap):
 
 
 def caption(snap):
-    """The paragraph under the cards: the footer, then what is provisional, missing
+    """The paragraph under the cards: the disclaimer, then what is provisional, missing
     or trailing."""
-    parts = [FOOTER]
+    parts = [DISCLAIMER]
     if provisional_note(snap):
         parts.append(provisional_note(snap))
     if snap.awaiting:
@@ -494,17 +476,6 @@ def highs_lows_chart(breadth, colors):
     return chart(240, [bars(colors.bull, breadth.dates, breadth.highs),
                        bars(colors.bear, breadth.dates, [-v for v in breadth.lows])],
                  levels=((0.0, INK_2),))
-
-
-def net_highs_chart(breadth, colors):
-    """The daily net, thin, under its 5-day average, shaded where the average is under
-    zero. Both exchanges summed; no headwind reads this line."""
-    from components import plot_colors
-    daily = {"color": plot_colors.hex_to_rgba(INK_2, 0.55), "width": 1,
-             "data": [{"time": d, "value": v} for d, v in zip(breadth.dates, breadth.net)]}
-    return chart(240, [daily, zone(INK, plot_colors.hex_to_rgba(colors.bear, 0.22),
-                                   breadth.dates, breadth.average)],
-                 levels=((mi.NET_HIGHS_LEVEL, colors.bear),))
 
 
 def fomo_chart(read, colors):
@@ -723,7 +694,7 @@ HISTORY_DAILY_SESSIONS = 3 * 252
 #: The card's windows, (label, sessions back from the newest; 0 is everything). Max is
 #: what the page opens on and what a reader without JavaScript sees.
 HISTORY_WINDOWS = (("3M", 63), ("1Y", 252), ("3Y", 756), ("5Y", 1260), ("10Y", 2520), ("Max", 0))
-HISTORY_DEFAULT_WINDOW = "Max"
+HISTORY_DEFAULT_WINDOW = "1Y"
 
 
 def runs(flags):
