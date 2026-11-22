@@ -115,6 +115,10 @@ WEEKLY_RE = re.compile(r'^/weekly(/\d{4}-\d{2}-\d{2})?$')
 #: reveals nothing. Deliberately not in NOINDEX_PATHS: robots.txt would name it.
 TIMELINE_RE = re.compile(r'^/timeline(/data/[a-z][a-z_]*\.(csv|json))?$')
 
+#: The private weekly watchlist (`watchlist_site`): the same arrangement and the same
+#: reasoning, with its own file shapes (the week index, one file per COT report date).
+WATCHLIST_RE = re.compile(r'^/watchlist(/data/(index|week_\d{4}-\d{2}-\d{2})\.json)?$')
+
 
 def robots_txt(base_url):
     """The crawl policy: everything public, the operator surfaces excluded, and
@@ -176,7 +180,7 @@ def is_known_path(path: str, page_paths, dash_routes) -> bool:
         return True
     if WEEKLY_RE.match(normalized):
         return True
-    if TIMELINE_RE.match(path):
+    if TIMELINE_RE.match(path) or WATCHLIST_RE.match(path):
         return True
     if normalized in {_normalize(route) for route in dash_routes}:
         return True
@@ -302,9 +306,9 @@ def cache_policy(path, fingerprinted, content_type):
     # expensive page this app serves, so a day of public caching is cheap
     # honesty. The /weekly index is excluded: it gains a row per release and
     # must not read stale on a Friday.
-    # The private timeline (page and data) is never stored by anyone: it is
-    # served per login, and a shared cache must not hand it to the next caller.
-    if TIMELINE_RE.match(path):
+    # The private timeline and watchlist (page and data) are never stored by anyone:
+    # they are served per login, and a shared cache must not hand one to the next caller.
+    if TIMELINE_RE.match(path) or WATCHLIST_RE.match(path):
         return 'private, no-store'
     if WEEKLY_RE.match(path) and path != '/weekly':
         return 'public, max-age=86400'

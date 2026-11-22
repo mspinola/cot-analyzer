@@ -113,6 +113,18 @@ else
     FAIL=$((FAIL+1))
 fi
 
+# The private weekly watchlist (step 14): the same two checks, for the same reason.
+# The week index is the one data file that always exists when the page does.
+check "watchlist data refuses a logged-out request" "$BASE/watchlist/data/index.json" 404
+wl_status=$(curl -s -o /dev/null --max-time 30 -w '%{http_code}' "$BASE/watchlist")
+if [ "$wl_status" = "404" ] || [ "$wl_status" = "403" ]; then
+    echo "pass  watchlist page is not served logged out (HTTP $wl_status)"
+    PASS=$((PASS+1))
+else
+    echo "FAIL  watchlist page: logged-out request got HTTP $wl_status, expected 404 or 403"
+    FAIL=$((FAIL+1))
+fi
+
 # The subscription endpoints exist and refuse garbage; nothing here subscribes,
 # confirms or sends anything.
 check "confirm rejects a bad token"    "$BASE/confirm?token=verify-deploy-probe"     404 "not valid"
