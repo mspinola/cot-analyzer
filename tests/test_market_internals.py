@@ -777,3 +777,8 @@ def test_fomo_carries_the_newest_sessions_range_from_its_source():
     # A close-only series has no range, and the card simply leaves the line out.
     plain = mi.build_snapshot(_bars(_universe(200)))
     assert plain.fomo.bar is None
+
+
+def test_the_cards_put_credit_on_the_first_row_and_volume_together_on_the_second():
+    assert mi.HEADWIND_KEYS == ("nasdaq_net_highs", "nyse_net_highs", "credit",
+                                "qqq_updown", "spy_updown", "rotation")
