@@ -28,6 +28,12 @@ jobless claims and the regional Fed surveys at medium.
 not, at any importance (checked on that capture with every importance level included), and
 no other source is added for them; the section's note says so.
 
+**Megacap earnings** sit in the same day columns: the largest US companies' next report
+dates from `config/megacap_earnings.csv`, KEPT BY HAND from each company's own
+announcement. No third-party earnings calendar feeds it: Nasdaq's terms forbid
+automated capture and republication, and the TradingView connector carries no earnings
+(both checked 2026-11-21). A company that has not announced its date is not shown.
+
 **Weeks.** Monday to Friday in US Eastern time, the week holding `today` and the one after;
 on a Saturday or Sunday "this week" is the coming one. `COMING_UP` names the next FOMC
 decision, CPI and payrolls after those two weeks, when the capture reaches them (the
@@ -38,6 +44,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -178,10 +185,53 @@ class Event:
     headline: str = ""
 
 
+#: The hand-kept list (see the module docstring), at the repository root's config/.
+EARNINGS_FILE = Path(__file__).resolve().parents[2] / "config" / "megacap_earnings.csv"
+#: The two timings a company states, and how a day column prints them.
+TIMINGS = {"before open": "Pre", "after close": "Post"}
+
+
+@dataclass(frozen=True)
+class Earning:
+    day: date
+    symbol: str
+    name: str
+    timing: str                     # "before open" or "after close"
+
+    @property
+    def short(self) -> str:
+        return TIMINGS[self.timing]
+
+
+def read_earnings(path=None) -> list:
+    """The dated rows of the hand-kept list, as Earnings. A row without a date (not yet
+    announced) is skipped; a malformed date or an unknown timing raises, naming the row,
+    since the file is edited by hand and a typo should be loud. `read()` catches it and
+    drops the earnings, so a typo never costs the macro releases too."""
+    path = Path(path or EARNINGS_FILE)
+    if not path.exists():
+        return []
+    frame = pd.read_csv(path, comment="#", dtype=str).fillna("")
+    out = []
+    for row in frame.to_dict("records"):
+        if not row["date"].strip():
+            continue
+        timing = row["timing"].strip().lower()
+        if timing not in TIMINGS:
+            raise ValueError(f"{path.name}: {row['symbol']}: timing {row['timing']!r} is not "
+                             f"one of {sorted(TIMINGS)}")
+        out.append(Earning(day=date.fromisoformat(row["date"].strip()),
+                           symbol=row["symbol"].strip(), name=row["name"].strip(),
+                           timing=timing))
+    out.sort(key=lambda e: (e.day, e.timing != "before open", e.symbol))
+    return out
+
+
 @dataclass
 class Day:
     day: date
     events: list = field(default_factory=list)
+    earnings: list = field(default_factory=list)
 
 
 @dataclass
@@ -267,9 +317,10 @@ def _events(table: pd.DataFrame) -> list:
     return out
 
 
-def build(table: pd.DataFrame, today: date) -> Optional[Calendar]:
-    """The two weeks around `today` (an Eastern date) from a marketdata calendar table,
-    or None when nothing on the list falls in them."""
+def build(table: pd.DataFrame, today: date, earnings=()) -> Optional[Calendar]:
+    """The two weeks around `today` (an Eastern date) from a marketdata calendar table and
+    the dated megacap earnings, or None when the table is missing or nothing on either
+    list falls in them."""
     if table is None or table.empty:
         return None
     events = _events(table)
@@ -281,6 +332,11 @@ def build(table: pd.DataFrame, today: date) -> Optional[Calendar]:
             k = (e.when.date() - start).days
             if 0 <= k < 5:
                 days[k].events.append(e)
+                shown += 1
+        for e in earnings:
+            k = (e.day - start).days
+            if 0 <= k < 5:
+                days[k].earnings.append(e)
                 shown += 1
         weeks.append((label, days))
     if not shown:
@@ -306,4 +362,10 @@ def read(today: Optional[date] = None) -> Optional[Calendar]:
     if reader is None:              # a marketdata from before the calendar
         return None
     today = today or datetime.now(ET).date()
-    return build(reader(), today)
+    try:
+        earnings = read_earnings()
+    except (ValueError, KeyError) as e:      # a hand-edit typo costs the earnings only
+        import sys
+        print(f"macro calendar: megacap earnings not read: {e}", file=sys.stderr)
+        earnings = []
+    return build(reader(), today, earnings)
