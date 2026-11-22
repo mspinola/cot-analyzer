@@ -446,8 +446,7 @@ def layout(**kwargs):
                                         inline=True,
                                         style={"color": vc.BRIGHTER_TEXT_COLOR, "fontSize": "0.85rem"},
                                     )
-                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2",
-                                    style=controls.private_style()),
+                                ], xs=12, md=2, className="mb-3 mb-md-0 px-md-2"),
 
                                 dbc.Col([
                                     html.Label("Columns", style={**vc.label_style, "fontSize": "0.8rem", "textTransform": "uppercase"}),
@@ -586,15 +585,17 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         return empty, "", [], f"No asset class selected · 0/{len(all_classes)} classes"
     lookback = controls.resolve(lookback)
 
-    # A public request (phase 2 of docs/design/2026-11-21-public-lookbacks-npf-behind-
-    # login.md) reads the default model's legs on net contracts and draws no verdict:
-    # no verdict colour, no Setups filter, no other-basis comparison.
-    verdicts = controls.private_allowed()
+    # A public request reads the default model (Raw PF, net contracts) on 26/52 weeks,
+    # verdicts included: `resolve` and `gate_model` above are the gate (2026-11-21,
+    # "Setups made public" in docs/design/2026-11-21-public-lookbacks-npf-behind-
+    # login.md). Only the other-basis comparison stays signed-in: it draws the
+    # OI-normalized index, which is the NPF basis.
+    verdicts = True
     model = models.resolve(controls.gate_model(model_key))
-    show = (show or strip_traces.SHOW_ALL) if verdicts else strip_traces.SHOW_ALL
+    show = show or strip_traces.SHOW_ALL
     side = side or strip_traces.SIDE_BOTH
     compare = compare or strip_traces.COMPARE_PRIOR
-    if not verdicts and compare == strip_traces.COMPARE_BASIS:
+    if compare == strip_traces.COMPARE_BASIS and not controls.private_allowed():
         compare = strip_traces.COMPARE_PRIOR
 
     def summarise(hidden=0, skipped=0):
@@ -608,9 +609,6 @@ def render_strip(asset_classes, lookback, model_key, sort_by, show, side, column
         return (html.P("No data available.",
                        style={'textAlign': 'center', 'color': vc.TEXT_COLOR}),
                 "", [], summarise())
-    if not verdicts:
-        df = df.assign(**{strip_traces.SETUP_COLUMN[model.key]: const.SETUP_NONE})
-
     # Only when the mark is on. The dollar join reads the price store market by
     # market, and paying for it on every render of a board that is not drawing it
     # would put a second store in the path of a page that otherwise needs one.
