@@ -535,6 +535,13 @@ def _cal_event(e):
             + (f'<span class="v">{nums}</span>' if nums else "") + '</li>')
 
 
+def _cal_earning(e):
+    """A megacap's report in its day column: the timing, then ticker and company."""
+    return (f'<li class="ev ern" data-earning="{_esc(e.symbol)}">'
+            f'<span class="t" title="{_esc(e.timing.capitalize())}">{_esc(e.short)}</span>'
+            f'<span class="n">{_esc(e.symbol)} <small>{_esc(e.name)} earnings</small></span></li>')
+
+
 def calendar_section(cal):
     """This week's and next week's releases (`macro_calendar.read()`), Monday to Friday,
     with the next FOMC, CPI and payrolls beyond. None, no section: context only."""
@@ -546,7 +553,8 @@ def calendar_section(cal):
         for d in days:
             when = ("today" if d.day == cal.today
                     else "past" if d.day < cal.today else "")
-            items = "".join(_cal_event(e) for e in d.events)
+            items = ("".join(_cal_event(e) for e in d.events)
+                     + "".join(_cal_earning(e) for e in d.earnings))
             cols.append(f'<div class="cday {when}"><div class="dh">{d.day:%a} '
                         f'<b>{d.day:%b} {d.day.day}</b></div>'
                         + (f'<ul>{items}</ul>' if items else '<div class="none">No '
@@ -893,6 +901,9 @@ def render(snap, colors, generated_at=None, naaim=None, votes=None, allocation=N
 .ev:first-child {{ border-top: 0; }}
 .ev .t {{ font-family: var(--mono); color: var(--muted); margin-right: 5px; font-size: 0.7rem; }}
 .ev .n {{ color: var(--ink-2); cursor: help; }}
+.ev.ern .n {{ color: var(--ink); cursor: default; font-weight: 600; }}
+.ev.ern .n small {{ font-weight: 400; color: var(--ink-2); font-size: 0.7rem; }}
+.ev.ern .t {{ color: var(--ticker); }}
 .ev.high .n {{ color: var(--ink); font-weight: 600; }}
 .ev .v {{ display: block; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
 .ev .v span {{ margin-right: 8px; white-space: nowrap; }}

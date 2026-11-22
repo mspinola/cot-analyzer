@@ -140,7 +140,10 @@ CALENDAR_HOW = (
     "before the release. Marked releases are the ones the calendar itself rates high "
     "impact. Only the releases in the key below are listed: the calendar also carries "
     "Treasury auctions, mortgage rates and weekly energy stocks, left out here. Hover a "
-    "name for the previous reading and what it measures.")
+    "name for the previous reading and what it measures. The largest US companies' "
+    "earnings sit in the same days, Pre (before the open) or Post (after the close), "
+    "from each company's own announcement; a company that has not announced its date "
+    "is not shown.")
 CALENDAR_HIGH_LABEL = "High impact"
 
 SENTIMENT_TITLE = "Sentiment"

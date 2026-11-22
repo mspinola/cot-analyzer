@@ -1,0 +1,37 @@
+# Megacap earnings for the internals page's macro calendar, kept by hand.
+# One row per company; `date` is the NEXT report date (YYYY-MM-DD) as the company itself
+# announced it, blank until it has. `timing` is "before open" or "after close". `source`
+# is the announcement. Nasdaq's and other third-party calendars are not to be used: their
+# terms forbid automated capture and republication (checked 2026-11-21). Companies announce
+# a date two to four weeks ahead, so most rows are blank between reporting seasons.
+symbol,name,date,timing,source
+NVDA,NVIDIA,,,
+AAPL,Apple,,,
+MSFT,Microsoft,,,
+GOOGL,Alphabet,,,
+AMZN,Amazon,,,
+META,Meta Platforms,,,
+AVGO,Broadcom,2026-12-09,after close,https://investors.broadcom.com/ (release of 2026-11-09)
+TSLA,Tesla,,,
+BRK.B,Berkshire Hathaway,,,
+LLY,Eli Lilly,,,
+JPM,JPMorgan Chase,,,
+WMT,Walmart,,,
+V,Visa,,,
+MA,Mastercard,,,
+ORCL,Oracle,,,
+XOM,Exxon Mobil,,,
+NFLX,Netflix,,,
+COST,Costco,,,
+JNJ,Johnson & Johnson,,,
+HD,Home Depot,,,
+PG,Procter & Gamble,,,
+ABBV,AbbVie,,,
+BAC,Bank of America,,,
+UNH,UnitedHealth,,,
+PLTR,Palantir,,,
+AMD,AMD,,,
+CRM,Salesforce,2026-12-02,after close,https://investor.salesforce.com/news/news-details/2026/Salesforce-Announces-Date-of-Third-Quarter-Fiscal-2027-Earnings-Release-and-Webcast/default.aspx
+DELL,Dell Technologies,2026-11-24,after close,https://investors.delltechnologies.com/news-events/press-releases/detail/1661/dell-technologies-to-hold-conference-call-nov-24-to-discuss-third-quarter-fiscal-2027-financial-results
+ADBE,Adobe,2026-12-09,after close,https://www.adobe.com/investor-relations.html (call 2:00 pm PT)
+MU,Micron,,,

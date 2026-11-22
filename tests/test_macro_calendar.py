@@ -140,3 +140,51 @@ def test_the_page_without_a_calendar_has_no_section():
     from tests.test_market_internals_static import _snap
     page = st.render(_snap(), COLORS)
     assert f'id="{st.CALENDAR_ID}"' not in page
+
+
+# ── megacap earnings, kept by hand ────────────────────────────────────────────
+
+def _earnings_file(tmp_path, rows):
+    f = tmp_path / "megacap_earnings.csv"
+    f.write_text("# a comment line\nsymbol,name,date,timing,source\n" + "\n".join(rows) + "\n")
+    return f
+
+
+def test_earnings_rows_without_a_date_are_skipped_and_the_rest_sorted(tmp_path):
+    f = _earnings_file(tmp_path, ["AAPL,Apple,,,", "CRM,Salesforce,2026-12-02,after close,x",
+                                  "DELL,Dell Technologies,2026-11-24,after close,x",
+                                  "XYZ,Early Co,2026-12-02,before open,x"])
+    got = mc.read_earnings(f)
+    assert [(e.symbol, e.day, e.short) for e in got] == [
+        ("DELL", date(2026, 11, 24), "Post"), ("XYZ", date(2026, 12, 2), "Pre"),
+        ("CRM", date(2026, 12, 2), "Post")]
+    assert mc.read_earnings(tmp_path / "missing.csv") == []
+
+
+def test_a_typo_in_the_earnings_file_is_loud(tmp_path):
+    with pytest.raises(ValueError, match="CRM"):
+        mc.read_earnings(_earnings_file(tmp_path, ["CRM,Salesforce,2026-12-02,after hours,x"]))
+    with pytest.raises(ValueError):
+        mc.read_earnings(_earnings_file(tmp_path, ["CRM,Salesforce,12/02/2026,after close,x"]))
+
+
+def test_earnings_land_in_their_day_and_only_inside_the_fortnight():
+    earn = [mc.Earning(date(2026, 11, 24), "DELL", "Dell Technologies", "after close"),
+            mc.Earning(date(2026, 12, 2), "CRM", "Salesforce", "after close"),
+            mc.Earning(date(2026, 12, 9), "AVGO", "Broadcom", "after close")]
+    cal = mc.build(table(), date(2026, 11, 23), earn)
+    days = {d.day: [e.symbol for e in d.earnings] for _, w in cal.weeks for d in w}
+    assert days[date(2026, 11, 24)] == ["DELL"] and days[date(2026, 12, 2)] == ["CRM"]
+    assert "AVGO" not in sum(days.values(), [])               # Dec 9 is past next week
+    page = st.calendar_section(cal)
+    assert page.count('class="ev ern"') == 2
+    assert '<li class="ev ern" data-earning="DELL"><span class="t" title="After close">Post</span>' in page
+
+
+def test_the_committed_earnings_file_reads_cleanly():
+    """The hand-kept list in the repo parses, and every dated row names its source."""
+    rows = mc.read_earnings()
+    frame = pd.read_csv(mc.EARNINGS_FILE, comment="#", dtype=str).fillna("")
+    dated = frame[frame["date"] != ""]
+    assert len(rows) == len(dated) and (dated["source"] != "").all()
+    assert frame["symbol"].is_unique
