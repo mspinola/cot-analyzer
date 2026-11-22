@@ -230,6 +230,7 @@ COT_ADMIN_SESSION_KEY=...    # signs the admin login cookie. Unset, it is random
 COT_ANALYZER_PRIVATE_PAGES=1 # serve /news-failure to a logged-in admin. See step 12
 CMRDATA_STORE=/root/cmrdata_store  # where step 12's push lands; needed with the line above
 TIMELINE_SITE_DIR=/root/timeline_site  # the private timeline dashboard, see step 13
+WATCHLIST_SITE_DIR=/root/watchlist_site  # the private weekly watchlist, see step 14
 PORT=5001                    # defaults to 5001
 HOST=127.0.0.1               # set this on the server. Defaults to 0.0.0.0 for LAN
                              # dev use; here nginx proxies from loopback, so a
@@ -682,6 +683,37 @@ command="/usr/bin/rrsync -wo /root/timeline_site",restrict ssh-ed25519 AAAA... t
 Then the `.env` line in step 5 and a restart. The first push from the Mac fills the
 folder. `verify-deploy.sh` checks that a logged-out request for the page's data is
 refused.
+
+## 14. The weekly setup watchlist (admin login only)
+
+`/watchlist` serves the weekly setup watchlist to a browser logged in at `/admin`, and to
+nobody else (`src/watchlist_site.py`). It is step 13 again with a different folder:
+`COT_ANALYZER_PRIVATE_PAGES=1`, plus `WATCHLIST_SITE_DIR`. Either one unset, and
+`/watchlist` and every file under it answer the site's ordinary 404. Logged out with both
+set, the page says to log in (403) and every data file still answers 404. Nothing is
+cached and nothing is in a menu, the sitemap or robots.txt.
+
+This app draws none of it. The page, the week index and one frozen file per COT report
+date are built on the operator's Mac by npf's `scripts/build_watchlist_site.py` (private
+repo) and pushed here. A week's file can carry notes paraphrased from a paid weekly
+report, which is why it sits behind the login and outside every checkout.
+
+The push uses its own key, pinned to write-only rsync into that one folder. Once, on the
+server:
+
+```bash
+mkdir -p /root/watchlist_site/data
+```
+
+Then add the Mac's PUBLIC key (`~/.ssh/watchlist_push.pub`) to
+`/root/.ssh/authorized_keys` as one line:
+
+```
+command="/usr/bin/rrsync -wo /root/watchlist_site",restrict ssh-ed25519 AAAA... watchlist-push
+```
+
+Then the `.env` line in step 5 and a restart. `verify-deploy.sh` checks that a logged-out
+request for the page's data is refused.
 
 ## Upgrading
 

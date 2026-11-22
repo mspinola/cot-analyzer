@@ -20,6 +20,7 @@ import routing
 import timeline_site
 import visitors
 import viz_constants as vc
+import watchlist_site
 from components import controls
 
 utils.launch_logger.warning("Launch app_cot")
@@ -388,6 +389,11 @@ timeline_site.register(
     app.server, _timeline_not_found,
     lambda: _link_page("Log in first", timeline_site.LOGIN_BODY, status=403))
 
+# The private weekly watchlist: the same two routes and the same gate (`watchlist_site`).
+watchlist_site.register(
+    app.server, _timeline_not_found,
+    lambda: _link_page("Log in first", watchlist_site.LOGIN_BODY, status=403))
+
 
 @app.server.after_request
 def set_cache_policy(response):
@@ -588,6 +594,7 @@ def record_visit():
         routing.BEACON_PATH,
         # The timeline page's own data fetches: the page load is the visit.
         timeline_site.PATH + '/data/',
+        watchlist_site.PATH + '/data/',
     ]
 
     if not any(request.path.startswith(path) for path in ignored_paths):
