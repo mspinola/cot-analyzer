@@ -181,8 +181,10 @@ NET_HIGHS_AVERAGE, NET_HIGHS_LEVEL = 5, 0.0
 CREDIT_EMA_SPAN = 20
 #: "Better / worse vs 5d": the comparison every headwind card carries.
 COMPARE_SESSIONS = 5
-HEADWIND_KEYS = ("nasdaq_net_highs", "nyse_net_highs", "qqq_updown", "spy_updown",
-                 "credit", "rotation")
+#: Card and history-row order: breadth and credit on the first row of cards, volume
+#: and rotation on the second, so QQQ's and SPY's up/down volume sit side by side.
+HEADWIND_KEYS = ("nasdaq_net_highs", "nyse_net_highs", "credit", "qqq_updown",
+                 "spy_updown", "rotation")
 
 
 def net_highs_key(exchange):
