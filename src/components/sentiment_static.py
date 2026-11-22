@@ -136,20 +136,21 @@ DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, a
                "indexes with SPY's drawdowns behind them, and AAII members' monthly "
                "split between stocks, bonds and cash since 1987.")
 HOME = "https://bluemagicai.com/"
-#: The monitor row the DBMF, AHLT and ORR pages carry, with this page marked current.
+#: The monitor row the DBMF, AHLT, ORR and ALLW pages carry, with this page marked current.
 #: Hand-kept in step with dbmf-tracker's templates (its tests/test_site_nav.py names
 #: this file). Market is the market internals page, a site of its own since 2026-11-11
 #: (`market_internals_static`, which draws this same row with itself current).
 SITES = (("DBMF", "https://dbmf.bluemagicai.com/"),
          ("AHLT", "https://ahlt.bluemagicai.com/"),
          ("ORR", "https://orr.bluemagicai.com/"),
+         ("ALLW", "https://allw.bluemagicai.com/"),
          ("Surveys", "https://surveys.bluemagicai.com/"),
          ("Market", "https://internals.bluemagicai.com/"))
 CURRENT = "Surveys"
 #: The placeholder the fund pages carry for the monitor not yet published, drawn
 #: after this site in the row, as theirs is. (name, hover text); None once KISS ships.
 SOON = ("KISS", "KISS ETF monitor, coming soon")
-SOON_AFTER = "ORR"
+SOON_AFTER = "ALLW"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
 #: The same line with the allocation survey named, for a page that carries its cards.

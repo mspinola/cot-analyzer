@@ -60,8 +60,8 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: never carry a string a stranger chose. An unlisted key is answered with the
 #: pixel and logged as nothing.
 #:
-#: All four are pages of the dbmf-tracker publisher (dbmf., orr. and
-#: ahlt.bluemagicai.com, with /orr and /ahlt also still beside the first, and
+#: All are pages of the dbmf-tracker publisher (dbmf., orr., ahlt. and, from
+#: 2026-11-22, allw.bluemagicai.com, with /orr and /ahlt also still beside the first, and
 #: surveys.bluemagicai.com, this app's sentiment page rendered static by
 #: scripts/export_sentiment_page.py and pushed by the same publisher). That
 #: publisher derives both the beacon key and the GoatCounter path from one name
@@ -77,7 +77,7 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: is the old app page's own, on purpose: `/internals` now redirects to the static
 #: copy, so one path carries the page's views across the move.
 EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys',
-                  'internals': '/internals'}
+                  'internals': '/internals', 'allw': '/allw'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the
