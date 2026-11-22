@@ -56,13 +56,44 @@ def test_a_private_callback_answers_a_signed_in_request(signed_in):
     assert guarded() == "the NPF answer"
 
 
-@pytest.mark.parametrize("page", [setups, scorecard, divergence])
+@pytest.mark.parametrize("page", [scorecard, divergence])
 def test_the_npf_pages_show_a_public_visitor_the_sign_in_note(public, page):
     assert getattr(page.layout(), "id", None) == "private_page_stub"
 
 
 def test_the_npf_pages_are_not_indexed():
-    assert {"/setups", "/scorecard", "/divergence"} <= routing.NOINDEX_PATHS
+    assert {"/scorecard", "/divergence"} <= routing.NOINDEX_PATHS
+
+
+def test_setups_is_public_and_indexed():
+    assert "/setups" not in routing.PRIVATE_PATHS
+    assert "/setups" not in routing.NOINDEX_PATHS
+
+
+def _board_call(monkeypatch, lookback, model_key):
+    """What `update_home_board` hands cotmetrics for a posted lookback and model."""
+    import cotmetrics.movers as movers
+    seen = {}
+
+    def fake_board(lookback, filter_types, model):
+        seen.update(lookback=lookback, model=model.key)
+        return []
+    monkeypatch.setattr(movers, "get_board", fake_board)
+    setups.update_home_board(lookback, None, [], model_key, True, [])
+    return seen
+
+
+def test_a_public_setups_request_reads_52_weeks_and_the_default_model(public, monkeypatch):
+    """The page is public on the public terms: a posted per-market lookback or another
+    model lands on the defaults, whatever the browser says."""
+    assert _board_call(monkeypatch, "npf", models.NPF.key) == {
+        "lookback": "52", "model": models.DEFAULT_MODEL.key}
+    assert _board_call(monkeypatch, "26", models.NPF.key)["lookback"] == "26"
+
+
+def test_a_signed_in_setups_request_keeps_its_lookback_and_model(signed_in, monkeypatch):
+    seen = _board_call(monkeypatch, "npf", models.NPF.key)
+    assert seen == {"lookback": controls.resolve("npf"), "model": models.NPF.key}
 
 
 def test_a_public_request_reads_the_default_model(public):

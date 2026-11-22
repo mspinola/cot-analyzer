@@ -49,5 +49,5 @@ def test_the_newest_weekly_report_then_the_landing_page_are_warmed_first(monkeyp
     monkeypatch.setattr(sys.modules["pages.analytics.scorecard"], "warm_caches",
                         lambda: calls.append("scorecard"))
     main.warm_page_caches()
-    assert calls == ["weekly", "crowd", "heatmap", "crowd (signed in)", "setups",
+    assert calls == ["weekly", "crowd", "heatmap", "setups", "crowd (signed in)",
                      "divergence", "scorecard"]

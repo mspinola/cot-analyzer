@@ -111,15 +111,12 @@ active_setups_panel = html.Div(
 )
 
 def layout(**kwargs):
-    """Login-gated (docs/design/2026-11-21-public-lookbacks-npf-behind-login.md, phase
-    2): the page is NPF model output, so a public visitor gets the sign-in note and
-    every callback below is a `controls.private_callback`."""
-    if not controls.private_allowed():
-        return controls.private_page_stub("Setups")
-    return _layout(**kwargs)
-
-
-def _layout(**kwargs):
+    """Public since 2026-11-21, on the public terms: 26/52 lookbacks only and the
+    default model (Raw PF). The gate is server side, not in this layout:
+    `controls.resolve` maps a gated lookback to 52 and `controls.gate_model` maps any
+    other model to the default, in every callback below. A signed-in request keeps
+    the per-market lookbacks and the model choice (docs/design/2026-11-21-public-
+    lookbacks-npf-behind-login.md, "Setups made public")."""
     # Built per request, not at import. Resolving these at module scope
     # made importing this page require a populated COTDATA_STORE.
     asset_list = tuple(get_indexer().get_asset_classes())
@@ -211,7 +208,10 @@ def _layout(**kwargs):
                                         persistence_type='local',
                                         style={'borderRadius': '8px',
                                                'maxWidth': '200px'})
-                                ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md"),
+                                ], xs=12, md=3, lg=2, className="mb-3 mb-md-0 border-end border-secondary hide-border-below-md",
+                                   # Not drawn for a public request, which always reads
+                                   # the default model (controls.gate_model).
+                                   style=controls.private_style()),
 
                                 dbc.Col([
                                     # The label row carries the snapshot caption on its
@@ -303,7 +303,7 @@ def _cached_build_asset_class_cards(db_time, ac, lookback, palette_name, filter_
                                           model=models.resolve(model_key),
                                           filter_types=filter_types)
 
-@controls.private_callback(
+@dash.callback(
     Output('dummy-home-session-saver', 'data'),
     [Input('global_lookback_store', 'data'),
      Input('session_palette_theme_asset_store', 'data'),
@@ -315,6 +315,7 @@ def update_home_signals(lookback, palette_name, filter_types, model_key):
         filter_types = []
 
     lookback = controls.resolve(lookback)
+    model_key = controls.gate_model(model_key)
 
     import json
     import os
@@ -335,7 +336,7 @@ def update_home_signals(lookback, palette_name, filter_types, model_key):
 
 
 
-@controls.private_callback(
+@dash.callback(
     Output({"type": "accordion-body", "index": ALL}, "children"),
     Output('loaded_accordions_store', 'data'),
     Input("home_signals_accordion", "active_item"),
@@ -369,6 +370,7 @@ def lazy_load_accordion(active_items, lookback, palette_name, filter_types, mode
         filter_types = []
 
     lookback = controls.resolve(lookback)
+    model_key = controls.gate_model(model_key)
     filter_types_tuple = tuple(filter_types)
     db_time = get_indexer().last_known_db_time
 
@@ -423,16 +425,22 @@ def warm_caches():
             except Exception as e:
                 utils.cot_logger.warning(f"Could not load last session state: {e}")
 
-        for ac in assets:
-            _cached_build_asset_class_cards(db_time, ac, lookback, palette_name, filter_types,
-                                           model_key)
+        # The public view first (52 weeks, default model, no filters): it is what
+        # most visitors open, and the last session may be a signed-in one on a
+        # per-market lookback that a public request can never ask for.
+        public = (controls.resolve(controls.LOOKBACK_DEFAULT), None, (),
+                  models.DEFAULT_MODEL.key)
+        for combo in dict.fromkeys([public, (lookback, palette_name, filter_types,
+                                             model_key)]):
+            for ac in assets:
+                _cached_build_asset_class_cards(db_time, ac, *combo)
 
         utils.cot_logger.info("Home page individual asset classes pre-generated.")
     except Exception as e:
         utils.cot_logger.error(f"Error prewarming cache: {e}")
 
 
-@controls.private_callback(
+@dash.callback(
     Output('home_signals_accordion', 'active_item'),
     Input('expand_all_btn', 'n_clicks'),
     Input('collapse_all_btn', 'n_clicks'),
@@ -452,7 +460,7 @@ def toggle_all_accordions(expand_clicks, collapse_clicks):
 # compute each row's setup state twice, which is how a class tally came to disagree
 # with the strip above it. This mattered more when there were two strips here; it still
 # matters, because the accordion titles carry the same tallies.
-@controls.private_callback(
+@dash.callback(
     Output('home_setups_header', 'children'),
     Output('home_active_setups', 'children'),
     Output({"type": "accordion-item", "index": ALL}, 'title'),
@@ -469,7 +477,7 @@ def update_home_board(lookback, palette_name, filter_types, model_key, show_near
 
     lookback = controls.resolve(lookback)
     palette = viz_config.get_palette(palette_name)
-    model = vc.resolve_model_view(model_key)[0]
+    model = vc.resolve_model_view(controls.gate_model(model_key))[0]
 
     rows = get_board(lookback=lookback, filter_types=filter_types, model=model)
 

@@ -145,11 +145,12 @@ def warm_page_caches():
     warm_crowd_caches()
     # Every public page before anything only a signed-in visitor reads (2026-11-21,
     # docs/design/2026-11-21-public-lookbacks-npf-behind-login.md): the heatmap's
-    # joins (the Strip rides on the same 52-week matrix), then the signed-in half of
-    # the home board, then the login-gated pages.
+    # joins (the Strip rides on the same 52-week matrix), the setups screener (public
+    # since 2026-11-21, on 26/52), then the signed-in half of the home board, then the
+    # login-gated pages.
     warm_heatmap_caches()
-    warm_crowd_private_caches()
     warm_setups_caches()
+    warm_crowd_private_caches()
     warm_divergence_caches()
     # Last: its frames are the uniform-window twins of the ones above rather than
     # the same entries, so unlike the others it does not ride on a warm cache.
