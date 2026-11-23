@@ -308,7 +308,10 @@ def test_the_history_card_offers_windows_and_opens_on_a_year():
     offered = re.findall(r'<button type="button" data-sessions="(\d+)" aria-pressed="(\w+)">'
                          r'(\w+)</button>', card)
     assert view.HISTORY_DEFAULT_WINDOW == "1Y"
-    assert "typeof kept.window !== 'number'" in page
+    # The pressed button is what opens unless a stored window names another: one
+    # `show`, so a stored choice of the default window opens on it too.
+    assert "if (+b.dataset.sessions === kept.window) { opens = b; }" in page
+    assert "if (opens) { show(+opens.dataset.sessions); }" in page
     assert offered == [(str(sessions), "true" if label == "1Y" else "false", label)
                        for label, sessions in view.HISTORY_WINDOWS if sessions < n]
     assert ("Max" in [label for _, _, label in offered]) and len(offered) >= 2
@@ -339,6 +342,39 @@ def test_the_price_line_is_daily_where_a_zoom_will_look():
     assert xs[-view.HISTORY_DAILY_SESSIONS:] == list(range(recent, 2000))
     older = [x for x in xs if x < recent]
     assert older == list(range(0, recent, view.HISTORY_PRICE_STEP))
+
+
+def test_the_history_embeds_the_price_bars_and_the_controls_that_draw_them():
+    """The candles, averages and volume are drawn by the script from one embedded copy
+    of the bars, on the scale the line is on; a history with closes only has neither
+    the bars nor a control that would do nothing."""
+    dates = tuple(d.strftime("%Y-%m-%d") for d in pd.bdate_range("2024-01-01", periods=4))
+    closes = (100.0, 102.0, 101.0, 104.0)
+    bars = ((99.0, 100.5, 98.5, 100.0, 2_400_000.0), None,
+            (102.0, 102.5, 100.25, 101.0, 1_000_499.0), (101.0, 104.126, 101.0, 104.0, 0.0))
+    kw = dict(dates=dates, price=closes, price_symbol="QQQ", rows=(), count=(0,) * 4, total=5)
+    with_bars = mi.HeadwindHistory(bars=bars, **kw)
+    assert view.history_bars(mi.HeadwindHistory(**kw)) is None
+    data = view.history_bars(with_bars)
+    assert data["c"] == list(closes)
+    assert data["o"][1] == data["h"][1] == data["l"][1] == 102.0 and data["v"][1] == 0   # no bar: a tick
+    assert data["h"][3] == 104.13 and data["v"] == [2400, 0, 1000, 0]
+
+    card = st.history_card(with_bars, st.page_colors(COLORS))
+    embedded = re.search(rf'id="{st.HISTORY_ID}-bars">(.*?)</script>', card, re.S).group(1)
+    assert json.loads(embedded) == data
+    for key, _ in view.HISTORY_KINDS:
+        assert f'data-kind="{key}"' in card
+    assert 'data-layer="averages"' in card and 'data-layer="volume"' in card
+    assert 'class="hvol"' in card
+    high, span = view.history_price_scale(with_bars)
+    assert f'data-log-high="{high:.6f}"' in card and f'data-log-span="{span:.6f}"' in card
+    sent = json.loads(html.unescape(re.search(r'data-averages="([^"]*)"', card).group(1)))
+    assert sent == [[k, n, c] for k, n, _, c in view.HISTORY_AVERAGES]
+    assert [(k, n) for k, n, _ in sent] == [("ema", 8), ("ema", 21), ("sma", 50), ("sma", 200)]
+
+    plain = st.history_card(mi.HeadwindHistory(**kw), st.page_colors(COLORS))
+    assert "hkind" not in plain and "hvol" not in plain and "-bars" not in plain
 
 
 def _with_volatility(inverted=False):

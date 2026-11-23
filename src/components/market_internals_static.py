@@ -287,8 +287,12 @@ def history_card(history, colors):
             f'data-upto="{view.HISTORY_FOMO_DAILY_UPTO}" display="none" '
             f'd="{view.history_fomo_path(history)}"/>'
             + '</svg></div>')
+    bars = view.history_bars(history)
+    legend = "".join(f'<span style="color:{color}">{_esc(label)}</span>'
+                     for _, _, label, color in view.HISTORY_AVERAGES) if bars else ""
     rows = [
-        f'<div class="hl">{_esc(history.price_symbol)} (log scale)</div>'
+        f'<div class="hl">{_esc(history.price_symbol)} (log scale)'
+        f'<span class="hlegend" data-averages hidden>{legend}</span></div>'
         f'<div class="hp"><svg class="hprice" viewBox="0 0 {n} {units:g}" '
         f'preserveAspectRatio="none" role="img" aria-label="{_esc(history.price_symbol)} '
         f'price with the sessions {history.total - 1} or {history.total} headwinds were on '
@@ -299,6 +303,13 @@ def history_card(history, colors):
         f'<polyline fill="none" stroke="{surveys.INK}" stroke-width="1.2" '
         f'vector-effect="non-scaling-stroke" points="{view.history_price_points(history)}"/>'
         '</svg></div>']
+    if bars:
+        # Drawn by the script from the embedded bars, on its own scale: the tallest
+        # session in the window fills the row.
+        rows.append(f'<div class="hl" data-volume hidden>{_esc(view.HISTORY_VOLUME_LABEL)}</div>'
+                    '<div class="hp" data-volume hidden>'
+                    f'<svg class="hvol" viewBox="0 0 {n} {view.HISTORY_PRICE_UNITS:g}" '
+                    'preserveAspectRatio="none" aria-hidden="true"></svg></div>')
     for key, label, flags in history.rows:
         # `data-headwind` marks the rows the count is made of: the script reads each
         # one's runs back off its own rectangles, so the history is embedded once.
@@ -333,6 +344,22 @@ def history_card(history, colors):
                'All on, and one short</button>'
                '<button type="button" data-shade="every" aria-pressed="false">'
                'Only all on at once</button></div>')
+    if bars:
+        # How the price is drawn, and what is drawn with it. Hidden until the script
+        # runs: without it the panel is the line and none of these would do anything.
+        kinds = "".join(f'<button type="button" data-kind="{key}" aria-pressed="false">'
+                        f'{_esc(label)}</button>' for key, label in view.HISTORY_KINDS)
+        windows += ('<div class="lookback hkind" role="group" aria-label="Price chart" hidden>'
+                    f'<span>Chart</span>{kinds}'
+                    '<button type="button" class="gap" data-layer="averages" aria-pressed="false">'
+                    'Averages</button>'
+                    '<button type="button" data-layer="volume" aria-pressed="false">'
+                    'Volume</button></div>')
+    high, span = view.history_price_scale(history)
+    averages = _esc(surveys._script_json(
+        [[kind, sessions, color] for kind, sessions, _, color in view.HISTORY_AVERAGES]), quote=True)
+    embedded = (f'<script type="application/json" id="{HISTORY_ID}-bars">'
+                f'{surveys._script_json(bars)}</script>' if bars else "")
     first, steps = view.history_day_steps(history)
     return _card(view.HISTORY_TITLE, view.history_subtitle(history), view.HISTORY_HOW,
                  windows,
@@ -340,8 +367,12 @@ def history_card(history, colors):
                  f'{_esc(view.HISTORY_READ_HINT)}</div>',
                  f'<div class="hgrid" id="{HISTORY_ID}" data-sessions="{n}" '
                  f'data-first="{first}" data-steps="{steps}" '
-                 f'data-units="{units:g}" data-total="{history.total}" data-mark="{mark}">'
-                 f'{"".join(rows)}</div>',
+                 f'data-units="{units:g}" data-total="{history.total}" data-mark="{mark}" '
+                 f'data-log-high="{high:.6f}" data-log-span="{span:.6f}" '
+                 f'data-averages="{averages}" data-volume-unit="{view.HISTORY_VOLUME_UNIT}" '
+                 f'data-up="{colors.bull}" data-down="{colors.bear}" '
+                 f'data-symbol="{_esc(history.price_symbol)}">'
+                 f'{"".join(rows)}</div>{embedded}',
                  f'<div class="detail" data-history-summary>'
                  f'{_esc(view.history_summary(history))}</div>')
 
@@ -997,9 +1028,18 @@ table.cot td small {{ color: var(--muted); }}
 .hfomo {{ height: 64px; background: var(--wash); border-radius: 2px; }}
 .hyears {{ position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }}
 .hyears span {{ position: absolute; transform: translateX(-50%); white-space: nowrap; }}
-.hwin, .hshade {{ margin: 8px 0 0; }}
+.hvol {{ height: 44px; }}
+.hwin, .hshade, .hkind {{ margin: 8px 0 0; }}
+.hkind button.gap {{ margin-left: 10px; }}
+.hlegend {{ display: block; font-size: 0.68rem; margin-top: 3px; }}
+.hlegend span {{ margin-right: 8px; white-space: nowrap; }}
+.hlegend[hidden], .hkind[hidden], [data-volume][hidden] {{ display: none; }}
+/* A drag along the plots moves the window through the history. */
+.hgrid.pans .hp {{ cursor: grab; }}
+.hgrid.panning .hp {{ cursor: grabbing; }}
 /* The session under the pointer; a fixed line so the grid does not jump as it fills.
-   A sideways drag on the plots reads sessions, an up-and-down one still scrolls. */
+   A sideways drag on the plots moves the window (and reads the session under the
+   pointer as it goes), an up-and-down one still scrolls the page. */
 .hread {{ margin: 8px 0 0; min-height: 1.4em; }}
 .hp {{ touch-action: pan-y; }}
 @media (max-width: 700px) {{
@@ -1229,6 +1269,95 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
   var fomoCloses = fomo ? fomo.dataset.closes.split(',') : null;
   var points = price.querySelector('polyline').getAttribute('points').split(' ')
     .map(function (p) {{ p = p.split(','); return [+p[0], +p[1]]; }});
+  // The price's own bars, when the page carries them: candles or OHLC bars in place of
+  // the line, four moving averages and a volume row. Everything is drawn once, a
+  // session a unit wide on the line's own log scale, so a window stays a viewBox.
+  var NS = 'http://www.w3.org/2000/svg';
+  var vol = grid.querySelector('.hvol');
+  var source = document.getElementById('{HISTORY_ID}-bars');
+  var B = source ? JSON.parse(source.textContent) : null;
+  var line = price.querySelector('polyline');
+  var LOGHIGH = +grid.dataset.logHigh, LOGSPAN = +grid.dataset.logSpan;
+  var UP = grid.dataset.up, DOWN = grid.dataset.down;
+  function yOf(p) {{ return (LOGHIGH - Math.log(p)) / LOGSPAN * UNITS; }}
+  var chosen = {{kind: 'line', averages: false, volume: false}};
+  var layers = {{}}, yH = [], yL = [], yMA = [], VMAX = 1;
+  if (B) {{
+    yH = B.h.map(yOf);
+    yL = B.l.map(yOf);
+    B.v.forEach(function (v) {{ if (v > VMAX) {{ VMAX = v; }} }});
+    // The markup's line thins the older sessions; with every close here, draw them all.
+    points = B.c.map(function (c, i) {{ return [i, yOf(c)]; }});
+    line.setAttribute('points', points.map(function (p) {{ return p[0] + ',' + p[1].toFixed(2); }}).join(' '));
+  }}
+  function layer(svg, shapes) {{
+    var g = document.createElementNS(NS, 'g');
+    shapes.forEach(function (shape) {{
+      var el = document.createElementNS(NS, shape.tag || 'path');
+      Object.keys(shape).forEach(function (k) {{ if (k !== 'tag') {{ el.setAttribute(k, shape[k]); }} }});
+      el.setAttribute('vector-effect', 'non-scaling-stroke');
+      g.appendChild(el);
+    }});
+    svg.insertBefore(g, cursors[svgs.indexOf(svg)]);     // under the pointer's line
+    return g;
+  }}
+  function priceBars(kind) {{
+    var d = {{up: '', down: ''}};
+    for (var i = 0; i < N; i++) {{
+      var o = yOf(B.o[i]).toFixed(2), c = yOf(B.c[i]).toFixed(2), x = i + 0.5;
+      var wick = 'M' + x + ' ' + yH[i].toFixed(2) + 'V' + yL[i].toFixed(2);
+      d[B.c[i] >= B.o[i] ? 'up' : 'down'] += wick + (kind === 'candle'
+        ? 'M' + (i + 0.2) + ' ' + o + 'H' + (i + 0.8) + 'V' + c + 'H' + (i + 0.2) + 'Z'
+        : 'M' + (i + 0.1) + ' ' + o + 'H' + x + 'M' + x + ' ' + c + 'H' + (i + 0.9));
+    }}
+    return layer(price, [[d.up, UP], [d.down, DOWN]].map(function (side) {{
+      return {{d: side[0], stroke: side[1], 'stroke-width': 1, fill: kind === 'candle' ? side[1] : 'none'}};
+    }}));
+  }}
+  // An EMA as pandas' ewm(span=n, adjust=False), either kind blank until n closes in.
+  function averages() {{
+    return layer(price, JSON.parse(grid.dataset.averages).map(function (a) {{
+      var n = a[1], k = 2 / (n + 1), ema = B.c[0], sum = 0, ys = [], pts = '';
+      for (var i = 0; i < N; i++) {{
+        var value;
+        if (a[0] === 'ema') {{ ema = i ? B.c[i] * k + ema * (1 - k) : B.c[0]; value = ema; }}
+        else {{ sum += B.c[i] - (i >= n ? B.c[i - n] : 0); value = sum / n; }}
+        ys.push(i >= n - 1 ? yOf(value) : NaN);
+        if (i >= n - 1) {{ pts += (i + 0.5) + ',' + ys[i].toFixed(2) + ' '; }}
+      }}
+      yMA.push(ys);
+      return {{tag: 'polyline', points: pts, stroke: a[2], 'stroke-width': 1.2, fill: 'none'}};
+    }}));
+  }}
+  function volumeBars() {{
+    var d = {{up: '', down: ''}};
+    for (var i = 0; i < N; i++) {{
+      if (!B.v[i]) {{ continue; }}
+      d[B.c[i] >= B.o[i] ? 'up' : 'down'] += 'M' + (i + 0.15) + ' ' + UNITS + 'V'
+        + (UNITS - B.v[i] / VMAX * UNITS).toFixed(2) + 'H' + (i + 0.85) + 'V' + UNITS + 'Z';
+    }}
+    return layer(vol, [[d.up, UP], [d.down, DOWN]].map(function (side) {{
+      return {{d: side[0], fill: side[1], 'fill-opacity': 0.7, stroke: 'none'}};
+    }}));
+  }}
+  function draw() {{
+    if (!B) {{ return; }}
+    ['candle', 'ohlc'].forEach(function (kind) {{
+      if (kind === chosen.kind && !layers[kind]) {{ layers[kind] = priceBars(kind); }}
+      if (layers[kind]) {{ layers[kind].setAttribute('display', kind === chosen.kind ? 'inline' : 'none'); }}
+    }});
+    line.setAttribute('display', chosen.kind === 'line' ? 'inline' : 'none');
+    if (chosen.averages && !layers.averages) {{ layers.averages = averages(); }}
+    if (layers.averages) {{ layers.averages.setAttribute('display', chosen.averages ? 'inline' : 'none'); }}
+    if (chosen.volume && !layers.volume) {{ layers.volume = volumeBars(); }}
+    grid.querySelector('[data-averages]').hidden = !chosen.averages;
+    grid.querySelectorAll('[data-volume]').forEach(function (cell) {{ cell.hidden = !chosen.volume; }});
+    document.querySelectorAll('.hkind button').forEach(function (b) {{
+      var on = b.dataset.kind ? b.dataset.kind === chosen.kind : chosen[b.dataset.layer];
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }});
+    view(win[0], win[1]);
+  }}
   var axis = grid.querySelector('.hyears');
   var months = JSON.parse(axis.dataset.months);
   var NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1240,7 +1369,7 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
     var step = Math.max(1, Math.ceil(years / 10));
     months.forEach(function (m) {{
       var i = m[0], year = +m[1].slice(0, 4), month = +m[1].slice(5, 7);
-      if (i <= start || (month - 1) % every) {{ return; }}
+      if (i <= start || i >= start + len || (month - 1) % every) {{ return; }}
       if (every === 12 && year % step) {{ return; }}
       var text = every === 12 ? String(year)
         : month === 1 ? "Jan '" + String(year).slice(2) : NAMES[month - 1];
@@ -1249,16 +1378,34 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
     return out;
   }}
   var win = [0, N];
+  // The newest `sessions` of the history (0 for all of it): what a window button asks for.
   function show(sessions) {{
-    var len = sessions ? Math.min(sessions, N) : N, start = N - len;
+    var len = sessions ? Math.min(sessions, N) : N;
+    view(N - len, len);
+  }}
+  // `len` sessions from `start`: a window button's, or wherever a drag has taken it.
+  function view(start, len) {{
+    len = Math.max(1, Math.min(len, N));
+    start = Math.max(0, Math.min(start, N - len));
     win = [start, len];
-    var low = Infinity, high = -Infinity;
-    points.forEach(function (p) {{
-      if (p[0] >= start) {{ low = Math.min(low, p[1]); high = Math.max(high, p[1]); }}
-    }});
+    var low = Infinity, high = -Infinity, end = start + len, i;
+    function fit(y) {{ if (y < low) {{ low = y; }} if (y > high) {{ high = y; }} }}
+    if (B && chosen.kind !== 'line') {{
+      for (i = start; i < end; i++) {{ fit(yH[i]); fit(yL[i]); }}
+    }} else {{
+      points.forEach(function (p) {{ if (p[0] >= start && p[0] < end) {{ fit(p[1]); }} }});
+    }}
+    if (chosen.averages) {{
+      yMA.forEach(function (ys) {{ for (i = start; i < end; i++) {{ if (ys[i] === ys[i]) {{ fit(ys[i]); }} }} }});
+    }}
+    if (low > high) {{ low = 0; high = UNITS; }}
     var pad = (high - low || UNITS) * 0.04;
+    var tallest = 0;
+    if (B) {{ for (i = start; i < end; i++) {{ if (B.v[i] > tallest) {{ tallest = B.v[i]; }} }} }}
+    tallest = (tallest / VMAX * UNITS || UNITS) * 1.05;
     svgs.forEach(function (svg) {{
       var y = svg === price ? [low - pad, high - low + 2 * pad]
+        : svg === vol ? [UNITS - tallest, tallest]
         : svg === fomo ? [0, {view.HISTORY_FOMO_UNITS:g}] : [0, 1];
       svg.setAttribute('viewBox', start + ' ' + y[0] + ' ' + len + ' ' + y[1]);
     }});
@@ -1276,7 +1423,7 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
       axis.appendChild(span);
     }});
     document.querySelectorAll('.hwin button').forEach(function (b) {{
-      b.setAttribute('aria-pressed', +b.dataset.sessions === sessions ? 'true' : 'false');
+      b.setAttribute('aria-pressed', (+b.dataset.sessions || N) === len ? 'true' : 'false');
     }});
   }}
   // What the reader chose, kept in this browser only. Storage can be missing or
@@ -1387,7 +1534,7 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
   }});
   var cursors = svgs.map(function (svg) {{
     var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    var tall = svg === price;
+    var tall = svg === price || svg === vol;
     line.setAttribute('y1', tall ? -UNITS : 0);
     line.setAttribute('y2', tall ? UNITS * 2 : svg === fomo ? {view.HISTORY_FOMO_UNITS:g} : 1);
     line.setAttribute('stroke', '{surveys.INK}');
@@ -1423,13 +1570,48 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
       }}
     }});
     var day = new Date(DAYS[i]);
+    var bar = '';
+    if (B) {{
+      var volume = B.v[i] * +grid.dataset.volumeUnit;
+      bar = ' \u00b7 ' + grid.dataset.symbol + (chosen.kind === 'line' ? ' ' + B.c[i].toFixed(2)
+        : ' O ' + B.o[i].toFixed(2) + ' H ' + B.h[i].toFixed(2) + ' L ' + B.l[i].toFixed(2)
+          + ' C ' + B.c[i].toFixed(2))
+        + (chosen.volume && volume ? ' \u00b7 Vol ' + (volume >= 1e6 ? (volume / 1e6).toFixed(1) + 'M'
+          : Math.round(volume / 1e3) + 'k') : '');
+    }}
     read.textContent = NAMES[day.getUTCMonth()] + ' ' + day.getUTCDate() + ', ' + day.getUTCFullYear()
-      + ' \u00b7 ' + names.length + ' of ' + rows + ' on'
+      + bar + ' \u00b7 ' + names.length + ' of ' + rows + ' on'
       + (names.length ? ': ' + names.join(' \u00b7 ') : '')
       + (fomoCloses && fomoCloses[i] ? ' \u00b7 FOMO ' + fomoCloses[i] : '');
   }}
-  grid.addEventListener('pointermove', function (e) {{ point(e.clientX); }});
-  grid.addEventListener('pointerdown', function (e) {{ point(e.clientX); }});
+  // A drag along the plots moves the window back and forth through the history, every
+  // row together; the session under the pointer is still read as it goes.
+  var drag = null;
+  grid.classList.add('pans');
+  grid.addEventListener('pointermove', function (e) {{
+    if (drag && drag.id === e.pointerId) {{
+      var box = price.getBoundingClientRect();
+      var start = Math.round(drag.start - (e.clientX - drag.x) / (box.width || 1) * win[1]);
+      start = Math.max(0, Math.min(start, N - win[1]));
+      if (start !== win[0]) {{ view(start, win[1]); }}
+    }}
+    point(e.clientX);
+  }});
+  grid.addEventListener('pointerdown', function (e) {{
+    if (e.target.closest && e.target.closest('.hp') && win[1] < N && (e.pointerType !== 'mouse' || e.button === 0)) {{
+      drag = {{id: e.pointerId, x: e.clientX, start: win[0]}};
+      grid.classList.add('panning');
+      try {{ grid.setPointerCapture(e.pointerId); }} catch (err) {{}}
+    }}
+    point(e.clientX);
+  }});
+  ['pointerup', 'pointercancel'].forEach(function (name) {{
+    grid.addEventListener(name, function (e) {{
+      if (!drag || drag.id !== e.pointerId) {{ return; }}
+      drag = null;
+      grid.classList.remove('panning');
+    }});
+  }});
   grid.addEventListener('pointerleave', function (e) {{
     if (e.pointerType === 'mouse') {{ forget(); }}      // a tap's reading stays put
   }});
@@ -1438,13 +1620,29 @@ if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {{
   // window chosen yet, open on the default one (the markup is the full history, which
   // is what a reader without the script sees).
   var kept = load();
-  if (typeof kept.window !== 'number') {{
-    var first = document.querySelector('.hwin button[aria-pressed="true"]');
-    if (first) {{ show(+first.dataset.sessions); }}
-  }}
+  var opens = document.querySelector('.hwin button[aria-pressed="true"]');
   document.querySelectorAll('.hwin button').forEach(function (b) {{
-    if (+b.dataset.sessions === kept.window && b.getAttribute('aria-pressed') !== 'true') {{ b.click(); }}
+    if (+b.dataset.sessions === kept.window) {{ opens = b; }}
   }});
+  if (opens) {{ show(+opens.dataset.sessions); }}
+  // How the price is drawn: candles with the averages and volume until told otherwise.
+  if (B) {{
+    var kinds = document.querySelector('.hkind');
+    kinds.hidden = false;
+    chosen.kind = ['candle', 'ohlc', 'line'].indexOf(kept.kind) < 0 ? kinds.querySelector('[data-kind]').dataset.kind : kept.kind;
+    chosen.averages = kept.averages !== false;
+    chosen.volume = kept.volume !== false;
+    kinds.querySelectorAll('button').forEach(function (b) {{
+      b.addEventListener('click', function () {{
+        var patch = {{}};
+        if (b.dataset.kind) {{ chosen.kind = patch.kind = b.dataset.kind; }}
+        else {{ chosen[b.dataset.layer] = patch[b.dataset.layer] = !chosen[b.dataset.layer]; }}
+        save(patch);
+        draw();
+      }});
+    }});
+    draw();
+  }}
   shades.forEach(function (b) {{
     if (b.dataset.shade === kept.shade && b.getAttribute('aria-pressed') !== 'true') {{ b.click(); }}
   }});

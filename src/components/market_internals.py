@@ -831,6 +831,30 @@ class HeadwindHistory:
     #: (bars, index of the first session FOMO was read on), each bar (open, high, low,
     #: close) or None where it was not read. The series starts years after the others.
     fomo: Optional[tuple] = None
+    #: The price symbol's own daily bars on the same sessions, for the candles and the
+    #: volume row: (open, high, low, close, volume) each, or None for a session the
+    #: frame cannot give all four prices on. None when the store gave closes only, and
+    #: the page then draws the line alone.
+    bars: Optional[tuple] = None
+
+
+def _price_bars(frame, index):
+    """The price frame's bars on the history's sessions, or None when it has no open,
+    high and low to draw. A missing volume reads as 0: the candles still draw."""
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    if any(c not in frame for c in ("Open", "High", "Low", "Close")):
+        return None
+    frame = frame.copy()
+    frame.index = pd.DatetimeIndex(frame.index)
+    if "Volume" not in frame:
+        frame["Volume"] = 0.0
+    table = frame[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+    table = table[~table.index.duplicated(keep="last")].reindex(index)
+    table["Volume"] = table["Volume"].fillna(0.0)
+    bars = tuple(None if any(v != v for v in row) else tuple(float(v) for v in row)
+                 for row in table.itertuples(index=False, name=None))
+    return bars if any(b is not None for b in bars) else None
 
 
 def _fomo_frame(get_bars):
@@ -873,7 +897,7 @@ def _fomo_bars(fomo, index):
     return bars, int(read.argmax())
 
 
-def headwind_history(flags, price, price_symbol, fomo=None):
+def headwind_history(flags, price, price_symbol, fomo=None, bars=None):
     """The strips under the price: None unless every headwind in HEADWIND_KEYS has a
     state series, because a count of five possible is not a shorter count of six."""
     if price is None or any(k not in flags for k in HEADWIND_KEYS):
@@ -892,6 +916,7 @@ def headwind_history(flags, price, price_symbol, fomo=None):
         count=tuple(int(v) for v in states.sum(axis=1)),
         total=len(HEADWIND_KEYS),
         fomo=_fomo_bars(fomo, table.index),
+        bars=_price_bars(bars, table.index),
     )
 
 
@@ -1361,10 +1386,14 @@ def build_snapshot(get_bars=None):
     for symbol in UPDOWN_SYMBOLS:
         built[f"{symbol.lower()}_updown"] = updown_headwind(symbol, frames[symbol])
     headwinds = tuple(built[k] for k in HEADWIND_KEYS if built.get(k) is not None)
+    try:
+        price_bars = get_bars(HISTORY_PRICE_SYMBOL, ASSET_TIER)
+    except Exception:  # noqa: BLE001 -- the closes read below names the miss
+        price_bars = None
     history = headwind_history(
         headwind_flags(legs, frames, _closes(get_bars, CREDIT_SYMBOL, CREDIT_TIER), ratio),
         _closes(get_bars, HISTORY_PRICE_SYMBOL, ASSET_TIER), HISTORY_PRICE_SYMBOL,
-        fomo=_fomo_frame(get_bars))
+        fomo=_fomo_frame(get_bars), bars=price_bars)
 
     def quiet(symbol):
         # Context only: a miss here is no card, not a symbol the count is waiting for.
