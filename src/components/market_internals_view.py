@@ -711,16 +711,58 @@ def runs(flags):
     return out
 
 
+def history_price_scale(history):
+    """`(highest log close, log span)`: the price panel's log scale. A price p sits
+    `(high - ln p) / span * HISTORY_PRICE_UNITS` down from the top, which is what the
+    page's script uses to put a bar's high and low, and an average, on the same panel
+    as the line (a high above the highest close is simply above the top)."""
+    import math
+    logs = [math.log(v) for v in history.price]
+    low, high = min(logs), max(logs)
+    return high, (high - low) or 1.0
+
+
 def history_price_points(history):
     """The price as polyline points on a log scale: x a session index, y down from the
     top of HISTORY_PRICE_UNITS."""
     import math
     logs = [math.log(v) for v in history.price]
-    low, high = min(logs), max(logs)
-    span = (high - low) or 1.0
+    high, span = history_price_scale(history)
     recent = max(len(logs) - HISTORY_DAILY_SESSIONS, 0)
     picks = list(range(0, recent, HISTORY_PRICE_STEP)) + list(range(recent, len(logs)))
     return " ".join(f"{i},{(high - logs[i]) / span * HISTORY_PRICE_UNITS:.2f}" for i in picks)
+
+
+#: The price panel's moving averages, (kind, sessions, label, colour): the weekly
+#: watchlist's four (npf `watchlist_price.AVERAGES`), in its colours. The page's script
+#: computes them from the closes it is given, an EMA as pandas' `ewm(span=n,
+#: adjust=False)` and either kind blank until it has n closes behind it.
+HISTORY_AVERAGES = (("ema", 8, "8 EMA", "#FF6FB5"), ("ema", 21, "21 EMA", "#3DBE5B"),
+                    ("sma", 50, "50 SMA", "#E53935"), ("sma", 200, "200 SMA", "#2F5BEA"))
+#: How the price is drawn, (key, label); the first is what a browser with no stored
+#: choice opens on. The markup itself is the line, which is what a reader without the
+#: script sees.
+HISTORY_KINDS = (("candle", "Candles"), ("ohlc", "OHLC"), ("line", "Line"))
+#: Volume is embedded in thousands of shares: three fewer digits a session, and no
+#: reader of a daily volume bar needs the last thousand.
+HISTORY_VOLUME_UNIT = 1000
+HISTORY_VOLUME_LABEL = "Volume"
+
+
+def history_bars(history):
+    """The price's bars as the page embeds them: `{"o": [...], "h", "l", "c", "v"}`, a
+    value a session, prices to the cent and volume in HISTORY_VOLUME_UNIT. A session
+    with no bar carries its close as all four and no volume, so it draws as a tick.
+    None when the history has no bars (the page then draws the line and nothing else)."""
+    if history.bars is None:
+        return None
+    out = {k: [] for k in "ohlcv"}
+    for bar, close in zip(history.bars, history.price):
+        o, h, lo, c, v = bar if bar is not None else (close, close, close, close, 0.0)
+        for key, value in zip("ohlc", (o, h, lo, c)):
+            out[key].append(round(value, 2))
+        out["v"].append(int(round(v / HISTORY_VOLUME_UNIT)))
+    return out
 
 
 def history_year_ticks(history, every=HISTORY_TICK_YEARS):

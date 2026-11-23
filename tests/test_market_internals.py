@@ -601,6 +601,18 @@ def test_breadth_history_needs_every_leg_and_marks_an_unfilled_average():
     assert short.average[4] is not None
 
 
+def test_price_bars_follow_the_history_sessions_and_need_all_four_prices():
+    idx = pd.bdate_range("2024-01-01", periods=4)
+    frame = pd.DataFrame({"Open": [1.0, 2.0, 3.0, 4.0], "High": [2.0, 3.0, 4.0, 5.0],
+                          "Low": [0.5, 1.5, float("nan"), 3.5], "Close": [1.5, 2.5, 3.5, 4.5],
+                          "Volume": [10.0, float("nan"), 30.0, 40.0]}, index=idx)
+    bars = mi._price_bars(frame, idx[1:])
+    assert bars == ((2.0, 3.0, 1.5, 2.5, 0.0), None, (4.0, 5.0, 3.5, 4.5, 40.0))
+    assert mi._price_bars(frame.drop(columns="Volume"), idx[:1]) == ((1.0, 2.0, 0.5, 1.5, 0.0),)
+    assert mi._price_bars(frame[["Close"]], idx) is None       # closes only: the line alone
+    assert mi._price_bars(None, idx) is None
+
+
 def test_the_history_carries_fomos_bars_beside_the_count_not_in_it():
     frames = _universe(200)
     values = [50.0] * 200

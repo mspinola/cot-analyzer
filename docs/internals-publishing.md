@@ -63,6 +63,17 @@ makes no claim about what followed; none has been tested. Each row's name is a
 switch: the bottom row and the shading count only the headwind rows that are on. FOMO's
 extremes are a sixth row, off as the page loads and never in the count.
 
+The QQQ panel over the rows draws like the weekly watchlist's price chart (since
+2026-11-22): candles, OHLC bars or the line; the 8 and 21 EMA and the 50 and 200 SMA in
+the watchlist's colours (`view.HISTORY_AVERAGES`); a volume row; and a drag along the
+plots that moves the window through the history, every row together. The page embeds
+QQQ's bars once (open, high, low, close to the cent, volume in thousands, about 150 KB)
+and the script draws each layer the first time it is asked for, on the line's own log
+scale, so a window is still only a viewBox. The averages are computed in the browser
+from those closes over the whole history, not just the window. Without the script the
+panel is the line it always was. Opens on candles with the averages and volume; the
+choices are kept in the browser beside the window and the row switches.
+
 Outside the count the page also carries (since 2026-11-18): the VIX against VIX3M
 (inverted or normal, with the VIX's percentile since 1990) and under it the MOVE index
 (Treasury implied volatility, its level and percentile since 2002; marketdata's `MOVE`,
