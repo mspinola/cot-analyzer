@@ -175,21 +175,25 @@ def test_a_phone_lifts_the_zoom_buttons_above_the_top_panel_title():
 
 
 def test_the_monitor_row_matches_the_fund_pages_and_marks_this_page():
-    """The same row dbmf-tracker's three templates carry (its tests/test_site_nav.py
-    pins the same list), with Surveys current and the market internals site linked as
-    "Market"."""
+    """Row one of the header dbmf-tracker's `sites.py` draws on the fund pages (its
+    tests/test_site_nav.py pins the same list): the trend funds folded into one entry
+    that points at their summary, then ALLW and ORR, then the two market-context sites
+    after a divider, with Surveys current."""
     links = re.findall(r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>', st._nav())
-    assert links == [("https://dbmf.bluemagicai.com/", "DBMF"),
-                     ("https://ahlt.bluemagicai.com/", "AHLT"),
-                     ("https://orr.bluemagicai.com/", "ORR"),
+    assert links == [("https://trend.bluemagicai.com/", "Trend following"),
                      ("https://allw.bluemagicai.com/", "ALLW"),
+                     ("https://orr.bluemagicai.com/", "ORR"),
                      ("https://surveys.bluemagicai.com/", "Surveys"),
                      ("https://internals.bluemagicai.com/", "Market"),
                      ("https://bluemagicai.com/", "COT Analyzer &rarr;")]
     assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', st._nav()) == ["Surveys"]
-    # The fund pages' placeholder for the monitor not yet published, in their slot.
-    soon = re.search(r'<span class="soon"[^>]*>KISS <small>soon</small></span>', st._nav())
-    assert soon and st._nav().index("ALLW</a>") < soon.start() < st._nav().index("Surveys")
+    # The divider sits between the funds and the market-context pair.
+    div = st._nav().index('<span class="div"')
+    assert st._nav().index("ORR</a>") < div < st._nav().index("Surveys</a>")
+    # No second row here: that one belongs to the trend pages, and the fund pages the
+    # group stands for are not linked one by one.
+    assert 'class="pages"' not in st._nav() and "dbmf.bluemagicai.com" not in st._nav()
+    assert set(st.SITE_TITLES) == {name for name, _ in st.SITES}
 
 
 def test_the_header_is_the_fund_pages_header_with_the_surveys_dates():

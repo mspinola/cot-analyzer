@@ -174,6 +174,8 @@ def test_the_beacon_logs_only_allowlisted_pages():
     # internals.bluemagicai.com, counted under the old app page's own path.
     assert external_page_path('internals') == '/internals'
     assert external_page_path('allw') == '/allw'
+    assert external_page_path('kmlm') == '/kmlm'
+    assert external_page_path('trend') == '/trend'
     for key in ['', None, 'DBMF', '/dbmf', 'ORR', 'AHLT', 'shell.php', '<script>']:
         assert external_page_path(key) is None, key
 

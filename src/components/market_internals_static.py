@@ -780,16 +780,7 @@ def asset_table(rows, awaiting, colors):
 # ── the page ──────────────────────────────────────────────────────────────────
 
 def _nav():
-    links = []
-    for name, url in surveys.SITES:
-        current = ' aria-current="page"' if name == CURRENT else ""
-        links.append(f'<a href="{url}"{current}>{name}</a>')
-        if surveys.SOON and name == surveys.SOON_AFTER:
-            links.append(f'<span class="soon" title="{_esc(surveys.SOON[1])}">'
-                         f'{_esc(surveys.SOON[0])} <small>soon</small></span>')
-    return ('<nav class="sites" aria-label="Monitors"><span class="sep">Monitors</span>'
-            + "".join(links)
-            + f'<a class="home" href="{surveys.HOME}">COT Analyzer &rarr;</a></nav>')
+    return surveys.site_nav(CURRENT)
 
 
 def _header(snap):

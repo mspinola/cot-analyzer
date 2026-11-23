@@ -136,21 +136,32 @@ DESCRIPTION = ("NAAIM exposure and AAII bulls minus bears against SPY, weekly, a
                "indexes with SPY's drawdowns behind them, and AAII members' monthly "
                "split between stocks, bonds and cash since 1987.")
 HOME = "https://bluemagicai.com/"
-#: The monitor row the DBMF, AHLT, ORR and ALLW pages carry, with this page marked current.
-#: Hand-kept in step with dbmf-tracker's templates (its tests/test_site_nav.py names
-#: this file). Market is the market internals page, a site of its own since 2026-11-11
-#: (`market_internals_static`, which draws this same row with itself current).
-SITES = (("DBMF", "https://dbmf.bluemagicai.com/"),
+#: The header every monitor page carries, in two rows (dbmf-tracker docs/design/
+#: trend-summary.md). Row one names the sites, with the trend-following funds folded into
+#: ONE entry that points at their summary; row two, drawn only on the trend pages (so never
+#: by this app), lists that group's pages. A fund outside the group is its own entry.
+#:
+#: Hand-kept in step with dbmf-tracker's `dbmf_tracker/sites.py`, which draws the same
+#: header on the fund pages and cannot be imported here; its tests/test_site_nav.py pins
+#: that side and names this file. `market_internals_static` draws this row with itself
+#: current, and the app's own Monitors menu (`app_cot._MONITOR_EXTERNAL_PAGES`) follows it.
+TREND_GROUP = ("Trend following", "https://trend.bluemagicai.com/")
+#: The group's pages, which the app's Monitors menu lists one by one.
+TREND = (("DBMF", "https://dbmf.bluemagicai.com/"),
          ("AHLT", "https://ahlt.bluemagicai.com/"),
+         ("KMLM", "https://kmlm.bluemagicai.com/"))
+#: Row one after the group. Market is the market internals page, a site of its own since
+#: 2026-11-11.
+SITES = (("ALLW", "https://allw.bluemagicai.com/"),
          ("ORR", "https://orr.bluemagicai.com/"),
-         ("ALLW", "https://allw.bluemagicai.com/"),
          ("Surveys", "https://surveys.bluemagicai.com/"),
          ("Market", "https://internals.bluemagicai.com/"))
+#: Hover text per entry, and the entry the divider between the funds and the
+#: market-context sites is drawn before.
+SITE_TITLES = {"ALLW": "Risk parity", "ORR": "Equity long/short",
+               "Surveys": "Sentiment surveys", "Market": "Market internals"}
+CONTEXT_FROM = "Surveys"
 CURRENT = "Surveys"
-#: The placeholder the fund pages carry for the monitor not yet published, drawn
-#: after this site in the row, as theirs is. (name, hover text); None once KISS ships.
-SOON = ("KISS", "KISS ETF monitor, coming soon")
-SOON_AFTER = "ALLW"
 SOURCES = ("Sources: NAAIM Exposure Index (naaim.org), AAII Sentiment Survey (aaii.com), "
            "SPY total return, CFTC Commitments of Traders (S&P 500 consolidated).")
 #: The same line with the allocation survey named, for a page that carries its cards.
@@ -326,17 +337,21 @@ def _script_json(value):
     return json.dumps(value, separators=(",", ":")).replace("</", "<\\/")
 
 
-def _nav():
-    links = []
+def site_nav(current):
+    """Row one of the monitors header with `current` marked. The markup is
+    dbmf_tracker.sites.nav's for a page outside the trend group, tag for tag."""
+    links = [f'<a href="{TREND_GROUP[1]}">{TREND_GROUP[0]}</a>']
     for name, url in SITES:
-        current = ' aria-current="page"' if name == CURRENT else ""
-        links.append(f'<a href="{url}"{current}>{name}</a>')
-        if SOON and name == SOON_AFTER:
-            links.append(f'<span class="soon" title="{html.escape(SOON[1])}">'
-                         f'{html.escape(SOON[0])} <small>soon</small></span>')
-    return ('<nav class="sites" aria-label="Monitors"><span class="sep">Monitors</span>'
-            + "".join(links)
-            + f'<a class="home" href="{HOME}">COT Analyzer &rarr;</a></nav>')
+        if name == CONTEXT_FROM:
+            links.append('<span class="div" aria-hidden="true"></span>')
+        mark = ' aria-current="page"' if name == current else ""
+        links.append(f'<a href="{url}" title="{html.escape(SITE_TITLES[name])}"{mark}>{name}</a>')
+    return ('<div class="navs"><nav class="sites" aria-label="Monitors">' + "".join(links)
+            + f'<a class="home" href="{HOME}">COT Analyzer &rarr;</a></nav></div>')
+
+
+def _nav():
+    return site_nav(CURRENT)
 
 
 def _provisional(read):
@@ -392,15 +407,14 @@ main {{ max-width: {PAGE_MAX_WIDTH_PX}px; margin: 0 auto; }}
    four monitors read as one set: the Monitors row, then eyebrow, accent ticker and
    title on the left and the as-of on the right. Only the theme differs, this page
    being dark on the app's own colours. */
-nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; margin-bottom: 14px; }}
-nav.sites a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; }}
+.navs {{ margin-bottom: 14px; }}
+nav.sites {{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; }}
+nav.sites a {{ color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }}
 nav.sites a:hover {{ background: var(--wash); color: var(--ink); }}
-nav.sites a[aria-current="page"] {{ color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }}
+nav.sites a[aria-current] {{ color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }}
 nav.sites a:focus-visible {{ outline: 2px solid var(--ticker); outline-offset: 1px; }}
+nav.sites .div {{ width: 1px; height: 14px; background: var(--line); margin: 0 3px; }}
 nav.sites .home {{ margin-left: auto; }}
-nav.sites .sep {{ color: var(--muted); }}
-nav.sites .soon {{ color: var(--muted); padding: 3px 9px; border: 1px dashed var(--line); border-radius: 6px; cursor: default; }}
-nav.sites .soon small {{ font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-left: 3px; }}
 header.top {{ display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }}
 /* The fund pages' body sets 14px/1.5 and their header inherits it; here only the header
    takes it, so the cards keep their own text metrics while the eyebrow and title land
@@ -412,7 +426,7 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 .asof {{ color: var(--ink-2); font-size: 13px; text-align: right; }}
 .asof b {{ color: var(--ink); font-weight: 600; }}
 .asof a {{ color: var(--ink-2); }}
-@media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
+@media (max-width: 600px) {{ nav.sites .home {{ margin-left: 0; }} nav.sites .div {{ display: none; }} .asof {{ text-align: left; }} .card {{ padding: 10px 6px; }} }}
 /* The readings strip: label and percentile badge, value, gauge, tier line, context,
    date. The tier (sentiment.percentile_tier) sets --tone: warm toward the history's
    highs, cool toward its lows, none in between; filled past 90 and 10, outlined past

@@ -22,12 +22,21 @@ def _items(menu_label):
 def test_the_monitors_menu_carries_the_tape_read_and_every_fund_book():
     assert [(i.children, i.href) for i in _items("Monitors")] == [
         ("Market Internals", "https://internals.bluemagicai.com/"),
+        ("Trend Following Summary", "https://trend.bluemagicai.com/"),
         ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
         ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
+        ("KMLM Trend Index", "https://kmlm.bluemagicai.com/"),
         ("ORR Book", "https://orr.bluemagicai.com/"),
         ("ALLW All Weather", "https://allw.bluemagicai.com/"),
         ("Sentiment Surveys", "https://surveys.bluemagicai.com/"),
     ]
+
+
+def test_the_menu_lists_the_trend_funds_the_header_row_folds_into_one_entry():
+    from components import sentiment_static
+    hrefs = [i.href for i in _items("Monitors")]
+    for _, url in (sentiment_static.TREND_GROUP, *sentiment_static.TREND, *sentiment_static.SITES):
+        assert url in hrefs
 
 
 def test_an_off_origin_entry_leaves_the_dash_router_alone():
