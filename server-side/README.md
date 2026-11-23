@@ -77,6 +77,7 @@ git clone git@github.com:mspinola/cot-analyzer.git
 git clone git@github.com:mspinola/cotmetrics.git
 git clone git@github.com:mspinola/cotdata.git
 git clone git@github.com:mspinola/marketdata.git   # bars; ADR-0007 split them from cotdata
+git clone git@github.com:mspinola/cotmetrics-config.git  # private: real universe + lookbacks
 git clone git@github.com:mspinola/npf.git          # optional, research only
 ```
 
@@ -249,8 +250,15 @@ GOATCOUNTER_URL=...          # origin of a GoatCounter instance (no trailing pat
 
 ```bash
 COTMETRICS_CACHE     # -> /root/trading_workspace/cot-analyzer/data_cache
-COTMETRICS_PARAMS    # -> /root/trading_workspace/cot-analyzer/config/params.yaml
+COTMETRICS_PARAMS    # -> /root/trading_workspace/cotmetrics-config/params.yaml
+COT_VIZ_CONFIG       # -> the same file
 ```
+
+Both params variables are set only when the private `cotmetrics-config` checkout exists
+beside this one. It holds the real universe, the tuned `CustomLookbackWeeks` and the
+`CmrLookbackWeeks` behind the "CMR" lookback. `config/params.yaml` in this repo is a
+public SAMPLE (six markets, untuned 52-week lookbacks) and the launcher never points at
+it.
 
 `COTMETRICS_PARAMS` matters more than it looks. Without it, cotmetrics falls back to the
 copy packaged inside the installed package, so the data layer and the viz layer read two
@@ -721,10 +729,11 @@ Code moves by git; data moves by rsync.
 
 ```bash
 ssh USER@HOST '
-  cd /root/trading_workspace/cotdata      && git pull &&
-  cd /root/trading_workspace/marketdata   && git pull &&
-  cd /root/trading_workspace/cotmetrics   && git pull &&
-  cd /root/trading_workspace/cot-analyzer && git pull
+  cd /root/trading_workspace/cotdata           && git pull &&
+  cd /root/trading_workspace/marketdata        && git pull &&
+  cd /root/trading_workspace/cotmetrics        && git pull &&
+  cd /root/trading_workspace/cotmetrics-config && git pull &&
+  cd /root/trading_workspace/cot-analyzer      && git pull
 '
 ssh USER@HOST 'systemctl restart cot-analyzer && systemctl status cot-analyzer'
 ```
@@ -736,8 +745,13 @@ ssh USER@HOST 'systemctl restart cot-analyzer && systemctl status cot-analyzer'
 Editable installs mean a `git pull` in any sibling needs no reinstall, but it **does**
 need the restart, because the running process already imported them.
 
-Pull all four or none. `cot-analyzer` and `cotmetrics` are released together, and a
-version skew shows up as an `AttributeError` at request time rather than at startup.
+Pull all five or none. `cot-analyzer` and `cotmetrics` are released together, and a
+version skew shows up as an `AttributeError` at request time rather than at startup
+(2026-11-20: cotmetrics#64 removed a function cot-analyzer main still called before
+cot-analyzer#237 landed, and every request returned 500 until both were pulled).
+`cotmetrics-config` skews silently instead: a stale checkout is missing whatever a newer
+cotmetrics reads from it, and a missing optional field falls back rather than failing
+(a market without `CmrLookbackWeeks` serves its `CustomLookbackWeeks` as "CMR").
 `marketdata` joined the set with ADR-0007 and skews the same way: `cotmetrics` calls
 `marketdata.get_bars` and `marketdata.schema_version`, so a stale checkout there is a
 price failure inside a healthy-looking COT deployment.
