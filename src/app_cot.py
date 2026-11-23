@@ -671,7 +671,8 @@ _MONITOR_PAGES = local_pages.monitor_entries()
 #: because they are a different site, and losing this app's state to reach a
 #: holdings table is a poor trade.
 #:
-#: The two trend books sit together and the long/short equity book after them:
+#: The trend books sit together, their side-by-side summary first (the entry the
+#: monitor pages' header row folds them into), and the long/short equity book after them:
 #: DBMF and AHLT answer the same question off different funds (what is a
 #: managed-futures program positioned in), so reading one after the other is the
 #: comparison; ORR is a different question entirely, and ALLW (Bridgewater's
@@ -681,8 +682,10 @@ _MONITOR_PAGES = local_pages.monitor_entries()
 #: where it stood when it was a page of this app: the one daily read of the tape.
 _MONITOR_EXTERNAL_PAGES = (
     ("Market Internals", routing.INTERNALS_URL),
+    ("Trend Following Summary", "https://trend.bluemagicai.com/"),
     ("DBMF Positioning", "https://dbmf.bluemagicai.com/"),
     ("AHLT Trend Book", "https://ahlt.bluemagicai.com/"),
+    ("KMLM Trend Index", "https://kmlm.bluemagicai.com/"),
     ("ORR Book", "https://orr.bluemagicai.com/"),
     ("ALLW All Weather", "https://allw.bluemagicai.com/"),
     ("Sentiment Surveys", "https://surveys.bluemagicai.com/"),

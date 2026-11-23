@@ -77,7 +77,8 @@ EXTRA_PATHS = frozenset({'/favicon.ico', '/_favicon.ico',
 #: is the old app page's own, on purpose: `/internals` now redirects to the static
 #: copy, so one path carries the page's views across the move.
 EXTERNAL_PAGES = {'dbmf': '/dbmf', 'orr': '/orr', 'ahlt': '/ahlt', 'surveys': '/surveys',
-                  'internals': '/internals', 'allw': '/allw'}
+                  'internals': '/internals', 'allw': '/allw', 'kmlm': '/kmlm',
+                  'trend': '/trend'}
 
 #: A 1x1 transparent GIF, 43 bytes. Answering with a real image rather than a
 #: 204 keeps a plain <img> beacon from logging a broken-image error in the
