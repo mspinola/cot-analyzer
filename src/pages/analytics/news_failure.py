@@ -56,7 +56,7 @@ if REGISTERED:
     dash.register_page(
         __name__,
         path=PATH,
-        title='News Failure Scan (local) | COT Analyzer',
+        title='News Failure Scan | COT Analyzer',
         description='The daily news-failure scan: every set-up, its gates, the news '
                     'read and the verdict. Local runs only.',
     )
@@ -125,9 +125,14 @@ def layout(**_):
         html.Div([
             html.H4("News failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR,
                                                     "marginBottom": "2px"}),
-            dbc.Badge("local only", color="warning", className="me-2"),
+            dbc.Badge("private", color="warning", className="me-2"),
             html.Span("A crowded market handed news it should obey, visibly refusing it. "
                       "\"No failure\" is the normal day.", style=NOTE_STYLE),
+            # When the newest alert was written. Read per page load, so a day pushed
+            # since the last load shows here on refresh.
+            html.Div(f"Last updated {nf.fmt_time(nf.updated_at())}"
+                     + (f" · newest scan day {dates[0]}" if dates else ""),
+                     style={**NOTE_STYLE, "fontFamily": "monospace", "marginTop": "4px"}),
         ]),
         pickers(dates) if dates else html.Span(),
     ], className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3")
