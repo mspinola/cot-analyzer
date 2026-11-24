@@ -1478,10 +1478,16 @@ table.scorecard-card tbody td {
    A page of this app drawn as one of the monitor pages (surveys., internals., the fund
    pages, and npf's watchlist and timeline): their page colour, two fonts and header.
    Only the news-failure scan uses it. The rules are sentiment_static.base_css's, scoped
-   to .monitor-page so the rest of the app keeps its theme; the app's own navbar stays
-   above it. The negative margin takes the page colour to the edges of the app's
-   fluid container.
+   to .monitor-page so the rest of the app keeps its theme. The negative margin takes
+   the page colour to the edges of the app's fluid container.
+
+   The page stands alone, as the monitors do: while a .monitor-page is on screen the
+   app's navbar is not drawn and the body takes the page colour. The way back to the app
+   is the row's own "COT Analyzer" link. :has() does this with no callback; a browser
+   without it (before 2023) keeps the navbar, which is only the old look.
    ============================================================ */
+body:has(.monitor-page), div:has(.monitor-page) { background-color: #0d1013 !important; }
+body:has(.monitor-page) .navbar-custom { display: none; }
 .monitor-page { --ink: #eef2f5; --ink-2: #b6bfc8; --muted: #7f8993; --line: rgba(255,255,255,0.09);
     --surface: #151a1e; --wash: rgba(255,255,255,0.06);
     background: #0d1013; color: var(--ink-2); margin: 0 -12px; padding: 28px 20px 56px; min-height: 100vh;

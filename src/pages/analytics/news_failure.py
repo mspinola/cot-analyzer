@@ -29,7 +29,8 @@ of the app uses.
 
 Since 2026-11-24 the page is drawn as one of the monitor pages (their page colour, fonts
 and header row, `assets/custom.css` `.monitor-page`), as npf's watchlist and timeline
-are, under the app's own navbar. The header row adds the three pages behind the login
+are, and stands alone as they do: the app's navbar is hidden while it is on screen
+(the `:has()` rule beside those). The header row adds the three pages behind the login
 (`components.news_failure.PRIVATE_SITES`).
 """
 import dash
