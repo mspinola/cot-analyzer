@@ -63,10 +63,43 @@ _DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(md|json)$")
 #: up/down family), and a muted grey for a gate the scanner could not compute.
 PASS, FAIL, UNKNOWN = "#4fc88b", "#f0847a", "#93a39a"
 AMBER = "#e8b94f"
-MUTED = "#ABB8C9"
-BRIGHT = "#E2E8F0"
-PANEL = {"backgroundColor": "rgba(28,28,28,0.55)",
-         "border": "1px solid rgba(255,255,255,0.10)", "borderRadius": "6px"}
+#: The monitor pages' ink, surface and line (`sentiment_static`'s INK_2, INK,
+#: SURFACE_COLOR and LINE_COLOR), since 2026-11-24: this page is drawn as one of them,
+#: as the watchlist and the timeline are, not in the app's own theme.
+MUTED = "#b6bfc8"
+BRIGHT = "#eef2f5"
+FAINT = "#7f8993"
+PAGE = "#0d1013"
+PANEL = {"backgroundColor": "#151a1e",
+         "border": "1px solid rgba(255,255,255,0.09)", "borderRadius": "6px"}
+MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace'
+FONTS_HREF = ("https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700"
+              "&family=JetBrains+Mono:wght@400;500;600&display=swap")
+#: The pages behind the admin login, listed in the monitors' header row after the public
+#: sites. Only these pages draw them, and they only reach a logged-in browser, so the
+#: links are seen only when logged in. Hand-kept in step with the row in npf's
+#: scripts/watchlist_site/index.html (which the timeline's build copies).
+PRIVATE_SITES = (("Watchlist", "/watchlist", "Weekly COT setups"),
+                 ("Timeline", "/timeline", "Market event timeline"),
+                 ("News failure", "/news-failure", "News failure scan"))
+
+
+def site_nav(current="News failure"):
+    """Row one of the monitors' header as Dash components: `sentiment_static.site_nav`'s
+    public entries, built from the same tuples, then the pages behind the login."""
+    from components import sentiment_static as surveys
+    links = [html.A(surveys.TREND_GROUP[0], href=surveys.TREND_GROUP[1])]
+    for name, url in surveys.SITES:
+        if name == surveys.CONTEXT_FROM:
+            links.append(html.Span(className="div", **{"aria-hidden": "true"}))
+        links.append(html.A(name, href=url, title=surveys.SITE_TITLES[name]))
+    links.append(html.Span(className="div", **{"aria-hidden": "true"}))
+    for name, url, title in PRIVATE_SITES:
+        extra = {"aria-current": "page"} if name == current else {}
+        links.append(html.A(name, href=url, title=title, **extra))
+    links.append(html.A("COT Analyzer \u2192", href="/", className="home"))
+    return html.Div(html.Nav(links, className="sites", **{"aria-label": "Monitors"}),
+                    className="navs")
 
 DISCLAIMER = ("Educational research only. Not financial advice and not a recommendation "
               "to buy or sell any instrument.")
@@ -477,7 +510,7 @@ def _gate_pill(label, ok, title):
     return html.Span(f"{label} {mark}", title=title, style={
         "display": "inline-block", "minWidth": "2.6rem", "textAlign": "center",
         "padding": "1px 6px", "marginRight": "4px", "borderRadius": "3px",
-        "fontSize": "0.72rem", "fontFamily": "monospace", "color": color,
+        "fontSize": "0.72rem", "fontFamily": MONO, "color": color,
         "border": f"1px solid {color}"})
 
 
@@ -499,7 +532,7 @@ def size_cell(row):
     fill = min(atr / 2.0, 1.0) * 100
     return html.Div([
         html.Span(f"{_ord(pct)} pct · {atr:.2f}x ATR",
-                  style={"fontFamily": "monospace", "fontSize": "0.8rem", "color": BRIGHT}),
+                  style={"fontFamily": MONO, "fontSize": "0.8rem", "color": BRIGHT}),
         html.Div([
             html.Div(style={"position": "absolute", "left": 0, "top": 0, "bottom": 0,
                             "width": f"{fill}%", "borderRadius": "3px",
@@ -520,9 +553,9 @@ def change_cell(row):
     color = PASS if (chg or 0) > 0 else (FAIL if (chg or 0) < 0 else MUTED)
     return html.Div([
         html.Div(f"{close:,}" if isinstance(close, (int, float)) else "–",
-                 style={"fontFamily": "monospace", "color": BRIGHT}),
+                 style={"fontFamily": MONO, "color": BRIGHT}),
         html.Div(f"{chg:+.2f}%" if chg is not None else "–",
-                 style={"fontFamily": "monospace", "color": color}),
+                 style={"fontFamily": MONO, "color": color}),
     ], style={"textAlign": "right"})
 
 
@@ -621,7 +654,7 @@ def set_up_rows(group, report, judged=True, models=None):
     verdict, conf, vinfo = verdict_of(r, report)
     cols = COLS if judged else NUMERIC_COLS
     dim = {} if r.get("confirmed") else {"opacity": 0.8}
-    mono = {"fontFamily": "monospace", "fontSize": "0.7rem", "color": MUTED}
+    mono = {"fontFamily": MONO, "fontSize": "0.7rem", "color": MUTED}
     market = html.Div([
         html.B(r.get("market", "").title(), style={"color": BRIGHT}),
         html.Div(f"{r.get('symbol')} · {r.get('direction')}", style=mono),
@@ -680,7 +713,7 @@ def stat_tiles(day):
     tiles = (("Set-up markets", c["rows"]), ("Crowded now", c["crowded"]),
              ("Obvious moves", c["obvious"]), ("Failure-eligible", c["eligible"]))
     return html.Div([html.Div([
-        html.Div(str(v), style={"fontFamily": "monospace", "fontSize": "1.4rem",
+        html.Div(str(v), style={"fontFamily": MONO, "fontSize": "1.4rem",
                                 "color": BRIGHT}),
         html.Div(k, style={"fontSize": "0.7rem", "textTransform": "uppercase",
                            "letterSpacing": "0.06em", "color": MUTED})])
@@ -797,7 +830,7 @@ def render_day(day):
                            f"{fmt_time(day.written)}"
                            + (f" · {model_label(day.book)} only" if day.book else ""),
                            style={"color": MUTED, "fontSize": "0.8rem",
-                                  "fontFamily": "monospace"})],
+                                  "fontFamily": MONO})],
                  style={"minWidth": 0}),
         stat_tiles(day),
     ], style={**PANEL, "padding": "14px 16px", "display": "flex", "flexWrap": "wrap",
@@ -851,7 +884,7 @@ def render_day(day):
 def _day_card(entry, symbol, book=None):
     head_style = {"display": "flex", "justifyContent": "space-between",
                   "alignItems": "center", "gap": "12px", "flexWrap": "wrap"}
-    date = html.Span(entry.date, style={"color": BRIGHT, "fontFamily": "monospace",
+    date = html.Span(entry.date, style={"color": BRIGHT, "fontFamily": MONO,
                                         "fontWeight": 600})
     if entry.kind == ABSENT:
         return html.Div([date, html.Span(f"{symbol} was not a set-up"
@@ -911,9 +944,9 @@ def render_history(symbol, entries, name="", book=None):
                   html.Div(f"{entries[-1].date} to {entries[0].date}, newest first"
                            + (f" · {model_label(book)} only" if book else ""),
                            style={"color": MUTED, "fontSize": "0.8rem",
-                                  "fontFamily": "monospace"})]),
+                                  "fontFamily": MONO})]),
         html.Div([html.Div([
-            html.Div(str(v), style={"fontFamily": "monospace", "fontSize": "1.4rem",
+            html.Div(str(v), style={"fontFamily": MONO, "fontSize": "1.4rem",
                                     "color": BRIGHT}),
             html.Div(k, style={"fontSize": "0.7rem", "textTransform": "uppercase",
                                "letterSpacing": "0.06em", "color": MUTED})])
