@@ -50,6 +50,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from dash import dcc, html
@@ -134,6 +135,25 @@ def available_dates(env=None):
                   reverse=True)
 
 
+def updated_at(date=None, env=None):
+    """When a day's alert files were last written, as an aware local datetime, or None.
+
+    With no date, the newest across every day: the page's "last updated". The time is
+    the file's modification time, which the push keeps (rsync -t), so on the server it
+    is when the routine wrote the alert on the operator's Mac, not when it arrived."""
+    d = alerts_dir(env)
+    if not d.is_dir():
+        return None
+    times = [p.stat().st_mtime for p in d.iterdir()
+             if (m := _DATE.match(p.name)) and (date is None or m.group(1) == date)]
+    return datetime.fromtimestamp(max(times)).astimezone() if times else None
+
+
+def fmt_time(when):
+    """"Mon 2026-11-23 21:40 EST", or "unknown"."""
+    return when.strftime("%a %Y-%m-%d %H:%M %Z") if when else "unknown"
+
+
 @dataclass
 class Day:
     date: str
@@ -144,6 +164,13 @@ class Day:
     #: One scanner book to keep, or None for every model. A market two models hold has
     #: a row per model, so an unfiltered board lists it twice.
     book: str = None
+    #: The environment the day was read with, so `written` looks in the same store.
+    env: dict = field(default=None, repr=False, compare=False)
+
+    @property
+    def written(self):
+        """When this day's files were last written (see `updated_at`)."""
+        return updated_at(self.date, self.env)
 
     @property
     def structured(self):
@@ -173,7 +200,7 @@ class Day:
 
 def read_day(date, env=None, book=None):
     d = alerts_dir(env)
-    day = Day(date, book=book or None)
+    day = Day(date, book=book or None, env=env)
     side = d / f"{date}.json"
     if side.is_file():
         try:
@@ -766,7 +793,8 @@ def render_day(day):
         html.Div([html.Div(headline, style={"color": BRIGHT, "fontSize": "1.4rem",
                                             "fontWeight": 600}),
                   html.Div(f"Prices as of {scan.get('prices_newest_data')} · index "
-                           f"dated {index_date(day) or 'unknown'}"
+                           f"dated {index_date(day) or 'unknown'} · written "
+                           f"{fmt_time(day.written)}"
                            + (f" · {model_label(day.book)} only" if day.book else ""),
                            style={"color": MUTED, "fontSize": "0.8rem",
                                   "fontFamily": "monospace"})],

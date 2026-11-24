@@ -387,3 +387,20 @@ def test_slicing_reads_the_scanners_names_before_the_relabel(history_store):
     ng = nf.market_history("NG", env=history_store, book="CMR")
     text = _text(nf.render_history("NG", ng, "Natural Gas", book="CMR"))
     assert "NATURAL GAS (NG) — Raw CLS — LONG" in text
+
+
+def test_the_page_says_when_the_newest_alert_was_written(store):
+    import os
+    alerts = nf.alerts_dir(store)
+    os.utime(alerts / "2026-11-16.md", (1_700_000_000, 1_700_000_000))
+    for name in ("2026-11-17.md", "2026-11-17.json"):
+        os.utime(alerts / name, (1_800_000_000, 1_800_000_000))
+    newest = nf.updated_at(env=store)
+    assert newest.timestamp() == 1_800_000_000
+    assert nf.updated_at("2026-11-16", store).timestamp() == 1_700_000_000
+    assert nf.updated_at("2099-01-01", store) is None
+    assert nf.fmt_time(None) == "unknown"
+    assert nf.fmt_time(newest) == newest.strftime("%a %Y-%m-%d %H:%M %Z")
+    # The day's banner carries its own written time.
+    text = _text(nf.render_day(nf.read_day("2026-11-17", store)))
+    assert "written " + nf.fmt_time(newest) in text
