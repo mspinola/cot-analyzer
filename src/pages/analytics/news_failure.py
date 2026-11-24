@@ -26,6 +26,12 @@ between models only in positioning, so the board prints the facts once and names
 models (`components.news_failure.by_market`). The same day the page took its present
 name and path, and the scanner's first book became Raw CLS on screen, the name the rest
 of the app uses.
+
+Since 2026-11-24 the page is drawn as one of the monitor pages (their page colour, fonts
+and header row, `assets/custom.css` `.monitor-page`), as npf's watchlist and timeline
+are, and stands alone as they do: the app's navbar is hidden while it is on screen
+(the `:has()` rule beside those). The header row adds the three pages behind the login
+(`components.news_failure.PRIVATE_SITES`).
 """
 import dash
 import dash_bootstrap_components as dbc
@@ -34,7 +40,6 @@ from dash.exceptions import PreventUpdate
 
 import components.news_failure as nf
 import local_pages
-import viz_constants as vc
 
 #: `verify-deploy.sh` pins this path as a 404 on the live site.
 PATH = "/news-failure"
@@ -61,7 +66,7 @@ if REGISTERED:
                     'read and the verdict. Local runs only.',
     )
 
-NOTE_STYLE = {"color": vc.TEXT_COLOR, "fontSize": "0.8rem"}
+NOTE_STYLE = {"color": nf.MUTED, "fontSize": "0.8rem"}
 
 
 def date_picker(dates, value):
@@ -109,7 +114,7 @@ def body_for(date, market, window, model=None):
 
 def login_prompt():
     return dbc.Container(html.Div([
-        html.H4("News failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR}),
+        html.H4("News failure scan", style={"color": nf.BRIGHT}),
         html.P(["Log in on the ", html.A("admin page", href="/admin"),
                 " first, then come back here."], style=NOTE_STYLE),
     ]), fluid=True, className="py-3")
@@ -121,29 +126,35 @@ def layout(**_):
     if not local_pages.allowed():
         return login_prompt()
     dates = nf.available_dates()
+    # The monitors' header: the row of sites, then eyebrow and title on the left and the
+    # as-of on the right (the watchlist and timeline pages carry the same one).
+    # When the newest alert was written is read per page load, so a day pushed since
+    # the last load shows on refresh.
+    top = html.Header([
+        html.Div([html.Div(["CMR \u00b7 daily scan ", dbc.Badge("private", color="warning")],
+                           className="eyebrow"),
+                  html.H1("News Failure Scan")]),
+        html.Div([f"Last updated {nf.fmt_time(nf.updated_at())}"]
+                 + ([html.Br(), f"newest scan day {dates[0]}"] if dates else []),
+                 className="asof"),
+    ], className="top")
     head = html.Div([
-        html.Div([
-            html.H4("News failure scan", style={"color": vc.BRIGHTER_TEXT_COLOR,
-                                                    "marginBottom": "2px"}),
-            dbc.Badge("private", color="warning", className="me-2"),
-            html.Span("A crowded market handed news it should obey, visibly refusing it. "
-                      "\"No failure\" is the normal day.", style=NOTE_STYLE),
-            # When the newest alert was written. Read per page load, so a day pushed
-            # since the last load shows here on refresh.
-            html.Div(f"Last updated {nf.fmt_time(nf.updated_at())}"
-                     + (f" · newest scan day {dates[0]}" if dates else ""),
-                     style={**NOTE_STYLE, "fontFamily": "monospace", "marginTop": "4px"}),
-        ]),
+        html.Span("A crowded market handed news it should obey, visibly refusing it. "
+                  "\"No failure\" is the normal day.", style=NOTE_STYLE),
         pickers(dates) if dates else html.Span(),
-    ], className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3")
+    ], className="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3")
     if not dates:
         body = html.Div(f"No alerts found under {nf.alerts_dir()}. Set "
                         f"{nf.ENV} to the cmrdata_store checkout.", style=NOTE_STYLE)
     else:
         body = body_for(dates[0], None, DEFAULT_WINDOW, nf.DEFAULT_MODEL)
-    return dbc.Container([head, html.Div(body, id=BODY),
-                          html.P(nf.DISCLAIMER, style={**NOTE_STYLE, "marginTop": "16px"})],
-                         fluid=True, className="py-3", style={"maxWidth": "1400px"})
+    # `monitor-page` (assets/custom.css) carries the monitors' page colour, fonts and
+    # header rules, scoped to this page so the rest of the app keeps its own theme.
+    return html.Div(dbc.Container(
+        [html.Link(rel="stylesheet", href=nf.FONTS_HREF), nf.site_nav(), top, head,
+         html.Div(body, id=BODY),
+         html.P(nf.DISCLAIMER, style={**NOTE_STYLE, "color": nf.FAINT, "marginTop": "16px"})],
+        fluid=True, style={"maxWidth": "1400px"}), className="monitor-page")
 
 
 if REGISTERED:

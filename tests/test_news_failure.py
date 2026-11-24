@@ -404,3 +404,15 @@ def test_the_page_says_when_the_newest_alert_was_written(store):
     # The day's banner carries its own written time.
     text = _text(nf.render_day(nf.read_day("2026-11-17", store)))
     assert "written " + nf.fmt_time(newest) in text
+
+
+def test_the_header_row_lists_the_monitors_then_the_pages_behind_the_login():
+    from components import sentiment_static as surveys
+    row = nf.site_nav()
+    links = [c for c in row.children.children if getattr(c, "href", None)]
+    hrefs = [a.href for a in links]
+    # the public monitors exactly as their own pages list them, then the private three
+    assert hrefs[:1 + len(surveys.SITES)] == [surveys.TREND_GROUP[1]] + [u for _, u in surveys.SITES]
+    assert hrefs[-4:-1] == ["/watchlist", "/timeline", "/news-failure"] and hrefs[-1] == "/"
+    current = [a.children for a in links if getattr(a, "aria-current", None) == "page"]
+    assert current == ["News failure"]

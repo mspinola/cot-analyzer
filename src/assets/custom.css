@@ -1455,21 +1455,57 @@ table.scorecard-card tbody td {
 /* News-failure scan page (local only): an alert file rendered as written, for days before the
    structured sidecar. The alerts carry a fixed-width board in a code fence and one
    markdown table per market; both need to read on the dark theme without wrapping. */
-.nf-md { color: #ABB8C9; font-size: 0.85rem; }
-.nf-md h1 { font-size: 1.3rem; color: #E2E8F0; }
-.nf-md h2 { font-size: 1.05rem; color: #E2E8F0; margin-top: 1.4rem;
+.nf-md { color: #b6bfc8; font-size: 0.85rem; }
+.nf-md h1 { font-size: 1.3rem; color: #eef2f5; }
+.nf-md h2 { font-size: 1.05rem; color: #eef2f5; margin-top: 1.4rem;
              padding-top: 0.6rem; border-top: 1px solid rgba(255,255,255,0.08); }
-.nf-md pre { background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 4px;
+.nf-md pre { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 4px;
               font-size: 0.75rem; line-height: 1.35; overflow-x: auto; }
 .nf-md table { border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.8rem; }
 .nf-md th, .nf-md td { border-top: 1px solid rgba(255,255,255,0.08);
                          padding: 4px 10px; vertical-align: top; }
-.nf-md th { color: #E2E8F0; background: rgba(255,255,255,0.04); }
+.nf-md th { color: #eef2f5; background: rgba(255,255,255,0.04); }
 .nf-md td:first-child { white-space: nowrap; font-weight: 500; }
-.nf-md strong { color: #E2E8F0; }
+.nf-md strong { color: #eef2f5; }
 .nf-md a { color: #7fb8e6; }
 /* One market's section sliced out of an alert (the history view): the heading may be
    h2 or h3 depending on the month, and the first one needs no rule above it. */
-.nf-md-slice h2, .nf-md-slice h3 { font-size: 0.95rem; color: #E2E8F0;
+.nf-md-slice h2, .nf-md-slice h3 { font-size: 0.95rem; color: #eef2f5;
                                      margin-top: 0.9rem; }
 .nf-md-slice > :first-child { margin-top: 0.5rem; padding-top: 0; border-top: 0; }
+
+/* ============================================================
+   A page of this app drawn as one of the monitor pages (surveys., internals., the fund
+   pages, and npf's watchlist and timeline): their page colour, two fonts and header.
+   Only the news-failure scan uses it. The rules are sentiment_static.base_css's, scoped
+   to .monitor-page so the rest of the app keeps its theme. The negative margin takes
+   the page colour to the edges of the app's fluid container.
+
+   The page stands alone, as the monitors do: while a .monitor-page is on screen the
+   app's navbar is not drawn and the body takes the page colour. The way back to the app
+   is the row's own "COT Analyzer" link. :has() does this with no callback; a browser
+   without it (before 2023) keeps the navbar, which is only the old look.
+   ============================================================ */
+body:has(.monitor-page), div:has(.monitor-page) { background-color: #0d1013 !important; }
+body:has(.monitor-page) .navbar-custom { display: none; }
+.monitor-page { --ink: #eef2f5; --ink-2: #b6bfc8; --muted: #7f8993; --line: rgba(255,255,255,0.09);
+    --surface: #151a1e; --wash: rgba(255,255,255,0.06);
+    background: #0d1013; color: var(--ink-2); margin: 0 -12px; padding: 28px 20px 56px; min-height: 100vh;
+    font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; }
+.monitor-page .navs { margin-bottom: 14px; }
+.monitor-page nav.sites { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12.5px; line-height: 1.5; }
+.monitor-page nav.sites a { color: var(--ink-2); text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+.monitor-page nav.sites a:hover { background: var(--wash); color: var(--ink); }
+.monitor-page nav.sites a[aria-current] { color: var(--ink); font-weight: 600; border-color: var(--line); background: var(--surface); }
+.monitor-page nav.sites .div { width: 1px; height: 14px; background: var(--line); margin: 0 3px; }
+.monitor-page nav.sites .home { margin-left: auto; }
+.monitor-page header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; line-height: 1.5; }
+.monitor-page .eyebrow { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.monitor-page .eyebrow .badge { letter-spacing: 0; text-transform: none; margin-left: 4px; }
+.monitor-page h1 { color: var(--ink); margin: 2px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; }
+.monitor-page .asof { color: var(--ink-2); font-size: 13px; text-align: right; }
+@media (max-width: 600px) {
+    .monitor-page { padding: 16px 10px 40px; }
+    .monitor-page nav.sites .home { margin-left: 0; } .monitor-page nav.sites .div { display: none; }
+    .monitor-page .asof { text-align: left; }
+}
