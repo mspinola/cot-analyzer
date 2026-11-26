@@ -1130,6 +1130,10 @@ def columns_figure(read, colors, palette):
         _columns(fig, f["comm"].dropna().round(1), "ES commercials", palette[COMM_SLOT], 4,
                  "%{y}% of OI<extra>ES commercials</extra>")
     fig.update_yaxes(zeroline=True, zerolinecolor=vc.GRID_COLOR, zerolinewidth=1)
+    # Dates by declaration, not by inference: the published page folds panels by hiding
+    # their traces, and an axis left with nothing visible to infer from fell back to
+    # plain numbers (-1 to 6 under a folded bottom panel, 2026-11-26).
+    fig.update_xaxes(type="date")
     if not f.empty:
         fig.update_xaxes(range=open_range(read))
     range_buttons(fig)
