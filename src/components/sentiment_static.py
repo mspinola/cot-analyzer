@@ -248,6 +248,13 @@ BLOCK_SURVEY = {"naaim": NAAIM, "votes": AAII, "bulls_bears": AAII}
 #: Folded cards are remembered in this viewer's browser only (localStorage), a
 #: per-reader convenience; the page renders every card open without it.
 FOLD_STORE_KEY = "surveys-folded"
+#: The weekly columns chart's panels fold one by one, from their titles (2026-11-26,
+#: "make each of the weekly columns panel charts foldable"). One figure, not four: the
+#: panels share one x axis, so a zoom or a range button moves all four, and splitting
+#: them would lose that. A folded panel keeps its title (the click target) and gives
+#: its height back, so the chart shrinks rather than leaving a gap. Remembered per
+#: browser like the card folds, as the panels' indexes top to bottom.
+PANEL_STORE_KEY = "surveys-folded-panels"
 
 
 def survey_tiles(read):
@@ -606,6 +613,7 @@ footer .prov {{ margin: 0 0 6px; }}
 .card.folded > :not(h2) {{ display: none; }}
 .card.folded h2 {{ margin: 0; }}
 .off {{ display: none !important; }}
+#{COLUMNS_ID} .annotation, #{COLUMNS_ID} .annotation * {{ cursor: pointer; }}
 </style>
 <script src="{plotly_js_url()}" charset="utf-8"></script>
 </head>
@@ -703,6 +711,59 @@ footer .prov {{ margin: 0 0 6px; }}
     return {{data: fig.data.filter(function (t) {{
       return !(otherSurvey(t) || (!BANDS && isBand(t))); }}), layout: layout}};
   }}
+  // The columns chart with its folded panels taken out. Each panel is a y axis; the
+  // first annotations are the panels' titles, top to bottom (make_subplots order). The
+  // gaps between panels (each title's room) are kept in pixels, an open panel keeps
+  // its height, a folded one drops to nothing and its traces hide; the figure's height
+  // is what is left, so nothing under the chart moves into a hole.
+  var PANELS = (function () {{
+    try {{ return JSON.parse(localStorage.getItem('{PANEL_STORE_KEY}')) || []; }}
+    catch (e) {{ return []; }}
+  }})();
+  function columnsFigure(fig) {{
+    var layout = JSON.parse(JSON.stringify(fig.layout));
+    var axes = Object.keys(layout).filter(function (k) {{ return /^yaxis\\d*$/.test(k); }})
+      .sort(function (a, b) {{ return layout[b].domain[1] - layout[a].domain[1]; }});
+    var m = layout.margin || {{}}, t = m.t || 0, b = m.b || 0;
+    var plotH = layout.height - t - b, prevBottom = 0, newPlotH = 0;
+    var rows = axes.map(function (ax, i) {{
+      var top = (1 - layout[ax].domain[1]) * plotH;
+      var h = (layout[ax].domain[1] - layout[ax].domain[0]) * plotH;
+      var row = {{ax: ax, gap: top - prevBottom, h: PANELS.indexOf(i) >= 0 ? 0 : h,
+                 folded: PANELS.indexOf(i) >= 0}};
+      prevBottom = top + h;
+      newPlotH += row.gap + row.h;
+      return row;
+    }});
+    newPlotH += plotH - prevBottom;
+    var cursor = 0, hidden = {{}};
+    rows.forEach(function (r, i) {{
+      cursor += r.gap;
+      var hi = 1 - cursor / newPlotH;
+      cursor += r.h;
+      var lo = r.folded ? Math.max(0, hi - 0.001) : 1 - cursor / newPlotH;
+      layout[r.ax].domain = [lo, hi];
+      if (r.folded) {{
+        layout[r.ax].visible = false;
+        hidden[r.ax.replace('yaxis', 'y')] = true;
+      }}
+      var ann = layout.annotations[i];
+      ann.y = hi;
+      ann.captureevents = true;
+      ann.text = (r.folded ? '\u25b8 ' : '\u25be ') + ann.text;
+    }});
+    layout.height = newPlotH + t + b;
+    var data = fig.data.map(function (tr) {{
+      return hidden[tr.yaxis || 'y'] ? Object.assign({{}}, tr, {{visible: false}}) : tr;
+    }});
+    return {{data: data, layout: layout}};
+  }}
+  function drawColumns() {{
+    var fig = columnsFigure(DATA[String(YEARS)].columns);
+    var done = Plotly.react(plotOf('{COLUMNS_ID}'), fig.data,
+                            fitted(fig.layout, '{COLUMNS_ID}'), CONFIG);
+    Promise.resolve(done).then(function () {{ refitNow('{COLUMNS_ID}'); }});
+  }}
   function drawPrice() {{
     var fig = priceFigure(DATA[String(YEARS)]);
     var done = Plotly.react(plotOf('{PRICE_ID}'), fig.data, fitted(fig.layout, '{PRICE_ID}'), CONFIG);
@@ -714,7 +775,8 @@ footer .prov {{ margin: 0 0 6px; }}
     IDS.forEach(function (id) {{
       // As read does not follow the lookback, so a flip leaves that chart alone.
       if (id === '{PRICE_ID}' && !first && SCALE === '{sentiment.SCALE_RAW}') {{ return; }}
-      var fig = id === '{PRICE_ID}' ? priceFigure(d) : d[KEYS[id]];
+      var fig = id === '{PRICE_ID}' ? priceFigure(d)
+        : id === '{COLUMNS_ID}' ? columnsFigure(d[KEYS[id]]) : d[KEYS[id]];
       var fn = first ? Plotly.newPlot : Plotly.react;
       var done = fn(plotOf(id), fig.data, fitted(fig.layout, id), CONFIG);
       // A first draw on a desktop is already fitted to its window by the server. A
@@ -741,6 +803,12 @@ footer .prov {{ margin: 0 0 6px; }}
     }});
   }}
   draw({sentiment.DEFAULT_LOOKBACK}, true);
+  plotOf('{COLUMNS_ID}').on('plotly_clickannotation', function (ev) {{
+    var i = ev.index, at = PANELS.indexOf(i);
+    if (at >= 0) {{ PANELS.splice(at, 1); }} else {{ PANELS.push(i); }}
+    try {{ localStorage.setItem('{PANEL_STORE_KEY}', JSON.stringify(PANELS)); }} catch (e) {{}}
+    drawColumns();
+  }});
   {_script_json([list(c) for c in GRID_CARDS])}.forEach(function (card) {{
     var id = card[0], blocks = DATA[card[1]];
     if (!blocks) {{ return; }}

@@ -403,3 +403,24 @@ def test_the_filter_marks_tiles_and_blocks_and_never_hides_itself():
     assert f'data-key="{st.STOCKS_KEY}" data-survey="aaii"' in body
     # The price chart drops the other survey's traces, by name.
     assert "n.indexOf('AAII') === 0" in page and "'#' + v" in page
+
+
+def test_the_columns_chart_folds_panel_by_panel_from_its_titles():
+    page = st.render(_reads(), COLORS, PALETTE)
+    # Drawn through the folding step on every lookback draw, and redrawn on a click.
+    assert ": id === '" + st.COLUMNS_ID + "' ? columnsFigure(d[KEYS[id]])" in page
+    assert "plotOf('" + st.COLUMNS_ID + "').on('plotly_clickannotation'" in page
+    assert f"localStorage.getItem('{st.PANEL_STORE_KEY}')" in page
+    assert f"#{st.COLUMNS_ID} .annotation, #{st.COLUMNS_ID} .annotation * {{ cursor: pointer; }}" in page
+    # The script's assumption: one title annotation per panel, in panel order.
+    fig = _payload(page)[str(s.DEFAULT_LOOKBACK)]["columns"]["layout"]
+    axes = sorted((k for k in fig if k.startswith("yaxis")),
+                  key=lambda k: -fig[k]["domain"][1])
+    titles = fig["annotations"][:len(axes)]
+    assert [round(a["y"], 6) for a in titles] == [round(fig[k]["domain"][1], 6) for k in axes]
+
+
+def test_the_columns_x_axes_are_dates_even_with_nothing_visible():
+    fig = s.columns_figure(_reads()[s.DEFAULT_LOOKBACK], COLORS, PALETTE)
+    assert all(fig.layout[k].type == "date" for k in fig.layout
+               if k.startswith("xaxis") and fig.layout[k] is not None)
