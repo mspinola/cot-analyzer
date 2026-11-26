@@ -334,7 +334,8 @@ def test_the_published_page_names_the_allocation_survey_outside_its_cards():
     assert strip.count('<div class="tile tier-') == 3
     assert strip.index('data-key="aaii"') < strip.index(f'data-key="{st.STOCKS_KEY}"')
     assert f'<div class="value">{tile["value"]}</div>' in strip
-    notes = html.split(f'<div class="notes" id="{st.ALLOCATION_NOTES_ID}">')[1].split("</div>")[0]
+    notes = html.split(f'<div class="notes" id="{st.ALLOCATION_NOTES_ID}" data-survey="aaii">'
+                       )[1].split("</div>")[0]
     assert notes.count("<p>") == len(aa.caption(alloc)) and "Context, not signal" in notes
     # Outside the two elements the lookback toggle rewrites.
     assert html.index('id="notes"') < html.index(f'id="{st.ALLOCATION_NOTES_ID}"')

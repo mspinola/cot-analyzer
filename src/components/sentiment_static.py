@@ -26,7 +26,8 @@ What the static page keeps from the app, and how:
 week and month, their recent rows), which the lookback toggle never changes; NAAIM
 first, in the tiles' order (its card since 2026-11-12). The toggle follows, directly
 above the two cards it redraws (sentiment against price, weekly columns), and the
-allocation-against-price history closes the page. Until 2026-11-10 the columns sat
+allocation-against-price history follows, then the say-against-do chart
+(`aaii_say_do`, since 2026-11-26) closes the page. Until 2026-11-10 the columns sat
 last, three cards below the toggle that drives them; until 2026-11-12 the votes and
 allocation cards sat below the charts. The allocation survey has its own notes
 (`aaii_allocation.caption`), outside `#notes`, which the toggle rewrites.
@@ -87,7 +88,14 @@ from pathlib import Path
 import plotly.offline
 
 import viz_constants as vc
-from components import aaii_allocation, aaii_votes, naaim_card, percentiles_card, sentiment
+from components import (
+    aaii_allocation,
+    aaii_say_do,
+    aaii_votes,
+    naaim_card,
+    percentiles_card,
+    sentiment,
+)
 
 
 def plotly_js_url():
@@ -220,6 +228,26 @@ ALLOCATION_NOTES_ID = "allocation-notes"
 READINGS_ID = "readings"
 STOCKS_KEY = "stocks"
 ALLOCATION_PRICE_KEY = "allocation_price"
+#: Say against do (`aaii_say_do`): one figure, drawn once and re-fitted like the
+#: allocation chart, closing the page under it.
+SAY_DO_ID = "say-do"
+SAY_DO_KEY = "say_do"
+#: The survey filter (2026-11-26, "is there a good way to filter to just show naaim or
+#: aaii"). Every card, tile and percentile block carries `data-survey`; one marked BOTH
+#: stays under either filter. The price chart, the one card that draws both surveys on
+#: one panel, drops the other survey's traces instead (by trace name, NAAIM... or
+#: AAII...). The weekly columns chart stays whole: each survey is its own panel there,
+#: and dropping one would leave an empty panel. The filter rides in the URL hash
+#: (#naaim, #aaii), so a filtered view can be linked.
+BOTH, NAAIM, AAII = "both", "naaim", "aaii"
+FILTER_ID = "survey-filter"
+SURVEY_FILTERS = (("all", "All"), (NAAIM, "NAAIM"), (AAII, "AAII"))
+#: The readings tiles' and the percentiles card's blocks, by key.
+TILE_SURVEY = {"naaim": NAAIM, "aaii": AAII, STOCKS_KEY: AAII}
+BLOCK_SURVEY = {"naaim": NAAIM, "votes": AAII, "bulls_bears": AAII}
+#: Folded cards are remembered in this viewer's browser only (localStorage), a
+#: per-reader convenience; the page renders every card open without it.
+FOLD_STORE_KEY = "surveys-folded"
 
 
 def survey_tiles(read):
@@ -277,7 +305,8 @@ def _tiles(tiles):
     out = []
     for t in tiles:
         badge, body, tier = rank(t) if t.get("rank") else ("", "", sentiment.TIER_MID)
-        out.append(f'<div class="tile tier-{tier}" data-key="{esc(t["key"])}">'
+        out.append(f'<div class="tile tier-{tier}" data-key="{esc(t["key"])}"'
+                   f' data-survey="{TILE_SURVEY.get(t["key"], BOTH)}">'
                    f'<div class="head"><div class="label">{esc(t["label"])}</div>{badge}</div>'
                    f'<div class="value">{esc(t["value"])}</div>'
                    + body + context(t)
@@ -459,10 +488,10 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
   .tile {{ padding: 8px 12px; }}
   .tile .value {{ font-size: 1.5rem; }}
 }}
-.lookback {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
-.lookback button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
+.lookback, .pick {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-bottom: 14px; }}
+.lookback button, .pick button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
   font-size: 10px; padding: 2px 8px; cursor: pointer; }}
-.lookback button[aria-pressed="true"] {{ border-color: var(--ink); }}
+.lookback button[aria-pressed="true"], .pick button[aria-pressed="true"] {{ border-color: var(--ink); }}
 .switches {{ display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.8rem; margin: 2px 0 8px; }}
 .switches > span {{ display: flex; align-items: center; gap: 6px; }}
 .switches button {{ background: var(--accent); color: var(--ink); border: 1px solid transparent; border-radius: 3px;
@@ -481,10 +510,11 @@ h1 .tk {{ font-family: var(--mono); font-weight: 600; color: var(--ticker); }}
 
 
 def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=None,
-           allocation=None, naaim=None):
+           allocation=None, naaim=None, say_do=None):
     """The page for `reads`, a {lookback years: SentimentRead} with the default included,
-    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`) and `allocation`
-    (`aaii_allocation.read()`), each of whose cards is left out when it is None.
+    `naaim` (`naaim_card.read()`), `votes` (`aaii_votes.read()`), `allocation`
+    (`aaii_allocation.read()`) and `say_do` (`aaii_say_do.read()`), each of whose cards
+    is left out when it is None.
 
     Raises ValueError when the default lookback is missing or any read is empty, so a
     failed store read stops the publish rather than putting an empty page up.
@@ -515,6 +545,9 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
         spy = reads[sentiment.DEFAULT_LOOKBACK].frame.get("spy")
         payload[ALLOCATION_PRICE_KEY] = json.loads(
             aaii_allocation.price_figure(allocation, spy, colors).to_json())
+    if say_do is not None:
+        payload[SAY_DO_KEY] = json.loads(aaii_say_do.figure(
+            say_do, reads[sentiment.DEFAULT_LOOKBACK].frame.get("spy"), colors).to_json())
     default = payload[str(sentiment.DEFAULT_LOOKBACK)]
     stamp = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     js = clientside_js if clientside_js is not None else CLIENTSIDE_JS.read_text(encoding="utf-8")
@@ -543,7 +576,8 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
     allocation_notes = ""
     if allocation is not None:
         tiles.append(stocks_tile(allocation))
-        allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}">'
+        allocation_notes = (f'<div class="notes" id="{ALLOCATION_NOTES_ID}"'
+                            f' data-survey="{AAII}">'
                             + "".join(f"<p>{esc(p)}</p>"
                                       for p in aaii_allocation.caption(allocation))
                             + '</div>\n')
@@ -564,6 +598,14 @@ def render(reads, colors, palette, generated_at=None, clientside_js=None, votes=
 .notes p, footer {{ font-size: 0.8rem; line-height: 1.45; }}
 footer {{ color: var(--muted); border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; }}
 footer .prov {{ margin: 0 0 6px; }}
+/* Folding: the card title is the toggle; a folded card keeps only its title. */
+.card h2 .fold {{ all: unset; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }}
+.card h2 .fold::before {{ content: "\\25BE"; color: var(--muted); display: inline-block; width: 0.8em; transition: transform 0.15s; }}
+.card.folded h2 .fold::before {{ transform: rotate(-90deg); }}
+.card h2 .fold:focus-visible {{ outline: 1px solid var(--ink); outline-offset: 2px; }}
+.card.folded > :not(h2) {{ display: none; }}
+.card.folded h2 {{ margin: 0; }}
+.off {{ display: none !important; }}
 </style>
 <script src="{plotly_js_url()}" charset="utf-8"></script>
 </head>
@@ -571,12 +613,10 @@ footer .prov {{ margin: 0 0 6px; }}
 <main>
 {_nav()}
 {_header(reads[sentiment.DEFAULT_LOOKBACK], allocation)}
-{_tiles(tiles)}{_percentiles_card([k for k, _ in pct_blocks]) if pct_blocks else ""}{_naaim_card() if naaim is not None else ""}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
-<section class="card"><h2>{esc(sentiment.PRICE_TITLE)}</h2>
-{_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}{switches}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
-<section class="card"><h2>{esc(sentiment.COLUMNS_TITLE)}</h2>
-<div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
-{_allocation_price_card() if allocation is not None else ""}<div class="notes" id="notes">{notes}</div>
+{_survey_filter()}{_tiles(tiles)}{_percentiles_card([k for k, _ in pct_blocks]) if pct_blocks else ""}{_naaim_card() if naaim is not None else ""}{_votes_card() if votes is not None else ""}{_allocation_card() if allocation is not None else ""}<div class="lookback" role="group" aria-label="Index lookback"><span>Index lookback</span>{buttons}</div>
+{_card_open(sentiment.PRICE_TITLE, PRICE_ID, BOTH)}{_sub(sentiment.PRICE_SUBTITLE, sentiment.PRICE_HOW_TO_READ)}{switches}<div id="{PRICE_ID}"><div class="plot"></div></div></section>
+{_card_open(sentiment.COLUMNS_TITLE, COLUMNS_ID, BOTH)}<div id="{COLUMNS_ID}"><div class="plot"></div></div></section>
+{_allocation_price_card() if allocation is not None else ""}{_say_do_card() if say_do is not None else ""}<div class="notes" id="notes">{notes}</div>
 {allocation_notes}<footer>{_provisional(reads[sentiment.DEFAULT_LOOKBACK])}{esc(SOURCES if allocation is None else SOURCES_ALLOCATION)} Not investment advice.</footer>
 </main>
 <script>window.SURVEYS_META={{"generated_at":"{esc(stamp)}"}};</script>
@@ -591,7 +631,7 @@ footer .prov {{ margin: 0 0 6px; }}
   var CONFIG = {{displayModeBar: false, responsive: true}};
   var IDS = ['{PRICE_ID}', '{COLUMNS_ID}'];
   // Drawn once (no lookback), re-fitted on zoom like the two above.
-  var ONCE = {{'{ALLOCATION_PRICE_ID}': '{ALLOCATION_PRICE_KEY}'}};
+  var ONCE = {{'{ALLOCATION_PRICE_ID}': '{ALLOCATION_PRICE_KEY}', '{SAY_DO_ID}': '{SAY_DO_KEY}'}};
   var KEYS = {{'{PRICE_ID}': 'price', '{COLUMNS_ID}': 'columns'}};
   var refit = window.dash_clientside.clientside.autoscale_y_axes;
   var PHONE = window.matchMedia('{PHONE_QUERY}').matches;
@@ -646,13 +686,22 @@ footer .prov {{ margin: 0 0 6px; }}
   // shading is every shape and trace in a drawdown legend group, dropped here.
   var YEARS = {sentiment.DEFAULT_LOOKBACK}, SCALE = '{sentiment.SCALE_INDEX}', BANDS = true, SPY = true;
   function isBand(o) {{ return (o.legendgroup || '').indexOf('drawdown') === 0; }}
+  // The survey filter: 'all', '{NAAIM}' or '{AAII}'. On the price chart it drops the
+  // other survey's traces, named for their survey ("NAAIM ...", "AAII ...").
+  var FILTER = 'all';
+  function otherSurvey(t) {{
+    var n = t.name || '';
+    return (FILTER === '{NAAIM}' && n.indexOf('AAII') === 0) ||
+           (FILTER === '{AAII}' && n.indexOf('NAAIM') === 0);
+  }}
   function priceFigure(d) {{
     var sfx = SPY ? '' : '{NO_SPY}';
     var fig = SCALE === '{sentiment.SCALE_RAW}' ? DATA['{PRICE_RAW_KEY}' + sfx] : d['price' + sfx];
-    if (BANDS) {{ return fig; }}
-    return {{data: fig.data.filter(function (t) {{ return !isBand(t); }}),
-            layout: Object.assign({{}}, fig.layout, {{shapes: (fig.layout.shapes || []).filter(
-              function (s) {{ return !isBand(s); }})}})}};
+    if (BANDS && FILTER === 'all') {{ return fig; }}
+    var layout = BANDS ? fig.layout : Object.assign({{}}, fig.layout, {{shapes: (
+      fig.layout.shapes || []).filter(function (s) {{ return !isBand(s); }})}});
+    return {{data: fig.data.filter(function (t) {{
+      return !(otherSurvey(t) || (!BANDS && isBand(t))); }}), layout: layout}};
   }}
   function drawPrice() {{
     var fig = priceFigure(DATA[String(YEARS)]);
@@ -715,6 +764,63 @@ footer .prov {{ margin: 0 0 6px; }}
       if (b.dataset.years !== String(YEARS)) {{ draw(b.dataset.years, false); }}
     }});
   }});
+  // Plotly sizes a plot when it is drawn; one drawn or resized while hidden comes back
+  // at the wrong width, so every plot in an element is resized when it shows again.
+  // Only displayed plots: Plotly rejects a resize of a hidden one (a filtered-out
+  // block inside a shown card, say), asynchronously, so a try would not catch it.
+  function resizeIn(el) {{
+    el.querySelectorAll('.js-plotly-plot').forEach(function (p) {{
+      if (p.offsetParent === null) {{ return; }}
+      Promise.resolve(Plotly.Plots.resize(p)).catch(function (e) {{ console.error(e); }});
+    }});
+  }}
+  function setFilter(v, first) {{
+    if (['all', '{NAAIM}', '{AAII}'].indexOf(v) < 0) {{ v = 'all'; }}
+    if (v === FILTER && !first) {{ return; }}
+    FILTER = v;
+    document.querySelectorAll('[data-survey]').forEach(function (el) {{
+      var s = el.dataset.survey;
+      el.classList.toggle('off', v !== 'all' && s !== '{BOTH}' && s !== v);
+    }});
+    document.querySelectorAll('#{FILTER_ID} button').forEach(function (b) {{
+      b.setAttribute('aria-pressed', b.dataset.show === v ? 'true' : 'false');
+    }});
+    drawPrice();
+    document.querySelectorAll('.card:not(.off):not(.folded)').forEach(resizeIn);
+    if (!first) {{
+      try {{ history.replaceState(null, '', v === 'all'
+        ? location.pathname + location.search : '#' + v); }} catch (e) {{}}
+    }}
+  }}
+  document.querySelectorAll('#{FILTER_ID} button').forEach(function (b) {{
+    b.addEventListener('click', function () {{ setFilter(b.dataset.show, false); }});
+  }});
+  if (location.hash) {{ setFilter(location.hash.slice(1), true); }}
+  // Folding. The folded cards are remembered in this browser only, and a page whose
+  // storage is blocked opens with every card open.
+  function savedFolds() {{
+    try {{ return JSON.parse(localStorage.getItem('{FOLD_STORE_KEY}')) || []; }}
+    catch (e) {{ return []; }}
+  }}
+  function saveFolds() {{
+    try {{
+      localStorage.setItem('{FOLD_STORE_KEY}', JSON.stringify(Array.prototype.map.call(
+        document.querySelectorAll('.card.folded'), function (c) {{ return c.dataset.card; }})));
+    }} catch (e) {{}}
+  }}
+  function fold(card, folded) {{
+    card.classList.toggle('folded', folded);
+    card.querySelector('h2 .fold').setAttribute('aria-expanded', folded ? 'false' : 'true');
+    if (!folded) {{ resizeIn(card); }}
+  }}
+  var FOLDED = savedFolds();
+  document.querySelectorAll('.card[data-card]').forEach(function (card) {{
+    if (FOLDED.indexOf(card.dataset.card) >= 0) {{ fold(card, true); }}
+    card.querySelector('h2 .fold').addEventListener('click', function () {{
+      fold(card, !card.classList.contains('folded'));
+      saveFolds();
+    }});
+  }});
   document.querySelectorAll('.switches button').forEach(function (b) {{
     b.addEventListener('click', function () {{
       if (b.getAttribute('aria-pressed') === 'true') {{ return; }}
@@ -734,32 +840,46 @@ footer .prov {{ margin: 0 0 6px; }}
 """
 
 
-def _grid_card(title, subtitle, element_id, blocks, how=None, grid_class="votes-grid"):
+def _card_open(title, card, survey):
+    """A card's opening tag and its title, which is the button that folds the card
+    (everything under the title hides; the page's script keeps the state)."""
+    return (f'<section class="card" data-card="{card}" data-survey="{survey}"><h2>'
+            f'<button type="button" class="fold" aria-expanded="true">'
+            f'{html.escape(title)}</button></h2>\n')
+
+
+def _grid_card(title, subtitle, element_id, blocks, how=None, grid_class="votes-grid",
+               survey=BOTH, block_survey=None):
     """A card of figure blocks in the wrapping grid (`.votes-grid`, named for the first
     card that used it): one across on a phone, two from 768px, three from 1100px
     (`aaii_votes.THREE_ACROSS_MIN_PX`), or never three with `grid_class` "votes-grid
-    two" (a four-block card, 2x2)."""
-    esc = html.escape
-    return (f'<section class="card"><h2>{esc(title)}</h2>\n'
+    two" (a four-block card, 2x2). `block_survey` marks blocks for the survey filter
+    on a card that holds both surveys."""
+    block_survey = block_survey or {}
+
+    def block(h):
+        tag = f' data-survey="{block_survey[h]}"' if h in block_survey else ""
+        return f'<div class="plot" data-half="{h}"{tag}></div>'
+    return (_card_open(title, element_id, survey)
             + _sub(subtitle, how)
             + f'<div id="{element_id}" class="{grid_class}">'
-            + "".join(f'<div class="plot" data-half="{h}"></div>' for h in blocks)
+            + "".join(block(h) for h in blocks)
             + '</div></section>\n')
 
 
 def _percentiles_card(blocks):
     return _grid_card(percentiles_card.TITLE, percentiles_card.SUBTITLE, PERCENTILES_ID,
-                      blocks, percentiles_card.HOW_TO_READ)
+                      blocks, percentiles_card.HOW_TO_READ, block_survey=BLOCK_SURVEY)
 
 
 def _naaim_card():
     return _grid_card(naaim_card.TITLE, naaim_card.SUBTITLE, NAAIM_ID, NAAIM_BLOCKS,
-                      naaim_card.HOW_TO_READ)
+                      naaim_card.HOW_TO_READ, survey=NAAIM)
 
 
 def _votes_card():
     return _grid_card(aaii_votes.TITLE, aaii_votes.SUBTITLE, VOTES_ID, VOTES_HALVES,
-                      aaii_votes.HOW_TO_READ)
+                      aaii_votes.HOW_TO_READ, survey=AAII)
 
 
 def _allocation_card():
@@ -767,14 +887,29 @@ def _allocation_card():
     # would leave the fourth alone on a row.
     return _grid_card(aaii_allocation.TITLE, aaii_allocation.SUBTITLE, ALLOCATION_ID,
                       ALLOCATION_BLOCKS, aaii_allocation.HOW_TO_READ,
-                      grid_class="votes-grid two")
+                      grid_class="votes-grid two", survey=AAII)
 
 
 def _allocation_price_card():
-    esc = html.escape
-    return (f'<section class="card"><h2>{esc(aaii_allocation.PRICE_TITLE)}</h2>\n'
+    return (_card_open(aaii_allocation.PRICE_TITLE, ALLOCATION_PRICE_ID, AAII)
             + _sub(aaii_allocation.PRICE_SUBTITLE, aaii_allocation.PRICE_HOW_TO_READ)
             + f'<div id="{ALLOCATION_PRICE_ID}"><div class="plot"></div></div></section>\n')
+
+
+def _survey_filter():
+    """The All / NAAIM / AAII switch above the tiles. Its buttons carry `data-show`,
+    not `data-survey`, so the filter never hides itself."""
+    buttons = "".join(
+        f'<button type="button" data-show="{v}" aria-pressed="{"true" if v == "all" else "false"}">'
+        f'{label}</button>' for v, label in SURVEY_FILTERS)
+    return (f'<div class="pick" id="{FILTER_ID}" role="group" aria-label="Survey">'
+            f'<span>Show</span>{buttons}</div>\n')
+
+
+def _say_do_card():
+    return (_card_open(aaii_say_do.TITLE, SAY_DO_ID, AAII)
+            + _sub(aaii_say_do.SUBTITLE, aaii_say_do.HOW_TO_READ)
+            + f'<div id="{SAY_DO_ID}"><div class="plot"></div></div></section>\n')
 
 
 def write(path, reads, colors, palette, **kw):

@@ -19,7 +19,14 @@ import components.sentiment as sentiment
 import local_pages
 import viz_config
 import viz_constants as vc
-from components import aaii_allocation, aaii_votes, naaim_card, percentiles_card, plot_colors
+from components import (
+    aaii_allocation,
+    aaii_say_do,
+    aaii_votes,
+    naaim_card,
+    percentiles_card,
+    plot_colors,
+)
 
 PRICE_CHART = "sentiment_price_chart"
 COLUMNS_CHART = "sentiment_columns_chart"
@@ -44,10 +51,13 @@ EXPORTS = {"price": ("sentiment_price_export", "sentiment_price_export_btn"),
            "allocation": ("sentiment_allocation_export", "sentiment_allocation_export_btn"),
            "allocation_price": ("sentiment_allocation_price_export",
                                 "sentiment_allocation_price_export_btn"),
+           "say_do": ("sentiment_say_do_export", "sentiment_say_do_export_btn"),
            "columns": ("sentiment_columns_export", "sentiment_columns_export_btn")}
 COLUMNS_ZOOM_SINK = "sentiment_columns_zoom_sink"
 ALLOCATION_PRICE_CHART = "sentiment_allocation_price_chart"
 ALLOCATION_ZOOM_SINK = "sentiment_allocation_zoom_sink"
+SAY_DO_CHART = "sentiment_say_do_chart"
+SAY_DO_ZOOM_SINK = "sentiment_say_do_zoom_sink"
 
 if local_pages.enabled():
     dash.register_page(
@@ -250,6 +260,11 @@ def layout(**_):
                                         "fontSize": "0.9rem"}, className="mb-2"))
             extra_notes = [html.P(p, style=NOTE_STYLE)
                            for p in aaii_allocation.caption(allocation)]
+        say_do = aaii_say_do.read()
+        if say_do is not None:
+            cards.append(_card(aaii_say_do.TITLE, aaii_say_do.SUBTITLE,
+                               aaii_say_do.figure(say_do, read.frame.get("spy"), colors),
+                               SAY_DO_CHART, export="say_do", how=aaii_say_do.HOW_TO_READ))
     # Which weeks are provisional, said once at the foot (the published page's footer),
     # outside the caption the lookback rewrites: the charts and dates no longer mark them.
     note = sentiment.provisional_note(read)
@@ -259,7 +274,7 @@ def layout(**_):
                           html.Div(extra_notes),
                           dcc.Store(id=ZOOM_SINK), dcc.Store(id=COLUMNS_ZOOM_SINK),
                           *[dcc.Store(id=sink) for sink in REDRAW_SINKS.values()],
-                          dcc.Store(id=ALLOCATION_ZOOM_SINK)],
+                          dcc.Store(id=ALLOCATION_ZOOM_SINK), dcc.Store(id=SAY_DO_ZOOM_SINK)],
                          fluid=True, className="py-3")
 
 
@@ -305,6 +320,15 @@ if local_pages.enabled():
         Output(ALLOCATION_ZOOM_SINK, "data"),
         Input(ALLOCATION_PRICE_CHART, "relayoutData"),
         State(ALLOCATION_PRICE_CHART, "id"),
+        prevent_initial_call=True,
+    )
+
+    # Say against do refits its SPY panel the same way; rendered only with both surveys.
+    clientside_callback(
+        "window.dash_clientside.clientside.autoscale_y_axes",
+        Output(SAY_DO_ZOOM_SINK, "data"),
+        Input(SAY_DO_CHART, "relayoutData"),
+        State(SAY_DO_CHART, "id"),
         prevent_initial_call=True,
     )
 

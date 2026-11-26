@@ -245,7 +245,7 @@ def test_each_survey_tile_shows_its_percentile_three_ways_in_its_tier():
     for key in ("naaim", "aaii"):
         pct, word, since = s.latest_rank(reads[s.DEFAULT_LOOKBACK], key)
         tier, words = s.percentile_tier(pct, word)
-        tile = re.search(rf'<div class="tile tier-{tier}" data-key="{key}">.*?'
+        tile = re.search(rf'<div class="tile tier-{tier}" data-key="{key}" data-survey="{key}">.*?'
                          r'<div class="foot">', strip, re.S).group(0)
         assert f'<div class="rank" title="{s.percentile_phrase(word, since)}">' in tile
         assert f'{word}<small> pctl</small></div>' in tile
@@ -277,7 +277,7 @@ def test_a_record_reading_says_so_in_its_badge():
             "context": "c", "pct": "highest since 2006", "rank": (100, s.HIGHEST, 2006),
             "foot": "f"}
     out = st._tiles([tile])
-    assert '<div class="tile tier-top" data-key="naaim">' in out
+    assert '<div class="tile tier-top" data-key="naaim" data-survey="naaim">' in out
     assert '<div class="rank" title="highest since 2006">Highest</div>' in out
     assert '<div class="tier">Highest since 2006</div>' in out
 
@@ -357,3 +357,49 @@ def test_the_price_card_carries_its_scale_and_shading_switches():
         assert "SPY" not in [t.get("name") for t in fig["data"]]
     # The switches are not lookback buttons: the lookback handler must not take them.
     assert page.count('class="switches"') == 1
+
+
+# ── folding and the survey filter ─────────────────────────────────────────────
+
+def test_every_card_folds_from_its_title_and_carries_its_survey():
+    import re
+
+    from components import aaii_allocation as aa
+    from components import aaii_say_do as sd
+    from components import aaii_votes as av
+    from tests.test_aaii_say_do import _bars
+    from tests.test_aaii_votes import _legs_bars
+    _, get_bars = _bars()
+    _, votes_bars = _legs_bars()
+    page = st.render(_reads(), COLORS, PALETTE, votes=av.read(votes_bars),
+                     allocation=aa.read(get_bars), say_do=sd.read(get_bars))
+    body = page.split("<body>")[1].split("<script")[0]
+    cards = re.findall(r'<section class="card" data-card="([^"]+)" data-survey="([^"]+)">'
+                       r'<h2><button type="button" class="fold" aria-expanded="true">', body)
+    assert body.count('<section class="card"') == len(cards)
+    surveys = dict(cards)
+    assert surveys[st.PRICE_ID] == surveys[st.COLUMNS_ID] == st.BOTH
+    assert surveys[st.VOTES_ID] == surveys[st.ALLOCATION_ID] == st.AAII
+    assert surveys[st.ALLOCATION_PRICE_ID] == surveys[st.SAY_DO_ID] == st.AAII
+    # Each card's data-card is unique, so a remembered fold names one card.
+    assert len(surveys) == len(cards)
+    assert "localStorage.getItem('surveys-folded')" in page
+    assert ".card.folded > :not(h2) {" in page
+
+
+def test_the_filter_marks_tiles_and_blocks_and_never_hides_itself():
+    from components import aaii_allocation as aa
+    from tests.test_aaii_say_do import _bars
+    _, get_bars = _bars()
+    page = st.render(_reads(), COLORS, PALETTE, allocation=aa.read(get_bars))
+    body = page.split("<body>")[1].split("<script")[0]
+    flt = body.split(f'id="{st.FILTER_ID}"')[1].split("</div>")[0]
+    assert [b for b in ("all", "naaim", "aaii") if f'data-show="{b}"' in flt] == [
+        "all", "naaim", "aaii"]
+    assert "data-survey" not in flt
+    # The filter is not a lookback control: that script binds every `.lookback button`.
+    assert f'<div class="pick" id="{st.FILTER_ID}"' in body
+    assert body.index(f'id="{st.FILTER_ID}"') < body.index(f'id="{st.READINGS_ID}"')
+    assert f'data-key="{st.STOCKS_KEY}" data-survey="aaii"' in body
+    # The price chart drops the other survey's traces, by name.
+    assert "n.indexOf('AAII') === 0" in page and "'#' + v" in page

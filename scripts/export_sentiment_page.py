@@ -33,6 +33,7 @@ def main(argv=None) -> int:
     import viz_config
     from components import (
         aaii_allocation,
+        aaii_say_do,
         aaii_votes,
         naaim_card,
         plot_colors,
@@ -56,10 +57,14 @@ def main(argv=None) -> int:
     allocation = aaii_allocation.read()
     if allocation is None:
         print("export-sentiment: no AAII asset allocation, card left out", file=sys.stderr)
+    say_do = aaii_say_do.read()
+    if say_do is None:
+        print("export-sentiment: no AAII say-against-do, card left out", file=sys.stderr)
     palette = viz_config.get_palette()
     try:
         sentiment_static.write(args.out, reads, plot_colors.grid_colors(palette), palette,
-                               votes=votes, allocation=allocation, naaim=naaim)
+                               votes=votes, allocation=allocation, naaim=naaim,
+                               say_do=say_do)
     except ValueError as e:
         print(f"export-sentiment: not written: {e}", file=sys.stderr)
         return 1
